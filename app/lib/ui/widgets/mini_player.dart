@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../data/room_controller.dart';
 import '../../theme/theme.dart';
-import '../now_playing_page.dart';
+import '../player_sheet.dart';
 import 'artwork.dart';
 import 'glass.dart';
 import 'transport.dart';
 
-/// Floating capsule above the tab bar. Tap it to open the full player.
+/// Floating capsule above the tab bar. Tap it, or drag it up, to open the full player.
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key, required this.controller});
 
@@ -19,6 +19,7 @@ class MiniPlayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
+    final sheet = PlayerSheetScope.of(context);
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
@@ -38,64 +39,64 @@ class MiniPlayer extends StatelessWidget {
               : Padding(
                   key: const ValueKey('player'),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Glass(
-                    borderRadius: BorderRadius.circular(22),
-                    border: true,
-                    child: InkWell(
-                      onTap: () => openNowPlaying(context),
-                      child: SizedBox(
-                        height: height,
-                        child: Row(
-                          children: [
-                            const SizedBox(width: 10),
-                            Hero(
-                              tag: 'artwork',
-                              child: Artwork(
+                  child: PlayerOpenDrag(
+                    child: Glass(
+                      borderRadius: BorderRadius.circular(22),
+                      border: true,
+                      child: InkWell(
+                        onTap: sheet.open,
+                        child: SizedBox(
+                          height: height,
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 10),
+                              Artwork(
+                                key: sheet.miniCover,
                                 url: current.thumb,
                                 size: 44,
                                 radius: 8,
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    current.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.titleSmall,
-                                  ),
-                                  Text(
-                                    current.artist,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.bodySmall?.copyWith(
-                                      color: p.textSecondary,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      current.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.titleSmall,
                                     ),
-                                  ),
-                                ],
+                                    Text(
+                                      current.artist,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.bodySmall?.copyWith(
+                                        color: p.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            ListenableBuilder(
-                              listenable: controller.player,
-                              builder: (context, _) => PlayPauseButton(
-                                playing: controller.isPlaying,
-                                starting: controller.isStarting,
-                                onPressed: controller.togglePlay,
-                                size: 48,
-                                filled: false,
+                              ListenableBuilder(
+                                listenable: controller.player,
+                                builder: (context, _) => PlayPauseButton(
+                                  playing: controller.isPlaying,
+                                  starting: controller.isStarting,
+                                  onPressed: controller.togglePlay,
+                                  size: 48,
+                                  filled: false,
+                                ),
                               ),
-                            ),
-                            SkipButton(
-                              forward: true,
-                              onPressed: controller.next,
-                              size: 34,
-                            ),
-                            const SizedBox(width: 4),
-                          ],
+                              SkipButton(
+                                forward: true,
+                                onPressed: controller.next,
+                                size: 34,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                          ),
                         ),
                       ),
                     ),

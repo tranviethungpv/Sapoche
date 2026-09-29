@@ -258,7 +258,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(NowPlayingPage), findsOneWidget);
 
-    // Far enough: it flies off, then the route pops
+    // Far enough: the sheet carries on down on its own and the route pops
     await tester.drag(
       find.byType(NowPlayingPage),
       const Offset(0, 700),
@@ -268,6 +268,74 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(find.byType(NowPlayingPage), findsNothing);
+  });
+
+  testWidgets('dragging the mini player up pulls the full player open', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(MiniPlayer)),
+    );
+    // The first move only makes Flutter recognise a drag; the ones after it move the sheet
+    await gesture.moveBy(const Offset(0, -50));
+    await gesture.moveBy(const Offset(0, -250));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byType(NowPlayingPage), findsOneWidget);
+    // Held part way: the screen behind must still be there, not a black gap
+    expect(find.byType(MiniPlayer), findsOneWidget);
+    final top = tester.getTopLeft(find.byType(NowPlayingPage)).dy;
+    expect(top, greaterThan(0));
+
+    await gesture.moveBy(const Offset(0, -500));
+    await gesture.up();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(NowPlayingPage), findsOneWidget);
+    expect(tester.getTopLeft(find.byType(NowPlayingPage)).dy, 0);
+  });
+
+  testWidgets('Back closes the open player instead of leaving the app', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byType(MiniPlayer));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(NowPlayingPage), findsOneWidget);
+
+    expect(await tester.binding.handlePopRoute(), isTrue);
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(NowPlayingPage), findsNothing);
+    expect(find.byType(MiniPlayer), findsOneWidget);
+  });
+
+  testWidgets('a short slow drag on the mini player opens nothing', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.timedDrag(
+      find.byType(MiniPlayer),
+      const Offset(0, -100),
+      const Duration(seconds: 2),
+    );
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(NowPlayingPage), findsNothing);
+    expect(find.byType(MiniPlayer), findsOneWidget);
   });
 
   testWidgets('a new song slides in but the ones already there do not', (

@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'player_sheet.dart';
 import 'room_page.dart';
 import 'scope.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
+import 'widgets/artwork.dart';
 import 'widgets/glass.dart';
 import 'widgets/mini_player.dart';
 
@@ -24,10 +26,13 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell>
+    with SingleTickerProviderStateMixin {
   int _tab = 0;
+  late final _sheet = PlayerSheetController(this);
   StreamSubscription<String>? _messages;
   RoomController? _watched;
+  String? _precachedCover;
 
   @override
   void didChangeDependencies() {
@@ -41,14 +46,33 @@ class _HomeShellState extends State<HomeShell> {
         ..showSnackBar(SnackBar(content: Text(text)));
     });
     room.invite.addListener(_onInvite);
+    room.addListener(_precacheCover);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _precacheCover());
     WidgetsBinding.instance.addPostFrameCallback((_) => _onInvite());
   }
 
   @override
   void dispose() {
     _watched?.invite.removeListener(_onInvite);
+    _watched?.removeListener(_precacheCover);
     _messages?.cancel();
+    _sheet.dispose();
     super.dispose();
+  }
+
+  /// Fetches the current song's cover in the size the full player shows it, ahead of time, so
+  /// opening the player shows the picture at once instead of a placeholder.
+  void _precacheCover() {
+    final url = _watched?.snapshot.current?.thumb;
+    if (url == null || url == _precachedCover || !mounted) return;
+    _precachedCover = url;
+    precacheImage(
+      NetworkImage(sharpThumbnail(url)),
+      context,
+      // No enlarged picture for this one: the player will fall back to the original
+      onError: (_, _) =>
+          precacheImage(NetworkImage(url), context, onError: (_, _) {}),
+    );
   }
 
   /// An invitation link arrived while in a room: switch only if it is another room and the user agrees.
@@ -89,7 +113,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.roomOf(context);
-    return Scaffold(
+    final home = Scaffold(
       extendBody: true,
       body: IndexedStack(
         index: _tab,
@@ -106,6 +130,33 @@ class _HomeShellState extends State<HomeShell> {
           const SizedBox(height: 8),
           _TabBar(index: _tab, onSelect: _select),
         ],
+      ),
+    );
+    return PlayerSheetScope(
+      controller: _sheet,
+      // Back closes an open player first; only then does it leave the screen
+      child: ListenableBuilder(
+        listenable: _sheet,
+        builder: (context, stack) => PopScope(
+          canPop: !_sheet.isOpen,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _sheet.close();
+          },
+          child: stack!,
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Nothing to draw behind a fully open player
+            AnimatedBuilder(
+              animation: _sheet.position,
+              child: home,
+              builder: (context, home) =>
+                  Offstage(offstage: _sheet.position.value == 1, child: home),
+            ),
+            PlayerSheetLayer(controller: _sheet),
+          ],
+        ),
       ),
     );
   }

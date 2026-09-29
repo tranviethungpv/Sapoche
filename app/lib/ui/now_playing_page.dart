@@ -5,33 +5,13 @@ import '../data/room_controller.dart';
 import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'player_sheet.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
-import 'widgets/drag_to_dismiss.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
 import 'widgets/player_backdrop.dart';
-
-/// Opens the full player as a sheet that slides up over the current screen.
-void openNowPlaying(BuildContext context) {
-  Navigator.of(context, rootNavigator: true).push(
-    PageRouteBuilder<void>(
-      opaque: true,
-      transitionDuration: const Duration(milliseconds: 420),
-      reverseTransitionDuration: const Duration(milliseconds: 240),
-      pageBuilder: (_, _, _) => const NowPlayingPage(),
-      transitionsBuilder: (context, animation, secondary, child) =>
-          SlideTransition(
-            position: Tween(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(animation),
-            child: child,
-          ),
-    ),
-  );
-}
 
 class NowPlayingPage extends StatelessWidget {
   const NowPlayingPage({super.key});
@@ -39,25 +19,41 @@ class NowPlayingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.roomOf(context);
-    return DragToDismiss(
-      child: Scaffold(
-        body: ListenableBuilder(
-          listenable: controller,
-          builder: (context, _) {
-            final current = controller.snapshot.current;
-            if (current == null) {
-              // The queue emptied while the sheet was open
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (context.mounted) Navigator.of(context).maybePop();
-              });
-              return const SizedBox.shrink();
-            }
-            return _Body(controller: controller, current: current);
-          },
+    final sheet = PlayerSheetScope.of(context);
+    return PlayerPull(
+      child: KeyedSubtree(
+        key: sheet.pageRoot,
+        child: Scaffold(
+          body: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) {
+              final current = controller.snapshot.current;
+              if (current == null) {
+                // The queue emptied while the sheet was open
+                WidgetsBinding.instance.addPostFrameCallback(
+                  (_) => sheet.close(),
+                );
+                return const SizedBox.shrink();
+              }
+              return _Body(controller: controller, current: current);
+            },
+          ),
         ),
       ),
     );
   }
+}
+
+/// Side of the full player's cover. It depends only on the screen, so the cover can be decoded
+/// at this size before the player is ever opened.
+double coverSize(MediaQueryData media) {
+  // Everything except the cover needs about this much height; the cover takes what is left
+  const otherContent = 350.0;
+  return [
+    media.size.width - 64,
+    380.0,
+    media.size.height - media.padding.vertical - otherContent,
+  ].reduce((a, b) => a < b ? a : b).clamp(140.0, 380.0);
 }
 
 class _Body extends StatelessWidget {
@@ -70,15 +66,8 @@ class _Body extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    final size = MediaQuery.sizeOf(context);
-    final padding = MediaQuery.paddingOf(context);
-    // Everything except the cover needs about this much height; the cover takes what is left
-    const otherContent = 350.0;
-    final artSize = [
-      size.width - 64,
-      380.0,
-      size.height - padding.vertical - otherContent,
-    ].reduce((a, b) => a < b ? a : b).clamp(140.0, 380.0);
+    final sheet = PlayerSheetScope.of(context);
+    final artSize = coverSize(MediaQuery.of(context));
 
     return Stack(
       fit: StackFit.expand,
@@ -118,12 +107,14 @@ class _Body extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: Hero(
-                        tag: 'artwork',
+                      child: CoverSlot(
+                        controller: sheet,
                         child: Artwork(
+                          key: sheet.pageCover,
                           url: current.thumb,
                           size: artSize,
                           radius: 16,
+                          sharp: true,
                         ),
                       ),
                     ),
