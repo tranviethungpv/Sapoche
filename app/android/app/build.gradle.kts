@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 
 plugins {
@@ -11,6 +12,8 @@ plugins {
 val localProperties = Properties().apply {
     rootProject.file("unison.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
+
+val serverUrl = localProperties.getProperty("unison.serverUrl", "https://your-worker.example.workers.dev")
 
 android {
     namespace = "app.unison"
@@ -42,7 +45,9 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        buildConfigField("String", "SERVER_URL", "\"${localProperties.getProperty("unison.serverUrl", "https://your-worker.example.workers.dev")}\"")
+        buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
+        // Invitation links (https://<server>/join/CODE) open the app directly once Android has verified the server
+        manifestPlaceholders["serverHost"] = URI(serverUrl).host
         buildConfigField("String", "ROOM_KEY", "\"${localProperties.getProperty("unison.roomKey", "")}\"")
     }
 

@@ -221,6 +221,7 @@ export class Room extends DurableObject<Env> {
       return;
     }
     if (this.members().length >= MAX_MEMBERS && !this.members().some((m) => m.id === clientId)) {
+      this.fail(ws, "room_full", "The room is full");
       ws.close(1008, "room is full");
       return;
     }

@@ -80,7 +80,7 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 | `advance` | `epoch`, `index`, `startedAt` | Cả phòng sang bài kế không qua barrier, vị trí 0 nghe thấy lúc `startedAt` |
 | `pong` | `c0`, `s1` | Trả lời ping |
 | `members` | `members[]` | Danh sách thành viên, gửi khi có người vào, ra, đổi tên, đổi chế độ nghe riêng, đổi chủ hoặc chuyển giữa hiện diện và `away` |
-| `error` | `code`, `message` | Mã hiện có: `not_joined`, `bad_message`, `bad_json`, `rate_limited`, `unknown_type`, `bad_video`, `queue_full`, `unplayable`, `room_not_found` (kèm đóng 4004), `forbidden` (lệnh chỉ dành cho chủ), `removed` (kèm đóng 4001) |
+| `error` | `code`, `message` | Mã hiện có: `not_joined`, `bad_message`, `bad_json`, `rate_limited`, `unknown_type`, `bad_video`, `queue_full`, `unplayable`, `room_not_found` (kèm đóng 4004), `room_full` (kèm đóng 1008), `forbidden` (lệnh chỉ dành cho chủ), `removed` (kèm đóng 4001) |
 
 ## 5. Luồng đổi bài (barrier)
 

@@ -242,6 +242,7 @@ async function main() {
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
   await shuffleSection();
   await existenceSection();
+  await fullRoomSection();
   await ownerSection();
   await inviteSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
@@ -462,6 +463,24 @@ async function existenceSection() {
   await legacy.join();
   check("an older app that sends no create flag still opens the room", (await roomInfo(older)).exists === true);
   [owner, guest, legacy].forEach((x) => x.close());
+}
+
+/** A thirteenth device is told the room is full, and turned away for good. */
+async function fullRoomSection() {
+  console.log("Full room");
+  const code = await newCode();
+  const members = [];
+  for (let i = 0; i < 12; i++) {
+    const member = new Client(code, `full-${i}`, `M${i}`);
+    await member.join(i === 0);
+    members.push(member);
+  }
+  const extra = new Client(code, "full-extra", "Extra");
+  await extra.opened;
+  extra.send({ t: "join", clientId: extra.clientId, name: extra.name, create: false });
+  const refused = await extra.waitFor((m) => m.t === "error");
+  check("a device that finds the room full is told so and turned away", refused.code === "room_full" && (await extra.closed) === 1008);
+  members.forEach((x) => x.close());
 }
 
 /** The owner names the room, restricts guests, removes people and hands the room over. */

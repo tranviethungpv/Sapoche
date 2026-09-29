@@ -16,9 +16,9 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import java.util.concurrent.TimeUnit
 
-enum class Connection { CONNECTING, CONNECTED, RECONNECTING, CLOSED, UNAUTHORIZED }
+/** [REFUSED]: the server turned this device away for good (room full, no such room, removed by the owner). */
+enum class Connection { CONNECTING, CONNECTED, RECONNECTING, CLOSED, UNAUTHORIZED, REFUSED }
 
 /**
  * WebSocket connection to one room. Joins on every (re)connect, keeps the clock offset fresh with
@@ -36,10 +36,17 @@ class RoomClient(
     private val log: (String) -> Unit = {},
     /** Sent with the WebSocket upgrade, e.g. the shared secret. */
     private val headers: Map<String, String> = emptyMap(),
-    private val http: OkHttpClient = OkHttpClient.Builder()
-        // Protocol-level pings keep NAT mappings alive and detect dead connections
-        .pingInterval(20, TimeUnit.SECONDS)
-        .build(),
+    /**
+     * What this device expects of the room, see [Protocol.join]. It is sent until the server has answered
+     * once; after that a reconnect must not open a new room if the old one expired.
+     */
+    create: Boolean? = null,
+    // No protocol-level pings here: the ping below already keeps the connection alive and proves it is
+    // dead when unanswered, and a second timer would wake the radio twice as often
+    private val http: OkHttpClient = OkHttpClient(),
+    /** How often to ping once connected, and how long silence may last before the connection is dropped. Shortened by tests. */
+    private val pingEveryMs: Long = REFRESH_MS,
+    private val pongDeadlineMs: Long = PONG_DEADLINE_MS,
 ) {
     var onMessage: (ServerMessage) -> Unit = {}
 
@@ -54,6 +61,11 @@ class RoomClient(
     @Volatile
     private var socket: WebSocket? = null
     private var loop: Job? = null
+    private var createOnJoin = create
+
+    /** When the server last answered a ping, on the [nowMs] clock. */
+    @Volatile
+    private var lastPongMs = 0L
 
     /** A token here ends the current reconnect wait early. */
     private val wake = Channel<Unit>(Channel.CONFLATED)
@@ -86,6 +98,12 @@ class RoomClient(
         wake.trySend(Unit)
     }
 
+    /** Leaves on purpose: tells the room, so an owner hands it over, then closes. */
+    fun leave() {
+        send(Protocol.bye())
+        close()
+    }
+
     fun close() {
         loop?.cancel()
         loop = null
@@ -108,7 +126,8 @@ class RoomClient(
                     socket = webSocket
                     _connection.value = Connection.CONNECTED
                     log("connected to $url")
-                    webSocket.send(Protocol.join(clientId, name))
+                    lastPongMs = nowMs()
+                    webSocket.send(Protocol.join(clientId, name, createOnJoin))
                     pinger = scope.launch { pingLoop(webSocket) }
                     onConnected()
                 }
@@ -116,8 +135,14 @@ class RoomClient(
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     when (val msg = Protocol.parse(text)) {
                         null -> log("ignoring unparsable message")
-                        is ServerMessage.Pong -> clock.addSample(msg.c0, nowMs(), msg.s1)
-                        else -> onMessage(msg)
+                        is ServerMessage.Pong -> {
+                            lastPongMs = nowMs()
+                            clock.addSample(msg.c0, nowMs(), msg.s1)
+                        }
+                        else -> {
+                            if (msg is ServerMessage.State && createOnJoin == true) createOnJoin = false
+                            onMessage(msg)
+                        }
                     }
                 }
 
@@ -150,10 +175,10 @@ class RoomClient(
                 _connection.value = Connection.UNAUTHORIZED
                 return
             }
-            if (code == CLOSE_POLICY_VIOLATION) {
-                // The server refuses us (room full); retrying would not help
-                log("server refused the connection, giving up")
-                _connection.value = Connection.CLOSED
+            if (code == CLOSE_POLICY_VIOLATION || code == CLOSE_REMOVED || code == CLOSE_NOT_FOUND) {
+                // The server refuses us (room full, removed by the owner, no such room); retrying would not help
+                log("server refused the connection ($code), giving up")
+                _connection.value = Connection.REFUSED
                 return
             }
             val wait = backoffMs(attempt++)
@@ -162,14 +187,23 @@ class RoomClient(
         }
     }
 
-    /** A quick burst right after connecting for a good first estimate, then a slow refresh: each ping keeps the radio awake, and the server counts it as presence. */
+    /**
+     * A quick burst right after connecting for a good first estimate, then a slow refresh: each ping keeps
+     * the radio awake, and the server counts it as presence. A connection that stopped answering without
+     * saying so is dropped here, since nothing else would notice.
+     */
     private suspend fun pingLoop(ws: WebSocket) {
         repeat(BURST_PINGS) {
             ws.send(Protocol.ping(nowMs()))
             delay(BURST_GAP_MS)
         }
         while (true) {
-            delay(REFRESH_MS)
+            delay(pingEveryMs)
+            if (nowMs() - lastPongMs > pongDeadlineMs) {
+                log("no answer to pings for ${(nowMs() - lastPongMs) / 1000}s, dropping the connection")
+                ws.cancel()
+                return
+            }
             ws.send(Protocol.ping(nowMs()))
         }
     }
@@ -178,10 +212,15 @@ class RoomClient(
 
     private companion object {
         const val CLOSE_POLICY_VIOLATION = 1008
+        const val CLOSE_REMOVED = 4001
+        const val CLOSE_NOT_FOUND = 4004
         const val CLOSE_UNAUTHORIZED = -401
         const val HTTP_UNAUTHORIZED = 401
         const val BURST_PINGS = 8
         const val BURST_GAP_MS = 250L
         const val REFRESH_MS = 30_000L
+
+        /** A healthy connection answers every ping, one per [REFRESH_MS]; a whole missed round means it is dead. */
+        const val PONG_DEADLINE_MS = 45_000L
     }
 }

@@ -9,7 +9,6 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import app.unison.core.TrackInfo
 import app.unison.core.YoutubeLinks
-import app.unison.sync.Protocol
 import app.unison.sync.TrackRef
 import com.google.common.util.concurrent.ListenableFuture
 import io.flutter.embedding.android.FlutterActivity
@@ -84,9 +83,11 @@ class UnisonBridge(
         controller = MediaController.Builder(activity, token).buildAsync()
     }
 
-    /** Handles a `unison://join/CODE` link; anything else is ignored. */
+    /** Handles an invitation, `unison://join/CODE` or the https link of the server's invitation page; anything else is ignored. */
     fun onLink(uri: Uri?) {
-        if (uri?.scheme != "unison" || uri.host != "join") return
+        val own = uri?.scheme == "unison" && uri.host == "join"
+        val web = uri?.scheme == "https" && uri.host == Uri.parse(Config.SERVER).host && uri.pathSegments.firstOrNull() == "join"
+        if (uri == null || !own && !web) return
         val code = uri.lastPathSegment?.trim()?.uppercase()?.takeIf { INVITE_CODE.matches(it) } ?: return
         if (sink != null) emit(UiJson.invite(code)) else pendingInvite = code
     }
@@ -214,6 +215,7 @@ class UnisonBridge(
             "searchPlaylists" -> return searchPlaylists(call.argument<String>("query").orEmpty())
             "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true)
             "lookup" -> return lookup(call.argument<String>("text").orEmpty())
+            "roomInfo" -> return roomInfo(call.argument<String>("code").orEmpty())
             "share" -> {
                 share(call.argument<String>("text").orEmpty())
                 return null
@@ -225,13 +227,14 @@ class UnisonBridge(
         when (call.method) {
             "createRoom" -> {
                 val code = createRoom()
-                group.join(Config.SERVER, code, call.argument<String>("name").orEmpty())
+                group.join(Config.SERVER, code, call.argument<String>("name").orEmpty(), create = true)
                 return code
             }
             "join" -> group.join(
                 Config.SERVER,
                 call.argument<String>("code").orEmpty().trim().uppercase(),
                 call.argument<String>("name").orEmpty(),
+                create = false,
             )
             "leave" -> group.leave()
             "rename" -> group.rename(call.argument<String>("name").orEmpty().trim())
@@ -256,10 +259,27 @@ class UnisonBridge(
                 emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, UnisonApp.videoMaxHeight))
             }
             else -> {
-                if (!group.isActive) throw NoRoomException()
                 when (call.method) {
-                    "solo" -> if (call.argument<Boolean>("on") == true) group.goSolo() else group.rejoin()
-                    "keepPlaying" -> group.keepPlaying()
+                    "solo" -> {
+                        requireRoom(group)
+                        if (call.argument<Boolean>("on") == true) group.goSolo() else group.rejoin()
+                    }
+                    "keepPlaying" -> {
+                        requireRoom(group)
+                        group.keepPlaying()
+                    }
+                    "kick" -> {
+                        requireRoom(group)
+                        group.requestKick(call.argument<String>("id").orEmpty())
+                    }
+                    "roomName" -> {
+                        requireRoom(group)
+                        group.requestRoomName(call.argument<String>("name").orEmpty())
+                    }
+                    "roomSettings" -> {
+                        requireRoom(group)
+                        group.requestRoomSettings(call.argument<String>("guestControl").orEmpty())
+                    }
                     "play" -> group.requestPlay { group.playLocally() }
                     "pause" -> group.requestPause()
                     "next" -> group.requestNext()
@@ -283,21 +303,47 @@ class UnisonBridge(
                     )
                     "remove" -> group.requestRemove(call.argument<String>("id").orEmpty())
                     "move" -> group.requestMove(call.argument<String>("id").orEmpty(), call.argument<Int>("to") ?: 0)
-                    "add" -> group.send(
-                        Protocol.queueAdd(
-                            videoId = call.argument<String>("videoId").orEmpty(),
-                            title = call.argument<String>("title").orEmpty(),
-                            artist = call.argument<String>("artist").orEmpty(),
-                            thumb = call.argument<String>("thumb"),
-                            durMs = (call.argument<Number>("durMs") ?: 0).toLong(),
-                            playNext = call.argument<Boolean>("next") ?: false,
+                    "add" -> group.requestAddMany(
+                        listOf(
+                            TrackRef(
+                                videoId = call.argument<String>("videoId").orEmpty(),
+                                title = call.argument<String>("title").orEmpty(),
+                                artist = call.argument<String>("artist").orEmpty(),
+                                thumb = call.argument<String>("thumb"),
+                                durMs = (call.argument<Number>("durMs") ?: 0).toLong(),
+                            ),
                         ),
+                        call.argument<Boolean>("next") ?: false,
                     )
                     else -> throw UnsupportedOperationException(call.method)
                 }
             }
         }
         return null
+    }
+
+    private fun requireRoom(group: GroupController) {
+        if (!group.isActive) throw NoRoomException()
+    }
+
+    /** What the server says about a room before joining it; null when it cannot be reached. */
+    private suspend fun roomInfo(code: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
+        val clean = code.trim().uppercase()
+        if (!INVITE_CODE.matches(clean)) return@withContext null
+        val request = Request.Builder().url("${Config.SERVER}/room/$clean/info")
+            .apply { Config.authHeaders.forEach { (k, v) -> header(k, v) } }
+            .build()
+        http.newCall(request).execute().use {
+            if (!it.isSuccessful) return@use null
+            val json = JSONObject(it.body.string())
+            mapOf(
+                "exists" to json.optBoolean("exists"),
+                "name" to if (json.isNull("name")) null else json.getString("name"),
+                "members" to json.optInt("members"),
+                "playing" to json.optBoolean("playing"),
+                "title" to if (json.isNull("title")) null else json.getString("title"),
+            )
+        }
     }
 
     private suspend fun createRoom(): String = withContext(Dispatchers.IO) {

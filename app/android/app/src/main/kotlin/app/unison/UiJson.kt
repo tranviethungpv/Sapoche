@@ -8,24 +8,33 @@ import org.json.JSONObject
 /** JSON the Flutter UI receives. The keys are a contract with lib/data/models.dart. */
 object UiJson {
 
-    /** Structure of the room. Changes rarely, so the UI only rebuilds when this differs. */
+    /**
+     * Structure of what is playing: the room, or outside one the personal queue in the same shape (no
+     * room code, no members). Changes rarely, so the UI only rebuilds when this differs.
+     */
     fun state(view: GroupController.View, trimMs: Long, video: Boolean = false, videoHeight: Int = 720): String {
         val snap = view.snapshot
         val state = snap.state
+        val local = view.local
+        val inRoom = view.roomCode != null
         return JSONObject()
             .put("type", "state")
             .put("room", view.roomCode ?: JSONObject.NULL)
             .put("connection", connectionName(view))
             .put("you", snap.you ?: JSONObject.NULL)
-            .put("phase", state?.phase ?: "idle")
-            .put("repeat", state?.repeat ?: "off")
-            .put("index", state?.index ?: 0)
+            // Outside a room whether it plays is the player's business; this only says whether there is something to play
+            .put("phase", if (inRoom) state?.phase ?: "idle" else if (local.queue.isEmpty() || local.finished) "idle" else "paused")
+            .put("repeat", if (inRoom) state?.repeat ?: "off" else local.repeat)
+            .put("index", if (inRoom) state?.index ?: 0 else local.index)
+            .put("name", state?.name.takeIf { inRoom } ?: JSONObject.NULL)
+            .put("ownerId", state?.ownerId.takeIf { inRoom } ?: JSONObject.NULL)
+            .put("guestControl", if (inRoom) state?.guestControl ?: "all" else "all")
             .put("trimMs", trimMs)
             .put("video", video)
             .put("videoHeight", videoHeight)
             .put("solo", snap.solo)
             .put("soloItemId", snap.soloItemId ?: JSONObject.NULL)
-            .put("queue", JSONArray().also { array -> state?.queue?.forEach { array.put(item(it)) } })
+            .put("queue", JSONArray().also { array -> (if (inRoom) state?.queue else local.queue)?.forEach { array.put(item(it)) } })
             .put(
                 "members",
                 JSONArray().also { array ->
@@ -36,7 +45,8 @@ object UiJson {
                                 .put("name", it.name)
                                 .put("ready", it.ready)
                                 .put("solo", it.solo)
-                                .put("away", it.away),
+                                .put("away", it.away)
+                                .put("owner", it.owner),
                         )
                     }
                 },
@@ -88,5 +98,6 @@ object UiJson {
         Connection.RECONNECTING -> "reconnecting"
         Connection.CLOSED -> "closed"
         Connection.UNAUTHORIZED -> "unauthorized"
+        Connection.REFUSED -> "closed"
     }
 }

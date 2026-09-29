@@ -39,6 +39,12 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="unison" android:host="join"/>
             </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="${serverHost}" android:pathPrefix="/join/"/>
+            </intent-filter>
         </activity>
         <service
             android:name=".PlaybackService"

@@ -155,6 +155,36 @@ class ProtocolTest {
     }
 
     @Test
+    fun `builds the join with and without the create flag`() {
+        assertEquals("""{"t":"join","clientId":"c","name":"N"}""", Protocol.join("c", "N"))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","create":true}""", Protocol.join("c", "N", create = true))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","create":false}""", Protocol.join("c", "N", create = false))
+    }
+
+    @Test
+    fun `builds the owner and room messages`() {
+        assertEquals("""{"t":"bye"}""", Protocol.bye())
+        assertEquals("""{"t":"kick","id":"dev-b"}""", Protocol.kick("dev-b"))
+        assertEquals("""{"t":"room.name","name":"Family"}""", Protocol.roomName("Family"))
+        assertEquals("""{"t":"room.settings","guestControl":"add"}""", Protocol.roomSettings("add"))
+    }
+
+    @Test
+    fun `parses the owner name and guest control, and an older server without them`() {
+        val text = """{"t":"state","serverNow":1,"you":"a","state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0,"name":"Family","ownerId":"a","guestControl":"add"},"members":[{"id":"a","name":"Anna","ready":false,"owner":true},{"id":"b","name":"Ben","ready":false}]}"""
+        val msg = Protocol.parse(text) as ServerMessage.State
+        assertEquals("Family", msg.state.name)
+        assertEquals("a", msg.state.ownerId)
+        assertEquals("add", msg.state.guestControl)
+        assertEquals(listOf(true, false), msg.members.map { it.owner })
+
+        val older = Protocol.parse(text.replace(""","name":"Family","ownerId":"a","guestControl":"add"""", "")) as ServerMessage.State
+        assertEquals(null, older.state.name)
+        assertEquals(null, older.state.ownerId)
+        assertEquals("all", older.state.guestControl)
+    }
+
+    @Test
     fun `builds an advanced report`() {
         val text = Protocol.advanced(epoch = 4, itemId = "q2", startedAt = 1790660600123)
         assertEquals("""{"t":"advanced","epoch":4,"itemId":"q2","startedAt":1790660600123}""", text)

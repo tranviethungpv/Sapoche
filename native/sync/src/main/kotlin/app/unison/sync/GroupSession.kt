@@ -208,6 +208,20 @@ class GroupSession(
         }
     }
 
+    /**
+     * Listening on one's own again after the app was killed: as [goSolo], but nothing is playing, so
+     * nothing starts until the person presses play, and then it is the song they were on. The room is
+     * told once the connection is up, see [onReconnected].
+     */
+    fun restoreSolo(itemId: String?) {
+        scope.launch {
+            if (solo) return@launch
+            solo = true
+            _snapshot.update { it.copy(solo = true, soloItemId = itemId) }
+            log("back to listening on my own, on '$itemId'")
+        }
+    }
+
     /** Follow the room again: ask it where it is and join in there. */
     fun rejoin() {
         scope.launch {
@@ -230,7 +244,13 @@ class GroupSession(
 
     fun soloPlay() {
         scope.launch {
-            if (loadedItemId != null) player.play() else state?.current?.let { soloLoad(it, 0, play = true) }
+            if (loadedItemId != null) {
+                player.play()
+            } else {
+                // After a restart the song this device was on, else wherever the room is
+                val mine = state?.queue?.firstOrNull { it.id == _snapshot.value.soloItemId }
+                (mine ?: state?.current)?.let { soloLoad(it, 0, play = true) }
+            }
         }
     }
 

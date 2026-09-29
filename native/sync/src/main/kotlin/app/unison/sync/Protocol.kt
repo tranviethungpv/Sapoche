@@ -41,6 +41,12 @@ data class RoomState(
     val epoch: Long,
     /** What happens when an item ends: off (stop after the queue), all (start over) or one (same item). */
     val repeat: String = "off",
+    /** Room name; null when the room has none (or the server is older). */
+    val name: String? = null,
+    /** Client id of the owner; null while the room has none. */
+    val ownerId: String? = null,
+    /** While the owner is here: `all` lets every member control the room, `add` lets guests only add songs. */
+    val guestControl: String = "all",
 ) {
     val current: QueueItem? get() = queue.getOrNull(index)
 }
@@ -54,6 +60,8 @@ data class Member(
     val solo: Boolean = false,
     /** Not heard from for a while, probably a dead connection: not counted as listening. */
     val away: Boolean = false,
+    /** Can change the room's settings and remove people. */
+    val owner: Boolean = false,
 )
 
 sealed interface ServerMessage {
@@ -119,7 +127,26 @@ object Protocol {
 
     // ---- client -> server ----
 
-    fun join(clientId: String, name: String) = msg("join") { put("clientId", clientId); put("name", name) }
+    /**
+     * [create] says what the device expects: true for a code it just made, false for one it was given, so
+     * that a mistyped code is refused instead of opening an empty room. Null leaves it out, as older apps do.
+     */
+    fun join(clientId: String, name: String, create: Boolean? = null) = msg("join") {
+        put("clientId", clientId)
+        put("name", name)
+        if (create != null) put("create", create)
+    }
+
+    /** Leaving on purpose, as opposed to a connection that dropped. */
+    fun bye() = msg("bye")
+
+    /** Owner only: disconnect a member. */
+    fun kick(id: String) = msg("kick") { put("id", id) }
+
+    fun roomName(name: String) = msg("room.name") { put("name", name) }
+
+    /** Owner only: `all` or `add`. */
+    fun roomSettings(guestControl: String) = msg("room.settings") { put("guestControl", guestControl) }
 
     fun ping(c0: Long) = msg("ping") { put("c0", c0) }
 

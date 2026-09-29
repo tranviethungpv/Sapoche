@@ -16,7 +16,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** A player whose position advances with virtual time, so timing can be asserted to the millisecond. */
-private class FakePlayer(private val now: () -> Long) : PlayerPort {
+internal class FakePlayer(private val now: () -> Long) : PlayerPort {
     var loaded: QueueItem? = null
     var position = 0L
     var playing = false
@@ -716,6 +716,29 @@ class GroupSessionTest {
         h.player.onEnded?.invoke()
         step(500)
         assertFalse(h.player.playing)
+    }
+
+    @Test
+    fun `after a restart, listening alone comes back paused on the song it was on`() = runTest {
+        val h = harness()
+        h.session.restoreSolo("q2")
+        h.session.onMessage(
+            ServerMessage.State(0, "dev-a", RoomState(listOf(item, item2), 0, "playing", startedAt = 0, positionMs = 0, epoch = 3), emptyList()),
+        )
+        step(500)
+        assertTrue(h.session.snapshot.value.solo)
+        assertEquals("q2", h.session.snapshot.value.soloItemId)
+        assertEquals(null, h.player.loaded, "the room's song is not started for someone who listens alone")
+        assertFalse(h.player.playing)
+
+        h.session.onReconnected()
+        step(100)
+        assertTrue(h.sent.any { it.contains("\"solo\"") && it.contains("true") }, "the room is told this device is alone")
+
+        h.session.soloPlay()
+        step(500)
+        assertEquals(item2, h.player.loaded, "play starts the song this device was on, not the room's")
+        assertTrue(h.player.playing)
     }
 
     @Test

@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.Network
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.Player
@@ -11,7 +13,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import app.unison.sync.ClockSync
 import app.unison.sync.Connection
 import app.unison.sync.GroupSession
+import app.unison.sync.LocalSession
 import app.unison.sync.Protocol
+import app.unison.sync.QueueFile
 import app.unison.sync.RoomClient
 import app.unison.sync.TrackRef
 import app.unison.sync.ServerMessage
@@ -19,41 +23,64 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Lives in the playback service so the room connection survives the activity. While joined, the
- * room decides what plays; while not joined, the player behaves as a plain local player.
+ * room decides what plays; while not joined, the player plays the personal queue, like any music player.
  */
 class GroupController(
     private val context: Context,
     private val exo: ExoPlayer,
     private val prefs: SharedPreferences,
+    private val queueFile: QueueFile,
 ) {
     // Main thread: ExoPlayer must be used there, and the session only does light work
     private var scope = newScope()
     private val port = ExoPlayerPort(exo)
     private val clock = ClockSync()
 
+    /** Lives as long as this controller; [scope] is replaced each time a room is left. */
+    private val ownScope = newScope()
+
+    /** Saving the queue is disk work, so it is done off the main thread, in order. */
+    private val writer = Executors.newSingleThreadExecutor()
+
+    /** The queue that plays outside a room; it comes back after a restart, paused. */
+    val local = LocalSession(
+        ownScope,
+        port,
+        queueFile.read(),
+        persist = { saved -> writer.execute { runCatching { queueFile.write(saved) } } },
+        problem = { text -> _errors.tryEmit(ServerMessage.Error("unplayable", text)) },
+        log = { EventLog.d("local", it) },
+    )
+
     private var client: RoomClient? = null
     private var session: GroupSession? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
-    /** What the UI shows: the room as last announced, plus the connection to it. */
+    /** What the UI shows: the room as last announced, plus the connection to it, and the personal queue for outside a room. */
     data class View(
         val roomCode: String? = null,
         val connection: Connection? = null,
         val snapshot: GroupSession.Snapshot = GroupSession.Snapshot(),
+        val local: LocalSession.Snapshot = LocalSession.Snapshot(),
     )
 
-    private val _view = MutableStateFlow(View())
+    private val _view = MutableStateFlow(View(local = local.snapshot.value))
     val view: StateFlow<View> = _view.asStateFlow()
 
     /** Errors the server reports to this device, e.g. a track nobody could play. */
@@ -77,6 +104,8 @@ class GroupController(
 
     init {
         port.setVideoMode(videoMode)
+        local.attach()
+        ownScope.launch { local.snapshot.collect { publish() } }
     }
 
     fun setVideoMode(on: Boolean) {
@@ -98,8 +127,10 @@ class GroupController(
     var trimMs: Long = prefs.getLong(KEY_TRIM_MS, 0L)
         private set
 
-    fun join(baseUrl: String, code: String, name: String) {
+    /** [create] says whether the code was just made (true) or given to this device (false): a mistyped code must not open a room. */
+    fun join(baseUrl: String, code: String, name: String, create: Boolean) {
         stopFollowing()
+        local.detach()
         val id = deviceId()
         val now = { SystemClock.elapsedRealtime() }
         val log = { message: String -> EventLog.d("sync", message) }
@@ -108,7 +139,7 @@ class GroupController(
         newSession.trimMs = trimMs
         newSession.startBiasMs = prefs.getLong(KEY_START_BIAS_MS, 0L)
         newSession.onStartBiasLearned = { prefs.edit().putLong(KEY_START_BIAS_MS, it).apply() }
-        val newClient = RoomClient(baseUrl, code, id, name, scope, clock, now, log, Config.authHeaders)
+        val newClient = RoomClient(baseUrl, code, id, name, scope, clock, now, log, Config.authHeaders, create)
         newClient.onMessage = {
             if (it is ServerMessage.Error) _errors.tryEmit(it)
             newSession.onMessage(it)
@@ -120,6 +151,18 @@ class GroupController(
         roomCode = code.uppercase()
         publish()
         scope.launch { newSession.snapshot.collect { publish() } }
+        // Listening alone is remembered, so that a restart brings this device back to it instead of into the room's music
+        scope.launch {
+            newSession.snapshot.map { it.solo to it.soloItemId }.distinctUntilChanged().collect { (solo, itemId) ->
+                prefs.edit().putBoolean(KEY_ROOM_SOLO, solo).putString(KEY_ROOM_SOLO_ITEM, itemId).apply()
+            }
+        }
+        scope.launch {
+            while (true) {
+                prefs.edit().putLong(KEY_LAST_ACTIVE, System.currentTimeMillis()).apply()
+                delay(ACTIVE_STAMP_MS)
+            }
+        }
         scope.launch {
             newSession.events.collect { event ->
                 val members = newSession.snapshot.value.members
@@ -132,7 +175,14 @@ class GroupController(
                 )
             }
         }
-        scope.launch { newClient.connection.collect { publish() } }
+        scope.launch {
+            newClient.connection.collect { connection ->
+                publish()
+                // Turned away for good (the room is full, gone, or the owner removed this device): back to the personal queue.
+                // Posted, because leaving cancels the scope this is running in.
+                if (connection == Connection.REFUSED) Handler(Looper.getMainLooper()).post { leave() }
+            }
+        }
         prefs.edit().putString(KEY_ROOM_CODE, roomCode).putString(KEY_ROOM_NAME, name).apply()
         EventLog.d("sync", "joining room $roomCode as '$name' ($id)")
         newClient.start()
@@ -167,16 +217,30 @@ class GroupController(
 
     /** Leave on the user's request: the room is forgotten and will not be rejoined automatically. */
     fun leave() {
-        prefs.edit().remove(KEY_ROOM_CODE).apply()
+        prefs.edit().remove(KEY_ROOM_CODE).remove(KEY_ROOM_SOLO).remove(KEY_ROOM_SOLO_ITEM).apply()
         stopFollowing()
     }
 
-    /** Rejoin the room this device was in when the process last ran, e.g. after the system killed it. */
-    fun rejoinSaved() {
+    /**
+     * Called when the service starts. A room is only rejoined when the system killed the process while this
+     * device was in it a moment ago, and listening alone comes back as such, paused. Opening the app any other
+     * time starts outside a room, on the personal queue.
+     */
+    fun recoverRoom() {
         val code = prefs.getString(KEY_ROOM_CODE, null) ?: return
+        val idleMs = System.currentTimeMillis() - prefs.getLong(KEY_LAST_ACTIVE, 0)
+        if (idleMs !in 0..RECOVERY_WINDOW_MS) {
+            EventLog.d("sync", "not rejoining $code, it was left ${idleMs / 1000}s ago")
+            prefs.edit().remove(KEY_ROOM_CODE).apply()
+            return
+        }
+        // Read before joining: joining writes the listening mode of the new session over these
+        val alone = prefs.getBoolean(KEY_ROOM_SOLO, false)
+        val aloneOn = prefs.getString(KEY_ROOM_SOLO_ITEM, null)
         val name = prefs.getString(KEY_ROOM_NAME, null) ?: android.os.Build.MODEL
-        EventLog.d("sync", "rejoining saved room $code")
-        join(Config.SERVER, code, name)
+        EventLog.d("sync", "rejoining $code after the process was killed${if (alone) ", on my own" else ""}")
+        join(Config.SERVER, code, name, create = false)
+        if (alone) session?.restoreSolo(aloneOn)
     }
 
     /** Change the display name in the current room without interrupting playback. */
@@ -188,23 +252,25 @@ class GroupController(
     fun savedName(): String? = prefs.getString(KEY_ROOM_NAME, null)
     fun savedCode(): String? = prefs.getString(KEY_ROOM_CODE, null)
 
-    private fun stopFollowing() {
+    /** [deliberate]: the person left, so the room is told and an owner hands it over; otherwise the process is just going away. */
+    private fun stopFollowing(deliberate: Boolean = true) {
         if (client == null) return
         EventLog.d("sync", "leaving room $roomCode")
         networkCallback?.let { runCatching { context.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(it) } }
         networkCallback = null
-        client?.close()
+        if (deliberate) client?.leave() else client?.close()
         session?.close()
         client = null
         session = null
         roomCode = null
         scope.cancel()
         scope = newScope()
+        local.attach() // the personal queue gets the player back, paused where it was
         publish()
     }
 
     private fun publish() {
-        _view.value = View(roomCode, client?.connection?.value, session?.snapshot?.value ?: GroupSession.Snapshot())
+        _view.value = View(roomCode, client?.connection?.value, session?.snapshot?.value ?: GroupSession.Snapshot(), local.snapshot.value)
     }
 
     fun send(text: String): Boolean = client?.send(text) ?: false
@@ -238,26 +304,50 @@ class GroupController(
         s.soloPlay()
     }
 
-    // While alone the transport buttons act on this device only
-    fun requestPlay(): Boolean = solo { it.soloPlay() } ?: send(Protocol.play())
-    fun requestPause(): Boolean = solo { it.soloPause() } ?: send(Protocol.pause())
-    fun requestNext(): Boolean = solo { it.soloNext() } ?: send(Protocol.next())
-    fun requestPrev(): Boolean = solo { it.soloPrev() } ?: send(Protocol.prev())
-    fun requestSeek(positionMs: Long): Boolean = solo { it.soloSeek(positionMs) } ?: send(Protocol.seek(positionMs))
-    fun requestJump(itemId: String): Boolean = solo { it.soloJump(itemId) } ?: send(Protocol.jump(itemId))
+    // Outside a room the buttons drive the personal queue; in a room they act on the room, or on this device alone
+    fun requestPlay(): Boolean = act({ it.play() }, { it.soloPlay() }) { send(Protocol.play()) }
+    fun requestPause(): Boolean = act({ it.pause() }, { it.soloPause() }) { send(Protocol.pause()) }
+    fun requestNext(): Boolean = act({ it.next() }, { it.soloNext() }) { send(Protocol.next()) }
+    fun requestPrev(): Boolean = act({ it.prev() }, { it.soloPrev() }) { send(Protocol.prev()) }
+    fun requestSeek(positionMs: Long): Boolean = act({ it.seek(positionMs) }, { it.soloSeek(positionMs) }) { send(Protocol.seek(positionMs)) }
+    fun requestJump(itemId: String): Boolean = act({ it.jump(itemId) }, { it.soloJump(itemId) }) { send(Protocol.jump(itemId)) }
 
-    /** Runs [action] on the session when listening alone and reports it handled; null when following the room. */
-    private inline fun solo(action: (GroupSession) -> Unit): Boolean? {
-        val s = session?.takeIf { it.isSolo } ?: return null
-        action(s)
-        return true
+    /** The queue is the room's in a room, even while listening alone, and the personal one outside. */
+    private inline fun onQueue(onLocal: (LocalSession) -> Unit, onRoom: () -> Boolean): Boolean {
+        if (session == null) {
+            onLocal(local)
+            return true
+        }
+        return onRoom()
     }
-    fun requestClearQueue() = send(Protocol.queueClear())
-    fun requestShuffle() = send(Protocol.queueShuffle())
-    fun requestRepeat(mode: String) = send(Protocol.repeat(mode))
-    fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = send(Protocol.queueAddMany(tracks, playNext))
-    fun requestRemove(itemId: String) = send(Protocol.queueRemove(itemId))
-    fun requestMove(itemId: String, toIndex: Int) = send(Protocol.queueMove(itemId, toIndex))
+
+    fun requestClearQueue() = onQueue({ it.clear() }) { send(Protocol.queueClear()) }
+    fun requestShuffle() = onQueue({ it.shuffle() }) { send(Protocol.queueShuffle()) }
+    fun requestRepeat(mode: String) = onQueue({ it.setRepeat(mode) }) { send(Protocol.repeat(mode)) }
+    fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = onQueue({ it.add(tracks, playNext) }) { send(Protocol.queueAddMany(tracks, playNext)) }
+    fun requestRemove(itemId: String) = onQueue({ it.remove(itemId) }) { send(Protocol.queueRemove(itemId)) }
+    fun requestMove(itemId: String, toIndex: Int) = onQueue({ it.move(itemId, toIndex) }) { send(Protocol.queueMove(itemId, toIndex)) }
+
+    // Only meaningful in a room
+    fun requestKick(memberId: String) = send(Protocol.kick(memberId))
+    fun requestRoomName(name: String) = send(Protocol.roomName(name))
+    fun requestRoomSettings(guestControl: String) = send(Protocol.roomSettings(guestControl))
+
+    /** Runs the action for wherever the buttons act: outside a room, alone in a room, or on the room itself. */
+    private inline fun act(onLocal: (LocalSession) -> Unit, onSolo: (GroupSession) -> Unit, onRoom: () -> Boolean): Boolean {
+        val s = session
+        return when {
+            s == null -> {
+                onLocal(local)
+                true
+            }
+            s.isSolo -> {
+                onSolo(s)
+                true
+            }
+            else -> onRoom()
+        }
+    }
 
     /** The room's current queue, for callers that need item ids. */
     fun queue(): List<app.unison.sync.QueueItem> = session?.snapshot?.value?.state?.queue ?: emptyList()
@@ -285,14 +375,21 @@ class GroupController(
     )
 
     /** Snapshot of the local player for the UI; call on the main thread. */
-    fun playerInfo() = PlayerInfo(
-        playing = exo.isPlaying,
-        buffering = exo.playbackState == Player.STATE_BUFFERING,
-        positionMs = exo.currentPosition.coerceAtLeast(0),
-        durationMs = exo.duration.coerceAtLeast(0),
-        videoWidth = exo.videoSize.width,
-        videoHeight = exo.videoSize.height,
-    )
+    fun playerInfo(): PlayerInfo {
+        // After a restart the queue is back but nothing is loaded: show where the song will resume
+        val restored = if (roomCode == null) local.restoredPositionMs else null
+        if (restored != null) {
+            return PlayerInfo(playing = false, buffering = false, positionMs = restored, durationMs = local.snapshot.value.current?.durMs ?: 0)
+        }
+        return PlayerInfo(
+            playing = exo.isPlaying,
+            buffering = exo.playbackState == Player.STATE_BUFFERING,
+            positionMs = exo.currentPosition.coerceAtLeast(0),
+            durationMs = exo.duration.coerceAtLeast(0),
+            videoWidth = exo.videoSize.width,
+            videoHeight = exo.videoSize.height,
+        )
+    }
 
     fun addPlayerListener(listener: Player.Listener) = exo.addListener(listener)
     fun removePlayerListener(listener: Player.Listener) = exo.removeListener(listener)
@@ -317,8 +414,13 @@ class GroupController(
     }
 
     fun release() {
-        stopFollowing() // keep the saved room so the next start rejoins it
+        stopFollowing(deliberate = false) // keep the saved room so a restart soon after rejoins it
+        local.save()
+        ownScope.cancel()
         scope.cancel()
+        // Let the last write of the queue finish
+        writer.shutdown()
+        writer.awaitTermination(2, TimeUnit.SECONDS)
     }
 
     /** Stable per-install id, so a reconnecting device replaces its own stale socket. */
@@ -333,9 +435,18 @@ class GroupController(
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_ROOM_CODE = "room_code"
         const val KEY_ROOM_NAME = "room_name"
+        const val KEY_ROOM_SOLO = "room_solo"
+        const val KEY_ROOM_SOLO_ITEM = "room_solo_item"
+        const val KEY_LAST_ACTIVE = "room_last_active"
         const val KEY_VIDEO = "video_mode"
         const val KEY_TRIM_MS = "trim_ms"
         const val KEY_START_BIAS_MS = "start_bias_ms"
         const val MAX_TRIM_MS = 1000L
+
+        /** How often the time of the last sign of life is written down while in a room. */
+        const val ACTIVE_STAMP_MS = 60_000L
+
+        /** A room is rejoined after a restart only if this device was in it this recently. */
+        const val RECOVERY_WINDOW_MS = 10 * 60_000L
     }
 }

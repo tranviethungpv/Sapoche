@@ -29,6 +29,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import app.unison.core.OkHttpDownloader
+import app.unison.sync.QueueFile
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +39,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.io.File
 import java.io.IOException
 
 /**
@@ -51,9 +53,6 @@ class PlaybackService : MediaSessionService() {
     private lateinit var group: GroupController
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-
-    /** Consecutive recovery attempts per media id; reset once an item plays for a while. */
-    private val recoveryAttempts = HashMap<String, Int>()
 
     override fun onCreate() {
         super.onCreate()
@@ -108,12 +107,12 @@ class PlaybackService : MediaSessionService() {
         player.addListener(PlayerEvents())
         player.addAnalyticsListener(LoadEvents())
 
-        group = GroupController(this, player, getSharedPreferences("unison", MODE_PRIVATE))
+        group = GroupController(this, player, getSharedPreferences("unison", MODE_PRIVATE), QueueFile(File(filesDir, "local_queue.json")))
         UnisonApp.setGroup(group)
-        group.rejoinSaved()
+        group.recoverRoom()
 
         // Notification and lock screen buttons go through this wrapper, so while joined to a room
-        // they control the whole room instead of just this phone
+        // they control the whole room instead of just this phone, and outside one the personal queue
         val openApp = PendingIntent.getActivity(
             this,
             0,
@@ -171,7 +170,7 @@ class PlaybackService : MediaSessionService() {
         // expandable: collapsed it shows the three, expanded all five
         scope.launch {
             group.view
-                .map { view -> view.roomCode?.let { view.snapshot.state?.repeat ?: "off" } }
+                .map { view -> if (view.roomCode != null) view.snapshot.state?.repeat ?: "off" else view.local.repeat }
                 .distinctUntilChanged()
                 .collect { mode ->
                     repeatMode = mode
@@ -187,11 +186,10 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /** The room's repeat mode, or null while not in a room. */
-    private var repeatMode: String? = null
+    /** The repeat mode of the queue that is playing: the room's, or the personal one outside a room. */
+    private var repeatMode = "off"
 
-    private fun roomButtons(mode: String?): List<CommandButton> {
-        if (mode == null) return emptyList()
+    private fun roomButtons(mode: String): List<CommandButton> {
         return listOf(
             CommandButton.Builder(CommandButton.ICON_SHUFFLE_OFF)
                 .setDisplayName("Shuffle")
@@ -210,8 +208,8 @@ class PlaybackService : MediaSessionService() {
         )
     }
 
-    private fun nextRepeat(mode: String?) = when (mode) {
-        "off", null -> "all"
+    private fun nextRepeat(mode: String) = when (mode) {
+        "off" -> "all"
         "all" -> "one"
         else -> "off"
     }
@@ -280,11 +278,6 @@ class PlaybackService : MediaSessionService() {
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             EventLog.d("player", "isPlaying=$isPlaying")
-            if (isPlaying) {
-                // Item is healthy again once it has actually been playing for a while
-                val id = currentId()
-                main.postDelayed({ if (currentId() == id && player.isPlaying) recoveryAttempts.remove(id) }, 15_000)
-            }
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -296,7 +289,8 @@ class PlaybackService : MediaSessionService() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            recover(error)
+            // Recovering is up to whoever owns the queue: the room session, or the personal queue
+            EventLog.d("player", "error item=${currentId()} ${error.errorCodeName} cause=${error.cause?.javaClass?.simpleName}: ${error.cause?.message}")
         }
     }
 
@@ -348,75 +342,43 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /**
-     * Playback failed (typically a 403 from an expired or broken URL): resolve again and continue
-     * from the same position. After a few failures on the same item, skip it.
-     */
-    private fun recover(error: PlaybackException) {
-        // In a room the group session owns error handling (it must rejoin at the right position)
-        if (group.isActive) return
-        val id = currentId()
-        val attempts = (recoveryAttempts[id] ?: 0) + 1
-        recoveryAttempts[id] = attempts
-        EventLog.d("recover", "item=$id attempt=$attempts error=${error.errorCodeName} cause=${error.cause?.javaClass?.simpleName}: ${error.cause?.message}")
-
-        if (attempts > MAX_RECOVERIES) {
-            EventLog.d("recover", "giving up on $id, skipping")
-            recoveryAttempts.remove(id)
-            if (player.hasNextMediaItem()) {
-                player.seekToNextMediaItem()
-                player.prepare()
-            }
-            return
-        }
-
-        val position = player.currentPosition
-        UnisonApp.streams.invalidate(id)
-        player.prepare()
-        player.seekTo(position)
-    }
-
     private fun currentId(): String = player.currentMediaItem?.mediaId ?: "-"
 
-    /** Routes transport commands to the room while joined; behaves as the plain player otherwise. */
+    /**
+     * Routes transport commands to whoever owns the queue: the room while joined, the personal queue
+     * otherwise. The player itself only ever holds the song playing and the one after it.
+     */
     private class GroupAwarePlayer(player: Player, private val group: GroupController) : ForwardingPlayer(player) {
         override fun play() {
-            if (group.isActive) group.requestPlay { super.play() } else super.play()
+            group.requestPlay { super.play() }
         }
 
         override fun pause() {
-            if (group.isActive) group.requestPause() else super.pause()
+            group.requestPause()
         }
 
         override fun setPlayWhenReady(playWhenReady: Boolean) {
-            when {
-                !group.isActive -> super.setPlayWhenReady(playWhenReady)
-                playWhenReady -> group.requestPlay { super.setPlayWhenReady(true) }
-                else -> group.requestPause()
-            }
+            if (playWhenReady) group.requestPlay { super.setPlayWhenReady(true) } else group.requestPause()
         }
 
         override fun seekToNext() {
-            if (group.isActive) group.requestNext() else super.seekToNext()
+            group.requestNext()
         }
 
         override fun seekToNextMediaItem() {
-            if (group.isActive) group.requestNext() else super.seekToNextMediaItem()
+            group.requestNext()
         }
 
         override fun seekToPrevious() {
-            if (group.isActive) group.requestPrev() else super.seekToPrevious()
+            group.requestPrev()
         }
 
         override fun seekToPreviousMediaItem() {
-            if (group.isActive) group.requestPrev() else super.seekToPreviousMediaItem()
+            group.requestPrev()
         }
 
-        // The room has a queue even though the local player only ever holds one item
         override fun getAvailableCommands(): Player.Commands {
-            val base = super.getAvailableCommands()
-            if (!group.isActive) return base
-            return base.buildUpon()
+            return super.getAvailableCommands().buildUpon()
                 .addAll(
                     Player.COMMAND_SEEK_TO_NEXT,
                     Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
@@ -441,9 +403,9 @@ class PlaybackService : MediaSessionService() {
         const val SCHEME = "unison"
         const val CMD_SHUFFLE = "app.unison.SHUFFLE"
         const val CMD_REPEAT = "app.unison.REPEAT"
-        const val HEARTBEAT_MS = 60_000L
+        /** Proof of life is for tests that read the log afterwards; a released app does not need to be that talkative. */
+        val HEARTBEAT_MS = if (BuildConfig.DEBUG) 60_000L else 5 * 60_000L
         const val STALL_TICK_MS = 100L
         const val STALL_LOG_MS = 120L
-        const val MAX_RECOVERIES = 3
     }
 }
