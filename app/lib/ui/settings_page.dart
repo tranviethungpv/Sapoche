@@ -33,6 +33,7 @@ class SettingsPage extends StatelessWidget {
                 listenable: model.settings,
                 builder: (context, _) => SegmentedButton<ThemeMode>(
                   showSelectedIcon: false,
+                  expandedInsets: EdgeInsets.zero,
                   style: SegmentedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     selectedBackgroundColor: context.palette.primaryContainer,

@@ -74,6 +74,7 @@ abstract final class S {
   static const buffering = 'Loading…';
   static const inSync = 'In sync';
   static const syncing = 'Syncing…';
+  static const catchingUp = 'Catching up';
   static const soloOut = 'Waiting for others';
   static String unplayable(String title) =>
       'Nobody could play “$title”. Skipped.';

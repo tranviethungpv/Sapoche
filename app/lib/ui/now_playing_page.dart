@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
@@ -10,9 +8,10 @@ import '../theme/theme.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
+import 'widgets/drag_to_dismiss.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
-import 'widgets/wash.dart';
+import 'widgets/player_backdrop.dart';
 
 /// Opens the full player as a sheet that slides up over the current screen.
 void openNowPlaying(BuildContext context) {
@@ -20,7 +19,7 @@ void openNowPlaying(BuildContext context) {
     PageRouteBuilder<void>(
       opaque: true,
       transitionDuration: const Duration(milliseconds: 420),
-      reverseTransitionDuration: const Duration(milliseconds: 320),
+      reverseTransitionDuration: const Duration(milliseconds: 240),
       pageBuilder: (_, _, _) => const NowPlayingPage(),
       transitionsBuilder: (context, animation, secondary, child) =>
           SlideTransition(
@@ -40,11 +39,7 @@ class NowPlayingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.roomOf(context);
-    return GestureDetector(
-      // A downward fling closes the sheet
-      onVerticalDragEnd: (d) {
-        if ((d.primaryVelocity ?? 0) > 700) Navigator.of(context).maybePop();
-      },
+    return DragToDismiss(
       child: Scaffold(
         body: ListenableBuilder(
           listenable: controller,
@@ -88,25 +83,13 @@ class _Body extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // The cover's own colours, blurred, tint the pink veil differently for every song
-        ColoredBox(color: p.base),
-        if (current.thumb != null)
-          Opacity(
-            opacity: p.brightness == Brightness.dark ? 0.5 : 0.35,
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(
-                sigmaX: 70,
-                sigmaY: 70,
-                tileMode: TileMode.decal,
-              ),
-              child: Image.network(
-                current.thumb!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const SizedBox(),
-              ),
-            ),
+        ListenableBuilder(
+          listenable: controller.player,
+          builder: (context, _) => PlayerBackdrop(
+            coverUrl: current.thumb,
+            playing: controller.isPlaying,
           ),
-        const PinkWash(intensity: 0.85, child: SizedBox.expand()),
+        ),
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -299,6 +282,9 @@ class _RoomStrip extends StatelessWidget {
   }
 }
 
+/// Within this many ms of the room counts as in sync (the drift control aims well inside it).
+const _inSyncMs = 80;
+
 class _SyncChip extends StatelessWidget {
   const _SyncChip({required this.controller});
 
@@ -319,9 +305,13 @@ class _SyncChip extends StatelessWidget {
     } else if (drift == null) {
       label = S.syncing;
       color = p.textSecondary;
-    } else {
+    } else if (drift.abs() <= _inSyncMs) {
       label = '${S.inSync} · ${formatDrift(drift)}';
-      color = drift.abs() <= 60 ? p.success : p.textSecondary;
+      color = p.success;
+    } else {
+      // Off by an audible amount: the drift control is bringing this phone back
+      label = '${S.catchingUp} · ${formatDrift(drift)}';
+      color = p.textSecondary;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),

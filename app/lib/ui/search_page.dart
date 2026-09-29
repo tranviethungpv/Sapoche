@@ -10,6 +10,7 @@ import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
 import 'widgets/link_banner.dart';
+import 'widgets/shimmer.dart';
 import 'widgets/track_tile.dart';
 
 /// Search YouTube (or paste a link) and put songs on the room's queue.
@@ -199,10 +200,7 @@ class _SearchPageState extends State<SearchPage> {
           title: S.searchEmptyTitle,
           body: S.searchEmptyBody,
         ),
-        _Phase.loading => const Center(
-          key: ValueKey('loading'),
-          child: CircularProgressIndicator(),
-        ),
+        _Phase.loading => const SkeletonList(key: ValueKey('loading')),
         _Phase.failed => const _Message(
           key: ValueKey('failed'),
           icon: Icons.wifi_off_rounded,

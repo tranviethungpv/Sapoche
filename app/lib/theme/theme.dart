@@ -26,6 +26,8 @@ extension UnisonThemeContext on BuildContext {
   Palette get palette => Theme.of(this).extension<UnisonTheme>()!.palette;
 }
 
+const fontFamily = 'Inter';
+
 ThemeData buildTheme(Palette p) {
   final scheme = ColorScheme(
     brightness: p.brightness,
@@ -55,7 +57,7 @@ ThemeData buildTheme(Palette p) {
 
   // Large, tight, bold titles and calm body text in the style of Apple's apps
   final text = Typography.material2021().black
-      .apply(fontFamily: null)
+      .apply(fontFamily: fontFamily)
       .copyWith(
         displayLarge: _style(40, FontWeight.w800, -1.0, p.text),
         headlineLarge: _style(34, FontWeight.w800, -0.8, p.text),
@@ -78,6 +80,7 @@ ThemeData buildTheme(Palette p) {
 
   return ThemeData(
     useMaterial3: true,
+    fontFamily: fontFamily,
     brightness: p.brightness,
     colorScheme: scheme,
     textTheme: text,
@@ -214,6 +217,7 @@ ThemeData buildTheme(Palette p) {
 
 TextStyle _style(double size, FontWeight weight, double spacing, Color color) =>
     TextStyle(
+      fontFamily: fontFamily,
       fontSize: size,
       fontWeight: weight,
       letterSpacing: spacing,

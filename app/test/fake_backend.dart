@@ -14,6 +14,9 @@ class FakeBackend implements Backend {
   List<Track> searchResults = const [];
   Object? failWith;
 
+  /// When set, searches wait for it, so a test can look at the loading state.
+  Completer<void>? searchGate;
+
   @override
   Stream<BackendEvent> get events => _events.stream;
 
@@ -86,6 +89,7 @@ class FakeBackend implements Backend {
   @override
   Future<List<Track>> search(String query) async {
     await _record('search $query');
+    await searchGate?.future;
     return searchResults;
   }
 

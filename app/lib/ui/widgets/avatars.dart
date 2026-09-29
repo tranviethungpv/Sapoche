@@ -82,8 +82,11 @@ class AvatarStack extends StatelessWidget {
         children: [
           for (var i = 0; i < shown.length; i++)
             Positioned(
+              key: ValueKey(shown[i].id),
               left: step * i,
-              child: Avatar(name: shown[i].name, size: size, ring: true),
+              child: _PopIn(
+                child: Avatar(name: shown[i].name, size: size, ring: true),
+              ),
             ),
           if (extra > 0)
             Positioned(
@@ -111,4 +114,21 @@ class AvatarStack extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Scales in with a small overshoot when first built: someone just joined.
+class _PopIn extends StatelessWidget {
+  const _PopIn({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0.5, end: 1),
+    duration: const Duration(milliseconds: 450),
+    curve: Curves.easeOutBack,
+    builder: (context, scale, child) =>
+        Transform.scale(scale: scale, child: child),
+    child: child,
+  );
 }

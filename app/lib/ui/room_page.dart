@@ -7,24 +7,44 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
+import 'widgets/appear.dart';
 import 'widgets/avatars.dart';
 import 'widgets/equalizer.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/track_tile.dart';
 
 /// The room: who is here and the shared queue.
-class RoomPage extends StatelessWidget {
+class RoomPage extends StatefulWidget {
   const RoomPage({super.key, required this.onAddSongs});
 
   final VoidCallback onAddSongs;
 
   @override
+  State<RoomPage> createState() => _RoomPageState();
+}
+
+class _RoomPageState extends State<RoomPage> {
+  /// Songs that were already on the list, so only ones that show up later animate in.
+  final _known = <String>{};
+  bool _seeded = false;
+
+  VoidCallback get onAddSongs => widget.onAddSongs;
+
+  @override
   Widget build(BuildContext context) {
     final controller = AppScope.roomOf(context);
+    if (!_seeded) {
+      _seeded = true;
+      _known.addAll(controller.snapshot.queue.map((e) => e.id));
+    }
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
         final snapshot = controller.snapshot;
+        // Remember what is on screen once this frame is done
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _known.addAll(snapshot.queue.map((e) => e.id)),
+        );
         return SafeArea(
           bottom: false,
           child: CustomScrollView(
@@ -104,10 +124,13 @@ class RoomPage extends StatelessWidget {
               },
               child: ReorderableDelayedDragStartListener(
                 index: i,
-                child: TrackTile(
-                  track: entry,
-                  subtitle: _byline(snapshot, entry),
-                  onTap: () => controller.jump(entry),
+                child: Appear(
+                  animate: !_known.contains(entry.id),
+                  child: TrackTile(
+                    track: entry,
+                    subtitle: _byline(snapshot, entry),
+                    onTap: () => controller.jump(entry),
+                  ),
                 ),
               ),
             );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,7 +8,9 @@ import 'package:unison/data/app_settings.dart';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/data/room_controller.dart';
+import 'package:unison/ui/now_playing_page.dart';
 import 'package:unison/ui/scope.dart';
+import 'package:unison/ui/widgets/shimmer.dart';
 import 'package:unison/ui/widgets/mini_player.dart';
 
 import 'fake_backend.dart';
@@ -234,5 +238,128 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(backend.calls.last, 'rename Anh');
+  });
+
+  testWidgets('pulling the full player down closes it', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byType(MiniPlayer));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(find.byType(NowPlayingPage), findsOneWidget);
+
+    // Slow and short: it springs back (a quick flick of any length would count as a fling)
+    await tester.timedDrag(
+      find.byType(NowPlayingPage),
+      const Offset(0, 120),
+      const Duration(seconds: 2),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(NowPlayingPage), findsOneWidget);
+
+    // Far enough: it flies off, then the route pops
+    await tester.drag(
+      find.byType(NowPlayingPage),
+      const Offset(0, 700),
+      warnIfMissed: false,
+    );
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(NowPlayingPage), findsNothing);
+  });
+
+  testWidgets('a new song slides in but the ones already there do not', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 3)));
+    await tester.pump(const Duration(milliseconds: 100));
+    // Songs that were there from the start are fully visible at once
+    expect(
+      tester
+          .widget<FadeTransition>(
+            find
+                .ancestor(
+                  of: find.text('Song 1'),
+                  matching: find.byType(FadeTransition),
+                )
+                .first,
+          )
+          .opacity
+          .value,
+      1,
+    );
+
+    backend.emit(StateEvent(sampleRoom(songs: 4)));
+    await tester.pump(const Duration(milliseconds: 50));
+    final fade = tester.widget<FadeTransition>(
+      find
+          .ancestor(
+            of: find.text('Song 3'),
+            matching: find.byType(FadeTransition),
+          )
+          .first,
+    );
+    expect(fade.opacity.value, lessThan(1));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(fade.opacity.value, 1);
+  });
+
+  testWidgets('a search shows placeholder rows while it loads', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    backend.searchGate = Completer<void>();
+    await tester.tap(find.text('Search'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.enterText(find.byType(TextField), 'hello');
+    await tester.pump(
+      const Duration(milliseconds: 500),
+    ); // the search starts after a short pause
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(SkeletonList), findsOneWidget);
+    backend.searchGate!.complete();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(SkeletonList), findsNothing);
+  });
+
+  testWidgets('the player only says in sync when the drift is small', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    backend.emit(
+      const PositionEvent(
+        PlayerPosition(
+          playing: true,
+          positionMs: 4000,
+          durationMs: 200000,
+          driftMs: 250,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byType(MiniPlayer));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(find.textContaining('Catching up'), findsOneWidget);
+    expect(find.textContaining('In sync'), findsNothing);
+
+    backend.emit(
+      const PositionEvent(
+        PlayerPosition(
+          playing: true,
+          positionMs: 5000,
+          durationMs: 200000,
+          driftMs: -30,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('In sync'), findsOneWidget);
   });
 }

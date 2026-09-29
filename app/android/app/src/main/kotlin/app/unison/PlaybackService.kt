@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import app.unison.core.OkHttpDownloader
@@ -117,6 +118,10 @@ class PlaybackService : MediaSessionService() {
                 }
             })
             .build()
+
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider(this).also { it.setSmallIcon(R.drawable.ic_notification) },
+        )
 
         EventLog.d("service", "created")
         main.postDelayed(heartbeat, HEARTBEAT_MS)
