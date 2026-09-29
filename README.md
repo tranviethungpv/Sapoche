@@ -10,7 +10,7 @@ App Android cho nhóm nhỏ. Mỗi điện thoại tự lấy luồng nhạc, c�
 
 ## Trạng thái
 
-Giai đoạn 3 (khung app Flutter) đã xong: xem [app/](app/README.md) để chạy thử, [server/](server/README.md) cho server phòng. Các prototype cũ nằm ở [spikes/](spikes/).
+App Flutter chạy được trên máy thật: nghe nhạc như app thường (hàng đợi cá nhân), và vào Room để nghe cùng nhau, cùng nhịp; xem [app/](app/README.md) để chạy thử, [server/](server/README.md) cho server phòng. Tiến độ chi tiết ở [docs/PLAN.md](docs/PLAN.md). Các prototype cũ nằm ở [spikes/](spikes/).
 
 ## Lưu ý
 
