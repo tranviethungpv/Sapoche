@@ -13,9 +13,14 @@ Kết nối: WebSocket tới `wss://<worker>/room/<CODE>`. Mỗi phòng là mộ
   "positionMs": 0,
   "epoch": 17,
   "repeat": "off | all | one",
-  "members": [{ "id": "u1", "name": "Ann", "ready": true, "solo": false, "away": false }]
+  "name": "Cả nhà",
+  "ownerId": "u1",
+  "guestControl": "all | add",
+  "members": [{ "id": "u1", "name": "Ann", "ready": true, "solo": false, "away": false, "owner": true }]
 }
 ```
+
+`name`, `ownerId` có thể vắng. Xem mục 5c cho chủ phòng và tên phòng.
 
 - `phase=playing`: vị trí hiện tại = `serverNow - startedAt`.
 - `phase=paused`: vị trí = `positionMs`.
@@ -31,13 +36,19 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 
 ## 2b. Xác thực
 
-`POST /rooms` và `WS /room/<CODE>` cần khóa dùng chung `ROOM_KEY` (header `X-Unison-Key`, hoặc tham số `?key=` khi không đặt được header). Sai hoặc thiếu trả HTTP 401 trước khi nâng cấp WebSocket; client coi đó là lỗi cuối cùng và không thử lại. `GET /health` luôn mở và trả `{"ok":true,"protocol":2}`. Chi tiết vận hành ở [../server/README.md](../server/README.md).
+`POST /rooms`, `GET /room/<CODE>/info` và `WS /room/<CODE>` cần khóa dùng chung `ROOM_KEY` (header `X-Unison-Key`, hoặc tham số `?key=` khi không đặt được header). Sai hoặc thiếu trả HTTP 401 trước khi nâng cấp WebSocket; client coi đó là lỗi cuối cùng và không thử lại. Ba đường luôn mở: `GET /health` trả `{"ok":true,"protocol":6}`; `GET /join/<CODE>` là trang mà link mời mở ra (thử mở app bằng `intent://`, không thì hiện mã); `GET /.well-known/assetlinks.json` để Android xác minh link https của app. Ba đường này không đụng tới phòng nên không cần khóa. Chi tiết vận hành ở [../server/README.md](../server/README.md).
+
+`GET /room/<CODE>/info` chỉ đọc, không tạo gì: `{"exists":true,"name":"Cả nhà","members":2,"playing":true,"title":"..."}`; `exists:false` khi phòng chưa từng có hoặc đã hết hạn. App dùng nó cho danh sách phòng gần đây.
 
 ## 3. Tin nhắn client → server
 
 | `t` | Trường | Ý nghĩa |
 |---|---|---|
-| `join` | `name`, `clientId` | Vào phòng; server trả `state` |
+| `join` | `name`, `clientId`, `create?` | Vào phòng; server trả `state`. `create:true` là mã máy vừa tự tạo, `create:false` là mã được cho: phòng chưa tồn tại thì server trả lỗi `room_not_found` rồi đóng 4004 (gõ sai mã không mở phòng rỗng). Vắng `create` là app cũ, được mở phòng như trước |
+| `bye` | | Rời có chủ ý (khác với mất kết nối). Chủ phòng gửi `bye` thì người ở lâu nhất lên làm chủ; phòng hết người thì không còn chủ |
+| `kick` | `id` | Chỉ chủ phòng: ngắt kết nối thành viên đó (đóng 4001, kèm lỗi `removed`); họ vẫn vào lại được |
+| `room.name` | `name` | Đổi tên phòng, tối đa 32 ký tự, rỗng là xóa tên |
+| `room.settings` | `guestControl` | Chỉ chủ phòng: `all` (mọi người điều khiển, mặc định) hoặc `add` (khách chỉ thêm bài) |
 | `ping` | `c0` | Đo đồng hồ |
 | `queue.add` | `videoId`, metadata, `next?` | Thêm bài; `next: true` chèn ngay sau bài đang phát (nếu phòng đang `idle` thì bài mới chỉ được thêm vào cuối và phát) |
 | `queue.addMany` | `tracks[]`, `next?` | Thêm nhiều bài một lần (playlist), tối đa 100 bài mỗi tin, bài sai `videoId` bị bỏ; cùng quy tắc `next` như `queue.add`. Một tin, một lần phát `state`, nên không dính giới hạn 20 tin mỗi giây |
@@ -62,13 +73,14 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 
 | `t` | Trường | Ý nghĩa |
 |---|---|---|
-| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 5) |
+| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 6) |
 | `prepare` | `epoch`, bài, `seekToMs`, `by?` | Chuẩn bị bài: resolve, nạp đệm, rồi gửi `ready`. `by` là `clientId` người vừa bấm chuyển bài; vắng mặt khi phòng tự sang bài kế |
 | `start` | `epoch`, `startAt` (giờ server), `by?` | Bắt đầu phát tại thời điểm này |
 | `pause` | `epoch`, `positionMs`, `by?` | Dừng tại vị trí |
 | `advance` | `epoch`, `index`, `startedAt` | Cả phòng sang bài kế không qua barrier, vị trí 0 nghe thấy lúc `startedAt` |
 | `pong` | `c0`, `s1` | Trả lời ping |
-| `members` | `members[]` | Danh sách thành viên, gửi khi có người vào, ra, đổi tên, đổi chế độ nghe riêng hoặc chuyển giữa hiện diện và `away` |
+| `members` | `members[]` | Danh sách thành viên, gửi khi có người vào, ra, đổi tên, đổi chế độ nghe riêng, đổi chủ hoặc chuyển giữa hiện diện và `away` |
+| `error` | `code`, `message` | Mã hiện có: `not_joined`, `bad_message`, `bad_json`, `rate_limited`, `unknown_type`, `bad_video`, `queue_full`, `unplayable`, `room_not_found` (kèm đóng 4004), `forbidden` (lệnh chỉ dành cho chủ), `removed` (kèm đóng 4001) |
 
 ## 5. Luồng đổi bài (barrier)
 
@@ -101,6 +113,12 @@ Phát lặp không đi đường gapless: hết bài thì client báo `ended` (h
 Ai làm gì: `pause`, `start` và `prepare` mang `by` để máy khác hiện thông báo "Ann đã dừng phòng" kèm nút "Keep playing" (chuyển sang nghe riêng và phát tiếp) hoặc "Ann đã chuyển sang bài X".
 
 **Hiện diện (`away`).** Client gửi `ping` mỗi 30 giây (mỗi lần ping giữ sóng di động thức, nên thưa hơn thì tiết kiệm pin hơn), server ghi lại lần nghe cuối của từng socket. Im quá 75 giây thì thành viên được đánh dấu `away` (mờ đi, không tính là đang nghe, không kìm barrier); im quá 150 giây thì server đóng socket và xóa khỏi danh sách. Mỗi tin nhắn của bất kỳ ai là một dịp để server rà soát và phát lại `members` nếu ai đó đổi trạng thái, nên không cần bộ đếm giờ riêng. Đây là lớp dự phòng cho socket chết mà không đóng; app bị tắt cưỡng bức thường được nhận ra ngay khi socket đóng.
+
+## 5c. Chủ phòng, tên phòng và vòng đời
+
+**Chủ phòng.** Người mở phòng (`create:true`), hoặc người vào đầu tiên khi phòng chưa có chủ, là chủ. `guestControl` mặc định `all`: mọi người ngang quyền, như trước. Chủ chuyển sang `add` thì khách chỉ được thêm bài (`queue.add`, `queue.addMany`) và tự nghe riêng; `play`, `pause`, `seek`, `next`, `prev`, `jump`, `queue.remove`, `queue.move`, `queue.clear`, `queue.shuffle`, `repeat`, `room.name` bị trả `forbidden`. Giới hạn chỉ có hiệu lực khi chủ đang có mặt (socket mở và không `away`); chủ mất mạng thì mọi người điều khiển được, chủ quay lại thì giới hạn có lại, không cần bộ đếm bàn giao. `kick` và `room.settings` luôn chỉ dành cho chủ. Phòng hết người thì mất chủ và `guestControl` về `all`; người vào đầu tiên sau đó thành chủ mới.
+
+**Vòng đời.** Mã chỉ là tên: phòng sinh ra khi có người vào với `create` không phải `false`, và không tồn tại cho đến lúc đó. Phòng trống giữ 7 ngày nếu còn bài trong hàng đợi, 1 giờ nếu không còn bài, rồi bị xóa hết (`deleteAll`). Server chỉ có một báo thức Durable Object nhưng giữ giờ đến hạn của từng việc (`barrier`, `end`, `gc`, `sweep`) và đặt báo thức ở mốc gần nhất. `sweep` chạy 5 phút một lần khi phòng có người: đóng socket im quá 150 giây (kể cả khi không ai gửi gì), để phòng toàn máy chết vẫn trống và bị dọn. Socket chưa vào phòng (hoặc bị từ chối) không tạo dữ liệu nào. Server còn hiểu trạng thái lưu theo dạng cũ (một báo thức duy nhất).
 
 ## 6. Chỉnh lệch khi đang phát
 

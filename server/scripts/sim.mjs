@@ -39,11 +39,16 @@ class Client {
       this.inbox.push(msg);
       this.waiters = this.waiters.filter((w) => !w(msg));
     };
+    /** The close code once the connection ends. */
+    this.closed = new Promise((resolve) => {
+      this.ws.onclose = (event) => resolve(event.code);
+    });
   }
 
-  async join() {
+  /** [create] is what the device expects: true for a code it made up, false for one it was given; left out is an older app. */
+  async join(create) {
     await this.opened;
-    this.send({ t: "join", clientId: this.clientId, name: this.name });
+    this.send({ t: "join", clientId: this.clientId, name: this.name, ...(create === undefined ? {} : { create }) });
     return this.waitFor((m) => m.t === "state");
   }
 
@@ -91,6 +96,11 @@ const VIDEO_B = "UoXllQoqEBY";
 const VIDEO_C = "cnHHCR7EW10";
 
 async function main() {
+  if (process.env.SIM_ONLY === "lifetime") {
+    await lifetimeSection();
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+  }
   console.log("Health and room creation");
   const health = await fetch(`${BASE}/health`);
   const healthBody = await health.json();
@@ -226,6 +236,9 @@ async function main() {
   await playlistAndRepeatSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
   await shuffleSection();
+  await existenceSection();
+  await ownerSection();
+  await inviteSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
@@ -403,6 +416,166 @@ async function unplayableSection() {
   check("with nothing left to play the room goes idle", idle.state.queue.length === 3);
 
   [a, b].forEach((x) => x.close());
+}
+
+async function newCode() {
+  return (await (await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders })).json()).code;
+}
+
+async function roomInfo(code) {
+  return (await fetch(`${BASE}/room/${code}/info`, { headers: keyHeaders })).json();
+}
+
+/** A room is made on purpose: a mistyped code is an error, not an empty room, and an older app still works. */
+async function existenceSection() {
+  console.log("Room existence and info");
+  const code = await newCode();
+  check("a code nobody used has no room", (await roomInfo(code)).exists === false);
+
+  const typo = new Client(code, "typo-id", "Typo");
+  await typo.opened;
+  typo.send({ t: "join", clientId: typo.clientId, name: typo.name, create: false });
+  const refused = await typo.waitFor((m) => m.t === "error");
+  check("joining an unknown code without creating is refused", refused.code === "room_not_found" && (await typo.closed) === 4004);
+  check("a refused join leaves no room behind", (await roomInfo(code)).exists === false);
+
+  const owner = new Client(code, "own-id", "Olga");
+  const opened = await owner.join(true);
+  check("create opens the room and its creator owns it", opened.state.ownerId === "own-id" && opened.members[0].owner === true);
+  const guest = new Client(code, "gst-id", "Gus");
+  const joined = await guest.join(false);
+  check("joining a room that exists works", joined.state.ownerId === "own-id" && joined.members.length === 2);
+  const info = await roomInfo(code);
+  check("info tells whether the room exists and who is in it", info.exists === true && info.members === 2 && info.playing === false && info.name === null);
+  if (KEY) {
+    const noKey = await fetch(`${BASE}/room/${code}/info`);
+    check("info needs the key too", noKey.status === 401, `status=${noKey.status}`);
+  }
+
+  const older = await newCode();
+  const legacy = new Client(older, "old-id", "Old");
+  await legacy.join();
+  check("an older app that sends no create flag still opens the room", (await roomInfo(older)).exists === true);
+  [owner, guest, legacy].forEach((x) => x.close());
+}
+
+/** The owner names the room, restricts guests, removes people and hands the room over. */
+async function ownerSection() {
+  console.log("Owner and guests");
+  const code = await newCode();
+  const owner = new Client(code, "o-id", "Olga");
+  await owner.join(true);
+  const guest = new Client(code, "g-id", "Gus");
+  const third = new Client(code, "t-id", "Tom");
+  await guest.join(false);
+  await third.join(false);
+  const seen = (client, predicate) => client.waitFor((m) => m.t === "state" && predicate(m.state));
+  const refuses = async (client, message) => {
+    // The owner must have spoken a moment ago, or the short test timer would mark them away
+    owner.send({ t: "ping", c0: Date.now() });
+    await sleep(50);
+    client.send(message);
+    return (await client.waitFor((m) => m.t === "error")).code === "forbidden";
+  };
+
+  owner.send({ t: "room.name", name: "  Family  " });
+  check("the owner names the room and everyone sees it", (await seen(guest, (s) => s.name === "Family")).state.name === "Family");
+  check("a guest cannot change the settings", await refuses(guest, { t: "room.settings", guestControl: "add" }));
+
+  owner.send({ t: "room.settings", guestControl: "add" });
+  check("the owner restricts guests to adding songs", (await seen(guest, (s) => s.guestControl === "add")).state.guestControl === "add");
+  guest.send({ t: "queue.add", videoId: VIDEO_A, title: "One", artist: "x", durMs: 200000 });
+  const prepared = await owner.waitFor((m) => m.t === "prepare");
+  check("a restricted guest can still add a song", prepared.item.title === "One");
+  check("a restricted guest cannot pause", await refuses(guest, { t: "pause" }));
+  check("a restricted guest cannot skip", await refuses(guest, { t: "next" }));
+  check("a restricted guest cannot clear the queue", await refuses(guest, { t: "queue.clear" }));
+  check("a restricted guest cannot rename the room", await refuses(guest, { t: "room.name", name: "Mine" }));
+  guest.send({ t: "solo", on: true });
+  const alone = await guest.waitFor((m) => m.t === "members" && m.members.find((x) => x.id === "g-id")?.solo);
+  check("a restricted guest can still listen on their own", alone.members.length === 3);
+  guest.send({ t: "solo", on: false });
+  await guest.waitFor((m) => m.t === "members" && !m.members.find((x) => x.id === "g-id")?.solo);
+
+  owner.send({ t: "repeat", mode: "all" });
+  check("the owner still controls the room", (await seen(guest, (s) => s.repeat === "all")).state.repeat === "all");
+  check("info shows what is playing", (await roomInfo(code)).title === "One");
+
+  owner.close();
+  await guest.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === "o-id"));
+  guest.send({ t: "repeat", mode: "off" });
+  check("with the owner away guests may control the room", (await seen(guest, (s) => s.repeat === "off")).state.repeat === "off");
+
+  const owner2 = new Client(code, "o-id", "Olga");
+  const back = await owner2.join(false);
+  check("an owner who comes back is still the owner", back.state.ownerId === "o-id" && back.state.guestControl === "add");
+  check("guests are held to the restriction again", await refuses(guest, { t: "pause" }));
+
+  check("a guest cannot remove anyone", await refuses(guest, { t: "kick", id: "t-id" }));
+  owner2.send({ t: "kick", id: "t-id" });
+  const removed = await third.waitFor((m) => m.t === "error" && m.code === "removed");
+  check("the owner removes a member", removed.code === "removed" && (await third.closed) === 4001);
+  await guest.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === "t-id"));
+  const again = new Client(code, "t-id", "Tom");
+  check("a removed member may join again", (await again.join(false)).members.length === 3);
+
+  owner2.send({ t: "bye" });
+  const handed = await guest.waitFor((m) => m.t === "state" && m.state.ownerId !== "o-id");
+  check("an owner who leaves hands the room to whoever has been here longest", handed.state.ownerId === "g-id");
+  guest.send({ t: "bye" });
+  await again.waitFor((m) => m.t === "state" && m.state.ownerId === "t-id");
+  again.send({ t: "bye" });
+  await sleep(200);
+  const late = new Client(code, "l-id", "Lea");
+  const adopted = await late.join(false);
+  check("a room everyone left has no owner until someone comes", adopted.state.ownerId === "l-id" && adopted.state.guestControl === "all");
+  [owner2, guest, again, late].forEach((x) => x.close());
+}
+
+/** The invitation link and the address check for Android App Links are open to everyone. */
+async function inviteSection() {
+  console.log("Invitation link");
+  const page = await fetch(`${BASE}/join/abcdef`);
+  const html = await page.text();
+  check("the invitation page opens without the key and shows the code", page.ok && html.includes("ABCDEF") && html.includes("intent://join/ABCDEF"));
+  check("the invitation page only accepts a room code", (await fetch(`${BASE}/join/abc`)).status === 404);
+  const links = await (await fetch(`${BASE}/.well-known/assetlinks.json`)).json();
+  check(
+    "asset links name the app and its signing keys",
+    links[0].target.package_name === "app.unison" && links[0].target.sha256_cert_fingerprints.length === 2,
+  );
+}
+
+/** How long empty rooms live and whether dead connections are noticed. Needs the short timers of `npm test`. */
+async function lifetimeSection() {
+  console.log("Room lifetime");
+  const bare = await newCode();
+  const first = new Client(bare, "b-id", "Bee");
+  await first.join(true);
+  first.close();
+  await sleep(500);
+  check("an empty room with nothing queued is kept for a moment", (await roomInfo(bare)).exists === true);
+  await sleep(1800);
+  check("and is gone after its short lifetime", (await roomInfo(bare)).exists === false);
+
+  const kept = await newCode();
+  const second = new Client(kept, "k-id", "Kay");
+  await second.join(true);
+  second.send({ t: "queue.add", videoId: VIDEO_A, title: "Keep", artist: "x", durMs: 200000 });
+  await second.waitFor((m) => m.t === "prepare");
+  second.close();
+  await sleep(3000);
+  check("an empty room with songs queued is kept longer", (await roomInfo(kept)).exists === true);
+  await sleep(4000);
+  check("and goes too in the end", (await roomInfo(kept)).exists === false);
+
+  const dead = await newCode();
+  const ghost = new Client(dead, "z-id", "Zed");
+  await ghost.join(true); // and never speaks again
+  const code = await Promise.race([ghost.closed, sleep(7000).then(() => null)]);
+  check("a connection that went silent is dropped even when nobody speaks", code === 1001, `close code ${code}`);
+  await sleep(2500);
+  check("and its room is cleaned up after it", (await roomInfo(dead)).exists === false);
 }
 
 /** A device that went silent (dead battery, out of range) must not make the room wait at every track. */

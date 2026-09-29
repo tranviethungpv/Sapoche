@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
-/** Bumped when a change is not backward compatible. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 5;
+/** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
+export const PROTOCOL_VERSION = 6;
 
 export interface QueueItem {
   id: string;
@@ -17,6 +17,12 @@ export type Phase = "idle" | "preparing" | "playing" | "paused";
 
 /** What happens when an item ends: stop after the queue, start it over, or repeat the same item. */
 export type Repeat = "off" | "all" | "one";
+
+/** What guests may do while the owner is in the room: everything, or only add songs. */
+export type GuestControl = "all" | "add";
+
+/** The jobs a room can have pending. The Durable Object has one alarm, always set to the earliest of them. */
+export type AlarmKind = "barrier" | "end" | "gc" | "sweep";
 
 /** A song as clients send it; the server adds the id and who added it. */
 export interface TrackInput {
@@ -44,8 +50,13 @@ export interface RoomState {
   readyIds: string[];
   /** Client ids that could not load the current item. Only meaningful while preparing. */
   failedIds: string[];
-  /** What the single Durable Object alarm is currently for. */
-  alarm: "none" | "barrier" | "end" | "gc";
+  /** Room name, shown to members and in the recent rooms list. */
+  name?: string;
+  /** Client id of the owner; absent while nobody owns the room (it is empty, or predates owners). */
+  ownerId?: string;
+  guestControl: GuestControl;
+  /** When each pending job is due, in server time. */
+  alarms: Partial<Record<AlarmKind, number>>;
 }
 
 export interface Member {
@@ -56,12 +67,25 @@ export interface Member {
   solo: boolean;
   /** Not heard from for a while: probably a dead connection, not counted as listening. */
   away: boolean;
+  /** Can change the room's settings and remove people. */
+  owner: boolean;
 }
 
 // ---- client -> server ----
 
 export type ClientMessage =
-  | { t: "join"; clientId: string; name: string }
+  /**
+   * [create] says what the device expects: true when it just made the code up, false when it was
+   * given one (a typo must not open an empty room). Absent means an older app, which gets the old behavior.
+   */
+  | { t: "join"; clientId: string; name: string; create?: boolean }
+  /** Leaving on purpose, as opposed to a connection that dropped. An owner who says this hands the room over. */
+  | { t: "bye" }
+  /** Owner only: remove a member. The device is disconnected and may join again. */
+  | { t: "kick"; id: string }
+  | { t: "room.name"; name: string }
+  /** Owner only. */
+  | { t: "room.settings"; guestControl: GuestControl }
   | { t: "ping"; c0: number }
   /** With [next] the item goes right after the current one instead of at the end of the queue. */
   | { t: "queue.add"; videoId: string; title: string; artist: string; thumb?: string; durMs: number; next?: boolean }
@@ -110,4 +134,4 @@ export type ServerMessage =
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */
-export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarm">;
+export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms">;

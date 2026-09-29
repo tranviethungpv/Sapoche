@@ -1,3 +1,4 @@
+import { ASSET_LINKS, joinPage } from "./join-page";
 import { PROTOCOL_VERSION } from "./protocol";
 import { Room } from "./room";
 
@@ -6,6 +7,9 @@ export { Room };
 // No 0/O/1/I/L: room codes are read out loud and typed on phones
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 6;
+
+/** A room's WebSocket, or its `/info` summary. */
+const ROOM_ROUTE = /^\/room\/([A-Za-z0-9]{6})(?:\/info)?$/;
 
 function newRoomCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
@@ -43,7 +47,18 @@ export default {
     // Open on purpose: lets a phone tell "server down" from "wrong key"
     if (url.pathname === "/health") return Response.json({ ok: true, protocol: PROTOCOL_VERSION });
 
-    const isRoomRoute = url.pathname === "/rooms" || /^\/room\/[A-Za-z0-9]{6}$/.test(url.pathname);
+    // Open too: an invitation link is followed before the app can send its key, and reveals nothing about a room
+    const join = url.pathname.match(/^\/join\/([A-Za-z0-9]{6})$/);
+    if (join) {
+      return new Response(joinPage(join[1].toUpperCase()), {
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=3600" },
+      });
+    }
+    if (url.pathname === "/.well-known/assetlinks.json") {
+      return Response.json(ASSET_LINKS, { headers: { "Cache-Control": "public, max-age=3600" } });
+    }
+
+    const isRoomRoute = url.pathname === "/rooms" || ROOM_ROUTE.test(url.pathname);
     if (isRoomRoute && !(await authorized(request, url, env))) {
       return new Response("Unauthorized", { status: 401 });
     }
@@ -53,7 +68,7 @@ export default {
       return Response.json({ code: newRoomCode() });
     }
 
-    const match = url.pathname.match(/^\/room\/([A-Za-z0-9]{6})$/);
+    const match = url.pathname.match(ROOM_ROUTE);
     if (match) {
       const id = env.ROOMS.idFromName(match[1].toUpperCase());
       return env.ROOMS.get(id).fetch(request);

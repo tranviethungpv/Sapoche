@@ -1,7 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import { PROTOCOL_VERSION } from "./protocol";
 import type {
+  AlarmKind,
   ClientMessage,
+  GuestControl,
   Member,
   PublicState,
   QueueItem,
@@ -28,12 +30,17 @@ const ADVANCE_EARLY_LIMIT_MS = 15_000;
  * count as listening and never holds the room back. Overridable for tests through STALE_MS.
  */
 const AWAY_AFTER_MS = 75_000;
-/** A device silent this long is dropped: its connection is dead even though it never closed. */
+/** A device silent this long is dropped: its connection is dead even though it never closed. Overridable for tests through DROP_MS. */
 const DROP_AFTER_MS = 150_000;
-/** How long an empty room keeps its state before it is deleted. */
-const EMPTY_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+/** How long an empty room that still has songs queued keeps its state: long enough to come back to next weekend. */
+const EMPTY_ROOM_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** How long an empty room with nothing queued is kept: there is nothing to come back to. */
+const EMPTY_BARE_ROOM_TTL_MS = 60 * 60 * 1000;
+/** How often a room with members looks for devices past DROP_AFTER_MS, so a room of dead connections still empties. Overridable for tests through SWEEP_MS. */
+const DROP_CHECK_MS = 5 * 60 * 1000;
 
 const MAX_MEMBERS = 12;
+const MAX_ROOM_NAME = 32;
 const MAX_QUEUE = 200;
 const MAX_MESSAGE_CHARS = 32_768;
 /** Songs accepted from one queue.addMany message. */
@@ -48,6 +55,29 @@ interface Attachment {
   lastSeen: number;
   /** Listening on their own, so the room does not wait for or move this device. */
   solo: boolean;
+  /** When this device joined; the longest present member takes over when the owner leaves. */
+  joinedAt?: number;
+}
+
+/** What only the owner may do once the owner has restricted guests to adding songs. */
+const CONTROL_MESSAGES = new Set([
+  "queue.remove",
+  "queue.clear",
+  "queue.shuffle",
+  "queue.move",
+  "jump",
+  "play",
+  "pause",
+  "seek",
+  "next",
+  "prev",
+  "repeat",
+  "room.name",
+]);
+
+function millis(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return parsed > 0 ? parsed : fallback;
 }
 
 function defaultState(): RoomState {
@@ -61,7 +91,8 @@ function defaultState(): RoomState {
     epoch: 0,
     readyIds: [],
     failedIds: [],
-    alarm: "none",
+    guestControl: "all",
+    alarms: {},
   };
 }
 
@@ -71,19 +102,30 @@ export class Room extends DurableObject<Env> {
   private buckets = new WeakMap<WebSocket, { tokens: number; last: number }>();
   /** Membership as last broadcast; a change in who is away or solo is sent without waiting for a socket to close. */
   private membersKey = "";
+  /** The room was made on purpose (or by an older app) and has not expired; stops a mistyped code from opening an empty room. */
+  private created = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
-      const saved = await ctx.storage.get<RoomState>("state");
+      const saved = await ctx.storage.get<RoomState & { alarm?: string }>("state");
+      if (!saved) return;
       // Fields added after a room was saved get their defaults
-      if (saved) this.s = { ...defaultState(), ...saved };
+      const { alarm, ...rest } = saved;
+      this.s = { ...defaultState(), ...rest };
+      this.created = true;
+      // A room saved with the single alarm it had before: carry that alarm's time over
+      const at = await ctx.storage.getAlarm();
+      if (at && (alarm === "barrier" || alarm === "end" || alarm === "gc")) this.s.alarms[alarm] = at;
     });
   }
 
   // ------------------------------------------------------------------ connections
 
   async fetch(request: Request): Promise<Response> {
+    if (request.method === "GET" && new URL(request.url).pathname.endsWith("/info")) {
+      return Response.json(this.info());
+    }
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected a WebSocket upgrade", { status: 426 });
     }
@@ -119,6 +161,9 @@ export class Room extends DurableObject<Env> {
 
     const me = ws.deserializeAttachment() as Attachment | null;
     if (!me) return this.fail(ws, "not_joined", "Send join first");
+    if (CONTROL_MESSAGES.has(msg.t) && !this.canControl(me.clientId)) {
+      return this.fail(ws, "forbidden", "Only the room's owner can do that");
+    }
 
     switch (msg.t) {
       case "queue.add": return this.onQueueAdd(me, msg);
@@ -135,6 +180,10 @@ export class Room extends DurableObject<Env> {
       case "prev": return this.onPrev(me.clientId);
       case "repeat": return this.onRepeat(msg.mode);
       case "solo": return this.onSolo(me, msg.on === true);
+      case "bye": return this.onBye(ws, me);
+      case "kick": return this.onKick(ws, me, msg.id);
+      case "room.name": return this.onRoomName(msg.name);
+      case "room.settings": return this.onRoomSettings(ws, me, msg.guestControl);
       case "resync": return this.onResync(ws, me);
       case "ready": return this.onReady(me.clientId, msg.epoch);
       case "resolveFailed": return this.onResolveFailed(me.clientId, msg.epoch);
@@ -166,19 +215,33 @@ export class Room extends DurableObject<Env> {
       const att = other.deserializeAttachment() as Attachment | null;
       if (att?.clientId === clientId) other.close(1000, "replaced by a newer connection");
     }
+    if (msg.create === false && !this.created) {
+      this.fail(ws, "room_not_found", "There is no room with this code");
+      ws.close(4004, "room not found");
+      return;
+    }
     if (this.members().length >= MAX_MEMBERS && !this.members().some((m) => m.id === clientId)) {
       ws.close(1008, "room is full");
       return;
     }
 
-    // A second join on the same socket is a rename: keep the listening mode
+    // A second join on the same socket is a rename: keep the listening mode and the place in line
     const before = ws.deserializeAttachment() as Attachment | null;
-    ws.serializeAttachment({ clientId, name, lastSeen: Date.now(), solo: before?.solo ?? false } satisfies Attachment);
+    const now = Date.now();
+    ws.serializeAttachment(
+      { clientId, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now } satisfies Attachment,
+    );
 
-    // A member is back, so the empty-room cleanup no longer applies
-    if (this.s.alarm === "gc") await this.setAlarm("none");
+    // The first to arrive owns a room that has no owner; the room now exists and someone is in it
+    this.created = true;
+    const adopted = !this.s.ownerId;
+    if (adopted) this.s.ownerId = clientId;
+    delete this.s.alarms.gc;
+    if (!this.s.alarms.sweep) this.s.alarms.sweep = now + this.dropCheckMs();
+    await this.armAlarm();
 
-    this.send(ws, this.stateMessage(clientId));
+    if (adopted) this.broadcastState();
+    else this.send(ws, this.stateMessage(clientId));
     // A device joining mid-preparation must take part in the barrier
     if (this.s.phase === "preparing") this.send(ws, this.prepareMessage());
     this.broadcastMembers();
@@ -187,7 +250,9 @@ export class Room extends DurableObject<Env> {
   private async onMembersChanged(): Promise<void> {
     const members = this.members();
     if (members.length === 0) {
-      // Nobody is listening: freeze the position and schedule cleanup
+      // A socket that never joined a room that does not exist is nothing to keep
+      if (!this.created) return;
+      // Nobody is listening: freeze the position, let go of the ownership and schedule cleanup
       if (this.s.phase === "playing") {
         this.s.positionMs = this.currentPositionMs();
         this.s.phase = "paused";
@@ -195,7 +260,13 @@ export class Room extends DurableObject<Env> {
       }
       this.s.readyIds = [];
       this.s.failedIds = [];
-      await this.setAlarm("gc", Date.now() + EMPTY_ROOM_TTL_MS);
+      delete this.s.ownerId;
+      this.s.guestControl = "all";
+      delete this.s.alarms.barrier;
+      delete this.s.alarms.end;
+      delete this.s.alarms.sweep;
+      this.s.alarms.gc = Date.now() + this.emptyTtlMs();
+      await this.armAlarm();
       return;
     }
     this.broadcastMembers();
@@ -212,6 +283,72 @@ export class Room extends DurableObject<Env> {
     await this.maybeStart();
   }
 
+  /** The device is leaving on purpose. An owner hands the room to whoever has been here longest. */
+  private async onBye(ws: WebSocket, me: Attachment): Promise<void> {
+    ws.close(1000, "left"); // the socket no longer counts as a member from here on
+    if (this.s.ownerId === me.clientId) {
+      const successor = this.ctx
+        .getWebSockets()
+        .filter((other) => other.readyState === WebSocket.OPEN)
+        .map((other) => other.deserializeAttachment() as Attachment | null)
+        .filter((att): att is Attachment => att !== null && att.clientId !== me.clientId)
+        .sort((x, y) => (x.joinedAt ?? 0) - (y.joinedAt ?? 0))[0];
+      if (successor) this.s.ownerId = successor.clientId;
+      else delete this.s.ownerId;
+      await this.save();
+      this.broadcastState();
+    }
+    await this.onMembersChanged();
+  }
+
+  private async onKick(ws: WebSocket, me: Attachment, id: unknown): Promise<void> {
+    if (me.clientId !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
+    if (typeof id !== "string" || id === me.clientId) return;
+    for (const other of this.ctx.getWebSockets()) {
+      const att = other.deserializeAttachment() as Attachment | null;
+      if (att?.clientId !== id) continue;
+      this.send(other, { t: "error", code: "removed", message: "The owner removed you from the room" });
+      other.close(4001, "removed by the owner");
+    }
+    await this.onMembersChanged();
+  }
+
+  private async onRoomName(name: unknown): Promise<void> {
+    const clean = typeof name === "string" ? name.trim().slice(0, MAX_ROOM_NAME) : "";
+    if (clean === (this.s.name ?? "")) return;
+    if (clean) this.s.name = clean;
+    else delete this.s.name;
+    await this.save();
+    this.broadcastState();
+  }
+
+  private async onRoomSettings(ws: WebSocket, me: Attachment, guestControl: GuestControl): Promise<void> {
+    if (me.clientId !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
+    if (guestControl !== "all" && guestControl !== "add") return;
+    if (guestControl === this.s.guestControl) return;
+    this.s.guestControl = guestControl;
+    await this.save();
+    this.broadcastState();
+  }
+
+  /** The owner is here, or guests are free to do everything, or this is the owner. */
+  private canControl(clientId: string): boolean {
+    if (this.s.guestControl === "all" || clientId === this.s.ownerId) return true;
+    return !this.members().some((m) => m.owner && !m.away);
+  }
+
+  /** What the app shows about a room before joining it. Reads only: it never creates anything. */
+  private info() {
+    const item = this.s.queue[this.s.index];
+    return {
+      exists: this.created,
+      name: this.s.name ?? null,
+      members: this.members().filter((m) => !m.away).length,
+      playing: this.s.phase === "playing",
+      title: item?.title ?? null,
+    };
+  }
+
   /** Sends one device the current state again, plus the prepare it may have missed. */
   private onResync(ws: WebSocket, me: Attachment): void {
     this.send(ws, this.stateMessage(me.clientId));
@@ -224,7 +361,7 @@ export class Room extends DurableObject<Env> {
     let dropped = false;
     for (const ws of this.ctx.getWebSockets()) {
       const att = ws.deserializeAttachment() as Attachment | null;
-      if (att && now - att.lastSeen > DROP_AFTER_MS) {
+      if (att && now - att.lastSeen > millis(this.env.DROP_MS, DROP_AFTER_MS)) {
         try {
           ws.close(1001, "no signal from this device");
         } catch {
@@ -240,7 +377,7 @@ export class Room extends DurableObject<Env> {
   /** Broadcasts the member list when who is here, away or solo changed since the last time. */
   private broadcastMembers(): void {
     const members = this.members();
-    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}`).join("|");
+    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}:${m.owner}`).join("|");
     if (key === this.membersKey) return;
     this.membersKey = key;
     this.broadcast({ t: "members", members });
@@ -357,6 +494,7 @@ export class Room extends DurableObject<Env> {
     this.s.startedAt = 0;
     this.s.readyIds = [];
     this.s.failedIds = [];
+    delete this.s.alarms.end;
     await this.setAlarm("barrier", Date.now() + BARRIER_TIMEOUT_MS);
     this.broadcastState();
     this.broadcast(this.prepareMessage(by));
@@ -400,6 +538,7 @@ export class Room extends DurableObject<Env> {
     this.s.startedAt = startAt - this.s.positionMs;
     this.s.readyIds = [];
     this.s.failedIds = [];
+    delete this.s.alarms.barrier;
     await this.scheduleEnd();
     this.broadcast({ t: "start", epoch: this.s.epoch, startAt, positionMs: this.s.positionMs, by });
   }
@@ -421,7 +560,7 @@ export class Room extends DurableObject<Env> {
     this.s.positionMs = this.currentPositionMs();
     this.s.phase = "paused";
     this.s.epoch++;
-    await this.setAlarm("none");
+    await this.clearAlarm("end");
     this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs, by });
   }
 
@@ -506,41 +645,68 @@ export class Room extends DurableObject<Env> {
     this.s.readyIds = [];
     this.s.failedIds = [];
     this.s.index = Math.min(this.s.index, Math.max(0, this.s.queue.length - 1));
-    await this.setAlarm("none");
+    delete this.s.alarms.barrier;
+    await this.clearAlarm("end");
     this.broadcastState();
   }
 
   // ------------------------------------------------------------------ alarm
 
   async alarm(): Promise<void> {
-    const kind = this.s.alarm;
-    this.s.alarm = "none";
-    if (kind === "barrier") {
+    const now = Date.now();
+    const due = (Object.entries(this.s.alarms) as [AlarmKind, number][]).filter(([, at]) => at <= now).map(([kind]) => kind);
+    for (const kind of due) delete this.s.alarms[kind];
+
+    // Dead connections first, so the jobs below see who is really here
+    if (due.includes("sweep")) await this.sweep();
+    if (due.includes("barrier")) {
       // Start without the devices that did not answer in time; they catch up when they finish loading
       if (this.s.phase === "preparing" && this.members().length > 0) await this.startPlayback();
-    } else if (kind === "end") {
-      if (this.s.phase === "playing") await this.onFinished();
-    } else if (kind === "gc") {
-      if (this.members().length === 0) {
-        this.s = defaultState();
-        await this.ctx.storage.deleteAll();
-        return;
-      }
     }
-    await this.save();
+    if (due.includes("end") && this.s.phase === "playing") await this.onFinished();
+    if (due.includes("gc") && this.members().length === 0) {
+      this.s = defaultState();
+      this.created = false;
+      await this.ctx.storage.deleteAll();
+      return;
+    }
+    // Keep looking for dead connections for as long as someone is here; another job firing does not push the next look back
+    if (this.members().length > 0 && !this.s.alarms.sweep) this.s.alarms.sweep = Date.now() + this.dropCheckMs();
+    await this.armAlarm();
   }
 
   private async scheduleEnd(): Promise<void> {
     const item = this.s.queue[this.s.index];
-    if (!item || item.durMs <= 0) return this.setAlarm("none");
+    if (!item || item.durMs <= 0) return this.clearAlarm("end");
     await this.setAlarm("end", this.s.startedAt + item.durMs + END_GRACE_MS);
   }
 
-  private async setAlarm(kind: RoomState["alarm"], at?: number): Promise<void> {
-    this.s.alarm = kind;
-    if (kind === "none" || at === undefined) await this.ctx.storage.deleteAlarm();
-    else await this.ctx.storage.setAlarm(at);
+  private async setAlarm(kind: AlarmKind, at: number): Promise<void> {
+    this.s.alarms[kind] = at;
+    await this.armAlarm();
+  }
+
+  private async clearAlarm(kind: AlarmKind): Promise<void> {
+    delete this.s.alarms[kind];
+    await this.armAlarm();
+  }
+
+  /** Points the single Durable Object alarm at the earliest pending job, and saves the list of jobs. */
+  private async armAlarm(): Promise<void> {
+    const at = Math.min(...Object.values(this.s.alarms));
+    if (Number.isFinite(at)) await this.ctx.storage.setAlarm(at);
+    else await this.ctx.storage.deleteAlarm();
     await this.save();
+  }
+
+  private emptyTtlMs(): number {
+    return this.s.queue.length > 0
+      ? millis(this.env.EMPTY_MS, EMPTY_ROOM_TTL_MS)
+      : millis(this.env.EMPTY_BARE_MS, EMPTY_BARE_ROOM_TTL_MS);
+  }
+
+  private dropCheckMs(): number {
+    return millis(this.env.SWEEP_MS, DROP_CHECK_MS);
   }
 
   // ------------------------------------------------------------------ helpers
@@ -565,6 +731,7 @@ export class Room extends DurableObject<Env> {
         ready: this.s.readyIds.includes(att.clientId),
         solo: att.solo === true,
         away: now - att.lastSeen > limit,
+        owner: att.clientId === this.s.ownerId,
       });
     }
     return out;
@@ -579,7 +746,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private publicState(): PublicState {
-    const { readyIds: _r, failedIds: _f, alarm: _a, ...rest } = this.s;
+    const { readyIds: _r, failedIds: _f, alarms: _a, ...rest } = this.s;
     return rest;
   }
 
