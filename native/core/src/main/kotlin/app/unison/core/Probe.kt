@@ -25,13 +25,16 @@ data class ProbeResult(
 class Probe(private val client: OkHttpClient = OkHttpDownloader.defaultClient()) {
 
     suspend fun check(source: AudioSource, userAgent: String = OkHttpDownloader.USER_AGENT): ProbeResult =
+        check(source.url, source.contentLength, userAgent)
+
+    suspend fun check(url: String, contentLength: Long, userAgent: String = OkHttpDownloader.USER_AGENT): ProbeResult =
         withContext(Dispatchers.IO) {
             val t0 = System.nanoTime()
-            val (headStatus, total) = range(source.url, 0, 65_535, userAgent)
+            val (headStatus, total) = range(url, 0, 65_535, userAgent)
             val firstByteMs = (System.nanoTime() - t0) / 1_000_000
-            val size = if (total > 0) total else source.contentLength
-            val mid = if (size > 0) range(source.url, size / 2, size / 2 + 65_535, userAgent).first else -1
-            val tail = if (size > 0) range(source.url, size - 65_536, size - 1, userAgent).first else -1
+            val size = if (total > 0) total else contentLength
+            val mid = if (size > 0) range(url, size / 2, size / 2 + 65_535, userAgent).first else -1
+            val tail = if (size > 0) range(url, size - 65_536, size - 1, userAgent).first else -1
             ProbeResult(headStatus, mid, tail, size, firstByteMs)
         }
 

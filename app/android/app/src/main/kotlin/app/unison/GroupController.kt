@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.SystemClock
+import android.view.Surface
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.unison.sync.ClockSync
@@ -69,6 +70,29 @@ class GroupController(
         private set
 
     val isActive: Boolean get() = client != null
+
+    /** Songs are played with their picture; this device's choice, remembered across runs. */
+    var videoMode: Boolean = prefs.getBoolean(KEY_VIDEO, false)
+        private set
+
+    init {
+        port.setVideoMode(videoMode)
+    }
+
+    fun setVideoMode(on: Boolean) {
+        videoMode = on
+        prefs.edit().putBoolean(KEY_VIDEO, on).apply()
+        port.setVideoMode(on)
+        EventLog.d("video", "picture ${if (on) "on" else "off"}")
+    }
+
+    /** The picture is on screen; when it is not, it is neither downloaded nor decoded. */
+    fun setVideoVisible(visible: Boolean) = port.setVideoVisible(visible)
+
+    /** Where the player draws the picture, or null to let go of the screen. */
+    fun attachVideoSurface(surface: Surface?) {
+        if (surface == null) exo.clearVideoSurface() else exo.setVideoSurface(surface)
+    }
 
     /** Per-device latency correction in ms, see [GroupSession.trimMs]. */
     var trimMs: Long = prefs.getLong(KEY_TRIM_MS, 0L)
@@ -250,7 +274,14 @@ class GroupController(
         EventLog.d("sync", "drift correction ${if (enabled) "on" else "off"}")
     }
 
-    data class PlayerInfo(val playing: Boolean, val buffering: Boolean, val positionMs: Long, val durationMs: Long)
+    data class PlayerInfo(
+        val playing: Boolean,
+        val buffering: Boolean,
+        val positionMs: Long,
+        val durationMs: Long,
+        val videoWidth: Int = 0,
+        val videoHeight: Int = 0,
+    )
 
     /** Snapshot of the local player for the UI; call on the main thread. */
     fun playerInfo() = PlayerInfo(
@@ -258,6 +289,8 @@ class GroupController(
         buffering = exo.playbackState == Player.STATE_BUFFERING,
         positionMs = exo.currentPosition.coerceAtLeast(0),
         durationMs = exo.duration.coerceAtLeast(0),
+        videoWidth = exo.videoSize.width,
+        videoHeight = exo.videoSize.height,
     )
 
     fun addPlayerListener(listener: Player.Listener) = exo.addListener(listener)
@@ -299,6 +332,7 @@ class GroupController(
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_ROOM_CODE = "room_code"
         const val KEY_ROOM_NAME = "room_name"
+        const val KEY_VIDEO = "video_mode"
         const val KEY_TRIM_MS = "trim_ms"
         const val KEY_START_BIAS_MS = "start_bias_ms"
         const val MAX_TRIM_MS = 1000L

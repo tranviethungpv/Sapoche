@@ -62,6 +62,37 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
           _Group(
+            title: S.videoSection,
+            footer: S.videoQualityHelp,
+            children: [
+              ListenableBuilder(
+                listenable: model.room,
+                builder: (context, _) => Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: SegmentedButton<int>(
+                    showSelectedIcon: false,
+                    expandedInsets: EdgeInsets.zero,
+                    style: SegmentedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      selectedBackgroundColor: context.palette.primaryContainer,
+                      selectedForegroundColor:
+                          context.palette.onPrimaryContainer,
+                      foregroundColor: context.palette.textSecondary,
+                      side: BorderSide(color: context.palette.outline),
+                    ),
+                    segments: [
+                      for (final h in const [360, 480, 720, 1080])
+                        ButtonSegment(value: h, label: Text('${h}p')),
+                    ],
+                    selected: {model.room.snapshot.videoHeight},
+                    onSelectionChanged: (s) =>
+                        model.room.setVideoQuality(s.first),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          _Group(
             title: S.sync,
             footer: S.latencyTrimHelp,
             children: [_TrimRow(controller: model.room)],

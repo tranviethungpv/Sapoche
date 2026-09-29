@@ -12,6 +12,7 @@ import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamType
+import org.schabi.newpipe.extractor.stream.VideoStream
 
 class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : StreamResolver {
 
@@ -21,15 +22,14 @@ class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : Strea
 
     private val youtube get() = ServiceList.YouTube
 
-    override suspend fun search(query: String, limit: Int): List<TrackInfo> =
+    override suspend fun search(query: String, limit: Int, songsOnly: Boolean): List<TrackInfo> =
         withContext(Dispatchers.IO) {
-            val handler = youtube.searchQHFactory.fromQuery(
-                query,
-                listOf(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS),
-                "",
-            )
+            val filter = if (songsOnly) YoutubeSearchQueryHandlerFactory.MUSIC_SONGS else YoutubeSearchQueryHandlerFactory.VIDEOS
+            val handler = youtube.searchQHFactory.fromQuery(query, listOf(filter), "")
             SearchInfo.getInfo(youtube, handler).relatedItems
                 .filterIsInstance<StreamInfoItem>()
+                // Live streams have no length and cannot be put on a shared queue
+                .filter { it.duration > 0 && it.streamType != StreamType.LIVE_STREAM }
                 .take(limit)
                 .map { it.toTrack() }
         }
@@ -50,6 +50,11 @@ class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : Strea
 
         check(sources.isNotEmpty()) { "No audio stream available for $videoId" }
 
+        val videos = info.videoOnlyStreams
+            .filter { it.isUrl && !it.content.isNullOrBlank() && it.height > 0 }
+            .map { it.toSource() }
+            .sortedByDescending { it.height }
+
         Resolved(
             track = TrackInfo(
                 videoId = videoId,
@@ -61,6 +66,7 @@ class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : Strea
             best = sources.first(),
             all = sources,
             resolveMs = ms,
+            videos = videos,
         )
     }
 
@@ -81,6 +87,16 @@ class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : Strea
         artist = uploaderName ?: "",
         thumbUrl = thumbnails.maxByOrNull { it.width }?.url,
         durationSec = duration,
+    )
+
+    private fun VideoStream.toSource() = VideoSource(
+        url = content,
+        height = height,
+        format = format?.name ?: "?",
+        codec = codec ?: "",
+        bitrateKbps = bitrate / 1000,
+        contentLength = itagItem?.contentLength ?: -1,
+        itag = id.toIntOrNull() ?: itagItem?.id ?: -1,
     )
 
     private fun AudioStream.toSource() = AudioSource(

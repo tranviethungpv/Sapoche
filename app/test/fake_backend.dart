@@ -93,8 +93,24 @@ class FakeBackend implements Backend {
   Future<void> clear() => _record('clear');
 
   @override
-  Future<List<Track>> search(String query) async {
-    await _record('search $query');
+  Future<void> setVideoMode(bool on) => _record('video $on');
+
+  @override
+  Future<void> setVideoVisible(bool visible) =>
+      _record('videoVisible $visible');
+
+  @override
+  Future<int> videoSurface() async {
+    await _record('videoSurface');
+    return 7;
+  }
+
+  @override
+  Future<void> setVideoQuality(int height) => _record('videoQuality $height');
+
+  @override
+  Future<List<Track>> search(String query, {bool songsOnly = false}) async {
+    await _record(songsOnly ? 'search $query songs' : 'search $query');
     await searchGate?.future;
     return searchResults;
   }
@@ -120,6 +136,7 @@ RoomSnapshot sampleRoom({
   int songs = 3,
   Repeat repeat = Repeat.off,
   List<Member>? members,
+  bool video = false,
   bool solo = false,
   String? soloItemId,
 }) => RoomSnapshot(
@@ -130,6 +147,7 @@ RoomSnapshot sampleRoom({
   index: index,
   repeat: repeat,
   solo: solo,
+  video: video,
   soloItemId: soloItemId,
   members:
       members ??

@@ -1,5 +1,6 @@
 package app.unison
 
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -31,7 +32,18 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
     /** Set while a prepare or seek is waiting for the player to become ready. */
     private var waiting: CancellableContinuation<Unit>? = null
 
+    /** The song the player is on and the one queued behind it, so either can be rebuilt with or without the picture. */
+    private var loaded: QueueItem? = null
+    private var queuedNext: QueueItem? = null
+
+    /** Items are loaded with their picture while this is on. */
+    private var videoOn = false
+
+    /** The picture is actually being shown, so it is worth downloading and decoding. */
+    private var videoVisible = false
+
     init {
+        applyVideoSelection()
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
@@ -42,7 +54,11 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 // Only a natural move to the queued successor; our own loads report other reasons
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) onAdvanced?.invoke()
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    loaded = queuedNext
+                    queuedNext = null
+                    onAdvanced?.invoke()
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -61,7 +77,8 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         var attempt = 0
         while (true) {
             try {
-                load(item, seekToMs)
+                // A song whose picture cannot be had still plays: the second try is sound only
+                load(item, seekToMs, withVideo = videoOn && attempt == 0)
                 return
             } catch (e: CancellationException) {
                 throw e
@@ -74,9 +91,11 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         }
     }
 
-    private suspend fun load(item: QueueItem, seekToMs: Long) {
+    private suspend fun load(item: QueueItem, seekToMs: Long, withVideo: Boolean) {
         player.playWhenReady = false
-        player.setMediaItem(mediaItem(item), seekToMs)
+        loaded = item
+        queuedNext = null
+        player.setMediaItem(mediaItem(item, withVideo), seekToMs)
         player.prepare()
         awaitReady(LOAD_TIMEOUT_MS)
     }
@@ -95,6 +114,8 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
     }
 
     override fun stop() {
+        loaded = null
+        queuedNext = null
         player.stop()
         player.clearMediaItems()
     }
@@ -109,16 +130,52 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
     override fun setNext(item: QueueItem?) {
         val count = player.mediaItemCount
         if (count == 0) return
+        queuedNext = item
         val nextIndex = player.currentMediaItemIndex + 1
         when {
             item == null -> if (count > nextIndex) player.removeMediaItems(nextIndex, count)
             count > nextIndex -> {
-                if (player.getMediaItemAt(nextIndex).mediaId != item.videoId) {
-                    player.replaceMediaItem(nextIndex, mediaItem(item))
+                val existing = player.getMediaItemAt(nextIndex)
+                if (existing.mediaId != item.videoId || UnisonMediaSourceFactory.isVideo(existing) != videoOn) {
+                    player.replaceMediaItem(nextIndex, mediaItem(item, videoOn))
                 }
             }
-            else -> player.addMediaItem(mediaItem(item))
+            else -> player.addMediaItem(mediaItem(item, videoOn))
         }
+    }
+
+    /**
+     * Play songs with their picture from now on, or sound only. Turning it on for a song that was
+     * loaded without one loads it again at the same place, which costs a moment of silence.
+     */
+    fun setVideoMode(on: Boolean) {
+        if (videoOn == on) return
+        videoOn = on
+        val item = loaded
+        val current = player.currentMediaItem
+        if (on && item != null && current != null && !UnisonMediaSourceFactory.isVideo(current)) {
+            val position = player.currentPosition
+            val play = player.playWhenReady
+            player.setMediaItem(mediaItem(item, true), position)
+            player.prepare()
+            player.playWhenReady = play
+        }
+        queuedNext?.let { setNext(it) } // the next song follows suit
+        applyVideoSelection()
+    }
+
+    /** Whether the picture is on screen. Off, the picture stream is neither downloaded nor decoded. */
+    fun setVideoVisible(visible: Boolean) {
+        if (videoVisible == visible) return
+        videoVisible = visible
+        applyVideoSelection()
+    }
+
+    private fun applyVideoSelection() {
+        val enabled = videoOn && videoVisible
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !enabled)
+            .build()
     }
 
     override fun positionMs(): Long = player.currentPosition
@@ -145,9 +202,9 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         pending.resume(Unit)
     }
 
-    private fun mediaItem(item: QueueItem) = MediaItem.Builder()
+    private fun mediaItem(item: QueueItem, withVideo: Boolean) = MediaItem.Builder()
         .setMediaId(item.videoId)
-        .setUri("unison:${item.videoId}")
+        .setUri(UnisonMediaSourceFactory.uri(item.videoId, withVideo))
         .setMediaMetadata(
             MediaMetadata.Builder()
                 .setTitle(item.title)

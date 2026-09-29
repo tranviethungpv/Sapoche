@@ -21,11 +21,25 @@ data class AudioSource(
     val itag: Int,
 )
 
+/** A video-only stream, played together with an audio stream when the picture is wanted. */
+data class VideoSource(
+    val url: String,
+    val height: Int,
+    /** Container and codec as YouTube reports them, e.g. "MPEG_4" with "avc1.4d401f". */
+    val format: String,
+    val codec: String,
+    val bitrateKbps: Int,
+    val contentLength: Long,
+    val itag: Int,
+)
+
 data class Resolved(
     val track: TrackInfo,
     val best: AudioSource,
     val all: List<AudioSource>,
     val resolveMs: Long,
+    /** Video-only streams found beside the audio, best first; empty when the video cannot be played. */
+    val videos: List<VideoSource> = emptyList(),
 )
 
 /**
@@ -33,7 +47,8 @@ data class Resolved(
  * The rest of the app only knows this interface.
  */
 interface StreamResolver {
-    suspend fun search(query: String, limit: Int = 10): List<TrackInfo>
+    /** Videos matching [query]; with [songsOnly] only what YouTube Music lists as songs. */
+    suspend fun search(query: String, limit: Int = 10, songsOnly: Boolean = false): List<TrackInfo>
     suspend fun resolve(videoId: String): Resolved
 
     /** The first [limit] playable songs of the playlist with the given id. */

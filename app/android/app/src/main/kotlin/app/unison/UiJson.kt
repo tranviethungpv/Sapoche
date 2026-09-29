@@ -9,7 +9,7 @@ import org.json.JSONObject
 object UiJson {
 
     /** Structure of the room. Changes rarely, so the UI only rebuilds when this differs. */
-    fun state(view: GroupController.View, trimMs: Long): String {
+    fun state(view: GroupController.View, trimMs: Long, video: Boolean = false, videoHeight: Int = 720): String {
         val snap = view.snapshot
         val state = snap.state
         return JSONObject()
@@ -21,6 +21,8 @@ object UiJson {
             .put("repeat", state?.repeat ?: "off")
             .put("index", state?.index ?: 0)
             .put("trimMs", trimMs)
+            .put("video", video)
+            .put("videoHeight", videoHeight)
             .put("solo", snap.solo)
             .put("soloItemId", snap.soloItemId ?: JSONObject.NULL)
             .put("queue", JSONArray().also { array -> state?.queue?.forEach { array.put(item(it)) } })
@@ -52,6 +54,8 @@ object UiJson {
             .put("durationMs", player.durationMs)
             .put("driftMs", view.snapshot.driftMs ?: JSONObject.NULL)
             .put("speed", view.snapshot.speed.toDouble())
+            .put("videoWidth", player.videoWidth)
+            .put("videoHeight", player.videoHeight)
             .toString()
 
     /** An invitation link was opened: the UI offers to join that room. */

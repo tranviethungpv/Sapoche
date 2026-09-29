@@ -13,10 +13,12 @@ import app.unison.sync.Protocol
 import app.unison.sync.TrackRef
 import com.google.common.util.concurrent.ListenableFuture
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.renderer.FlutterRenderer
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.view.TextureRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,7 +41,11 @@ import org.json.JSONObject
  * Everything the Flutter UI can ask of the native side, and the stream of room state it gets back.
  * The player and the room connection live in [PlaybackService]; this only steers and observes them.
  */
-class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMessenger) :
+class UnisonBridge(
+    private val activity: FlutterActivity,
+    messenger: BinaryMessenger,
+    private val renderer: FlutterRenderer,
+) :
     MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -56,6 +62,9 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
 
     /** Last structural state sent, so an unchanged room is not sent again. */
     private var lastState: String? = null
+
+    /** Where the player's picture is drawn for Flutter's Texture widget; made when first asked for. */
+    private var picture: TextureRegistry.SurfaceProducer? = null
 
     init {
         MethodChannel(messenger, "app.unison/control").setMethodCallHandler(this)
@@ -82,6 +91,12 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
     }
 
     fun dispose() {
+        picture?.let {
+            UnisonApp.group.value?.setVideoVisible(false)
+            UnisonApp.group.value?.attachVideoSurface(null)
+            it.release()
+        }
+        picture = null
         observing?.cancel()
         controller?.let { MediaController.releaseFuture(it) }
         scope.cancel()
@@ -100,13 +115,13 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
         observing = scope.launch {
             UnisonApp.group.collectLatest { group ->
                 if (group == null) {
-                    emit(UiJson.state(GroupController.View(), 0L))
+                    emit(UiJson.state(GroupController.View(), 0L, false, UnisonApp.videoMaxHeight))
                     return@collectLatest
                 }
                 coroutineScope {
                     launch {
                         group.view.collect { view ->
-                            val state = UiJson.state(view, group.trimMs)
+                            val state = UiJson.state(view, group.trimMs, group.videoMode, UnisonApp.videoMaxHeight)
                             if (state != lastState) {
                                 lastState = state
                                 emit(state)
@@ -178,8 +193,9 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
                 "name" to prefs.getString("room_name", null),
                 "device" to Build.MODEL,
                 "trimMs" to prefs.getLong("trim_ms", 0L),
+                "videoHeight" to UnisonApp.videoMaxHeight,
             )
-            "search" -> return search(call.argument<String>("query").orEmpty())
+            "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true)
             "lookup" -> return lookup(call.argument<String>("text").orEmpty())
             "share" -> {
                 share(call.argument<String>("text").orEmpty())
@@ -206,7 +222,21 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
                 group.setTrim((call.argument<Number>("ms") ?: 0).toLong())
                 // The trim is part of the state the UI shows, but the room itself did not change
                 lastState = null
-                emit(UiJson.state(group.view.value, group.trimMs))
+                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, UnisonApp.videoMaxHeight))
+            }
+            "videoMode" -> {
+                group.setVideoMode(call.argument<Boolean>("on") == true)
+                lastState = null
+                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, UnisonApp.videoMaxHeight))
+            }
+            "videoVisible" -> group.setVideoVisible(call.argument<Boolean>("visible") == true)
+            "videoSurface" -> return videoTexture(group)
+            "videoQuality" -> {
+                val height = (call.argument<Number>("height") ?: UnisonApp.DEFAULT_VIDEO_HEIGHT).toInt()
+                UnisonApp.videoMaxHeight = height
+                prefs.edit().putInt("video_height", height).apply()
+                lastState = null
+                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, UnisonApp.videoMaxHeight))
             }
             else -> {
                 if (!group.isActive) throw NoRoomException()
@@ -262,9 +292,33 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
         }
     }
 
-    private suspend fun search(query: String): List<Map<String, Any?>> {
+    private suspend fun search(query: String, songsOnly: Boolean): List<Map<String, Any?>> {
         if (query.isBlank()) return emptyList()
-        return UnisonApp.resolver.search(query.trim(), SEARCH_LIMIT).map { it.toMap() }
+        return UnisonApp.resolver.search(query.trim(), SEARCH_LIMIT, songsOnly).map { it.toMap() }
+    }
+
+    /**
+     * The texture Flutter draws the picture from. The player renders into its surface; the texture
+     * is resized to the picture so it is not scaled twice. Returns the texture id for the Texture widget.
+     */
+    private fun videoTexture(group: GroupController): Long {
+        picture?.let { return it.id() }
+        val producer = renderer.createSurfaceProducer()
+        producer.setSize(VIDEO_DEFAULT_WIDTH, VIDEO_DEFAULT_HEIGHT)
+        producer.setCallback(object : TextureRegistry.SurfaceProducer.Callback {
+            override fun onSurfaceAvailable() = group.attachVideoSurface(producer.surface)
+            override fun onSurfaceCleanup() = group.attachVideoSurface(null)
+        })
+        group.attachVideoSurface(producer.surface)
+        group.addPlayerListener(object : Player.Listener {
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                if (size.width <= 0 || size.height <= 0) return
+                producer.setSize(size.width, size.height)
+                group.attachVideoSurface(producer.surface)
+            }
+        })
+        picture = producer
+        return producer.id()
     }
 
     /**
@@ -299,6 +353,8 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
         const val SERVICE_START_TIMEOUT_MS = 10_000L
         const val SEARCH_LIMIT = 20
         const val PLAYLIST_LIMIT = 50
+        const val VIDEO_DEFAULT_WIDTH = 1280
+        const val VIDEO_DEFAULT_HEIGHT = 720
         private val INVITE_CODE = Regex("[A-Z0-9]{6}")
     }
 }

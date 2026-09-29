@@ -12,6 +12,7 @@ import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
+import 'widgets/video_view.dart';
 import 'widgets/player_backdrop.dart';
 
 class NowPlayingPage extends StatelessWidget {
@@ -49,7 +50,7 @@ class NowPlayingPage extends StatelessWidget {
 /// at this size before the player is ever opened.
 double coverSize(MediaQueryData media) {
   // Everything except the cover needs about this much height; the cover takes what is left
-  const otherContent = 350.0;
+  const otherContent = 396.0;
   return [
     media.size.width - 64,
     380.0,
@@ -87,40 +88,49 @@ class _Body extends StatelessWidget {
               children: [
                 const SizedBox(height: 6),
                 _Grabber(color: p.textTertiary.withValues(alpha: 0.5)),
+                const SizedBox(height: 10),
+                _ModePill(controller: controller),
                 const Spacer(flex: 2),
-                ListenableBuilder(
-                  listenable: controller.player,
-                  builder: (context, _) => AnimatedScale(
-                    // Paused covers shrink, like in Apple Music
-                    scale: controller.isPlaying ? 1 : 0.86,
-                    duration: const Duration(milliseconds: 420),
-                    curve: Curves.easeOutBack,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(
-                              alpha: controller.isPlaying ? 0.28 : 0.14,
+                if (controller.snapshot.video)
+                  VideoView(
+                    key: const ValueKey('video'),
+                    controller: controller,
+                    cover: current,
+                  )
+                else
+                  ListenableBuilder(
+                    listenable: controller.player,
+                    builder: (context, _) => AnimatedScale(
+                      // Paused covers shrink, like in Apple Music
+                      scale: controller.isPlaying ? 1 : 0.86,
+                      duration: const Duration(milliseconds: 420),
+                      curve: Curves.easeOutBack,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(
+                                alpha: controller.isPlaying ? 0.28 : 0.14,
+                              ),
+                              blurRadius: controller.isPlaying ? 36 : 18,
+                              offset: Offset(0, controller.isPlaying ? 18 : 8),
                             ),
-                            blurRadius: controller.isPlaying ? 36 : 18,
-                            offset: Offset(0, controller.isPlaying ? 18 : 8),
+                          ],
+                        ),
+                        child: CoverSlot(
+                          controller: sheet,
+                          child: Artwork(
+                            key: sheet.pageCover,
+                            url: current.thumb,
+                            size: artSize,
+                            radius: 16,
+                            sharp: true,
                           ),
-                        ],
-                      ),
-                      child: CoverSlot(
-                        controller: sheet,
-                        child: Artwork(
-                          key: sheet.pageCover,
-                          url: current.thumb,
-                          size: artSize,
-                          radius: 16,
-                          sharp: true,
                         ),
                       ),
                     ),
                   ),
-                ),
                 const Spacer(flex: 2),
                 Row(
                   children: [
@@ -221,6 +231,51 @@ class _RepeatButton extends StatelessWidget {
           ),
           color: on ? p.onPrimaryContainer : p.textTertiary,
         ),
+      ),
+    );
+  }
+}
+
+/// Audio or Video, like the switch at the top of YouTube Music's player. A choice for this device only.
+class _ModePill extends StatelessWidget {
+  const _ModePill({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final video = controller.snapshot.video;
+    Widget segment(String label, bool selected, VoidCallback onTap) =>
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+            decoration: BoxDecoration(
+              color: selected ? p.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium
+                  ?.copyWith(color: selected ? p.onPrimary : p.textSecondary),
+            ),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: p.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          segment(S.modeAudio, !video, () => controller.setVideoMode(false)),
+          segment(S.modeVideo, video, () => controller.setVideoMode(true)),
+        ],
       ),
     );
   }

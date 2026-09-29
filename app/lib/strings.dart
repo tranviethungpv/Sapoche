@@ -54,7 +54,9 @@ abstract final class S {
   static const unauthorized = 'This build is not allowed on the server';
 
   // Search
-  static const searchHint = 'Songs, artists, or a YouTube link';
+  static const searchHint = 'Videos, songs, or a YouTube link';
+  static const filterVideos = 'Videos';
+  static const filterSongs = 'Songs';
   static const searchEmptyTitle = 'Find something to play';
   static const searchEmptyBody =
       'Type a song or artist, or paste a YouTube link.';
@@ -84,6 +86,14 @@ abstract final class S {
   static String pausedBy(String name) => '$name paused the room';
   static String skippedBy(String name, String title) =>
       title.isEmpty ? '$name skipped ahead' : '$name switched to $title';
+
+  // Picture
+  static const modeAudio = 'Audio';
+  static const modeVideo = 'Video';
+  static const videoSection = 'Video';
+  static const videoQuality = 'Picture quality';
+  static const videoQualityHelp =
+      'Applies from the next song. Higher quality uses more data. Music keeps playing when the screen is off; the picture does not.';
 
   // Who is in the room
   static const membersTitle = 'In the room';

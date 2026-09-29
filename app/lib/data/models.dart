@@ -130,6 +130,8 @@ class RoomSnapshot {
     this.trimMs = 0,
     this.solo = false,
     this.soloItemId,
+    this.video = false,
+    this.videoHeight = 720,
   });
 
   /// Room code, or null when this device is not in a room.
@@ -150,6 +152,12 @@ class RoomSnapshot {
 
   /// The song this device is on while [solo].
   final String? soloItemId;
+
+  /// Songs are played with their picture on this device.
+  final bool video;
+
+  /// Tallest picture fetched, in pixels.
+  final int videoHeight;
 
   bool get inRoom => room != null;
 
@@ -198,6 +206,8 @@ class RoomSnapshot {
     trimMs: (json['trimMs'] as num?)?.toInt() ?? 0,
     solo: json['solo'] as bool? ?? false,
     soloItemId: json['soloItemId'] as String?,
+    video: json['video'] as bool? ?? false,
+    videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 720,
     queue: [
       for (final e in json['queue'] as List<dynamic>? ?? const [])
         QueueEntry.fromJson(e as Map<String, dynamic>),
@@ -227,6 +237,8 @@ class PlayerPosition {
     this.durationMs = 0,
     this.driftMs,
     this.speed = 1.0,
+    this.videoWidth = 0,
+    this.videoHeight = 0,
   });
 
   final bool playing;
@@ -238,6 +250,10 @@ class PlayerPosition {
   final int? driftMs;
   final double speed;
 
+  /// Size of the picture being played, or 0 until there is one.
+  final int videoWidth;
+  final int videoHeight;
+
   factory PlayerPosition.fromJson(Map<String, dynamic> json) => PlayerPosition(
     playing: json['playing'] as bool? ?? false,
     buffering: json['buffering'] as bool? ?? false,
@@ -245,6 +261,8 @@ class PlayerPosition {
     durationMs: (json['durationMs'] as num?)?.toInt() ?? 0,
     driftMs: (json['driftMs'] as num?)?.toInt(),
     speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
+    videoWidth: (json['videoWidth'] as num?)?.toInt() ?? 0,
+    videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 0,
   );
 }
 

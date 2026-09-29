@@ -367,6 +367,68 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the player switches between audio and video, and only asks for the picture while showing it',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom()));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byType(MiniPlayer));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.byType(Texture), findsNothing);
+      expect(backend.calls, isNot(contains('videoSurface')));
+
+      await tester.tap(find.text('Video'));
+      await tester.pump();
+      expect(backend.calls.last, 'video true');
+
+      // The native side reports the mode back, and the picture view takes the cover's place
+      backend.emit(StateEvent(sampleRoom(video: true)));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        backend.calls,
+        containsAllInOrder(['videoVisible true', 'videoSurface']),
+      );
+      expect(find.byType(Texture), findsNothing, reason: 'no frame yet');
+
+      backend.emit(
+        const PositionEvent(
+          PlayerPosition(playing: true, videoWidth: 1280, videoHeight: 720),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(Texture), findsOneWidget);
+
+      // Closing the player stops the picture from being fetched
+      await tester.binding.handlePopRoute();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(backend.calls.last, 'videoVisible false');
+    },
+  );
+
+  testWidgets('search can be narrowed to songs and looks again', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'lofi');
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(backend.calls.last, 'search lofi');
+
+    await tester.tap(find.text('Songs'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(backend.calls.last, 'search lofi songs');
+  });
+
   testWidgets('Back closes the open player instead of leaving the app', (
     tester,
   ) async {

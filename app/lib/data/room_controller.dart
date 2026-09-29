@@ -219,10 +219,29 @@ class RoomController extends ChangeNotifier {
 
   // ------------------------------------------------------------------ search and settings
 
-  Future<List<Track>> search(String query) => _backend.search(query);
+  Future<List<Track>> search(String query, {bool songsOnly = false}) =>
+      _backend.search(query, songsOnly: songsOnly);
   Future<LinkResult?> lookup(String text) => _backend.lookup(text);
 
   Future<void> setTrim(int ms) => _run(() => _backend.setTrim(ms));
+
+  /// Play songs with their picture on this device, or sound only.
+  Future<void> setVideoMode(bool on) => _run(() => _backend.setVideoMode(on));
+
+  Future<void> setVideoVisible(bool visible) =>
+      _run(() => _backend.setVideoVisible(visible));
+
+  /// The texture the picture is drawn into, or null when it cannot be made.
+  Future<int?> videoSurface() async {
+    try {
+      return await _backend.videoSurface();
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> setVideoQuality(int height) =>
+      _run(() => _backend.setVideoQuality(height));
   Future<List<String>> log() => _backend.log();
 
   Future<void> _run(Future<void> Function() action) async {

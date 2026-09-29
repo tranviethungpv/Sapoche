@@ -68,7 +68,20 @@ abstract class Backend {
   Future<void> move(String itemId, int toIndex);
   Future<void> clear();
 
-  Future<List<Track>> search(String query);
+  /// Videos matching [query]; with [songsOnly] just what YouTube Music lists as songs.
+  Future<List<Track>> search(String query, {bool songsOnly = false});
+
+  /// Play songs with their picture ([on]) or sound only.
+  Future<void> setVideoMode(bool on);
+
+  /// The picture is on screen ([visible]) or not; off, it is neither downloaded nor decoded.
+  Future<void> setVideoVisible(bool visible);
+
+  /// The id of the texture the picture is drawn into.
+  Future<int> videoSurface();
+
+  /// Tallest picture to fetch, in pixels.
+  Future<void> setVideoQuality(int height);
 
   /// The songs behind a pasted YouTube link, or null when the text is not a link.
   Future<LinkResult?> lookup(String text);
@@ -192,8 +205,25 @@ class NativeBackend implements Backend {
   Future<void> clear() => _call('clear');
 
   @override
-  Future<List<Track>> search(String query) async {
-    final raw = await _call<List<Object?>>('search', {'query': query});
+  Future<void> setVideoMode(bool on) => _call('videoMode', {'on': on});
+
+  @override
+  Future<void> setVideoVisible(bool visible) =>
+      _call('videoVisible', {'visible': visible});
+
+  @override
+  Future<int> videoSurface() async => (await _call<int>('videoSurface'))!;
+
+  @override
+  Future<void> setVideoQuality(int height) =>
+      _call('videoQuality', {'height': height});
+
+  @override
+  Future<List<Track>> search(String query, {bool songsOnly = false}) async {
+    final raw = await _call<List<Object?>>('search', {
+      'query': query,
+      'songsOnly': songsOnly,
+    });
     return [
       for (final e in raw ?? const [])
         Track.fromMap(e as Map<Object?, Object?>),

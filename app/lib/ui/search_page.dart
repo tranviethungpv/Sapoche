@@ -35,6 +35,9 @@ class _SearchPageState extends State<SearchPage> {
   /// Ids added during this visit, so the row shows a check instead of the plus.
   final _added = <String>{};
 
+  /// Only what YouTube Music lists as songs, instead of every video.
+  bool _songsOnly = false;
+
   /// Guards against a slow answer for an old query replacing a newer one.
   int _generation = 0;
 
@@ -70,7 +73,8 @@ class _SearchPageState extends State<SearchPage> {
     try {
       final looksLikeLink = query.contains('youtu');
       final link = looksLikeLink ? await _room.lookup(query) : null;
-      final found = link?.tracks ?? await _room.search(query);
+      final found =
+          link?.tracks ?? await _room.search(query, songsOnly: _songsOnly);
       if (!mounted || generation != _generation) return;
       setState(() {
         _results = found;
@@ -172,6 +176,24 @@ class _SearchPageState extends State<SearchPage> {
               ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Row(
+              children: [
+                _FilterChip(
+                  label: S.filterVideos,
+                  selected: !_songsOnly,
+                  onTap: () => _setSongsOnly(false),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: S.filterSongs,
+                  selected: _songsOnly,
+                  onTap: () => _setSongsOnly(true),
+                ),
+              ],
+            ),
+          ),
           ListenableBuilder(
             listenable: _room,
             builder: (context, _) => LinkBanner(link: _room.snapshot.link),
@@ -180,6 +202,13 @@ class _SearchPageState extends State<SearchPage> {
         ],
       ),
     );
+  }
+
+  void _setSongsOnly(bool value) {
+    if (_songsOnly == value) return;
+    setState(() => _songsOnly = value);
+    final text = _field.text.trim();
+    if (text.isNotEmpty) _run(text);
   }
 
   Future<void> _paste() async {
@@ -395,6 +424,43 @@ class _Message extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A pill that narrows what a search looks for.
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? p.primaryContainer : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: selected ? p.primary : p.outline),
+        ),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: selected ? p.onPrimaryContainer : p.textSecondary,
+          ),
         ),
       ),
     );

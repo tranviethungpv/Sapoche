@@ -58,11 +58,12 @@ class PlaybackService : MediaSessionService() {
 
         // "unison:<videoId>" URIs are turned into real stream URLs right when the loader opens them
         val dataSourceFactory = ResolvingDataSource.Factory(http) { spec ->
-            if (spec.uri.scheme == SCHEME) {
-                val videoId = spec.uri.schemeSpecificPart
-                spec.withUri(Uri.parse(UnisonApp.streams.get(videoId)))
-            } else {
-                spec
+            val videoId = spec.uri.schemeSpecificPart
+            when (spec.uri.scheme) {
+                SCHEME -> spec.withUri(Uri.parse(UnisonApp.streams.get(videoId)))
+                UnisonMediaSourceFactory.VIDEO_SCHEME ->
+                    spec.withUri(Uri.parse(UnisonApp.streams.getVideo(videoId, UnisonApp.videoMaxHeight)))
+                else -> spec
             }
         }
 
@@ -73,7 +74,9 @@ class PlaybackService : MediaSessionService() {
 
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(dataSourceFactory).setLoadErrorHandlingPolicy(PatientLoadErrorPolicy()),
+                UnisonMediaSourceFactory(
+                    DefaultMediaSourceFactory(dataSourceFactory).setLoadErrorHandlingPolicy(PatientLoadErrorPolicy()),
+                ),
             )
             .setLoadControl(loadControl)
             .setAudioAttributes(

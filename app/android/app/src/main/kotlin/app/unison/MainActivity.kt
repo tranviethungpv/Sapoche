@@ -10,7 +10,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        bridge = UnisonBridge(this, flutterEngine.dartExecutor.binaryMessenger).also { it.onLink(intent?.data) }
+        bridge = UnisonBridge(this, flutterEngine.dartExecutor.binaryMessenger, flutterEngine.renderer).also { it.onLink(intent?.data) }
     }
 
     override fun onNewIntent(intent: Intent) {

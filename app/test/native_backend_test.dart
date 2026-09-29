@@ -111,4 +111,32 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'the picture commands and the songs-only search carry their arguments',
+    () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(control, (call) async {
+        calls.add(call);
+        return switch (call.method) {
+          'videoSurface' => 42,
+          'search' => <Object?>[],
+          _ => null,
+        };
+      });
+      final backend = NativeBackend();
+      await backend.setVideoMode(true);
+      await backend.setVideoVisible(false);
+      await backend.setVideoQuality(480);
+      expect(await backend.videoSurface(), 42);
+      await backend.search('lofi', songsOnly: true);
+      expect(calls.map((c) => '${c.method} ${c.arguments}'), [
+        'videoMode {on: true}',
+        'videoVisible {visible: false}',
+        'videoQuality {height: 480}',
+        'videoSurface null',
+        'search {query: lofi, songsOnly: true}',
+      ]);
+    },
+  );
 }

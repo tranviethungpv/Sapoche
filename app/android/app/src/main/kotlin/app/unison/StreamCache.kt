@@ -2,6 +2,8 @@ package app.unison
 
 import app.unison.core.Probe
 import app.unison.core.StreamResolver
+import app.unison.core.VideoPicker
+import app.unison.core.VideoSource
 import kotlinx.coroutines.runBlocking
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
@@ -19,9 +21,11 @@ class StreamCache(
     private val resolver: StreamResolver,
     private val probe: Probe,
 ) {
-    private data class Entry(val url: String, val resolvedAtMs: Long)
+    private data class Entry(val url: String, val videos: List<VideoSource>, val resolvedAtMs: Long)
+    private data class VideoEntry(val url: String, val resolvedAtMs: Long)
 
     private val entries = ConcurrentHashMap<String, Entry>()
+    private val videoEntries = ConcurrentHashMap<String, VideoEntry>()
     private val locks = ConcurrentHashMap<String, Any>()
 
     /** Returns a validated stream URL for [videoId], resolving if needed. */
@@ -34,9 +38,45 @@ class StreamCache(
         }
     }
 
-    /** Drops the cached URL so the next [get] resolves again. */
+    /**
+     * Returns a validated URL of the picture-only stream for [videoId], the tallest one within
+     * [maxHeight] (see [VideoPicker]). It comes from the same resolve as the audio URL.
+     */
+    fun getVideo(videoId: String, maxHeight: Int): String {
+        val key = "$videoId@$maxHeight"
+        videoEntries[key]?.takeIf { System.currentTimeMillis() - it.resolvedAtMs < MAX_AGE_MS }?.let { return it.url }
+        synchronized(locks.getOrPut(videoId) { Any() }) {
+            videoEntries[key]?.takeIf { System.currentTimeMillis() - it.resolvedAtMs < MAX_AGE_MS }?.let { return it.url }
+            var lastProblem = "unknown"
+            for (attempt in 1..MAX_ATTEMPTS) {
+                val entry = entries[videoId]?.takeIf { isFresh(it) } ?: run {
+                    resolveValidated(videoId)
+                    entries.getValue(videoId)
+                }
+                val pick = VideoPicker.pick(entry.videos, maxHeight)
+                    ?: throw IOException("$videoId has no video stream")
+                val probed = runBlocking { probe.check(pick.url, pick.contentLength) }
+                EventLog.d(
+                    "resolve",
+                    "$videoId video attempt=$attempt itag=${pick.itag} ${pick.height}p ${pick.format} ${pick.codec} " +
+                        "${pick.bitrateKbps}kbps probe=${probed.headStatus}/${probed.midStatus}/${probed.tailStatus} " +
+                        if (probed.ok) "OK" else "POISONED",
+                )
+                if (probed.ok) {
+                    videoEntries[key] = VideoEntry(pick.url, System.currentTimeMillis())
+                    return pick.url
+                }
+                lastProblem = "probe ${probed.headStatus}/${probed.midStatus}/${probed.tailStatus}"
+                entries.remove(videoId) // the next round resolves again
+            }
+            throw IOException("Could not get a working video stream for $videoId after $MAX_ATTEMPTS attempts ($lastProblem)")
+        }
+    }
+
+    /** Drops the cached URLs so the next [get] resolves again. */
     fun invalidate(videoId: String) {
         entries.remove(videoId)
+        videoEntries.keys.removeIf { it.startsWith("$videoId@") }
     }
 
     private fun resolveValidated(videoId: String): String = runBlocking {
@@ -53,7 +93,7 @@ class StreamCache(
                         "firstByte=${probed.firstByteMs}ms ${if (probed.ok) "OK" else "POISONED"}",
                 )
                 if (probed.ok) {
-                    entries[videoId] = Entry(resolved.best.url, System.currentTimeMillis())
+                    entries[videoId] = Entry(resolved.best.url, resolved.videos, System.currentTimeMillis())
                     return@runBlocking resolved.best.url
                 }
                 lastProblem = "probe ${probed.headStatus}/${probed.midStatus}/${probed.tailStatus}"

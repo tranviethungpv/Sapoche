@@ -170,4 +170,23 @@ void main() {
     expect(snapshot.listeningCount, 2);
     expect(snapshot.awayCount, 1);
   });
+
+  test('the picture settings and the size of the picture are read', () {
+    final snapshot = RoomSnapshot.fromJson({
+      'room': 'X',
+      'video': true,
+      'videoHeight': 480,
+    });
+    expect(snapshot.video, isTrue);
+    expect(snapshot.videoHeight, 480);
+    expect(const RoomSnapshot().video, isFalse);
+    expect(const RoomSnapshot().videoHeight, 720);
+
+    final position = PlayerPosition.fromJson({
+      'videoWidth': 1280,
+      'videoHeight': 720,
+    });
+    expect((position.videoWidth, position.videoHeight), (1280, 720));
+    expect(PlayerPosition.fromJson({}).videoWidth, 0);
+  });
 }
