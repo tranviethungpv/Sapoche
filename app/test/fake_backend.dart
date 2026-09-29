@@ -60,6 +60,20 @@ class FakeBackend implements Backend {
       _record('add ${track.videoId} next=$playNext');
 
   @override
+  Future<void> addMany(List<Track> tracks, {bool playNext = false}) => _record(
+    'addMany ${tracks.map((t) => t.videoId).join(',')} next=$playNext',
+  );
+
+  @override
+  Future<void> setRepeat(Repeat mode) => _record('repeat ${mode.name}');
+
+  @override
+  Future<void> rename(String name) => _record('rename $name');
+
+  @override
+  Future<void> share(String text) => _record('share $text');
+
+  @override
   Future<void> remove(String itemId) => _record('remove $itemId');
 
   @override
@@ -75,8 +89,13 @@ class FakeBackend implements Backend {
     return searchResults;
   }
 
+  LinkResult? lookupResult;
+
   @override
-  Future<Track?> lookup(String text) async => null;
+  Future<LinkResult?> lookup(String text) async {
+    await _record('lookup $text');
+    return lookupResult;
+  }
 
   @override
   Future<void> setTrim(int ms) => _record('setTrim $ms');
@@ -89,12 +108,14 @@ RoomSnapshot sampleRoom({
   String phase = 'playing',
   int index = 0,
   int songs = 3,
+  Repeat repeat = Repeat.off,
 }) => RoomSnapshot(
   room: 'ABC234',
   link: Link.connected,
   you: 'me',
   phase: phase,
   index: index,
+  repeat: repeat,
   members: const [
     Member(id: 'me', name: 'Anna', ready: true),
     Member(id: 'b', name: 'Binh', ready: true),

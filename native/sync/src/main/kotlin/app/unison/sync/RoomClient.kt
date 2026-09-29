@@ -28,7 +28,7 @@ class RoomClient(
     baseUrl: String,
     roomCode: String,
     private val clientId: String,
-    private val name: String,
+    name: String,
     private val scope: CoroutineScope,
     private val clock: ClockSync,
     /** Monotonic local clock in ms; must be the clock the GroupSession uses. */
@@ -63,7 +63,18 @@ class RoomClient(
         loop = scope.launch { connectLoop() }
     }
 
+    /** Shown to the others; sent again on every reconnect. */
+    @Volatile
+    var name: String = name
+        private set
+
     fun send(text: String): Boolean = socket?.send(text) ?: false
+
+    /** Changes the display name without dropping the connection: the server accepts a second join. */
+    fun rename(newName: String) {
+        name = newName
+        send(Protocol.join(clientId, newName))
+    }
 
     /**
      * The device's network changed or came back: do not wait out the backoff, and replace a connection

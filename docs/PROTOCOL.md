@@ -12,6 +12,7 @@ Kết nối: WebSocket tới `wss://<worker>/room/<CODE>`. Mỗi phòng là mộ
   "startedAt": 1759140000000,
   "positionMs": 0,
   "epoch": 17,
+  "repeat": "off | all | one",
   "members": [{ "id": "u1", "name": "Ann", "ready": true }]
 }
 ```
@@ -39,13 +40,15 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 | `join` | `name`, `clientId` | Vào phòng; server trả `state` |
 | `ping` | `c0` | Đo đồng hồ |
 | `queue.add` | `videoId`, metadata, `next?` | Thêm bài; `next: true` chèn ngay sau bài đang phát (nếu phòng đang `idle` thì bài mới chỉ được thêm vào cuối và phát) |
+| `queue.addMany` | `tracks[]`, `next?` | Thêm nhiều bài một lần (playlist), tối đa 100 bài mỗi tin, bài sai `videoId` bị bỏ; cùng quy tắc `next` như `queue.add`. Một tin, một lần phát `state`, nên không dính giới hạn 20 tin mỗi giây |
 | `queue.remove` | `id` | Xóa bài |
 | `queue.clear` | | Xóa hết hàng đợi, phòng về `idle` |
 | `jump` | `id` | Phát ngay bài này từ đầu (qua barrier) |
 | `queue.move` | `id`, `toIndex` | Đổi vị trí |
 | `play` / `pause` | | Điều khiển |
 | `seek` | `positionMs` | Tua |
-| `next` / `prev` | | Chuyển bài |
+| `next` / `prev` | | Chuyển bài; `next` ở bài cuối khi `repeat=all` quay về bài đầu |
+| `repeat` | `mode` | `off`: dừng sau bài cuối. `all`: hết hàng đợi thì phát lại từ đầu. `one`: bài hiện tại hết thì phát lại chính nó (nút `next` vẫn sang bài kế). Giá trị lạ bị bỏ qua |
 | `ready` | `epoch` | Máy đã resolve xong và nạp đệm đủ, sẵn sàng phát |
 | `report` | `epoch`, `posMs`, `bufferMs` | Báo vị trí định kỳ (chỉ dùng chẩn đoán, 10 giây một lần) |
 | `resolveFailed` | `epoch`, `reason` | Máy không lấy được luồng. Tính như đã trả lời để không kìm các máy khác; nếu **mọi** máy trong phòng đều báo lỗi thì server gửi `error` mã `unplayable` và chuyển sang bài kế (hoặc `idle` nếu hết bài) thay vì chạy đồng hồ im lặng |
@@ -56,7 +59,7 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 
 | `t` | Trường | Ý nghĩa |
 |---|---|---|
-| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 2) |
+| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 3) |
 | `prepare` | `epoch`, bài, `seekToMs` | Chuẩn bị bài: resolve, nạp đệm, rồi gửi `ready` |
 | `start` | `epoch`, `startAt` (giờ server) | Bắt đầu phát tại thời điểm này |
 | `pause` | `epoch`, `positionMs` | Dừng tại vị trí |
@@ -83,6 +86,10 @@ Chuyển bài tự nhiên không đi qua barrier, để không có khoảng lặ
 3. Server nhận báo cáo hợp lệ đầu tiên (đúng `epoch`, đúng `itemId` là bài kế, mốc thời gian không quá 10 giây trước, bài hiện tại còn không quá 15 giây nữa là hết), tăng `epoch` và `index`, đặt `startedAt`, rồi gửi `advance` cho mọi máy. Báo cáo sau đó bị bỏ qua vì `epoch` đã cũ.
 4. Máy đã chuyển bài thì nhận gốc thời gian mới và tiếp tục chỉnh lệch. Máy sắp chuyển thì chờ trình phát của mình (tối đa 4 giây). Máy không có bài nạp trước thì nạp như người vào muộn.
 5. Nếu không máy nào báo `advanced`, đường cũ vẫn chạy: `ended` hoặc báo thức hết bài (thời lượng + 5 giây) dẫn tới `prepare` và barrier.
+
+### Phát lặp
+
+Phát lặp không đi đường gapless: hết bài thì client báo `ended` (hoặc báo thức hết bài chạy), server gọi `begin` lại đúng bài đó (`repeat=one`) hoặc bài đầu (`repeat=all` ở cuối hàng đợi), nên có một nhịp barrier khoảng 1,5 đến 4 giây giữa hai lượt. Khi `repeat=one` client không nạp trước bài kế (nếu không ExoPlayer sẽ tự sang bài kế) và server bỏ qua `advanced`.
 
 ## 6. Chỉnh lệch khi đang phát
 

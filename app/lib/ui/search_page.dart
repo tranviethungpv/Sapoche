@@ -28,6 +28,9 @@ class _SearchPageState extends State<SearchPage> {
   _Phase _phase = _Phase.idle;
   List<Track> _results = const [];
 
+  /// Set when the results are the songs of a pasted playlist link.
+  String? _playlistTitle;
+
   /// Ids added during this visit, so the row shows a check instead of the plus.
   final _added = <String>{};
 
@@ -50,6 +53,7 @@ class _SearchPageState extends State<SearchPage> {
       setState(() {
         _phase = _Phase.idle;
         _results = const [];
+        _playlistTitle = null;
       });
       return;
     }
@@ -64,16 +68,12 @@ class _SearchPageState extends State<SearchPage> {
     setState(() => _phase = _Phase.loading);
     try {
       final looksLikeLink = query.contains('youtu');
-      final List<Track> found;
-      if (looksLikeLink) {
-        final track = await _room.lookup(query);
-        found = track == null ? await _room.search(query) : [track];
-      } else {
-        found = await _room.search(query);
-      }
+      final link = looksLikeLink ? await _room.lookup(query) : null;
+      final found = link?.tracks ?? await _room.search(query);
       if (!mounted || generation != _generation) return;
       setState(() {
         _results = found;
+        _playlistTitle = link?.playlistTitle;
         _phase = _Phase.results;
       });
     } on Object {
@@ -82,21 +82,39 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
-  Future<void> _add(Track track, {bool playNext = false}) async {
+  Future<void> _add(Track track, {bool playNext = false}) => _addTracks(
+    [track],
+    playNext ? S.willPlayNext : S.addedToQueue,
+    playNext: playNext,
+  );
+
+  Future<void> _addAll({bool playNext = false}) =>
+      _addTracks(_results, S.playlistAdded, playNext: playNext);
+
+  Future<void> _addTracks(
+    List<Track> tracks,
+    String confirmation, {
+    required bool playNext,
+  }) async {
     HapticFeedback.selectionClick();
-    setState(() => _added.add(track.videoId));
-    await _room.add(track, playNext: playNext);
+    final ids = tracks.map((t) => t.videoId).toList();
+    setState(() => _added.addAll(ids));
+    if (tracks.length == 1) {
+      await _room.add(tracks.single, playNext: playNext);
+    } else {
+      await _room.addMany(tracks, playNext: playNext);
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(playNext ? S.willPlayNext : S.addedToQueue),
+          content: Text(confirmation),
           duration: const Duration(milliseconds: 1400),
         ),
       );
     Future.delayed(const Duration(milliseconds: 1800), () {
-      if (mounted) setState(() => _added.remove(track.videoId));
+      if (mounted) setState(() => _added.removeAll(ids));
     });
   }
 
@@ -199,9 +217,17 @@ class _SearchPageState extends State<SearchPage> {
           key: const ValueKey('results'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.only(top: 4, bottom: HomeShell.bottomInset),
-          itemCount: _results.length,
-          itemBuilder: (context, i) {
-            final track = _results[i];
+          itemCount: _results.length + (_playlistTitle == null ? 0 : 1),
+          itemBuilder: (context, index) {
+            if (_playlistTitle != null && index == 0) {
+              return _PlaylistHeader(
+                title: _playlistTitle!,
+                count: _results.length,
+                onAddAll: _addAll,
+                onPlayNext: () => _addAll(playNext: true),
+              );
+            }
+            final track = _results[index - (_playlistTitle == null ? 0 : 1)];
             return TrackTile(
               track: track,
               onTap: () => _add(track),
@@ -214,6 +240,65 @@ class _SearchPageState extends State<SearchPage> {
           },
         ),
       },
+    );
+  }
+}
+
+/// Top of a playlist's songs: what it is and how to add all of it.
+class _PlaylistHeader extends StatelessWidget {
+  const _PlaylistHeader({
+    required this.title,
+    required this.count,
+    required this.onAddAll,
+    required this.onPlayNext,
+  });
+
+  final String title;
+  final int count;
+  final VoidCallback onAddAll;
+  final VoidCallback onPlayNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.titleLarge,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            S.playlistSongs(count),
+            style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onAddAll,
+                  icon: const Icon(Icons.playlist_add_rounded),
+                  label: const Text(S.addAll),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: onPlayNext,
+                  child: const Text(S.playNext),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

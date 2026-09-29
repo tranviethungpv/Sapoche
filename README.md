@@ -9,7 +9,7 @@ App Android cho nhóm nhỏ. Mỗi điện thoại tự lấy luồng nhạc, c�
 
 ## Trạng thái
 
-Đang ở Giai đoạn 1: Prototype 1 (tách luồng và phát nền), xem [spikes/p1-resolver-player](spikes/p1-resolver-player).
+Giai đoạn 3 (khung app Flutter) đã xong: xem [app/](app/README.md) để chạy thử, [server/](server/README.md) cho server phòng. Các prototype cũ nằm ở [spikes/](spikes/).
 
 ## Lưu ý
 

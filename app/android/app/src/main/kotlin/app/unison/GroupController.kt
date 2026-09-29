@@ -12,6 +12,7 @@ import app.unison.sync.Connection
 import app.unison.sync.GroupSession
 import app.unison.sync.Protocol
 import app.unison.sync.RoomClient
+import app.unison.sync.TrackRef
 import app.unison.sync.ServerMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -135,6 +136,12 @@ class GroupController(
         join(Config.SERVER, code, name)
     }
 
+    /** Change the display name in the current room without interrupting playback. */
+    fun rename(name: String) {
+        prefs.edit().putString(KEY_ROOM_NAME, name).apply()
+        client?.rename(name)
+    }
+
     fun savedName(): String? = prefs.getString(KEY_ROOM_NAME, null)
     fun savedCode(): String? = prefs.getString(KEY_ROOM_CODE, null)
 
@@ -175,6 +182,8 @@ class GroupController(
     fun requestSeek(positionMs: Long) = send(Protocol.seek(positionMs))
     fun requestJump(itemId: String) = send(Protocol.jump(itemId))
     fun requestClearQueue() = send(Protocol.queueClear())
+    fun requestRepeat(mode: String) = send(Protocol.repeat(mode))
+    fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = send(Protocol.queueAddMany(tracks, playNext))
     fun requestRemove(itemId: String) = send(Protocol.queueRemove(itemId))
     fun requestMove(itemId: String, toIndex: Int) = send(Protocol.queueMove(itemId, toIndex))
 

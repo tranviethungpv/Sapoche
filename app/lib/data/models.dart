@@ -66,6 +66,39 @@ class Member {
   );
 }
 
+/// What happens when a song ends.
+enum Repeat {
+  off,
+  all,
+  one;
+
+  /// Order of the button: off, then repeat the queue, then repeat this song, then off again.
+  Repeat get next => Repeat.values[(index + 1) % Repeat.values.length];
+
+  static Repeat parse(String? name) =>
+      Repeat.values.asNameMap()[name] ?? Repeat.off;
+}
+
+/// What a pasted link turned out to be: one song, or the songs of a playlist.
+class LinkResult {
+  const LinkResult({required this.tracks, this.playlistTitle});
+
+  final List<Track> tracks;
+
+  /// Set when the link was a playlist.
+  final String? playlistTitle;
+
+  bool get isPlaylist => playlistTitle != null;
+
+  factory LinkResult.fromMap(Map<Object?, Object?> map) => LinkResult(
+    playlistTitle: map['title'] as String?,
+    tracks: [
+      for (final e in map['tracks'] as List<Object?>)
+        Track.fromMap(e as Map<Object?, Object?>),
+    ],
+  );
+}
+
 /// State of this device's connection to the room server.
 enum Link { none, connecting, connected, reconnecting, closed, unauthorized }
 
@@ -77,6 +110,7 @@ class RoomSnapshot {
     this.you,
     this.phase = 'idle',
     this.index = 0,
+    this.repeat = Repeat.off,
     this.queue = const [],
     this.members = const [],
     this.trimMs = 0,
@@ -90,6 +124,7 @@ class RoomSnapshot {
   /// One of idle, preparing, playing, paused.
   final String phase;
   final int index;
+  final Repeat repeat;
   final List<QueueEntry> queue;
   final List<Member> members;
   final int trimMs;
@@ -123,6 +158,7 @@ class RoomSnapshot {
     you: json['you'] as String?,
     phase: json['phase'] as String? ?? 'idle',
     index: (json['index'] as num?)?.toInt() ?? 0,
+    repeat: Repeat.parse(json['repeat'] as String?),
     trimMs: (json['trimMs'] as num?)?.toInt() ?? 0,
     queue: [
       for (final e in json['queue'] as List<dynamic>? ?? const [])

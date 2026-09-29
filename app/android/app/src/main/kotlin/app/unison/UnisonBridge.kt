@@ -1,12 +1,16 @@
 package app.unison
 
 import android.content.ComponentName
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import app.unison.core.TrackInfo
+import app.unison.core.YoutubeLinks
 import app.unison.sync.Protocol
+import app.unison.sync.TrackRef
 import com.google.common.util.concurrent.ListenableFuture
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.BinaryMessenger
@@ -47,6 +51,9 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
     private var controller: ListenableFuture<MediaController>? = null
     private var visible = false
 
+    /** An invitation that arrived before the UI was listening. */
+    private var pendingInvite: String? = null
+
     /** Last structural state sent, so an unchanged room is not sent again. */
     private var lastState: String? = null
 
@@ -60,6 +67,13 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
     private fun connectToService() {
         val token = SessionToken(activity, ComponentName(activity, PlaybackService::class.java))
         controller = MediaController.Builder(activity, token).buildAsync()
+    }
+
+    /** Handles a `unison://join/CODE` link; anything else is ignored. */
+    fun onLink(uri: Uri?) {
+        if (uri?.scheme != "unison" || uri.host != "join") return
+        val code = uri.lastPathSegment?.trim()?.uppercase()?.takeIf { INVITE_CODE.matches(it) } ?: return
+        if (sink != null) emit(UiJson.invite(code)) else pendingInvite = code
     }
 
     fun setVisible(value: Boolean) {
@@ -78,6 +92,10 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
     override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
         sink = events
         lastState = null
+        pendingInvite?.let {
+            pendingInvite = null
+            emit(UiJson.invite(it))
+        }
         observing?.cancel()
         observing = scope.launch {
             UnisonApp.group.collectLatest { group ->
@@ -162,6 +180,10 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
             )
             "search" -> return search(call.argument<String>("query").orEmpty())
             "lookup" -> return lookup(call.argument<String>("text").orEmpty())
+            "share" -> {
+                share(call.argument<String>("text").orEmpty())
+                return null
+            }
             "log" -> return EventLog.snapshot()
         }
 
@@ -178,6 +200,7 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
                 call.argument<String>("name").orEmpty(),
             )
             "leave" -> group.leave()
+            "rename" -> group.rename(call.argument<String>("name").orEmpty().trim())
             "setTrim" -> {
                 group.setTrim((call.argument<Number>("ms") ?: 0).toLong())
                 // The trim is part of the state the UI shows, but the room itself did not change
@@ -194,6 +217,19 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
                     "seek" -> group.requestSeek((call.argument<Number>("ms") ?: 0).toLong())
                     "jump" -> group.requestJump(call.argument<String>("id").orEmpty())
                     "clear" -> group.requestClearQueue()
+                    "repeat" -> group.requestRepeat(call.argument<String>("mode").orEmpty())
+                    "addMany" -> group.requestAddMany(
+                        call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map {
+                            TrackRef(
+                                videoId = it["videoId"] as String,
+                                title = it["title"] as String,
+                                artist = it["artist"] as? String ?: "",
+                                thumb = it["thumb"] as? String,
+                                durMs = (it["durMs"] as? Number)?.toLong() ?: 0L,
+                            )
+                        },
+                        call.argument<Boolean>("next") ?: false,
+                    )
                     "remove" -> group.requestRemove(call.argument<String>("id").orEmpty())
                     "move" -> group.requestMove(call.argument<String>("id").orEmpty(), call.argument<Int>("to") ?: 0)
                     "add" -> group.send(
@@ -228,10 +264,23 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
         return UnisonApp.resolver.search(query.trim(), SEARCH_LIMIT).map { it.toMap() }
     }
 
-    /** Turns a pasted YouTube link (or a bare video id) into a track, or null if it is neither. */
+    /**
+     * Turns pasted text into tracks: a playlist link gives its songs, a video link (or a bare video id)
+     * gives one song, anything else gives null.
+     */
     private suspend fun lookup(text: String): Map<String, Any?>? {
-        val id = videoIdOf(text.trim()) ?: return null
-        return UnisonApp.resolver.resolve(id).track.toMap()
+        val trimmed = text.trim()
+        YoutubeLinks.playlistId(trimmed)?.let { id ->
+            val playlist = UnisonApp.resolver.playlist(id, PLAYLIST_LIMIT)
+            return mapOf("title" to playlist.title, "tracks" to playlist.tracks.map { it.toMap() })
+        }
+        val id = YoutubeLinks.videoId(trimmed) ?: return null
+        return mapOf("title" to null, "tracks" to listOf(UnisonApp.resolver.resolve(id).track.toMap()))
+    }
+
+    private fun share(text: String) {
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        activity.startActivity(Intent.createChooser(send, null))
     }
 
     private fun TrackInfo.toMap() = mapOf(
@@ -246,18 +295,7 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
         const val POSITION_TICK_MS = 1_000L
         const val SERVICE_START_TIMEOUT_MS = 10_000L
         const val SEARCH_LIMIT = 20
-
-        private val LINK_PATTERNS = listOf(
-            Regex("""(?:youtube\.com|music\.youtube\.com)/watch\?(?:.*&)?v=([A-Za-z0-9_-]{11})"""),
-            Regex("""youtu\.be/([A-Za-z0-9_-]{11})"""),
-            Regex("""youtube\.com/(?:shorts|embed|live)/([A-Za-z0-9_-]{11})"""),
-        )
-        private val BARE_ID = Regex("""[A-Za-z0-9_-]{11}""")
-
-        fun videoIdOf(text: String): String? {
-            LINK_PATTERNS.forEach { pattern -> pattern.find(text)?.let { return it.groupValues[1] } }
-            // A bare id must not be an ordinary 11 letter word from a search
-            return text.takeIf { BARE_ID.matches(it) && it.any { c -> c.isDigit() || c == '_' || c == '-' } }
-        }
+        const val PLAYLIST_LIMIT = 50
+        private val INVITE_CODE = Regex("[A-Z0-9]{6}")
     }
 }

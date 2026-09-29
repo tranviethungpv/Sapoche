@@ -19,6 +19,12 @@ class PositionEvent extends BackendEvent {
   final PlayerPosition position;
 }
 
+/// Someone opened a `unison://join/CODE` link.
+class InviteEvent extends BackendEvent {
+  const InviteEvent(this.code);
+  final String code;
+}
+
 class ErrorEvent extends BackendEvent {
   const ErrorEvent(this.error);
   final ServerError error;
@@ -42,14 +48,21 @@ abstract class Backend {
   Future<void> jump(String itemId);
 
   Future<void> add(Track track, {bool playNext = false});
+  Future<void> addMany(List<Track> tracks, {bool playNext = false});
+  Future<void> setRepeat(Repeat mode);
   Future<void> remove(String itemId);
   Future<void> move(String itemId, int toIndex);
   Future<void> clear();
 
   Future<List<Track>> search(String query);
 
-  /// A track for a pasted YouTube link, or null when the text is not a link.
-  Future<Track?> lookup(String text);
+  /// The songs behind a pasted YouTube link, or null when the text is not a link.
+  Future<LinkResult?> lookup(String text);
+
+  Future<void> rename(String name);
+
+  /// Opens the system share sheet with [text].
+  Future<void> share(String text);
 
   Future<void> setTrim(int ms);
   Future<List<String>> log();
@@ -65,6 +78,7 @@ class NativeBackend implements Backend {
     final json = jsonDecode(raw as String) as Map<String, dynamic>;
     return switch (json['type']) {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
+      'invite' => InviteEvent(json['code'] as String),
       'error' => ErrorEvent(
         ServerError(json['code'] as String, json['message'] as String),
       ),
@@ -124,6 +138,25 @@ class NativeBackend implements Backend {
   });
 
   @override
+  Future<void> addMany(List<Track> tracks, {bool playNext = false}) =>
+      _call('addMany', {
+        'tracks': [
+          for (final t in tracks)
+            {
+              'videoId': t.videoId,
+              'title': t.title,
+              'artist': t.artist,
+              'thumb': t.thumb,
+              'durMs': t.durMs,
+            },
+        ],
+        'next': playNext,
+      });
+
+  @override
+  Future<void> setRepeat(Repeat mode) => _call('repeat', {'mode': mode.name});
+
+  @override
   Future<void> remove(String itemId) => _call('remove', {'id': itemId});
 
   @override
@@ -143,10 +176,16 @@ class NativeBackend implements Backend {
   }
 
   @override
-  Future<Track?> lookup(String text) async {
+  Future<LinkResult?> lookup(String text) async {
     final raw = await _call<Map<Object?, Object?>>('lookup', {'text': text});
-    return raw == null ? null : Track.fromMap(raw);
+    return raw == null ? null : LinkResult.fromMap(raw);
   }
+
+  @override
+  Future<void> rename(String name) => _call('rename', {'name': name});
+
+  @override
+  Future<void> share(String text) => _call('share', {'text': text});
 
   @override
   Future<void> setTrim(int ms) => _call('setTrim', {'ms': ms});

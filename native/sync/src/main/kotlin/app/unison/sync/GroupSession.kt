@@ -374,7 +374,9 @@ class GroupSession(
     /** Keep the player's gapless successor equal to the item after the current one, while following the room. */
     private fun syncPreload() {
         val s = state
-        val wanted = if (startedAtServer != null && s != null && s.current?.id == loadedItemId) s.queue.getOrNull(s.index + 1) else null
+        // Repeating one item is not gapless: it ends and the server starts it over through a barrier
+        val following = startedAtServer != null && s != null && s.current?.id == loadedItemId && s.repeat != "one"
+        val wanted = if (following) s?.queue?.getOrNull(s.index + 1) else null
         if (wanted?.id == preloaded?.id) return
         preloaded = wanted
         player.setNext(wanted)

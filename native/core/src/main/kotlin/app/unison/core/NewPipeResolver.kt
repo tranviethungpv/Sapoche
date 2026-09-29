@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.localization.Localization
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
@@ -61,6 +62,17 @@ class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : Strea
             all = sources,
             resolveMs = ms,
         )
+    }
+
+    override suspend fun playlist(playlistId: String, limit: Int): Playlist = withContext(Dispatchers.IO) {
+        val info = PlaylistInfo.getInfo(youtube, "https://www.youtube.com/playlist?list=$playlistId")
+        val tracks = info.relatedItems
+            .filterIsInstance<StreamInfoItem>()
+            // Deleted and private videos show up with no length
+            .filter { it.duration > 0 && it.url.contains("v=") }
+            .take(limit)
+            .map { it.toTrack() }
+        Playlist(info.name, tracks)
     }
 
     private fun StreamInfoItem.toTrack() = TrackInfo(

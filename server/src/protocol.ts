@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when a change is not backward compatible. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export interface QueueItem {
   id: string;
@@ -15,6 +15,18 @@ export interface QueueItem {
 
 export type Phase = "idle" | "preparing" | "playing" | "paused";
 
+/** What happens when an item ends: stop after the queue, start it over, or repeat the same item. */
+export type Repeat = "off" | "all" | "one";
+
+/** A song as clients send it; the server adds the id and who added it. */
+export interface TrackInput {
+  videoId: string;
+  title: string;
+  artist: string;
+  thumb?: string;
+  durMs: number;
+}
+
 /** Authoritative room state, persisted in Durable Object storage. */
 export interface RoomState {
   queue: QueueItem[];
@@ -25,6 +37,7 @@ export interface RoomState {
   startedAt: number;
   /** Position in the current item. Authoritative while paused or preparing. */
   positionMs: number;
+  repeat: Repeat;
   /** Bumped on every change that invalidates what clients were doing (track change, seek, play, pause). */
   epoch: number;
   /** Client ids that reported ready for the current epoch. Only meaningful while preparing. */
@@ -48,6 +61,8 @@ export type ClientMessage =
   | { t: "ping"; c0: number }
   /** With [next] the item goes right after the current one instead of at the end of the queue. */
   | { t: "queue.add"; videoId: string; title: string; artist: string; thumb?: string; durMs: number; next?: boolean }
+  /** Adds several songs in one go (a playlist). With [next] they go right after the current item. */
+  | { t: "queue.addMany"; tracks: TrackInput[]; next?: boolean }
   | { t: "queue.remove"; id: string }
   | { t: "queue.clear" }
   /** Start playing the queue item [id] from the beginning. */
@@ -58,6 +73,7 @@ export type ClientMessage =
   | { t: "seek"; positionMs: number }
   | { t: "next" }
   | { t: "prev" }
+  | { t: "repeat"; mode: Repeat }
   | { t: "ready"; epoch: number }
   | { t: "resolveFailed"; epoch: number; reason?: string }
   | { t: "ended"; epoch: number }

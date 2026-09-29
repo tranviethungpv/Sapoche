@@ -147,29 +147,33 @@ class _Body extends StatelessWidget {
                   ),
                 ),
                 const Spacer(flex: 2),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        current.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.headlineSmall,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            current.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.headlineSmall,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            current.artist,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.titleMedium?.copyWith(
+                              color: p.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        current.artist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.titleMedium?.copyWith(
-                          color: p.primary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    _RepeatButton(controller: controller),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 PlaybackBar(controller: controller),
@@ -205,6 +209,44 @@ class _Body extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Cycles off, repeat all, repeat this song. Lit up while repeating.
+class _RepeatButton extends StatelessWidget {
+  const _RepeatButton({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final mode = controller.snapshot.repeat;
+    final on = mode != Repeat.off;
+    return Tooltip(
+      message: switch (mode) {
+        Repeat.off => S.repeatOff,
+        Repeat.all => S.repeatAll,
+        Repeat.one => S.repeatOne,
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(left: 12),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: on ? p.primaryContainer : Colors.transparent,
+        ),
+        child: IconButton(
+          onPressed: controller.cycleRepeat,
+          icon: Icon(
+            mode == Repeat.one
+                ? Icons.repeat_one_rounded
+                : Icons.repeat_rounded,
+          ),
+          color: on ? p.onPrimaryContainer : p.textTertiary,
+        ),
+      ),
     );
   }
 }

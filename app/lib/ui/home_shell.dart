@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'room_page.dart';
@@ -26,22 +27,57 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _tab = 0;
   StreamSubscription<String>? _messages;
+  RoomController? _watched;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _messages ??= AppScope.roomOf(context).messages.listen((text) {
+    if (_messages != null) return;
+    final room = _watched = AppScope.roomOf(context);
+    _messages = room.messages.listen((text) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(text)));
     });
+    room.invite.addListener(_onInvite);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onInvite());
   }
 
   @override
   void dispose() {
+    _watched?.invite.removeListener(_onInvite);
     _messages?.cancel();
     super.dispose();
+  }
+
+  /// An invitation link arrived while in a room: switch only if it is another room and the user agrees.
+  Future<void> _onInvite() async {
+    final room = AppScope.roomOf(context);
+    final code = room.invite.value;
+    if (code == null || !mounted) return;
+    room.invite.value = null;
+    if (code == room.snapshot.room) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(S.switchRoom),
+        content: Text(S.inviteSwitch(code)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(S.join),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      room.join(code, room.snapshot.me?.name ?? room.profile.name ?? '');
+    }
   }
 
   void _select(int tab) {

@@ -20,4 +20,10 @@ dependencies {
     api("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
     api("com.squareup.okhttp3:okhttp:5.5.0")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+
+    testImplementation(kotlin("test"))
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

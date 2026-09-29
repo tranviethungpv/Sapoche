@@ -159,6 +159,11 @@ class _Header extends StatelessWidget {
             children: [
               Expanded(child: Text(S.tabRoom, style: theme.headlineLarge)),
               _CodeChip(code: snapshot.room ?? ''),
+              IconButton(
+                onPressed: AppScope.roomOf(context).shareInvite,
+                tooltip: S.invite,
+                icon: Icon(Icons.ios_share_rounded, color: p.primary),
+              ),
             ],
           ),
           const SizedBox(height: 12),

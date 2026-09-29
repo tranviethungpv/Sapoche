@@ -96,6 +96,17 @@ class SettingsPage extends StatelessWidget {
                     value: S.listening(snapshot.members.length),
                   ),
                   _Row(
+                    label: S.yourName,
+                    value: snapshot.me?.name ?? '',
+                    trailing: Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: context.palette.textSecondary,
+                    ),
+                    onTap: () => _rename(context, model.room),
+                  ),
+                  _Row(label: S.invite, onTap: model.room.shareInvite),
+                  _Row(
                     label: S.leaveRoom,
                     destructive: true,
                     onTap: () => _confirmLeave(context, model.room),
@@ -129,6 +140,14 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  Future<void> _rename(BuildContext context, RoomController room) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _RenameDialog(initial: room.snapshot.me?.name ?? ''),
+    );
+    if (name != null && name.isNotEmpty) room.rename(name);
+  }
+
   Future<void> _confirmLeave(BuildContext context, RoomController room) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -151,6 +170,52 @@ class SettingsPage extends StatelessWidget {
       ),
     );
     if (confirmed == true) room.leave();
+  }
+}
+
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final _name = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _name.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text(S.rename),
+      content: TextField(
+        controller: _name,
+        autofocus: true,
+        maxLength: 24,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(
+          hintText: S.yourName,
+          counterText: '',
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text(S.cancel),
+        ),
+        TextButton(onPressed: _submit, child: const Text(S.save)),
+      ],
+    );
   }
 }
 

@@ -18,6 +18,7 @@ object UiJson {
             .put("connection", connectionName(view))
             .put("you", snap.you ?: JSONObject.NULL)
             .put("phase", state?.phase ?: "idle")
+            .put("repeat", state?.repeat ?: "off")
             .put("index", state?.index ?: 0)
             .put("trimMs", trimMs)
             .put("queue", JSONArray().also { array -> state?.queue?.forEach { array.put(item(it)) } })
@@ -43,6 +44,9 @@ object UiJson {
             .put("driftMs", view.snapshot.driftMs ?: JSONObject.NULL)
             .put("speed", view.snapshot.speed.toDouble())
             .toString()
+
+    /** An invitation link was opened: the UI offers to join that room. */
+    fun invite(code: String): String = JSONObject().put("type", "invite").put("code", code).toString()
 
     fun error(code: String, message: String): String =
         JSONObject().put("type", "error").put("code", code).put("message", message).toString()

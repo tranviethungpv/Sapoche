@@ -60,4 +60,4 @@ unison.serverUrl=https://your-worker.example.workers.dev
 - Xem log trực tiếp: `npx wrangler tail`.
 - Phòng trống tự xóa sau 24 giờ; mỗi phòng chứa tối đa 12 người và 200 bài, mỗi kết nối tối đa 20 tin nhắn mỗi giây.
 - Ước tính tải: một thiết bị gửi khoảng 2 ping mỗi phút (đo đồng hồ) và vài tin mỗi bài, còn ghi bộ nhớ khoảng 10 lần mỗi bài, nên nhóm 5 người nghe cả ngày vẫn thấp hơn nhiều so với hạn mức 100.000 yêu cầu và 100.000 lượt ghi mỗi ngày (tin WebSocket tính 20 tin bằng 1 yêu cầu).
-- Bản triển khai hiện tại: giao thức phiên bản 2 (`GET /health` báo `protocol`, tin `state` cũng mang trường này).
+- Bản triển khai hiện tại: giao thức phiên bản 3 (`GET /health` báo `protocol`, tin `state` cũng mang trường này).

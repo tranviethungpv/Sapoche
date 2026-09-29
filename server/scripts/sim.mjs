@@ -94,7 +94,7 @@ async function main() {
   console.log("Health and room creation");
   const health = await fetch(`${BASE}/health`);
   const healthBody = await health.json();
-  check("GET /health is ok and reports the protocol version", health.ok && healthBody.ok === true && healthBody.protocol >= 2, JSON.stringify(healthBody));
+  check("GET /health is ok and reports the protocol version", health.ok && healthBody.ok === true && healthBody.protocol >= 3, JSON.stringify(healthBody));
   if (KEY) await authSection();
   const created = await (await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders })).json();
   check("POST /rooms returns a 6 character code", /^[A-Z2-9]{6}$/.test(created.code), JSON.stringify(created));
@@ -223,6 +223,7 @@ async function main() {
   await gaplessSection();
   await queueSection();
   await unplayableSection();
+  await playlistAndRepeatSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
@@ -422,6 +423,67 @@ async function staleSection(staleMs) {
   const start = await a.waitFor((m) => m.t === "start", 4000);
   check("a silent device no longer holds the barrier", start._at - t0 < 1500, `waited ${start._at - t0}ms`);
   [a, b, ghost].forEach((x) => x.close());
+}
+
+/** Adding a playlist in one message, and the three repeat modes. */
+async function playlistAndRepeatSection() {
+  console.log("Playlist and repeat");
+  const [a, b] = await freshRoom(["Pa", "Pb"]);
+  const track = (videoId, title) => ({ videoId, title, artist: "x", durMs: 200000 });
+
+  a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One"), { videoId: "bad", title: "Bad" }, track(VIDEO_B, "Two"), track(VIDEO_C, "Three")] });
+  const first = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  const withAll = await a.waitFor((m) => m.t === "state" && m.state.queue.length === 3);
+  check("a playlist arrives in order and invalid entries are dropped", withAll.state.queue.map((q) => q.title).join() === "One,Two,Three");
+  check("adding to an idle room starts the first added item", first[0].item.title === "One");
+
+  a.send({ t: "queue.addMany", tracks: [track(VIDEO_B, "Next A"), track(VIDEO_C, "Next B")], next: true });
+  const placed = await a.waitFor((m) => m.t === "state" && m.state.queue.length === 5);
+  check("playlist added as next lands right after the current item", placed.state.queue.map((q) => q.title).join() === "One,Next A,Next B,Two,Three");
+
+  const big = Array.from({ length: 150 }, (_, i) => track(VIDEO_A, `Song ${i}`));
+  a.send({ t: "queue.addMany", tracks: big });
+  const capped = await a.waitFor((m) => m.t === "state" && m.state.queue.length === 105);
+  check("one message adds at most 100 songs", capped.state.queue.length === 105);
+
+  a.send({ t: "queue.clear" });
+  await a.waitFor((m) => m.t === "state" && m.state.queue.length === 0);
+  check("repeat defaults to off", capped.state.repeat === "off");
+
+  // Repeat one: the same item plays again through a barrier
+  a.send({ t: "queue.addMany", tracks: [{ ...track(VIDEO_A, "Short"), durMs: 6000 }, track(VIDEO_B, "Other")] });
+  const p1 = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  a.send({ t: "repeat", mode: "one" });
+  const one = await a.waitFor((m) => m.t === "state" && m.state.repeat === "one");
+  check("repeat mode is broadcast", one.state.repeat === "one");
+  await all([a, b], (x) => x.send({ t: "ready", epoch: p1[0].epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  a.send({ t: "advanced", epoch: p1[0].epoch, itemId: one.state.queue[1].id, startedAt: Date.now() });
+  check("a gapless advance is ignored while repeating one", await a.stays((m) => m.t === "advance", 500));
+  await sleep(5200); // past the item's expected end
+  a.send({ t: "ended", epoch: p1[0].epoch });
+  const again = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare", 4000));
+  check("repeat one prepares the same item again", again[0].item.title === "Short" && again[0].index === 0);
+
+  // The next button still moves on, and repeat all wraps around at the end of the queue
+  await all([a, b], (x) => x.send({ t: "ready", epoch: again[0].epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  a.send({ t: "next" });
+  const second = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  check("next skips ahead even with repeat one", second[0].item.title === "Other");
+  a.send({ t: "repeat", mode: "all" });
+  await a.waitFor((m) => m.t === "state" && m.state.repeat === "all");
+  a.send({ t: "next" });
+  const wrapped = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  check("repeat all wraps to the first item after the last", wrapped[0].item.title === "Short" && wrapped[0].index === 0);
+
+  a.send({ t: "repeat", mode: "off" });
+  await a.waitFor((m) => m.t === "state" && m.state.repeat === "off");
+  await sleep(200);
+  a.inbox.length = 0; // leftovers of the earlier track changes
+  a.send({ t: "repeat", mode: "sideways" });
+  check("an unknown repeat mode is ignored", await a.stays((m) => m.t === "state", 300));
+  [a, b].forEach((x) => x.close());
 }
 
 main().catch((error) => {

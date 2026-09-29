@@ -38,6 +38,14 @@ abstract final class S {
   static const copyCode = 'Copy code';
   static const codeCopied = 'Room code copied';
   static const removed = 'Removed from queue';
+  static const invite = 'Invite friends';
+  static String inviteText(String code) =>
+      'Join my room on Unison with the code $code\nunison://join/$code';
+  static String inviteSwitch(String code) => 'Leave this room and join $code?';
+  static const switchRoom = 'Switch room';
+  static const repeatOff = 'Repeat off';
+  static const repeatAll = 'Repeat all';
+  static const repeatOne = 'Repeat this song';
 
   // Connection
   static const reconnecting = 'Reconnecting…';
@@ -52,6 +60,10 @@ abstract final class S {
       'Type a song or artist, or paste a YouTube link.';
   static const noResults = 'No results';
   static const searchFailed = 'Search failed. Check your connection.';
+  static String playlistSongs(int n) =>
+      n == 1 ? 'Playlist · 1 song' : 'Playlist · $n songs';
+  static const addAll = 'Add all';
+  static const playlistAdded = 'Playlist added';
   static const playNext = 'Play next';
   static const addToQueue = 'Add to queue';
   static const addedToQueue = 'Added to queue';
@@ -78,6 +90,8 @@ abstract final class S {
       'If this phone is always a little early or late compared with the others, nudge it here.';
   static const reset = 'Reset';
   static const room = 'Room';
+  static const rename = 'Rename';
+  static const save = 'Save';
   static const leaveRoom = 'Leave room';
   static const leaveQuestion =
       'Leave this room? You can join again with the code.';

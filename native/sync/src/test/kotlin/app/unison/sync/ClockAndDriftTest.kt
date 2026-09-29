@@ -125,6 +125,28 @@ class ProtocolTest {
     }
 
     @Test
+    fun `builds the playlist and repeat messages`() {
+        assertEquals("""{"t":"repeat","mode":"one"}""", Protocol.repeat("one"))
+        val many = Protocol.queueAddMany(
+            listOf(TrackRef("bNp9pn0ni3I", "A", "X", null, 1000), TrackRef("UoXllQoqEBY", "B", "Y", "http://t/1.jpg", 2000)),
+            playNext = true,
+        )
+        assertEquals(
+            """{"t":"queue.addMany","tracks":[{"videoId":"bNp9pn0ni3I","title":"A","artist":"X","durMs":1000},""" +
+                """{"videoId":"UoXllQoqEBY","title":"B","artist":"Y","thumb":"http://t/1.jpg","durMs":2000}],"next":true}""",
+            many,
+        )
+    }
+
+    @Test
+    fun `repeat defaults to off for a server that does not send it`() {
+        val text = """{"t":"state","serverNow":1,"you":"a","state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":[]}"""
+        assertEquals("off", (Protocol.parse(text) as ServerMessage.State).state.repeat)
+        val one = text.replace(""""epoch":0}""", """"epoch":0,"repeat":"one"}""")
+        assertEquals("one", (Protocol.parse(one) as ServerMessage.State).state.repeat)
+    }
+
+    @Test
     fun `an older server without a protocol field still parses`() {
         val text = """{"t":"state","serverNow":1,"you":"a","state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":[]}"""
         val msg = Protocol.parse(text)

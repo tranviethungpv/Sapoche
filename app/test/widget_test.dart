@@ -15,6 +15,11 @@ Future<(FakeBackend, RoomController)> pumpApp(
   WidgetTester tester, {
   ThemeMode mode = ThemeMode.light,
 }) async {
+  // A tall phone-shaped window; the default 800x600 one is not what the app runs on. Test text is
+  // drawn with the wide Ahem font, so it is 540 dp wide instead of the usual 360 to avoid false overflows.
+  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.devicePixelRatio = 2;
+  addTearDown(tester.view.reset);
   SharedPreferences.setMockInitialValues({'theme_mode': mode.name});
   final backend = FakeBackend();
   final room = RoomController(backend);
@@ -117,4 +122,117 @@ void main() {
       });
     });
   }
+
+  testWidgets('pasting a playlist link offers to add every song', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    backend.lookupResult = const LinkResult(
+      playlistTitle: 'Road trip',
+      tracks: [
+        Track(videoId: 'aaaaaaaaaaa', title: 'First', artist: 'x', durMs: 1000),
+        Track(
+          videoId: 'bbbbbbbbbbb',
+          title: 'Second',
+          artist: 'x',
+          durMs: 1000,
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Search'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.enterText(
+      find.byType(TextField),
+      'https://www.youtube.com/playlist?list=PLabcdefghijk',
+    );
+    await tester.pump(const Duration(milliseconds: 600)); // debounce
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Road trip'), findsOneWidget);
+    expect(find.text('Playlist · 2 songs'), findsOneWidget);
+    await tester.tap(find.text('Add all'));
+    await tester.pump();
+    expect(backend.calls.last, 'addMany aaaaaaaaaaa,bbbbbbbbbbb next=false');
+    await tester.pump(
+      const Duration(seconds: 3),
+    ); // let the confirmation timers finish
+  });
+
+  testWidgets('the repeat button on the full player asks for the next mode', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byType(MiniPlayer));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    await tester.tap(find.byIcon(Icons.repeat_rounded));
+    await tester.pump();
+    expect(backend.calls.last, 'repeat all');
+
+    backend.emit(StateEvent(sampleRoom(repeat: Repeat.one)));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byIcon(Icons.repeat_one_rounded), findsOneWidget);
+  });
+
+  testWidgets('an invitation link opens the join sheet with its code', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(const StateEvent(RoomSnapshot()));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    backend.emit(const InviteEvent('K2A5RF'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500)); // the sheet slides in
+    expect(find.text('K2A5RF'), findsOneWidget);
+
+    await tester.tap(find.text('Join').last);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(backend.calls.last, 'join K2A5RF Anna');
+  });
+
+  testWidgets('an invitation to another room asks before switching', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    backend.emit(const InviteEvent('ZZZ999'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Leave this room and join ZZZ999?'), findsOneWidget);
+    await tester.tap(find.text('Join'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(backend.calls.last, 'join ZZZ999 Anna');
+  });
+
+  testWidgets('the same room in an invitation does nothing', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    backend.emit(const InviteEvent('ABC234'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Switch room'), findsNothing);
+  });
+
+  testWidgets('the name can be changed from settings', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Your name'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Anh');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'rename Anh');
+  });
 }

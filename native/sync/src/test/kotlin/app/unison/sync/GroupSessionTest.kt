@@ -419,6 +419,29 @@ class GroupSessionTest {
     }
 
     @Test
+    fun `no successor is queued while repeating one item`() = runTest {
+        val h = harness()
+        val two = { repeat: String ->
+            ServerMessage.State(
+                serverNow = 0, you = "dev-a", members = emptyList(),
+                state = RoomState(listOf(item, item2), 0, "playing", h.serverNow() - 5000, 0, 1, repeat),
+            )
+        }
+        h.session.onMessage(two("off"))
+        runCurrent()
+        step(3000)
+        assertEquals(item2, h.player.queuedNext, "the successor is preloaded as usual")
+
+        h.session.onMessage(two("one"))
+        runCurrent()
+        assertEquals(null, h.player.queuedNext, "repeating one item must not slip into the next one")
+
+        h.session.onMessage(two("all"))
+        runCurrent()
+        assertEquals(item2, h.player.queuedNext)
+    }
+
+    @Test
     fun `no successor is queued after the last item`() = runTest {
         val h = harness()
         h.session.onMessage(state("preparing", 1))

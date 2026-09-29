@@ -158,4 +158,54 @@ void main() {
     expect(await controller.createRoom('  Anna '), isNull);
     expect(backend.calls.last, 'createRoom Anna');
   });
+
+  test('the repeat button cycles off, all, one, off', () async {
+    backend.emit(StateEvent(sampleRoom()));
+    await settle();
+    await controller.cycleRepeat();
+    expect(backend.calls.last, 'repeat all');
+
+    backend.emit(StateEvent(sampleRoom(repeat: Repeat.all)));
+    await settle();
+    await controller.cycleRepeat();
+    expect(backend.calls.last, 'repeat one');
+
+    backend.emit(StateEvent(sampleRoom(repeat: Repeat.one)));
+    await settle();
+    await controller.cycleRepeat();
+    expect(backend.calls.last, 'repeat off');
+  });
+
+  test('an invitation link is handed to the UI once', () async {
+    backend.emit(const InviteEvent('K2A5RF'));
+    await settle();
+    expect(controller.invite.value, 'K2A5RF');
+  });
+
+  test('sharing sends the code and a link that opens the app', () async {
+    backend.emit(StateEvent(sampleRoom()));
+    await settle();
+    await controller.shareInvite();
+    expect(backend.calls.last, contains('ABC234'));
+    expect(backend.calls.last, contains('unison://join/ABC234'));
+  });
+
+  test('sharing does nothing outside a room', () async {
+    await controller.shareInvite();
+    expect(backend.calls.where((c) => c.startsWith('share')), isEmpty);
+  });
+
+  test('renaming trims the name', () async {
+    await controller.rename('  Binh ');
+    expect(backend.calls.last, 'rename Binh');
+  });
+
+  test('a playlist goes to the room in one call', () async {
+    const tracks = [
+      Track(videoId: 'aaaaaaaaaaa', title: 'A', artist: 'x', durMs: 1),
+      Track(videoId: 'bbbbbbbbbbb', title: 'B', artist: 'x', durMs: 1),
+    ];
+    await controller.addMany(tracks, playNext: true);
+    expect(backend.calls.last, 'addMany aaaaaaaaaaa,bbbbbbbbbbb next=true');
+  });
 }

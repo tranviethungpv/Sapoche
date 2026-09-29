@@ -18,20 +18,34 @@ class _WelcomePageState extends State<WelcomePage> {
   final _name = TextEditingController();
   bool _busy = false;
   bool _prefilled = false;
+  RoomController? _watched;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_prefilled) {
       _prefilled = true;
-      _name.text = AppScope.roomOf(context).profile.name ?? '';
+      final room = _watched = AppScope.roomOf(context);
+      _name.text = room.profile.name ?? '';
+      room.invite.addListener(_onInvite);
+      // A link that opened the app is already waiting
+      WidgetsBinding.instance.addPostFrameCallback((_) => _onInvite());
     }
   }
 
   @override
   void dispose() {
+    _watched?.invite.removeListener(_onInvite);
     _name.dispose();
     super.dispose();
+  }
+
+  /// An invitation link arrived: ask for the code sheet with the code already in it.
+  void _onInvite() {
+    final code = _room.invite.value;
+    if (code == null || !mounted) return;
+    _room.invite.value = null;
+    _join(code);
   }
 
   RoomController get _room => AppScope.roomOf(context);
@@ -54,12 +68,12 @@ class _WelcomePageState extends State<WelcomePage> {
     if (error != null) _tell(error);
   }
 
-  Future<void> _join() async {
+  Future<void> _join([String? invitedCode]) async {
     if (!_requireName()) return;
     final code = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => const _CodeSheet(),
+      builder: (_) => _CodeSheet(initialCode: invitedCode),
     );
     if (code == null || !mounted) return;
     setState(() => _busy = true);
@@ -201,7 +215,10 @@ class _LogoState extends State<_Logo> with SingleTickerProviderStateMixin {
 }
 
 class _CodeSheet extends StatefulWidget {
-  const _CodeSheet();
+  const _CodeSheet({this.initialCode});
+
+  /// Filled in when the sheet was opened by an invitation link.
+  final String? initialCode;
 
   @override
   State<_CodeSheet> createState() => _CodeSheetState();
@@ -215,6 +232,10 @@ class _CodeSheetState extends State<_CodeSheet> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialCode != null) {
+      _code.text = widget.initialCode!;
+      return;
+    }
     // A code on the clipboard is the common case: offer it right away
     Clipboard.getData(Clipboard.kTextPlain).then((data) {
       final text = data?.text?.trim().toUpperCase() ?? '';

@@ -30,6 +30,9 @@ class RoomController extends ChangeNotifier {
   int? _seekTarget;
   Timer? _seekTimer;
 
+  /// A room code from an invitation link that the UI has not dealt with yet.
+  final ValueNotifier<String?> invite = ValueNotifier(null);
+
   final _messages = StreamController<String>.broadcast();
 
   /// Short notices for a snackbar: server errors, failed actions.
@@ -62,6 +65,8 @@ class RoomController extends ChangeNotifier {
           ..reset()
           ..start();
         player.value = position;
+      case InviteEvent(:final code):
+        invite.value = code;
       case ErrorEvent(:final error):
         final text = _describe(error);
         if (text != null) _messages.add(text);
@@ -127,6 +132,16 @@ class RoomController extends ChangeNotifier {
 
   Future<void> leave() => _run(_backend.leave);
 
+  /// Changes the name the others see; playback carries on.
+  Future<void> rename(String name) => _run(() => _backend.rename(name.trim()));
+
+  /// Sends the room code (and a link that opens the app on it) through the share sheet.
+  Future<void> shareInvite() {
+    final code = _snapshot.room;
+    if (code == null) return Future.value();
+    return _run(() => _backend.share(S.inviteText(code)));
+  }
+
   // ------------------------------------------------------------------ transport
 
   Future<void> togglePlay() => _run(isPlaying ? _backend.pause : _backend.play);
@@ -153,11 +168,16 @@ class RoomController extends ChangeNotifier {
   Future<void> move(QueueEntry entry, int toIndex) =>
       _run(() => _backend.move(entry.id, toIndex));
   Future<void> clearQueue() => _run(_backend.clear);
+  Future<void> addMany(List<Track> tracks, {bool playNext = false}) =>
+      _run(() => _backend.addMany(tracks, playNext: playNext));
+
+  Future<void> cycleRepeat() =>
+      _run(() => _backend.setRepeat(_snapshot.repeat.next));
 
   // ------------------------------------------------------------------ search and settings
 
   Future<List<Track>> search(String query) => _backend.search(query);
-  Future<Track?> lookup(String text) => _backend.lookup(text);
+  Future<LinkResult?> lookup(String text) => _backend.lookup(text);
 
   Future<void> setTrim(int ms) => _run(() => _backend.setTrim(ms));
   Future<List<String>> log() => _backend.log();
@@ -178,6 +198,7 @@ class RoomController extends ChangeNotifier {
     _seekTimer?.cancel();
     _messages.close();
     player.dispose();
+    invite.dispose();
     super.dispose();
   }
 }

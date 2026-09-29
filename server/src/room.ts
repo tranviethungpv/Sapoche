@@ -5,8 +5,10 @@ import type {
   Member,
   PublicState,
   QueueItem,
+  Repeat,
   RoomState,
   ServerMessage,
+  TrackInput,
 } from "./protocol";
 
 /** How far in the future a start is scheduled, so every device has time to receive and arm it. */
@@ -31,7 +33,9 @@ const EMPTY_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
 const MAX_MEMBERS = 12;
 const MAX_QUEUE = 200;
-const MAX_MESSAGE_CHARS = 4096;
+const MAX_MESSAGE_CHARS = 32_768;
+/** Songs accepted from one queue.addMany message. */
+const MAX_ADD_MANY = 100;
 const MAX_MESSAGES_PER_SECOND = 20;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
@@ -49,6 +53,7 @@ function defaultState(): RoomState {
     phase: "idle",
     startedAt: 0,
     positionMs: 0,
+    repeat: "off",
     epoch: 0,
     readyIds: [],
     failedIds: [],
@@ -83,7 +88,7 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     if (typeof raw !== "string" || raw.length > MAX_MESSAGE_CHARS) {
-      return this.fail(ws, "bad_message", "Message must be text of at most 4096 characters");
+      return this.fail(ws, "bad_message", `Message must be text of at most ${MAX_MESSAGE_CHARS} characters`);
     }
     if (!this.allow(ws)) return this.fail(ws, "rate_limited", "Too many messages");
     this.touch(ws);
@@ -109,6 +114,7 @@ export class Room extends DurableObject<Env> {
 
     switch (msg.t) {
       case "queue.add": return this.onQueueAdd(me, msg);
+      case "queue.addMany": return this.onQueueAddMany(me, msg);
       case "queue.remove": return this.onQueueRemove(msg.id);
       case "queue.clear": return this.onQueueClear();
       case "jump": return this.onJump(msg.id);
@@ -118,6 +124,7 @@ export class Room extends DurableObject<Env> {
       case "seek": return this.onSeek(msg.positionMs);
       case "next": return this.onNext();
       case "prev": return this.onPrev();
+      case "repeat": return this.onRepeat(msg.mode);
       case "ready": return this.onReady(me.clientId, msg.epoch);
       case "resolveFailed": return this.onResolveFailed(me.clientId, msg.epoch);
       case "ended": return this.onEnded(msg.epoch);
@@ -185,21 +192,41 @@ export class Room extends DurableObject<Env> {
   // ------------------------------------------------------------------ queue
 
   private async onQueueAdd(me: Attachment, msg: Extract<ClientMessage, { t: "queue.add" }>): Promise<void> {
-    if (!VIDEO_ID.test(msg.videoId ?? "")) return this.failAll(me, "bad_video", "Invalid videoId");
-    if (this.s.queue.length >= MAX_QUEUE) return this.failAll(me, "queue_full", "Queue is full");
+    return this.addTracks(me, [msg], msg.next === true);
+  }
 
-    const item: QueueItem = {
-      id: crypto.randomUUID(),
-      videoId: msg.videoId,
-      title: String(msg.title ?? "").slice(0, 200),
-      artist: String(msg.artist ?? "").slice(0, 100),
-      thumb: typeof msg.thumb === "string" ? msg.thumb.slice(0, 300) : undefined,
-      durMs: clamp(Number(msg.durMs) || 0, 0, 12 * 3600 * 1000),
-      addedBy: me.clientId,
-    };
-    // "Play next" only makes sense while something is playing; otherwise the new item is simply the last
-    const at = msg.next === true && this.s.phase !== "idle" ? this.s.index + 1 : this.s.queue.length;
-    this.s.queue.splice(at, 0, item);
+  private async onQueueAddMany(me: Attachment, msg: Extract<ClientMessage, { t: "queue.addMany" }>): Promise<void> {
+    if (!Array.isArray(msg.tracks)) return this.failAll(me, "bad_message", "queue.addMany needs tracks");
+    return this.addTracks(me, msg.tracks.slice(0, MAX_ADD_MANY), msg.next === true);
+  }
+
+  /** Puts valid tracks on the queue in the given order, at the end or right after the current item. */
+  private async addTracks(me: Attachment, tracks: TrackInput[], playNext: boolean): Promise<void> {
+    const items: QueueItem[] = [];
+    for (const track of tracks) {
+      if (!VIDEO_ID.test(track?.videoId ?? "")) {
+        if (tracks.length === 1) return this.failAll(me, "bad_video", "Invalid videoId");
+        continue;
+      }
+      if (this.s.queue.length + items.length >= MAX_QUEUE) {
+        this.failAll(me, "queue_full", "Queue is full");
+        break;
+      }
+      items.push({
+        id: crypto.randomUUID(),
+        videoId: track.videoId,
+        title: String(track.title ?? "").slice(0, 200),
+        artist: String(track.artist ?? "").slice(0, 100),
+        thumb: typeof track.thumb === "string" ? track.thumb.slice(0, 300) : undefined,
+        durMs: clamp(Number(track.durMs) || 0, 0, 12 * 3600 * 1000),
+        addedBy: me.clientId,
+      });
+    }
+    if (items.length === 0) return;
+
+    // "Play next" only makes sense while something is playing; otherwise the new items simply go last
+    const at = playNext && this.s.phase !== "idle" ? this.s.index + 1 : this.s.queue.length;
+    this.s.queue.splice(at, 0, ...items);
 
     if (this.s.phase === "idle") {
       await this.begin(at, 0);
@@ -336,7 +363,22 @@ export class Room extends DurableObject<Env> {
   private async onNext(): Promise<void> {
     if (this.s.phase === "idle") return;
     if (this.s.index + 1 < this.s.queue.length) return this.begin(this.s.index + 1, 0);
+    if (this.s.repeat === "all") return this.begin(0, 0);
     return this.goIdle();
+  }
+
+  /** The current item played to its end: repeat it, or move on like the next button does. */
+  private async onFinished(): Promise<void> {
+    if (this.s.repeat === "one" && this.s.queue[this.s.index]) return this.begin(this.s.index, 0);
+    return this.onNext();
+  }
+
+  private async onRepeat(mode: Repeat): Promise<void> {
+    if (mode !== "off" && mode !== "all" && mode !== "one") return;
+    if (mode === this.s.repeat) return;
+    this.s.repeat = mode;
+    await this.save();
+    this.broadcastState();
   }
 
   private async onPrev(): Promise<void> {
@@ -352,7 +394,7 @@ export class Room extends DurableObject<Env> {
     const item = this.s.queue[this.s.index];
     // Ignore reports that arrive implausibly early
     if (item && item.durMs > 0 && this.currentPositionMs() < item.durMs - 5000) return;
-    return this.onNext();
+    return this.onFinished();
   }
 
   /**
@@ -361,6 +403,7 @@ export class Room extends DurableObject<Env> {
    */
   private async onAdvanced(epoch: number, itemId: string, startedAt: number): Promise<void> {
     if (this.s.phase !== "playing" || epoch !== this.s.epoch) return;
+    if (this.s.repeat === "one") return; // the same item is played again, through a barrier
     const next = this.s.queue[this.s.index + 1];
     if (!next || next.id !== itemId) return;
     if (typeof startedAt !== "number" || !Number.isFinite(startedAt)) return;
@@ -399,7 +442,7 @@ export class Room extends DurableObject<Env> {
       // Start without the devices that did not answer in time; they catch up when they finish loading
       if (this.s.phase === "preparing" && this.members().length > 0) await this.startPlayback();
     } else if (kind === "end") {
-      if (this.s.phase === "playing") await this.onNext();
+      if (this.s.phase === "playing") await this.onFinished();
     } else if (kind === "gc") {
       if (this.members().length === 0) {
         this.s = defaultState();
