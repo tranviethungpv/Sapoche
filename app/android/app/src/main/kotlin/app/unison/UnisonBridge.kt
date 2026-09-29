@@ -75,12 +75,29 @@ class UnisonBridge(
         MethodChannel(messenger, "app.unison/control").setMethodCallHandler(this)
         EventChannel(messenger, "app.unison/state").setStreamHandler(this)
         connectToService()
+        scope.launch { UnisonApp.serviceStopping.collect { releaseService() } }
     }
 
     /** Connecting a controller is what starts the playback service and keeps it bound to the UI. */
     private fun connectToService() {
         val token = SessionToken(activity, ComponentName(activity, PlaybackService::class.java))
         controller = MediaController.Builder(activity, token).buildAsync()
+    }
+
+    /** The service stops itself after a long idle spell; when the screen comes back it is started again. */
+    private fun ensureService() {
+        val current = controller
+        val alive = current != null && !current.isCancelled &&
+            !(current.isDone && runCatching { !current.get().isConnected }.getOrDefault(true))
+        if (alive) return
+        current?.let { MediaController.releaseFuture(it) }
+        connectToService()
+    }
+
+    /** Lets go of the service so that it can stop: a bound service lives on for as long as the screen holds it. */
+    private fun releaseService() {
+        controller?.let { MediaController.releaseFuture(it) }
+        controller = null
     }
 
     /** Handles an invitation, `unison://join/CODE` or the https link of the server's invitation page; anything else is ignored. */
@@ -93,8 +110,13 @@ class UnisonBridge(
     }
 
     fun setVisible(value: Boolean) {
-        if (value) lastState = null // a UI that just came back wants the full picture again
+        if (value) {
+            lastState = null // a UI that just came back wants the full picture again
+            ensureService()
+            UnisonApp.group.value?.resumeRoom()
+        }
         shown.value = value
+        UnisonApp.setUiVisible(value)
     }
 
     fun dispose() {
@@ -105,7 +127,7 @@ class UnisonBridge(
         }
         picture = null
         observing?.cancel()
-        controller?.let { MediaController.releaseFuture(it) }
+        releaseService()
         scope.cancel()
     }
 

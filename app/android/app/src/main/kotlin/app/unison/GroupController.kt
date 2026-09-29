@@ -98,6 +98,12 @@ class GroupController(
 
     val isActive: Boolean get() = client != null
 
+    /** The connection was let go of after a long idle spell, see [suspendRoom]. */
+    private var suspended = false
+
+    /** Commands given while [suspended], sent once the connection is back. */
+    private val pending = mutableListOf<String>()
+
     /** Songs are played with their picture; this device's choice, remembered across runs. */
     var videoMode: Boolean = prefs.getBoolean(KEY_VIDEO, false)
         private set
@@ -144,10 +150,15 @@ class GroupController(
             if (it is ServerMessage.Error) _errors.tryEmit(it)
             newSession.onMessage(it)
         }
-        newClient.onConnected = { newSession.onReconnected() }
+        newClient.onConnected = {
+            newSession.onReconnected()
+            scope.launch { flushPending(newClient) }
+        }
 
         session = newSession
         client = newClient
+        suspended = false
+        pending.clear()
         roomCode = code.uppercase()
         publish()
         scope.launch { newSession.snapshot.collect { publish() } }
@@ -263,6 +274,8 @@ class GroupController(
         client = null
         session = null
         roomCode = null
+        suspended = false
+        pending.clear()
         scope.cancel()
         scope = newScope()
         local.attach() // the personal queue gets the player back, paused where it was
@@ -273,7 +286,41 @@ class GroupController(
         _view.value = View(roomCode, client?.connection?.value, session?.snapshot?.value ?: GroupSession.Snapshot(), local.snapshot.value)
     }
 
-    fun send(text: String): Boolean = client?.send(text) ?: false
+    /** Sends a command to the room. If the connection was let go of, it is brought back and the command goes when it is up. */
+    fun send(text: String): Boolean {
+        if (suspended) {
+            pending += text
+            resumeRoom()
+            return true
+        }
+        return client?.send(text) ?: false
+    }
+
+    /**
+     * Nobody has listened or looked for a long while: close the connection, because its pings keep the radio
+     * awake all day. The room, this device's place in it and whether it listens alone are all kept.
+     */
+    fun suspendRoom() {
+        val c = client ?: return
+        if (suspended) return
+        suspended = true
+        EventLog.d("sync", "nobody is listening or looking, letting go of the connection to $roomCode")
+        c.close()
+    }
+
+    /** Someone is looking again, or asked for something: connect again. */
+    fun resumeRoom() {
+        if (!suspended) return
+        suspended = false
+        EventLog.d("sync", "connecting to $roomCode again")
+        client?.start()
+    }
+
+    private fun flushPending(target: RoomClient) {
+        if (target !== client) return
+        pending.forEach { target.send(it) }
+        pending.clear()
+    }
 
     /**
      * Play button. If the room is playing and only this device stopped (a phone call, another app took

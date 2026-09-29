@@ -29,13 +29,16 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import app.unison.core.OkHttpDownloader
+import app.unison.sync.IdleAction
 import app.unison.sync.QueueFile
+import app.unison.sync.idleActions
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -178,12 +181,40 @@ class PlaybackService : MediaSessionService() {
                 }
         }
 
+        // Nobody listening or looking for a long while: let go of what costs battery
+        scope.launch {
+            idleActions(
+                inRoom = group.view.map { it.roomCode != null },
+                playing = soundOn,
+                visible = UnisonApp.uiVisible,
+                roomAfterMs = ROOM_IDLE_MS,
+                serviceAfterMs = SERVICE_IDLE_MS,
+            ).collect { action ->
+                when (action) {
+                    IdleAction.SUSPEND_ROOM -> group.suspendRoom()
+                    IdleAction.STOP_SERVICE -> {
+                        EventLog.d("service", "idle for a long while, stopping")
+                        UnisonApp.announceServiceStop()
+                        stopSelf()
+                    }
+                }
+            }
+        }
+
         EventLog.d("service", "created")
         main.postDelayed(heartbeat, HEARTBEAT_MS)
         if (BuildConfig.DEBUG) {
             lastWatchMs = SystemClock.elapsedRealtime()
             main.postDelayed(stallWatch, STALL_TICK_MS)
         }
+    }
+
+    /** Sound is playing or about to: it is being listened to, so nothing is let go of. */
+    private val soundOn = MutableStateFlow(false)
+
+    private fun updateSoundOn() {
+        soundOn.value = player.playWhenReady &&
+            (player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_READY)
     }
 
     /** The repeat mode of the queue that is playing: the room's, or the personal one outside a room. */
@@ -274,6 +305,7 @@ class PlaybackService : MediaSessionService() {
     private inner class PlayerEvents : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             EventLog.d("player", "state=${stateName(playbackState)} item=${currentId()}")
+            updateSoundOn()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -282,6 +314,7 @@ class PlaybackService : MediaSessionService() {
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             EventLog.d("player", "playWhenReady=$playWhenReady reason=$reason")
+            updateSoundOn()
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -405,6 +438,10 @@ class PlaybackService : MediaSessionService() {
         const val CMD_REPEAT = "app.unison.REPEAT"
         /** Proof of life is for tests that read the log afterwards; a released app does not need to be that talkative. */
         val HEARTBEAT_MS = if (BuildConfig.DEBUG) 60_000L else 5 * 60_000L
+
+        /** In a room, this long without sound or a look and the connection is let go of; outside one, the service. */
+        const val ROOM_IDLE_MS = 20 * 60_000L
+        const val SERVICE_IDLE_MS = 15 * 60_000L
         const val STALL_TICK_MS = 100L
         const val STALL_LOG_MS = 120L
     }

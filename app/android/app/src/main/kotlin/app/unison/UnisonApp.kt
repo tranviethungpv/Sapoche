@@ -3,7 +3,9 @@ package app.unison
 import android.app.Application
 import app.unison.core.NewPipeResolver
 import app.unison.core.Probe
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 class UnisonApp : Application() {
@@ -35,6 +37,24 @@ class UnisonApp : Application() {
 
         fun setGroup(value: GroupController?) {
             groupFlow.value = value
+        }
+
+        private val visibleFlow = MutableStateFlow(false)
+
+        /** The screen is on and the app is in front; the service lets go of things when nobody looks for long. */
+        val uiVisible: StateFlow<Boolean> get() = visibleFlow
+
+        fun setUiVisible(value: Boolean) {
+            visibleFlow.value = value
+        }
+
+        private val stopFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+        /** The service is about to stop for being idle; the screen lets go of it so that it can. */
+        val serviceStopping: SharedFlow<Unit> get() = stopFlow
+
+        fun announceServiceStop() {
+            stopFlow.tryEmit(Unit)
         }
     }
 }
