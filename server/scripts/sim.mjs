@@ -214,9 +214,75 @@ async function main() {
   const waited = timeoutStart._at - t0;
   check("nobody ready: the server starts anyway after about 8s", waited > 6500 && waited < 10500, `waited=${waited}ms`);
 
+  await gaplessSection();
+
   [a, b, d].forEach((x) => x.close());
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+
+/** Gapless advance: devices that already moved on by themselves fix the next start time. */
+async function gaplessSection() {
+  console.log("Gapless advance");
+  const { code } = await (await fetch(`${BASE}/rooms`, { method: "POST" })).json();
+  const a = new Client(code, "g-a", "Anna");
+  const b = new Client(code, "g-b", "Ben");
+  await all([a, b], (x) => x.join());
+
+  // Short items, so that "near the end" holds right after the start
+  a.send({ t: "queue.add", videoId: VIDEO_A, title: "Short A", artist: "x", durMs: 3000 });
+  const [pa] = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  a.send({ t: "queue.add", videoId: VIDEO_B, title: "Short B", artist: "x", durMs: 3000 });
+  const stateWithTwo = await a.waitFor((m) => m.t === "state" && m.state.queue.length === 2);
+  await b.waitFor((m) => m.t === "state" && m.state.queue.length === 2);
+  const nextId = stateWithTwo.state.queue[1].id;
+  const epoch = pa.epoch;
+  await all([a, b], (x) => x.send({ t: "ready", epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+
+  a.send({ t: "advanced", epoch: epoch - 1, itemId: nextId, startedAt: Date.now() });
+  a.send({ t: "advanced", epoch, itemId: "not-the-next-item", startedAt: Date.now() });
+  a.send({ t: "advanced", epoch, itemId: nextId, startedAt: Date.now() - 60000 });
+  check("advanced with wrong epoch, wrong item or an old start is ignored", await b.stays((m) => m.t === "advance", 500));
+
+  const startedAt = Date.now() - 800;
+  a.send({ t: "advanced", epoch, itemId: nextId, startedAt });
+  const adv = await all([a, b], (x) => x.waitFor((m) => m.t === "advance"));
+  check(
+    "a valid advanced moves everyone to the next item at the reported time",
+    adv.every((m) => m.index === 1 && m.epoch === epoch + 1 && m.startedAt === startedAt),
+    JSON.stringify(adv[0]),
+  );
+
+  b.send({ t: "advanced", epoch, itemId: nextId, startedAt: Date.now() });
+  check("a second report for the same transition is ignored", await a.stays((m) => m.t === "advance", 500));
+
+  const late = new Client(code, "g-c", "Cara");
+  const sl = await late.join();
+  check(
+    "a late joiner sees the advanced item playing from the reported start",
+    sl.state.index === 1 && sl.state.phase === "playing" && sl.state.startedAt === startedAt && sl.state.epoch === epoch + 1,
+    JSON.stringify(sl.state),
+  );
+
+  a.send({ t: "advanced", epoch: epoch + 1, itemId: nextId, startedAt: Date.now() });
+  check("advanced past the last item is ignored", await b.stays((m) => m.t === "advance", 500));
+
+  // An item that still has a long way to go must not be skipped by a bogus report
+  const room2 = await (await fetch(`${BASE}/rooms`, { method: "POST" })).json();
+  const x = new Client(room2.code, "g-x", "Xena");
+  await x.join();
+  x.send({ t: "queue.add", videoId: VIDEO_A, title: "Long", artist: "x", durMs: 200000 });
+  const px = await x.waitFor((m) => m.t === "prepare");
+  x.send({ t: "queue.add", videoId: VIDEO_B, title: "Next", artist: "x", durMs: 200000 });
+  const sx = await x.waitFor((m) => m.t === "state" && m.state.queue.length === 2);
+  x.send({ t: "ready", epoch: px.epoch });
+  await x.waitFor((m) => m.t === "start");
+  x.send({ t: "advanced", epoch: px.epoch, itemId: sx.state.queue[1].id, startedAt: Date.now() });
+  check("advanced far from the end of the item is ignored", await x.stays((m) => m.t === "advance", 500));
+
+  [a, b, late, x].forEach((c) => c.close());
 }
 
 main().catch((error) => {

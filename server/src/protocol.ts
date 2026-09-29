@@ -52,6 +52,11 @@ export type ClientMessage =
   | { t: "ready"; epoch: number }
   | { t: "resolveFailed"; epoch: number; reason?: string }
   | { t: "ended"; epoch: number }
+  /**
+   * The device moved on to the next queue item by itself (gapless), and [startedAt] is the server
+   * time at which position 0 of that item was heard.
+   */
+  | { t: "advanced"; epoch: number; itemId: string; startedAt: number }
   | { t: "report"; epoch: number; posMs: number; bufferMs: number };
 
 // ---- server -> client ----
@@ -63,6 +68,8 @@ export type ServerMessage =
   /** Play the current item so that its position [positionMs] is heard at server time [startAt]. */
   | { t: "start"; epoch: number; startAt: number; positionMs: number }
   | { t: "pause"; epoch: number; positionMs: number }
+  /** The room moved on to the next item without a barrier; devices that already did the same keep playing. */
+  | { t: "advance"; epoch: number; index: number; startedAt: number }
   | { t: "pong"; c0: number; s1: number }
   | { t: "error"; code: string; message: string };
 

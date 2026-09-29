@@ -14,6 +14,12 @@ const LEAD_MS = 1500;
 const BARRIER_TIMEOUT_MS = 8000;
 /** Extra time after the expected end of an item before the server advances on its own. */
 const END_GRACE_MS = 5000;
+/** A gapless advance report must describe a start that happened at most this long ago. */
+const ADVANCE_MAX_AGE_MS = 10_000;
+/** Tolerated clock error for a start time that lies slightly in the future. */
+const ADVANCE_FUTURE_SLACK_MS = 500;
+/** An advance more than this far before the item's expected end is ignored. */
+const ADVANCE_EARLY_LIMIT_MS = 15_000;
 /** How long an empty room keeps its state before it is deleted. */
 const EMPTY_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -102,6 +108,7 @@ export class Room extends DurableObject<Env> {
       case "ready": return this.onReady(me.clientId, msg.epoch);
       case "resolveFailed": return this.onReady(me.clientId, msg.epoch); // do not hold the room hostage
       case "ended": return this.onEnded(msg.epoch);
+      case "advanced": return this.onAdvanced(msg.epoch, msg.itemId, msg.startedAt);
       case "report": return; // diagnostics only for now
       default: return this.fail(ws, "unknown_type", `Unknown message type`);
     }
@@ -301,6 +308,30 @@ export class Room extends DurableObject<Env> {
     // Ignore reports that arrive implausibly early
     if (item && item.durMs > 0 && this.currentPositionMs() < item.durMs - 5000) return;
     return this.onNext();
+  }
+
+  /**
+   * A device already moved on to the next item on its own, so devices that preloaded it need no
+   * barrier and no gap. The first plausible report fixes the new start time for everyone.
+   */
+  private async onAdvanced(epoch: number, itemId: string, startedAt: number): Promise<void> {
+    if (this.s.phase !== "playing" || epoch !== this.s.epoch) return;
+    const next = this.s.queue[this.s.index + 1];
+    if (!next || next.id !== itemId) return;
+    if (typeof startedAt !== "number" || !Number.isFinite(startedAt)) return;
+
+    const now = Date.now();
+    if (startedAt > now + ADVANCE_FUTURE_SLACK_MS || startedAt < now - ADVANCE_MAX_AGE_MS) return;
+    // Only believe it when the current item is close to its end by the room's own clock
+    const current = this.s.queue[this.s.index];
+    if (current && current.durMs > 0 && now - this.s.startedAt < current.durMs - ADVANCE_EARLY_LIMIT_MS) return;
+
+    this.s.index++;
+    this.s.epoch++;
+    this.s.positionMs = 0;
+    this.s.startedAt = startedAt;
+    await this.scheduleEnd();
+    this.broadcast({ t: "advance", epoch: this.s.epoch, index: this.s.index, startedAt });
   }
 
   private async goIdle(): Promise<void> {

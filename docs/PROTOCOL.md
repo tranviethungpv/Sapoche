@@ -43,6 +43,8 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 | `ready` | `epoch` | Máy đã resolve xong và nạp đệm đủ, sẵn sàng phát |
 | `report` | `epoch`, `posMs`, `bufferMs` | Báo vị trí định kỳ (chỉ dùng chẩn đoán, 10 giây một lần) |
 | `resolveFailed` | `epoch`, `reason` | Máy không lấy được luồng |
+| `ended` | `epoch` | Bài phát hết mà không còn bài nạp trước (bài cuối, hoặc nạp trước thất bại) |
+| `advanced` | `epoch`, `itemId`, `startedAt` | Máy đã tự chuyển sang bài kế đã nạp trước; `startedAt` là giờ server lúc nghe thấy vị trí 0 của bài mới |
 
 ## 4. Tin nhắn server → client
 
@@ -52,6 +54,7 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 | `prepare` | `epoch`, bài, `seekToMs` | Chuẩn bị bài: resolve, nạp đệm, rồi gửi `ready` |
 | `start` | `epoch`, `startAt` (giờ server) | Bắt đầu phát tại thời điểm này |
 | `pause` | `epoch`, `positionMs` | Dừng tại vị trí |
+| `advance` | `epoch`, `index`, `startedAt` | Cả phòng sang bài kế không qua barrier, vị trí 0 nghe thấy lúc `startedAt` |
 | `pong` | `c0`, `s1` | Trả lời ping |
 | `member` | thêm, bớt, đổi tên | Cập nhật thành viên |
 
@@ -65,6 +68,16 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 6. Máy bị bỏ qua khi ready muộn: tự seek đến vị trí hiện tại rồi phát.
 7. Trong lúc phát, mỗi máy resolve và nạp trước bài kế tiếp để chuyển bài liền mạch.
 
+### Chuyển bài liền mạch (gapless)
+
+Chuyển bài tự nhiên không đi qua barrier, để không có khoảng lặng:
+
+1. Khi đang theo phòng, mỗi client đưa bài `queue[index+1]` cho trình phát làm bài kế (ExoPlayer nạp đệm và nối liền mạch). Danh sách thay đổi thì bài kế được thay theo.
+2. Khi trình phát tự sang bài kế, client chờ khoảng 1 giây cho vị trí ổn định rồi gửi `advanced` với `startedAt = giờ server - vị trí đang nghe`.
+3. Server nhận báo cáo hợp lệ đầu tiên (đúng `epoch`, đúng `itemId` là bài kế, mốc thời gian không quá 10 giây trước, bài hiện tại còn không quá 15 giây nữa là hết), tăng `epoch` và `index`, đặt `startedAt`, rồi gửi `advance` cho mọi máy. Báo cáo sau đó bị bỏ qua vì `epoch` đã cũ.
+4. Máy đã chuyển bài thì nhận gốc thời gian mới và tiếp tục chỉnh lệch. Máy sắp chuyển thì chờ trình phát của mình (tối đa 4 giây). Máy không có bài nạp trước thì nạp như người vào muộn.
+5. Nếu không máy nào báo `advanced`, đường cũ vẫn chạy: `ended` hoặc báo thức hết bài (thời lượng + 5 giây) dẫn tới `prepare` và barrier.
+
 ## 6. Chỉnh lệch khi đang phát
 
 Mỗi 500ms, client tính `drift = playerPosition - expectedPosition`:
@@ -77,9 +90,18 @@ Mỗi 500ms, client tính `drift = playerPosition - expectedPosition`:
 
 Ngưỡng là giá trị khởi đầu, sẽ chỉnh sau khi đo ở Prototype 2.
 
+Đo trên máy thật cho thấy vị trí ExoPlayer báo có nhiễu răng cưa khoảng 200ms chu kỳ 3–4 giây, nên quyết định không dựa trên từng mẫu mà dựa trên **trung bình cửa sổ 8 mẫu (4 giây)**, sau khi trừ phần đã chỉnh bằng đổi tốc độ. Cửa sổ được xóa sau mỗi lần seek và mỗi lần trình phát dừng hoặc đệm.
+
+**Độ trễ khởi động.** Mỗi máy nghe chậm hơn yêu cầu khoảng 150–350ms sau `play()` hoặc seek (độ trễ đầu ra âm thanh). Máy tự học: sau mỗi lần khởi động thường, độ lệch còn lại trong cửa sổ đầy đầu tiên được cộng vào `startBias` (hệ số 0,8, giới hạn ±800ms, lưu vào bộ nhớ máy), và lần sau tua trước đúng lượng đó. Ngoài ra có `trim` do người dùng chỉnh tay cho thiết bị có độ trễ khác thường (loa Bluetooth).
+
 ## 7. Phục hồi
 
-- Rớt WebSocket: client tự kết nối lại (backoff 1s, 2s, 4s tối đa 15s), vào lại bằng `join` với cùng `clientId`, nhận `state` mới và đồng bộ lại.
+- Rớt WebSocket: client tự kết nối lại (backoff 1s, 2s, 4s tối đa 15s), vào lại bằng `join` với cùng `clientId`, nhận `state` mới và đồng bộ lại. Khi Android báo có mạng hoặc đổi mạng thì bỏ qua thời gian chờ và kết nối lại ngay.
+- Vào lại phòng đang phát đúng bài đã nạp thì không nạp lại: chỉ căn lại theo gốc thời gian của phòng (và bấm phát nếu máy đang dừng).
+- `prepare` lặp lại cùng `epoch` cho máy đã nạp xong: chỉ gửi lại `ready`.
+- Mất mạng giữa bài: trình phát thử lại lỗi mạng tối đa khoảng 8 phút và phát tiếp từ bộ đệm; riêng URL bị từ chối (401, 403, 404, 410) báo lỗi ngay để nạp lại bằng URL mới. Nạp lại thất bại (chưa có mạng) thì thử lại mỗi 5 giây.
+- Tiến trình bị hệ thống giết: app lưu mã phòng và tự vào lại khi service khởi động.
+- Máy tự dừng (cuộc gọi, ứng dụng khác chiếm âm thanh) trong lúc phòng đang phát: nút phát chỉ tiếp tục trên máy đó, phòng không bị khởi động lại; drift lớn được xử lý bằng một lần seek.
 - Server DO ngủ (Hibernation): trạng thái lưu trong storage, không mất khi tỉnh dậy.
 - Tin nhắn có `epoch` cũ bị bỏ qua.
 
