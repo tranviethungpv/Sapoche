@@ -1,0 +1,12 @@
+{
+  "name": "unison-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  // No extra public URLs per version
+  "preview_urls": false,
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
+  },
+  // Free plan only supports SQLite-backed Durable Objects
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }]
+}
