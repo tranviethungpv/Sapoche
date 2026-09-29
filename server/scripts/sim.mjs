@@ -64,14 +64,19 @@ class Client {
       return Promise.resolve(existing);
     }
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`${this.name}: timeout waiting for message`)), timeoutMs);
-      this.waiters.push((msg) => {
+      const waiter = (msg) => {
         if (!predicate(msg)) return false;
         clearTimeout(timer);
         this.inbox.splice(this.inbox.indexOf(msg), 1);
         resolve(msg);
         return true;
-      });
+      };
+      // A waiter that gave up must go too, or it would swallow a message meant for the next one
+      const timer = setTimeout(() => {
+        this.waiters = this.waiters.filter((w) => w !== waiter);
+        reject(new Error(`${this.name}: timeout waiting for message`));
+      }, timeoutMs);
+      this.waiters.push(waiter);
     });
   }
 
