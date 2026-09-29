@@ -6,6 +6,16 @@ import '../strings.dart';
 import 'backend.dart';
 import 'models.dart';
 
+/// Something another member did that moved this device: worth a snackbar, sometimes with a way out.
+class Notice {
+  const Notice(this.text, {this.canKeepPlaying = false});
+
+  final String text;
+
+  /// The room paused and this device may prefer to go on alone.
+  final bool canKeepPlaying;
+}
+
 /// The room as the UI sees it: latest state from the native side plus the actions a user can take.
 ///
 /// Room structure notifies listeners rarely; the player position lives in [player] and is
@@ -34,6 +44,13 @@ class RoomController extends ChangeNotifier {
   final ValueNotifier<String?> invite = ValueNotifier(null);
 
   final _messages = StreamController<String>.broadcast();
+  final _notices = StreamController<Notice>.broadcast();
+
+  /// What other members did to this device, see [Notice].
+  Stream<Notice> get notices => _notices.stream;
+
+  /// While listening alone, what the play button shows right after a tap, before the player reports back.
+  bool? _soloPlaying;
 
   /// Short notices for a snackbar: server errors, failed actions.
   Stream<String> get messages => _messages.stream;
@@ -57,10 +74,19 @@ class RoomController extends ChangeNotifier {
   void _onEvent(BackendEvent event) {
     switch (event) {
       case StateEvent(:final snapshot):
+        if (snapshot.solo != _snapshot.solo) _soloPlaying = null;
         _snapshot = snapshot;
         _ready = true;
         notifyListeners();
+      case NoticeEvent(:final kind, :final by, :final title):
+        final who = by.isEmpty ? S.someone : by;
+        if (kind == 'paused') {
+          _notices.add(Notice(S.pausedBy(who), canKeepPlaying: true));
+        } else if (kind == 'skipped') {
+          _notices.add(Notice(S.skippedBy(who, title ?? '')));
+        }
       case PositionEvent(:final position):
+        _soloPlaying = null;
         _sinceSample
           ..reset()
           ..start();
@@ -102,12 +128,16 @@ class RoomController extends ChangeNotifier {
     return fromPlayer > 0 ? fromPlayer : (_snapshot.current?.durMs ?? 0);
   }
 
-  /// Sound is coming or is already playing (used for the play/pause glyph).
-  bool get isPlaying => _snapshot.wantsPlaying;
+  /// Sound is coming or is already playing (used for the play/pause glyph). While listening alone
+  /// this is about this device's own player, not the room.
+  bool get isPlaying => _snapshot.solo
+      ? (_soloPlaying ?? (player.value.playing || player.value.buffering))
+      : _snapshot.wantsPlaying;
 
   /// The room started something but nothing is audible yet: everyone is still loading.
-  bool get isStarting =>
-      _snapshot.phase == 'preparing' || (isPlaying && player.value.buffering);
+  bool get isStarting => _snapshot.solo
+      ? isPlaying && player.value.buffering
+      : _snapshot.phase == 'preparing' || (isPlaying && player.value.buffering);
 
   // ------------------------------------------------------------------ room
 
@@ -144,7 +174,20 @@ class RoomController extends ChangeNotifier {
 
   // ------------------------------------------------------------------ transport
 
-  Future<void> togglePlay() => _run(isPlaying ? _backend.pause : _backend.play);
+  Future<void> togglePlay() {
+    final playing = isPlaying;
+    if (_snapshot.solo) {
+      _soloPlaying = !playing;
+      notifyListeners();
+    }
+    return _run(playing ? _backend.pause : _backend.play);
+  }
+
+  /// Listen on this device alone ([on]) or follow the room again.
+  Future<void> setSolo(bool on) => _run(() => _backend.setSolo(on));
+
+  /// Carry on playing by myself after the room paused.
+  Future<void> keepPlaying() => _run(_backend.keepPlaying);
   Future<void> next() => _run(_backend.next);
   Future<void> prev() => _run(_backend.prev);
   Future<void> jump(QueueEntry entry) => _run(() => _backend.jump(entry.id));
@@ -197,6 +240,7 @@ class RoomController extends ChangeNotifier {
     _subscription?.cancel();
     _seekTimer?.cancel();
     _messages.close();
+    _notices.close();
     player.dispose();
     invite.dispose();
     super.dispose();

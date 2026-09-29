@@ -30,12 +30,15 @@ void main() {
       '{"type":"position","playing":true,"positionMs":1200,"durationMs":60000,"driftMs":-4,"speed":1.0}',
       '{"type":"error","code":"unplayable","message":"Nobody could load: X"}',
       '{"type":"invite","code":"K2A5RF"}',
+      '{"type":"notice","kind":"paused","by":"Binh","title":null}',
     ]);
-    expect(received, hasLength(4));
+    expect(received, hasLength(5));
     expect((received[0] as StateEvent).snapshot.repeat, Repeat.all);
     expect((received[1] as PositionEvent).position.driftMs, -4);
     expect((received[2] as ErrorEvent).error.code, 'unplayable');
     expect((received[3] as InviteEvent).code, 'K2A5RF');
+    final notice = received[4] as NoticeEvent;
+    expect((notice.kind, notice.by, notice.title), ('paused', 'Binh', null));
   });
 
   test('a link result comes back as tracks, with the playlist title when there is one', () async {
@@ -88,4 +91,24 @@ void main() {
       throwsA(isA<BackendException>().having((e) => e.code, 'code', 'no_room')),
     );
   });
+
+  test(
+    'going solo and back is sent as one call with the switch position',
+    () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(control, (call) async {
+        calls.add(call);
+        return null;
+      });
+      final backend = NativeBackend();
+      await backend.setSolo(true);
+      await backend.setSolo(false);
+      await backend.keepPlaying();
+      expect(calls.map((c) => '${c.method} ${c.arguments}'), [
+        'solo {on: true}',
+        'solo {on: false}',
+        'keepPlaying null',
+      ]);
+    },
+  );
 }

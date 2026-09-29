@@ -59,6 +59,12 @@ class GroupController(
     private val _errors = MutableSharedFlow<ServerMessage.Error>(extraBufferCapacity = 8)
     val errors: SharedFlow<ServerMessage.Error> = _errors.asSharedFlow()
 
+    /** Something another member did that moved this device, with their name already looked up. */
+    data class Notice(val kind: String, val by: String, val title: String? = null)
+
+    private val _notices = MutableSharedFlow<Notice>(extraBufferCapacity = 8)
+    val notices: SharedFlow<Notice> = _notices.asSharedFlow()
+
     var roomCode: String? = null
         private set
 
@@ -83,12 +89,25 @@ class GroupController(
             if (it is ServerMessage.Error) _errors.tryEmit(it)
             newSession.onMessage(it)
         }
+        newClient.onConnected = { newSession.onReconnected() }
 
         session = newSession
         client = newClient
         roomCode = code.uppercase()
         publish()
         scope.launch { newSession.snapshot.collect { publish() } }
+        scope.launch {
+            newSession.events.collect { event ->
+                val members = newSession.snapshot.value.members
+                val name = { id: String -> members.firstOrNull { it.id == id }?.name.orEmpty() }
+                _notices.tryEmit(
+                    when (event) {
+                        is GroupSession.RoomEvent.Paused -> Notice("paused", name(event.byId))
+                        is GroupSession.RoomEvent.Skipped -> Notice("skipped", name(event.byId), event.title)
+                    },
+                )
+            }
+        }
         scope.launch { newClient.connection.collect { publish() } }
         prefs.edit().putString(KEY_ROOM_CODE, roomCode).putString(KEY_ROOM_NAME, name).apply()
         EventLog.d("sync", "joining room $roomCode as '$name' ($id)")
@@ -175,12 +194,40 @@ class GroupController(
         if (phase() == "playing" && !exo.playWhenReady) resumeLocally() else requestPlay()
     }
 
-    fun requestPlay() = send(Protocol.play())
-    fun requestPause() = send(Protocol.pause())
-    fun requestNext() = send(Protocol.next())
-    fun requestPrev() = send(Protocol.prev())
-    fun requestSeek(positionMs: Long) = send(Protocol.seek(positionMs))
-    fun requestJump(itemId: String) = send(Protocol.jump(itemId))
+    /** Listening on this device alone: the room does not move it, and its buttons do not move the room. */
+    val isSolo: Boolean get() = session?.isSolo == true
+
+    /** Stop following the room and carry on alone. */
+    fun goSolo() {
+        session?.goSolo()
+    }
+
+    /** Follow the room again. */
+    fun rejoin() {
+        session?.rejoin()
+    }
+
+    /** The room stopped and this device wants to go on: leave the room's transport and resume. */
+    fun keepPlaying() {
+        val s = session ?: return
+        s.goSolo()
+        s.soloPlay()
+    }
+
+    // While alone the transport buttons act on this device only
+    fun requestPlay(): Boolean = solo { it.soloPlay() } ?: send(Protocol.play())
+    fun requestPause(): Boolean = solo { it.soloPause() } ?: send(Protocol.pause())
+    fun requestNext(): Boolean = solo { it.soloNext() } ?: send(Protocol.next())
+    fun requestPrev(): Boolean = solo { it.soloPrev() } ?: send(Protocol.prev())
+    fun requestSeek(positionMs: Long): Boolean = solo { it.soloSeek(positionMs) } ?: send(Protocol.seek(positionMs))
+    fun requestJump(itemId: String): Boolean = solo { it.soloJump(itemId) } ?: send(Protocol.jump(itemId))
+
+    /** Runs [action] on the session when listening alone and reports it handled; null when following the room. */
+    private inline fun solo(action: (GroupSession) -> Unit): Boolean? {
+        val s = session?.takeIf { it.isSolo } ?: return null
+        action(s)
+        return true
+    }
     fun requestClearQueue() = send(Protocol.queueClear())
     fun requestRepeat(mode: String) = send(Protocol.repeat(mode))
     fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = send(Protocol.queueAddMany(tracks, playNext))
@@ -229,7 +276,8 @@ class GroupController(
         val state = snap?.state
         val current = state?.current?.title ?: "-"
         return "room $roomCode ${c.connection.value} | ${snap?.members?.size ?: 0} member(s) | " +
-            "phase=${state?.phase} epoch=${state?.epoch} queue=${state?.queue?.size ?: 0} | $current\n" +
+            "phase=${state?.phase} epoch=${state?.epoch} queue=${state?.queue?.size ?: 0} | $current" +
+            "${if (snap?.solo == true) " | ALONE" else ""}\n" +
             "drift=${snap?.driftMs?.let { "%+dms".format(it) } ?: "-"} speed=${snap?.speed} trim=${trimMs}ms " +
             "clockOffset=${clock.offsetMs().toLong()}ms rtt=${clock.bestRttMs()?.toLong() ?: "-"}ms"
     }

@@ -6,6 +6,7 @@ import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
+import 'members_sheet.dart';
 import 'scope.dart';
 import 'widgets/appear.dart';
 import 'widgets/avatars.dart';
@@ -54,6 +55,8 @@ class _RoomPageState extends State<RoomPage> {
             slivers: [
               SliverToBoxAdapter(child: _Header(snapshot: snapshot)),
               SliverToBoxAdapter(child: LinkBanner(link: snapshot.link)),
+              if (snapshot.solo)
+                SliverToBoxAdapter(child: _SoloBanner(controller: controller)),
               if (snapshot.queue.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
@@ -77,7 +80,7 @@ class _RoomPageState extends State<RoomPage> {
     RoomSnapshot snapshot,
   ) {
     final current = snapshot.current;
-    final played = snapshot.queue.take(snapshot.index).toList();
+    final played = snapshot.queue.take(snapshot.myIndex).toList();
     final upNext = snapshot.upNext;
     return [
       if (current != null) ...[
@@ -103,7 +106,7 @@ class _RoomPageState extends State<RoomPage> {
         SliverReorderableList(
           itemCount: upNext.length,
           onReorderItem: (from, to) =>
-              controller.move(upNext[from], snapshot.index + 1 + to),
+              controller.move(upNext[from], snapshot.myIndex + 1 + to),
           proxyDecorator: (child, _, animation) => Material(
             color: Colors.transparent,
             elevation: 0,
@@ -190,20 +193,78 @@ class _Header extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              AvatarStack(members: snapshot.members),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  S.listening(snapshot.members.length),
-                  style: theme.bodyMedium?.copyWith(color: p.textSecondary),
-                  overflow: TextOverflow.ellipsis,
-                ),
+          // Tapping who is here opens the list of members
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => showMembersSheet(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  AvatarStack(members: snapshot.members),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      snapshot.awayCount == 0
+                          ? S.listening(snapshot.listeningCount)
+                          : '${S.listening(snapshot.listeningCount)} · ${S.awayCount(snapshot.awayCount)}',
+                      style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: p.textTertiary,
+                    size: 20,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown while this device listens on its own, with the way back to the room.
+class _SoloBanner extends StatelessWidget {
+  const _SoloBanner({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 4, 6, 4),
+        decoration: BoxDecoration(
+          color: p.primaryContainer,
+          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.headphones_rounded,
+              size: 18,
+              color: p.onPrimaryContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                S.soloBanner,
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: p.onPrimaryContainer),
+              ),
+            ),
+            TextButton(
+              onPressed: () => controller.setSolo(false),
+              child: const Text(S.rejoin),
+            ),
+          ],
+        ),
       ),
     );
   }

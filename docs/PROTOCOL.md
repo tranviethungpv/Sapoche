@@ -13,7 +13,7 @@ Kết nối: WebSocket tới `wss://<worker>/room/<CODE>`. Mỗi phòng là mộ
   "positionMs": 0,
   "epoch": 17,
   "repeat": "off | all | one",
-  "members": [{ "id": "u1", "name": "Ann", "ready": true }]
+  "members": [{ "id": "u1", "name": "Ann", "ready": true, "solo": false, "away": false }]
 }
 ```
 
@@ -49,6 +49,8 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 | `seek` | `positionMs` | Tua |
 | `next` / `prev` | | Chuyển bài; `next` ở bài cuối khi `repeat=all` quay về bài đầu |
 | `repeat` | `mode` | `off`: dừng sau bài cuối. `all`: hết hàng đợi thì phát lại từ đầu. `one`: bài hiện tại hết thì phát lại chính nó (nút `next` vẫn sang bài kế). Giá trị lạ bị bỏ qua |
+| `solo` | `on` | Bắt đầu (`true`) hoặc thôi (`false`) nghe riêng: lệnh của phòng không điều khiển máy này nữa và phòng không chờ máy này ở barrier. Server quên cờ này khi socket đứt, nên client gửi lại sau mỗi lần kết nối lại |
+| `resync` | | Xin server gửi lại `state` (và `prepare` nếu phòng đang chuẩn bị) cho riêng socket này; dùng khi quay lại phòng sau khi nghe riêng |
 | `ready` | `epoch` | Máy đã resolve xong và nạp đệm đủ, sẵn sàng phát |
 | `report` | `epoch`, `posMs`, `bufferMs` | Báo vị trí định kỳ (chỉ dùng chẩn đoán, 10 giây một lần) |
 | `resolveFailed` | `epoch`, `reason` | Máy không lấy được luồng. Tính như đã trả lời để không kìm các máy khác; nếu **mọi** máy trong phòng đều báo lỗi thì server gửi `error` mã `unplayable` và chuyển sang bài kế (hoặc `idle` nếu hết bài) thay vì chạy đồng hồ im lặng |
@@ -59,13 +61,13 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 
 | `t` | Trường | Ý nghĩa |
 |---|---|---|
-| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 3) |
-| `prepare` | `epoch`, bài, `seekToMs` | Chuẩn bị bài: resolve, nạp đệm, rồi gửi `ready` |
-| `start` | `epoch`, `startAt` (giờ server) | Bắt đầu phát tại thời điểm này |
-| `pause` | `epoch`, `positionMs` | Dừng tại vị trí |
+| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 4) |
+| `prepare` | `epoch`, bài, `seekToMs`, `by?` | Chuẩn bị bài: resolve, nạp đệm, rồi gửi `ready`. `by` là `clientId` người vừa bấm chuyển bài; vắng mặt khi phòng tự sang bài kế |
+| `start` | `epoch`, `startAt` (giờ server), `by?` | Bắt đầu phát tại thời điểm này |
+| `pause` | `epoch`, `positionMs`, `by?` | Dừng tại vị trí |
 | `advance` | `epoch`, `index`, `startedAt` | Cả phòng sang bài kế không qua barrier, vị trí 0 nghe thấy lúc `startedAt` |
 | `pong` | `c0`, `s1` | Trả lời ping |
-| `member` | thêm, bớt, đổi tên | Cập nhật thành viên |
+| `members` | `members[]` | Danh sách thành viên, gửi khi có người vào, ra, đổi tên, đổi chế độ nghe riêng hoặc chuyển giữa hiện diện và `away` |
 
 ## 5. Luồng đổi bài (barrier)
 
@@ -90,6 +92,14 @@ Chuyển bài tự nhiên không đi qua barrier, để không có khoảng lặ
 ### Phát lặp
 
 Phát lặp không đi đường gapless: hết bài thì client báo `ended` (hoặc báo thức hết bài chạy), server gọi `begin` lại đúng bài đó (`repeat=one`) hoặc bài đầu (`repeat=all` ở cuối hàng đợi), nên có một nhịp barrier khoảng 1,5 đến 4 giây giữa hai lượt. Khi `repeat=one` client không nạp trước bài kế (nếu không ExoPlayer sẽ tự sang bài kế) và server bỏ qua `advanced`.
+
+## 5b. Nghe riêng và hiện diện
+
+**Nghe riêng (`solo`).** Một máy có thể thôi theo phòng mà không cần rời phòng. Máy đó giữ nguyên bài đang phát; từ đó `prepare`, `start`, `pause`, `advance` của phòng chỉ cập nhật phần hiển thị (phòng đang dừng, đang ở bài nào), còn nút phát, dừng, tua, bài kế, bài trước, chọn bài chỉ tác động lên máy này, đi theo hàng đợi của phòng và nạp trước bài kế để hết bài không có khoảng trống. Máy nghe riêng không gửi `ready`, `ended`, `advanced` nên không bao giờ kìm phòng. Quay lại phòng: gửi `solo:false` rồi `resync`, và xử lý `state` nhận về như người vào muộn (đang cùng bài thì chỉ căn lại vị trí, không nạp lại).
+
+Ai làm gì: `pause`, `start` và `prepare` mang `by` để máy khác hiện thông báo "Ann đã dừng phòng" kèm nút "Keep playing" (chuyển sang nghe riêng và phát tiếp) hoặc "Ann đã chuyển sang bài X".
+
+**Hiện diện (`away`).** Client gửi `ping` mỗi 15 giây, server ghi lại lần nghe cuối của từng socket. Im quá 40 giây thì thành viên được đánh dấu `away` (mờ đi, không tính là đang nghe, không kìm barrier); im quá 90 giây thì server đóng socket và xóa khỏi danh sách. Mỗi tin nhắn của bất kỳ ai là một dịp để server rà soát và phát lại `members` nếu ai đó đổi trạng thái, nên không cần bộ đếm giờ riêng. Đây là lớp dự phòng cho socket chết mà không đóng; app bị tắt cưỡng bức thường được nhận ra ngay khi socket đóng.
 
 ## 6. Chỉnh lệch khi đang phát
 

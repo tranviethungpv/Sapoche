@@ -2,6 +2,7 @@ package app.unison.sync
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
@@ -623,5 +624,157 @@ class GroupSessionTest {
         h.session.trimMs = 100 // this device is heard 100ms late, so it must run 100ms ahead
         step(5000)
         assertEquals(1.03f, h.player.currentSpeed, "an exactly aligned player is 100ms behind its target")
+    }
+
+    // ---- listening alone ----
+
+    @Test
+    fun `going solo keeps the song playing and tells the room`() = runTest {
+        val h = playingFirstOfTwo()
+        step(2000)
+        h.session.goSolo()
+        step(1000)
+        assertTrue(h.player.playing, "going solo must not interrupt what is playing")
+        assertTrue(h.sent.any { it.contains("\"solo\"") && it.contains("true") })
+        assertTrue(h.session.snapshot.value.solo)
+        assertEquals("q1", h.session.snapshot.value.soloItemId)
+    }
+
+    @Test
+    fun `while alone the room pausing does not pause this device`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        h.session.onMessage(ServerMessage.Pause(epoch = 2, positionMs = 5000, by = "dev-b"))
+        step(1000)
+        assertTrue(h.player.playing)
+        assertEquals("paused", h.session.snapshot.value.state?.phase, "the view still shows what the room did")
+    }
+
+    @Test
+    fun `while alone the room skipping does not move this device or hold the room back`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        h.sent.clear()
+        h.session.onMessage(ServerMessage.Prepare(epoch = 2, index = 1, item = item2, seekToMs = 0, by = "dev-b"))
+        step(1000)
+        assertEquals(item, h.player.loaded)
+        assertTrue(h.player.playing)
+        assertFalse(h.sent.any { it.contains("\"ready\"") }, "a solo device does not answer the barrier")
+    }
+
+    @Test
+    fun `alone, next moves along the queue on this device only`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        h.sent.clear()
+        h.session.soloNext()
+        step(500)
+        assertEquals(item2, h.player.loaded)
+        assertTrue(h.player.playing)
+        assertEquals("q2", h.session.snapshot.value.soloItemId)
+        assertFalse(h.sent.any { it.contains("\"next\"") })
+    }
+
+    @Test
+    fun `alone, pausing pauses only this device`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        h.sent.clear()
+        h.session.soloPause()
+        step(100)
+        assertFalse(h.player.playing)
+        assertTrue(h.sent.isEmpty(), "nothing is sent to the room")
+        h.session.soloPlay()
+        step(100)
+        assertTrue(h.player.playing)
+    }
+
+    @Test
+    fun `alone, a song ending moves on by itself and reports nothing`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        assertEquals(item2, h.player.queuedNext, "the next song is preloaded for a gapless finish")
+        h.sent.clear()
+        h.player.autoAdvance()
+        step(500)
+        assertEquals("q2", h.session.snapshot.value.soloItemId)
+        assertTrue(h.sent.none { it.contains("\"advanced\"") || it.contains("\"ended\"") })
+    }
+
+    @Test
+    fun `alone, the last song ending stops instead of looping`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        h.session.soloNext()
+        step(500)
+        h.player.onEnded?.invoke()
+        step(500)
+        assertFalse(h.player.playing)
+    }
+
+    @Test
+    fun `rejoining asks the room for its state and follows it`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        h.session.soloNext() // now on item 2 while the room is still on item 1
+        step(500)
+        h.sent.clear()
+        h.session.rejoin()
+        step(100)
+        assertTrue(h.sent.any { it.contains("\"solo\"") && it.contains("false") })
+        assertTrue(h.sent.any { it.contains("\"resync\"") })
+        assertFalse(h.session.snapshot.value.solo)
+
+        // The room answers with its state: item 1 has been playing for a while
+        h.session.onMessage(twoItemState("playing", epoch = 1, startedAt = h.serverNow() - 4000))
+        step(3000)
+        assertEquals(item, h.player.loaded, "back on the room's song")
+        assertTrue(h.player.playing)
+    }
+
+    @Test
+    fun `the room pausing while following is reported, but not when this device did it`() = runTest {
+        val h = playingFirstOfTwo()
+        val seen = mutableListOf<GroupSession.RoomEvent>()
+        backgroundScope.launch { h.session.events.collect { seen += it } }
+        runCurrent()
+        h.session.onMessage(ServerMessage.Pause(epoch = 2, positionMs = 3000, by = "dev-b"))
+        step(100)
+        assertEquals(listOf<GroupSession.RoomEvent>(GroupSession.RoomEvent.Paused("dev-b")), seen)
+
+        h.session.onMessage(ServerMessage.Start(epoch = 3, startAt = h.serverNow() + 1500, positionMs = 3000, by = "dev-b"))
+        step(1600)
+        h.session.onMessage(ServerMessage.Pause(epoch = 4, positionMs = 5000, by = "dev-a"))
+        step(100)
+        assertEquals(1, seen.size, "our own pause is not news")
+    }
+
+    @Test
+    fun `a skip by someone else is reported with the new title`() = runTest {
+        val h = playingFirstOfTwo()
+        val seen = mutableListOf<GroupSession.RoomEvent>()
+        backgroundScope.launch { h.session.events.collect { seen += it } }
+        runCurrent()
+        h.session.onMessage(ServerMessage.Prepare(epoch = 2, index = 1, item = item2, seekToMs = 0, by = "dev-b"))
+        step(100)
+        assertEquals(listOf<GroupSession.RoomEvent>(GroupSession.RoomEvent.Skipped("dev-b", "Song 2")), seen)
+    }
+
+    @Test
+    fun `after a reconnect the room is told again that this device is alone`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        h.sent.clear()
+        h.session.onReconnected()
+        step(100)
+        assertTrue(h.sent.any { it.contains("\"solo\"") && it.contains("true") })
     }
 }

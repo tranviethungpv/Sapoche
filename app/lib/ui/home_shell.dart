@@ -31,6 +31,7 @@ class _HomeShellState extends State<HomeShell>
   int _tab = 0;
   late final _sheet = PlayerSheetController(this);
   StreamSubscription<String>? _messages;
+  StreamSubscription<Notice>? _notices;
   RoomController? _watched;
   String? _precachedCover;
 
@@ -45,6 +46,23 @@ class _HomeShellState extends State<HomeShell>
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(text)));
     });
+    _notices = room.notices.listen((notice) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(notice.text),
+            duration: const Duration(seconds: 6),
+            action: notice.canKeepPlaying
+                ? SnackBarAction(
+                    label: S.keepPlaying,
+                    onPressed: room.keepPlaying,
+                  )
+                : null,
+          ),
+        );
+    });
     room.invite.addListener(_onInvite);
     room.addListener(_precacheCover);
     WidgetsBinding.instance.addPostFrameCallback((_) => _precacheCover());
@@ -56,6 +74,7 @@ class _HomeShellState extends State<HomeShell>
     _watched?.invite.removeListener(_onInvite);
     _watched?.removeListener(_precacheCover);
     _messages?.cancel();
+    _notices?.cancel();
     _sheet.dispose();
     super.dispose();
   }

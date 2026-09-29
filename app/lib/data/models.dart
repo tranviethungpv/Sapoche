@@ -53,16 +53,30 @@ class QueueEntry extends Track {
 }
 
 class Member {
-  const Member({required this.id, required this.name, required this.ready});
+  const Member({
+    required this.id,
+    required this.name,
+    required this.ready,
+    this.solo = false,
+    this.away = false,
+  });
 
   final String id;
   final String name;
   final bool ready;
 
+  /// Listening on their own: the room's play, pause and skip do not move them.
+  final bool solo;
+
+  /// Not heard from for a while, probably a dead connection: not counted as listening.
+  final bool away;
+
   factory Member.fromJson(Map<String, dynamic> json) => Member(
     id: json['id'] as String,
     name: json['name'] as String,
     ready: json['ready'] as bool? ?? false,
+    solo: json['solo'] as bool? ?? false,
+    away: json['away'] as bool? ?? false,
   );
 }
 
@@ -114,6 +128,8 @@ class RoomSnapshot {
     this.queue = const [],
     this.members = const [],
     this.trimMs = 0,
+    this.solo = false,
+    this.soloItemId,
   });
 
   /// Room code, or null when this device is not in a room.
@@ -129,11 +145,31 @@ class RoomSnapshot {
   final List<Member> members;
   final int trimMs;
 
+  /// This device listens on its own: it plays what the person picked here, whatever the room does.
+  final bool solo;
+
+  /// The song this device is on while [solo].
+  final String? soloItemId;
+
   bool get inRoom => room != null;
+
+  /// Where this device is in the queue: the room's place, or its own while listening alone.
+  int get myIndex {
+    if (solo && soloItemId != null) {
+      final at = queue.indexWhere((e) => e.id == soloItemId);
+      if (at >= 0) return at;
+    }
+    return index;
+  }
+
   QueueEntry? get current =>
-      index >= 0 && index < queue.length ? queue[index] : null;
+      myIndex >= 0 && myIndex < queue.length ? queue[myIndex] : null;
   List<QueueEntry> get upNext =>
-      index + 1 < queue.length ? queue.sublist(index + 1) : const [];
+      myIndex + 1 < queue.length ? queue.sublist(myIndex + 1) : const [];
+
+  /// People who are really there; someone whose connection went quiet does not count.
+  int get listeningCount => members.where((m) => !m.away).length;
+  int get awayCount => members.where((m) => m.away).length;
 
   /// The room wants sound: playing, or about to start once everybody has loaded.
   bool get wantsPlaying => phase == 'playing' || phase == 'preparing';
@@ -160,6 +196,8 @@ class RoomSnapshot {
     index: (json['index'] as num?)?.toInt() ?? 0,
     repeat: Repeat.parse(json['repeat'] as String?),
     trimMs: (json['trimMs'] as num?)?.toInt() ?? 0,
+    solo: json['solo'] as bool? ?? false,
+    soloItemId: json['soloItemId'] as String?,
     queue: [
       for (final e in json['queue'] as List<dynamic>? ?? const [])
         QueueEntry.fromJson(e as Map<String, dynamic>),

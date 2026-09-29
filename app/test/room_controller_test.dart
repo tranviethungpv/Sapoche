@@ -208,4 +208,59 @@ void main() {
     await controller.addMany(tracks, playNext: true);
     expect(backend.calls.last, 'addMany aaaaaaaaaaa,bbbbbbbbbbb next=true');
   });
+
+  group('listening alone', () {
+    test(
+      'a pause by someone else offers to keep playing, a skip does not',
+      () async {
+        final notices = <Notice>[];
+        controller.notices.listen(notices.add);
+        backend.emit(const NoticeEvent(kind: 'paused', by: 'Binh'));
+        backend.emit(
+          const NoticeEvent(
+            kind: 'skipped',
+            by: 'Binh',
+            title: 'Blinding Lights',
+          ),
+        );
+        await settle();
+        expect(notices.map((n) => n.text), [
+          'Binh paused the room',
+          'Binh switched to Blinding Lights',
+        ]);
+        expect(notices.map((n) => n.canKeepPlaying), [true, false]);
+      },
+    );
+
+    test(
+      'the play button follows this device\'s own player, not the room',
+      () async {
+        backend.emit(StateEvent(sampleRoom(phase: 'paused', solo: true)));
+        backend.emit(const PositionEvent(PlayerPosition(playing: true)));
+        await settle();
+        expect(
+          controller.isPlaying,
+          isTrue,
+          reason: 'the room is paused but I am playing',
+        );
+        await controller.togglePlay();
+        expect(backend.calls.last, 'pause');
+        expect(
+          controller.isPlaying,
+          isFalse,
+          reason: 'shown at once, before the player reports',
+        );
+      },
+    );
+
+    test('the switch and the notice action reach the backend', () async {
+      await controller.setSolo(true);
+      await controller.keepPlaying();
+      await controller.setSolo(false);
+      expect(
+        backend.calls,
+        containsAllInOrder(['solo true', 'keepPlaying', 'solo false']),
+      );
+    });
+  });
 }

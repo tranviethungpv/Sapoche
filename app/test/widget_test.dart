@@ -299,6 +299,74 @@ void main() {
     expect(tester.getTopLeft(find.byType(NowPlayingPage)).dy, 0);
   });
 
+  testWidgets(
+    'tapping who is here lists the members and offers to listen alone',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(
+        StateEvent(
+          sampleRoom(
+            members: const [
+              Member(id: 'me', name: 'Anna', ready: true),
+              Member(id: 'b', name: 'Binh', ready: true, solo: true),
+              Member(id: 'c', name: 'Chi', ready: false, away: true),
+            ],
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('2 people listening · 1 away'), findsOneWidget);
+
+      await tester.tap(find.text('2 people listening · 1 away'));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('In the room'), findsOneWidget);
+      expect(find.text('Anna (You)'), findsOneWidget);
+      expect(find.text('On their own'), findsOneWidget);
+      expect(find.text('Connection lost'), findsOneWidget);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+      expect(backend.calls.last, 'solo true');
+    },
+  );
+
+  testWidgets('listening alone shows a banner with the way back', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(solo: true, soloItemId: 'q1')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('You are listening on your own'), findsOneWidget);
+    expect(
+      find.textContaining('On your own'),
+      findsWidgets,
+      reason: 'the mini player says so too',
+    );
+
+    await tester.tap(find.text('Rejoin'));
+    await tester.pump();
+    expect(backend.calls.last, 'solo false');
+  });
+
+  testWidgets(
+    'when someone pauses the room, a snackbar offers to keep playing',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom()));
+      await tester.pump(const Duration(milliseconds: 500));
+      backend.emit(const NoticeEvent(kind: 'paused', by: 'Binh'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Binh paused the room'), findsOneWidget);
+
+      await tester.tap(find.text('Keep playing'));
+      await tester.pump();
+      expect(backend.calls.last, 'keepPlaying');
+    },
+  );
+
   testWidgets('Back closes the open player instead of leaving the app', (
     tester,
   ) async {

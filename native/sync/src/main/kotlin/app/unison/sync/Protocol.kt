@@ -46,7 +46,15 @@ data class RoomState(
 }
 
 @Serializable
-data class Member(val id: String, val name: String, val ready: Boolean)
+data class Member(
+    val id: String,
+    val name: String,
+    val ready: Boolean,
+    /** Listening on their own: the room's play, pause and skip do not move this device. */
+    val solo: Boolean = false,
+    /** Not heard from for a while, probably a dead connection: not counted as listening. */
+    val away: Boolean = false,
+)
 
 sealed interface ServerMessage {
     @Serializable
@@ -62,15 +70,16 @@ sealed interface ServerMessage {
     @Serializable
     data class Members(val members: List<Member>) : ServerMessage
 
+    /** [by] is the client id of whoever asked for it; null when the room moved on by itself. */
     @Serializable
-    data class Prepare(val epoch: Long, val index: Int, val item: QueueItem, val seekToMs: Long) : ServerMessage
+    data class Prepare(val epoch: Long, val index: Int, val item: QueueItem, val seekToMs: Long, val by: String? = null) : ServerMessage
 
     /** Play so that position [positionMs] is heard at server time [startAt]. */
     @Serializable
-    data class Start(val epoch: Long, val startAt: Long, val positionMs: Long) : ServerMessage
+    data class Start(val epoch: Long, val startAt: Long, val positionMs: Long, val by: String? = null) : ServerMessage
 
     @Serializable
-    data class Pause(val epoch: Long, val positionMs: Long) : ServerMessage
+    data class Pause(val epoch: Long, val positionMs: Long, val by: String? = null) : ServerMessage
 
     /** The room moved on to the item at [index]; position 0 of it was heard at server time [startedAt]. */
     @Serializable
@@ -162,6 +171,12 @@ object Protocol {
     fun next() = msg("next")
 
     fun prev() = msg("prev")
+
+    /** Start or stop listening on one's own; a solo device never holds the room back. */
+    fun solo(on: Boolean) = msg("solo") { put("on", on) }
+
+    /** Ask for the room's current state again, as when rejoining after listening alone. */
+    fun resync() = msg("resync")
 
     fun ready(epoch: Long) = msg("ready") { put("epoch", epoch) }
 

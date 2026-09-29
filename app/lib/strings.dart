@@ -76,6 +76,27 @@ abstract final class S {
   static const syncing = 'Syncing…';
   static const catchingUp = 'Catching up';
   static const soloOut = 'Waiting for others';
+  static const onYourOwn = 'On your own';
+  static const rejoin = 'Rejoin';
+  static const soloBanner = 'You are listening on your own';
+  static const keepPlaying = 'Keep playing';
+  static const someone = 'Someone';
+  static String pausedBy(String name) => '$name paused the room';
+  static String skippedBy(String name, String title) =>
+      title.isEmpty ? '$name skipped ahead' : '$name switched to $title';
+
+  // Who is in the room
+  static const membersTitle = 'In the room';
+  static const listenTogether = 'Listen together';
+  static const listenTogetherOn =
+      'Play, pause and skip apply to everyone in the room.';
+  static const listenTogetherOff =
+      'You keep playing on your own. Your buttons only move you, and you can rejoin any time.';
+  static const statusListening = 'Listening';
+  static const statusAlone = 'On their own';
+  static const statusAway = 'Connection lost';
+  static const statusLoading = 'Loading…';
+  static String awayCount(int n) => '$n away';
   static String unplayable(String title) =>
       'Nobody could play “$title”. Skipped.';
 

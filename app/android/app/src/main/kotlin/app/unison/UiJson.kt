@@ -21,12 +21,21 @@ object UiJson {
             .put("repeat", state?.repeat ?: "off")
             .put("index", state?.index ?: 0)
             .put("trimMs", trimMs)
+            .put("solo", snap.solo)
+            .put("soloItemId", snap.soloItemId ?: JSONObject.NULL)
             .put("queue", JSONArray().also { array -> state?.queue?.forEach { array.put(item(it)) } })
             .put(
                 "members",
                 JSONArray().also { array ->
                     snap.members.forEach {
-                        array.put(JSONObject().put("id", it.id).put("name", it.name).put("ready", it.ready))
+                        array.put(
+                            JSONObject()
+                                .put("id", it.id)
+                                .put("name", it.name)
+                                .put("ready", it.ready)
+                                .put("solo", it.solo)
+                                .put("away", it.away),
+                        )
                     }
                 },
             )
@@ -47,6 +56,14 @@ object UiJson {
 
     /** An invitation link was opened: the UI offers to join that room. */
     fun invite(code: String): String = JSONObject().put("type", "invite").put("code", code).toString()
+
+    /** Another member paused the room or skipped a song; [by] is their name. */
+    fun notice(notice: GroupController.Notice): String = JSONObject()
+        .put("type", "notice")
+        .put("kind", notice.kind)
+        .put("by", notice.by)
+        .put("title", notice.title ?: JSONObject.NULL)
+        .toString()
 
     fun error(code: String, message: String): String =
         JSONObject().put("type", "error").put("code", code).put("message", message).toString()

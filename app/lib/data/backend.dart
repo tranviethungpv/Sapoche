@@ -25,6 +25,14 @@ class InviteEvent extends BackendEvent {
   final String code;
 }
 
+/// Another member paused the room ([kind] `paused`) or switched the song (`skipped`).
+class NoticeEvent extends BackendEvent {
+  const NoticeEvent({required this.kind, required this.by, this.title});
+  final String kind;
+  final String by;
+  final String? title;
+}
+
 class ErrorEvent extends BackendEvent {
   const ErrorEvent(this.error);
   final ServerError error;
@@ -46,6 +54,12 @@ abstract class Backend {
   Future<void> prev();
   Future<void> seek(int positionMs);
   Future<void> jump(String itemId);
+
+  /// Listen on this device alone ([on]) or follow the room again.
+  Future<void> setSolo(bool on);
+
+  /// The room stopped but this device carries on by itself.
+  Future<void> keepPlaying();
 
   Future<void> add(Track track, {bool playNext = false});
   Future<void> addMany(List<Track> tracks, {bool playNext = false});
@@ -79,6 +93,11 @@ class NativeBackend implements Backend {
     return switch (json['type']) {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
       'invite' => InviteEvent(json['code'] as String),
+      'notice' => NoticeEvent(
+        kind: json['kind'] as String,
+        by: json['by'] as String? ?? '',
+        title: json['title'] as String?,
+      ),
       'error' => ErrorEvent(
         ServerError(json['code'] as String, json['message'] as String),
       ),
@@ -126,6 +145,12 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> jump(String itemId) => _call('jump', {'id': itemId});
+
+  @override
+  Future<void> setSolo(bool on) => _call('solo', {'on': on});
+
+  @override
+  Future<void> keepPlaying() => _call('keepPlaying');
 
   @override
   Future<void> add(Track track, {bool playNext = false}) => _call('add', {

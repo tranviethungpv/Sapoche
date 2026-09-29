@@ -24,10 +24,12 @@ const ADVANCE_FUTURE_SLACK_MS = 500;
 /** An advance more than this far before the item's expected end is ignored. */
 const ADVANCE_EARLY_LIMIT_MS = 15_000;
 /**
- * A device that has been silent this long (it pings every 30 seconds) is treated as gone when
- * deciding whether everyone is ready. It stays in the member list until its socket closes.
+ * A device that has been silent this long (it pings every 15 seconds) is marked away: it does not
+ * count as listening and never holds the room back. Overridable for tests through STALE_MS.
  */
-const STALE_AFTER_MS = 75_000;
+const AWAY_AFTER_MS = 40_000;
+/** A device silent this long is dropped: its connection is dead even though it never closed. */
+const DROP_AFTER_MS = 90_000;
 /** How long an empty room keeps its state before it is deleted. */
 const EMPTY_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -42,8 +44,10 @@ const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 interface Attachment {
   clientId: string;
   name: string;
-  /** Last time this socket sent anything; clients ping every 30 seconds. */
+  /** Last time this socket sent anything; clients ping every 15 seconds. */
   lastSeen: number;
+  /** Listening on their own, so the room does not wait for or move this device. */
+  solo: boolean;
 }
 
 function defaultState(): RoomState {
@@ -65,6 +69,8 @@ export class Room extends DurableObject<Env> {
   private s: RoomState = defaultState();
   /** Per-socket rate limiting. Lives in memory only; losing it on hibernation is harmless. */
   private buckets = new WeakMap<WebSocket, { tokens: number; last: number }>();
+  /** Membership as last broadcast; a change in who is away or solo is sent without waiting for a socket to close. */
+  private membersKey = "";
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -92,6 +98,8 @@ export class Room extends DurableObject<Env> {
     }
     if (!this.allow(ws)) return this.fail(ws, "rate_limited", "Too many messages");
     this.touch(ws);
+    // Every message is a chance to notice a device that went quiet
+    await this.sweep();
 
     let msg: ClientMessage;
     try {
@@ -117,14 +125,16 @@ export class Room extends DurableObject<Env> {
       case "queue.addMany": return this.onQueueAddMany(me, msg);
       case "queue.remove": return this.onQueueRemove(msg.id);
       case "queue.clear": return this.onQueueClear();
-      case "jump": return this.onJump(msg.id);
+      case "jump": return this.onJump(msg.id, me.clientId);
       case "queue.move": return this.onQueueMove(msg.id, msg.toIndex);
-      case "play": return this.onPlay();
-      case "pause": return this.onPause();
-      case "seek": return this.onSeek(msg.positionMs);
-      case "next": return this.onNext();
-      case "prev": return this.onPrev();
+      case "play": return this.onPlay(me.clientId);
+      case "pause": return this.onPause(me.clientId);
+      case "seek": return this.onSeek(msg.positionMs, me.clientId);
+      case "next": return this.onNext(me.clientId);
+      case "prev": return this.onPrev(me.clientId);
       case "repeat": return this.onRepeat(msg.mode);
+      case "solo": return this.onSolo(me, msg.on === true);
+      case "resync": return this.onResync(ws, me);
       case "ready": return this.onReady(me.clientId, msg.epoch);
       case "resolveFailed": return this.onResolveFailed(me.clientId, msg.epoch);
       case "ended": return this.onEnded(msg.epoch);
@@ -160,7 +170,9 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
-    ws.serializeAttachment({ clientId, name, lastSeen: Date.now() } satisfies Attachment);
+    // A second join on the same socket is a rename: keep the listening mode
+    const before = ws.deserializeAttachment() as Attachment | null;
+    ws.serializeAttachment({ clientId, name, lastSeen: Date.now(), solo: before?.solo ?? false } satisfies Attachment);
 
     // A member is back, so the empty-room cleanup no longer applies
     if (this.s.alarm === "gc") await this.setAlarm("none");
@@ -168,7 +180,7 @@ export class Room extends DurableObject<Env> {
     this.send(ws, this.stateMessage(clientId));
     // A device joining mid-preparation must take part in the barrier
     if (this.s.phase === "preparing") this.send(ws, this.prepareMessage());
-    this.broadcast({ t: "members", members: this.members() });
+    this.broadcastMembers();
   }
 
   private async onMembersChanged(): Promise<void> {
@@ -185,8 +197,52 @@ export class Room extends DurableObject<Env> {
       await this.setAlarm("gc", Date.now() + EMPTY_ROOM_TTL_MS);
       return;
     }
-    this.broadcast({ t: "members", members });
+    this.broadcastMembers();
     await this.maybeStart(); // the device we were waiting for may be the one that left
+  }
+
+  private async onSolo(me: Attachment, on: boolean): Promise<void> {
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = ws.deserializeAttachment() as Attachment | null;
+      if (att?.clientId === me.clientId) ws.serializeAttachment({ ...att, solo: on } satisfies Attachment);
+    }
+    this.broadcastMembers();
+    // A device that stopped following can no longer be the one the barrier waits for
+    await this.maybeStart();
+  }
+
+  /** Sends one device the current state again, plus the prepare it may have missed. */
+  private onResync(ws: WebSocket, me: Attachment): void {
+    this.send(ws, this.stateMessage(me.clientId));
+    if (this.s.phase === "preparing") this.send(ws, this.prepareMessage());
+  }
+
+  /** Closes devices whose connection died silently, and announces devices that went quiet. */
+  private async sweep(): Promise<void> {
+    const now = Date.now();
+    let dropped = false;
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = ws.deserializeAttachment() as Attachment | null;
+      if (att && now - att.lastSeen > DROP_AFTER_MS) {
+        try {
+          ws.close(1001, "no signal from this device");
+        } catch {
+          // Already closing
+        }
+        dropped = true;
+      }
+    }
+    if (dropped) await this.onMembersChanged();
+    else this.broadcastMembers();
+  }
+
+  /** Broadcasts the member list when who is here, away or solo changed since the last time. */
+  private broadcastMembers(): void {
+    const members = this.members();
+    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}`).join("|");
+    if (key === this.membersKey) return;
+    this.membersKey = key;
+    this.broadcast({ t: "members", members });
   }
 
   // ------------------------------------------------------------------ queue
@@ -257,9 +313,9 @@ export class Room extends DurableObject<Env> {
     return this.goIdle();
   }
 
-  private async onJump(id: string): Promise<void> {
+  private async onJump(id: string, by: string): Promise<void> {
     const at = this.s.queue.findIndex((q) => q.id === id);
-    if (at >= 0) return this.begin(at, 0);
+    if (at >= 0) return this.begin(at, 0, by);
   }
 
   private async onQueueMove(id: string, toIndex: number): Promise<void> {
@@ -277,7 +333,7 @@ export class Room extends DurableObject<Env> {
   // ------------------------------------------------------------------ transport
 
   /** Start preparing an item: every device resolves and buffers it, then the barrier releases the start. */
-  private async begin(index: number, seekToMs: number): Promise<void> {
+  private async begin(index: number, seekToMs: number, by?: string): Promise<void> {
     this.s.index = index;
     this.s.epoch++;
     this.s.phase = "preparing";
@@ -287,7 +343,7 @@ export class Room extends DurableObject<Env> {
     this.s.failedIds = [];
     await this.setAlarm("barrier", Date.now() + BARRIER_TIMEOUT_MS);
     this.broadcastState();
-    this.broadcast(this.prepareMessage());
+    this.broadcast(this.prepareMessage(by));
     await this.maybeStart();
   }
 
@@ -295,7 +351,7 @@ export class Room extends DurableObject<Env> {
     if (this.s.phase !== "preparing" || epoch !== this.s.epoch) return;
     if (!this.s.readyIds.includes(clientId)) this.s.readyIds.push(clientId);
     await this.save();
-    this.broadcast({ t: "members", members: this.members() });
+    this.broadcastMembers();
     await this.maybeStart();
   }
 
@@ -309,8 +365,8 @@ export class Room extends DurableObject<Env> {
   /** Releases the barrier once every connected device is ready. */
   private async maybeStart(): Promise<void> {
     if (this.s.phase !== "preparing") return;
-    // Devices that stopped answering must not hold the room back
-    const members = this.members().filter((m) => this.isFresh(m.id));
+    // Devices that stopped answering, or that listen on their own, must not hold the room back
+    const members = this.members().filter((m) => !m.away && !m.solo);
     if (members.length === 0 || !members.every((m) => m.ready)) return;
 
     // Nobody can play this item: skip it instead of running a silent clock until it "ends"
@@ -322,48 +378,49 @@ export class Room extends DurableObject<Env> {
     await this.startPlayback();
   }
 
-  private async startPlayback(): Promise<void> {
+  private async startPlayback(by?: string): Promise<void> {
     const startAt = Date.now() + LEAD_MS;
     this.s.phase = "playing";
     this.s.startedAt = startAt - this.s.positionMs;
     this.s.readyIds = [];
     this.s.failedIds = [];
     await this.scheduleEnd();
-    this.broadcast({ t: "start", epoch: this.s.epoch, startAt, positionMs: this.s.positionMs });
+    this.broadcast({ t: "start", epoch: this.s.epoch, startAt, positionMs: this.s.positionMs, by });
   }
 
-  private async onPlay(): Promise<void> {
+  private async onPlay(by: string): Promise<void> {
     if (this.s.phase === "paused") {
       this.s.epoch++;
-      return this.startPlayback();
+      return this.startPlayback(by);
     }
-    if (this.s.phase === "idle" && this.s.queue[this.s.index]) return this.begin(this.s.index, 0);
+    if (this.s.phase === "idle" && this.s.queue[this.s.index]) return this.begin(this.s.index, 0, by);
   }
 
-  private async onPause(): Promise<void> {
+  private async onPause(by: string): Promise<void> {
     if (this.s.phase !== "playing") return;
     this.s.positionMs = this.currentPositionMs();
     this.s.phase = "paused";
     this.s.epoch++;
     await this.setAlarm("none");
-    this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs });
+    this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs, by });
   }
 
-  private async onSeek(positionMs: number): Promise<void> {
+  private async onSeek(positionMs: number, by: string): Promise<void> {
     if (this.s.phase !== "playing" && this.s.phase !== "paused") return;
     if (typeof positionMs !== "number" || !Number.isFinite(positionMs)) return;
     const item = this.s.queue[this.s.index];
     this.s.positionMs = clamp(positionMs, 0, item?.durMs || Number.MAX_SAFE_INTEGER);
     this.s.epoch++;
-    if (this.s.phase === "playing") return this.startPlayback();
+    if (this.s.phase === "playing") return this.startPlayback(by);
     await this.save();
-    this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs });
+    this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs, by });
   }
 
-  private async onNext(): Promise<void> {
+  /** [by] is set when a person asked for it; when the queue simply reaches the next item it is left out. */
+  private async onNext(by?: string): Promise<void> {
     if (this.s.phase === "idle") return;
-    if (this.s.index + 1 < this.s.queue.length) return this.begin(this.s.index + 1, 0);
-    if (this.s.repeat === "all") return this.begin(0, 0);
+    if (this.s.index + 1 < this.s.queue.length) return this.begin(this.s.index + 1, 0, by);
+    if (this.s.repeat === "all") return this.begin(0, 0, by);
     return this.goIdle();
   }
 
@@ -381,11 +438,11 @@ export class Room extends DurableObject<Env> {
     this.broadcastState();
   }
 
-  private async onPrev(): Promise<void> {
+  private async onPrev(by: string): Promise<void> {
     if (this.s.phase === "idle") return;
     // Like most players: restart the current item unless we are right at its start
-    if (this.currentPositionMs() > 3000) return this.begin(this.s.index, 0);
-    return this.begin(Math.max(0, this.s.index - 1), 0);
+    if (this.currentPositionMs() > 3000) return this.begin(this.s.index, 0, by);
+    return this.begin(Math.max(0, this.s.index - 1), 0, by);
   }
 
   /** A device reports the item finished. The first report for the current epoch advances the queue. */
@@ -474,10 +531,21 @@ export class Room extends DurableObject<Env> {
   }
 
   private members(): Member[] {
+    const limit = Number(this.env.STALE_MS) || AWAY_AFTER_MS;
+    const now = Date.now();
     const out: Member[] = [];
     for (const ws of this.ctx.getWebSockets()) {
+      // A socket we just closed can linger in the list for a moment
+      if (ws.readyState !== WebSocket.OPEN) continue;
       const att = ws.deserializeAttachment() as Attachment | null;
-      if (att) out.push({ id: att.clientId, name: att.name, ready: this.s.readyIds.includes(att.clientId) });
+      if (!att) continue;
+      out.push({
+        id: att.clientId,
+        name: att.name,
+        ready: this.s.readyIds.includes(att.clientId),
+        solo: att.solo === true,
+        away: now - att.lastSeen > limit,
+      });
     }
     return out;
   }
@@ -488,15 +556,6 @@ export class Room extends DurableObject<Env> {
     if (!att) return;
     att.lastSeen = Date.now();
     ws.serializeAttachment(att);
-  }
-
-  private isFresh(clientId: string): boolean {
-    const limit = Number(this.env.STALE_MS) || STALE_AFTER_MS;
-    const now = Date.now();
-    return this.ctx.getWebSockets().some((ws) => {
-      const att = ws.deserializeAttachment() as Attachment | null;
-      return att?.clientId === clientId && now - att.lastSeen < limit;
-    });
   }
 
   private publicState(): PublicState {
@@ -515,13 +574,14 @@ export class Room extends DurableObject<Env> {
     };
   }
 
-  private prepareMessage(): ServerMessage {
+  private prepareMessage(by?: string): ServerMessage {
     return {
       t: "prepare",
       epoch: this.s.epoch,
       index: this.s.index,
       item: this.s.queue[this.s.index],
       seekToMs: this.s.positionMs,
+      by,
     };
   }
 

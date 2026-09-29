@@ -224,6 +224,7 @@ async function main() {
   await queueSection();
   await unplayableSection();
   await playlistAndRepeatSection();
+  await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
@@ -423,6 +424,70 @@ async function staleSection(staleMs) {
   const start = await a.waitFor((m) => m.t === "start", 4000);
   check("a silent device no longer holds the barrier", start._at - t0 < 1500, `waited ${start._at - t0}ms`);
   [a, b, ghost].forEach((x) => x.close());
+}
+
+/** Keeps the given clients speaking, as a real device does with its pings. Returns a function that stops it. */
+function keepAlive(clients) {
+  const timer = setInterval(() => clients.forEach((c) => c.send({ t: "ping", c0: Date.now() })), 400);
+  return () => clearInterval(timer);
+}
+
+/** Listening on one's own, who caused a pause or a skip, asking for the state again, and quiet devices. */
+async function soloAndPresenceSection(staleMs) {
+  console.log("Solo, resync and presence");
+  const [a, b, c] = await freshRoom(["Xa", "Xb", "Xc"]);
+  const stopAlive = keepAlive([a, b]);
+  const member = (msg, id) => msg.members.find((m) => m.id === id);
+
+  check("members start out present and following", member(await a.waitFor((m) => m.t === "members" && m.members.length === 3), "Xc-id").solo === false);
+
+  c.send({ t: "solo", on: true });
+  const soloMsg = await a.waitFor((m) => m.t === "members" && member(m, "Xc-id")?.solo === true);
+  check("the others are told a device listens on its own", !!soloMsg);
+
+  a.send({ t: "queue.add", videoId: VIDEO_A, title: "One", artist: "x", durMs: 200000 });
+  const first = await all([a, b, c], (x) => x.waitFor((m) => m.t === "prepare"));
+  check("the queue starting by itself names nobody", first[0].by === undefined);
+  const t0 = Date.now();
+  await all([a, b], (x) => x.send({ t: "ready", epoch: first[0].epoch }));
+  const start = await a.waitFor((m) => m.t === "start", 4000);
+  check("a device listening on its own does not hold the barrier", start._at - t0 < 1500, `waited ${start._at - t0}ms`);
+
+  b.send({ t: "pause" });
+  const paused = await a.waitFor((m) => m.t === "pause");
+  check("a pause says who paused", paused.by === "Xb-id", `by=${paused.by}`);
+  b.send({ t: "play" });
+  const resumed = await a.waitFor((m) => m.t === "start");
+  check("a resume says who resumed", resumed.by === "Xb-id");
+
+  a.send({ t: "queue.add", videoId: VIDEO_B, title: "Two", artist: "x", durMs: 200000 });
+  await a.waitFor((m) => m.t === "state" && m.state.queue.length === 2);
+  a.send({ t: "next" });
+  const skipped = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  check("a skip says who skipped", skipped[0].by === "Xa-id");
+
+  // c missed nothing on purpose here, but asks again as it would when rejoining
+  c.inbox.length = 0; // whatever it heard so far must not be mistaken for the answer
+  c.send({ t: "resync" });
+  const state = await c.waitFor((m) => m.t === "state");
+  check("resync returns the room's state", state.state.queue.length === 2 && state.state.index === 1);
+  const again = await c.waitFor((m) => m.t === "prepare", 1500);
+  check("resync during a barrier also returns the prepare", again.item.videoId === VIDEO_B && again.epoch === skipped[0].epoch);
+
+  c.send({ t: "solo", on: false });
+  check("the device is following again", !!(await a.waitFor((m) => m.t === "members" && member(m, "Xc-id")?.solo === false)));
+
+  if (staleMs > 0) {
+    await sleep(staleMs + 400);
+    const away = await a.waitFor((m) => m.t === "members" && member(m, "Xc-id")?.away === true, 3000);
+    check("a device that went quiet is marked away", !!away);
+    c.send({ t: "ping", c0: Date.now() });
+    const back = await a.waitFor((m) => m.t === "members" && member(m, "Xc-id")?.away === false, 3000);
+    check("and is marked present again as soon as it speaks", !!back);
+  }
+
+  stopAlive();
+  [a, b, c].forEach((x) => x.close());
 }
 
 /** Adding a playlist in one message, and the three repeat modes. */

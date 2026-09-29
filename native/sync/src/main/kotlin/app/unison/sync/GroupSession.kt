@@ -4,8 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -71,7 +74,20 @@ class GroupSession(
         /** Player position minus expected position, in ms; null when not playing in sync. */
         val driftMs: Long? = null,
         val speed: Float = 1f,
+        /** Listening on this device alone: the room's transport no longer moves it. */
+        val solo: Boolean = false,
+        /** Queue item this device is on while [solo]; the room's own current item is in [state]. */
+        val soloItemId: String? = null,
     )
+
+    /** Something another member did that moved this device, worth telling the person about. */
+    sealed interface RoomEvent {
+        data class Paused(val byId: String) : RoomEvent
+        data class Skipped(val byId: String, val title: String) : RoomEvent
+    }
+
+    private val _events = MutableSharedFlow<RoomEvent>(extraBufferCapacity = 8)
+    val events: SharedFlow<RoomEvent> = _events.asSharedFlow()
 
     private val _snapshot = MutableStateFlow(Snapshot())
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
@@ -84,6 +100,10 @@ class GroupSession(
 
     /** Queue item id currently loaded in the player, if any. */
     private var loadedItemId: String? = null
+
+    /** Listening alone: the player keeps to this device's own choices while the room's messages only update the view. */
+    private var solo = false
+    private var soloJob: Job? = null
 
     private var prepareJob: Job? = null
     private var startJob: Job? = null
@@ -124,7 +144,9 @@ class GroupSession(
     init {
         player.onEnded = {
             scope.launch {
-                if (startedAtServer != null) {
+                if (solo) {
+                    soloStep(+1, auto = true)
+                } else if (startedAtServer != null) {
                     log("item ended, reporting to room (epoch $handledEpoch)")
                     send(Protocol.ended(handledEpoch))
                 }
@@ -159,11 +181,143 @@ class GroupSession(
         }
     }
 
+    // ------------------------------------------------------------------ listening alone
+
+    val isSolo: Boolean get() = solo
+
+    /**
+     * Stop following the room and keep playing on this device alone. Whatever is playing goes on
+     * exactly as it is; from now on the room's play, pause and skip only update what is shown, and
+     * this device's own buttons act on this device only.
+     */
+    fun goSolo() {
+        scope.launch {
+            if (solo) return@launch
+            solo = true
+            prepareJob?.cancel()
+            startJob?.cancel()
+            driftJob?.cancel()
+            clearPendingAdopt()
+            startedAtServer = null
+            player.setSpeed(1f)
+            drift.reset()
+            _snapshot.update { it.copy(solo = true, soloItemId = loadedItemId, driftMs = null, speed = 1f) }
+            send(Protocol.solo(true))
+            log("listening on my own from '${loadedItemId}'")
+            soloPreload()
+        }
+    }
+
+    /** Follow the room again: ask it where it is and join in there. */
+    fun rejoin() {
+        scope.launch {
+            if (!solo) return@launch
+            solo = false
+            soloJob?.cancel()
+            handledEpoch = -1 // whatever the room says next counts, even if its epoch looks familiar
+            preloaded = null
+            _snapshot.update { it.copy(solo = false, soloItemId = null) }
+            send(Protocol.solo(false))
+            send(Protocol.resync())
+            log("following the room again")
+        }
+    }
+
+    /** The connection came back: the server forgot that this device listens alone. */
+    fun onReconnected() {
+        scope.launch { if (solo) send(Protocol.solo(true)) }
+    }
+
+    fun soloPlay() {
+        scope.launch {
+            if (loadedItemId != null) player.play() else state?.current?.let { soloLoad(it, 0, play = true) }
+        }
+    }
+
+    fun soloPause() {
+        scope.launch { player.pause() }
+    }
+
+    fun soloSeek(positionMs: Long) {
+        scope.launch { if (loadedItemId != null) player.seekTo(positionMs.coerceAtLeast(0)) }
+    }
+
+    /** Next in the queue after the one this device is on. */
+    fun soloNext() {
+        scope.launch { soloStep(+1, auto = false) }
+    }
+
+    /** Restart this song, or go to the one before it when it has only just begun. */
+    fun soloPrev() {
+        scope.launch {
+            if (player.positionMs() > PREV_RESTARTS_AFTER_MS) soloSeek(0) else soloStep(-1, auto = false)
+        }
+    }
+
+    fun soloJump(itemId: String) {
+        scope.launch { state?.queue?.firstOrNull { it.id == itemId }?.let { soloLoad(it, 0, play = true) } }
+    }
+
+    /** Moves [delta] items along the room's queue from where this device is. */
+    private fun soloStep(delta: Int, auto: Boolean) {
+        val s = state ?: return
+        val at = s.queue.indexOfFirst { it.id == _snapshot.value.soloItemId }
+        var target = if (at < 0) s.index else at + delta
+        if (auto && s.repeat == "one" && at >= 0) target = at
+        if (target >= s.queue.size) target = if (s.repeat == "all") 0 else -1
+        if (target < 0) {
+            if (delta < 0 && s.queue.isNotEmpty()) target = 0 else {
+                // Ran out of songs: stop where we are
+                player.pause()
+                return
+            }
+        }
+        soloLoad(s.queue[target], 0, play = true)
+    }
+
+    private fun soloLoad(item: QueueItem, positionMs: Long, play: Boolean) {
+        soloJob?.cancel()
+        preloaded = null
+        soloJob = scope.launch {
+            try {
+                player.prepare(item, positionMs)
+                loadedItemId = item.id
+                _snapshot.update { it.copy(soloItemId = item.id) }
+                if (play) player.play()
+                soloPreload()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("could not load '${item.title}' while alone: ${e.message}")
+                loadedItemId = null
+            }
+        }
+    }
+
+    /** While alone, keep the gapless successor equal to the song after the one this device is on. */
+    private fun soloPreload() {
+        val s = state
+        val mine = _snapshot.value.soloItemId
+        val wanted = if (solo && s != null && mine != null && mine == loadedItemId && s.repeat != "one") {
+            val at = s.queue.indexOfFirst { it.id == mine }
+            if (at >= 0) s.queue.getOrNull(at + 1) else null
+        } else {
+            null
+        }
+        if (wanted?.id == preloaded?.id) return
+        preloaded = wanted
+        player.setNext(wanted)
+    }
+
     // ------------------------------------------------------------------ handlers
 
     private fun onState(msg: ServerMessage.State) {
         state = msg.state
         _snapshot.update { it.copy(state = msg.state, members = msg.members, you = msg.you) }
+        if (solo) {
+            soloPreload() // the queue may have changed under us
+            return
+        }
 
         // Same or older epoch: we already follow this room (e.g. the queue changed). Nothing to do.
         if (msg.state.epoch <= handledEpoch) {
@@ -214,7 +368,15 @@ class GroupSession(
     }
 
     private fun onPrepare(msg: ServerMessage.Prepare) {
+        if (solo) {
+            updateRoom { it.copy(phase = "preparing", index = msg.index, epoch = msg.epoch, positionMs = msg.seekToMs) }
+            return
+        }
         if (msg.epoch < handledEpoch) return
+        val by = msg.by
+        if (by != null && by != _snapshot.value.you && msg.epoch != handledEpoch) {
+            _events.tryEmit(RoomEvent.Skipped(by, msg.item.title))
+        }
         if (msg.epoch == handledEpoch) {
             // The server repeats the prepare to a device that reconnected mid-barrier
             if (prepareJob?.isActive == true) return
@@ -246,6 +408,10 @@ class GroupSession(
     }
 
     private fun onStart(msg: ServerMessage.Start) {
+        if (solo) {
+            updateRoom { it.copy(phase = "playing", epoch = msg.epoch, positionMs = msg.positionMs, startedAt = msg.startAt - msg.positionMs) }
+            return
+        }
         if (msg.epoch < handledEpoch) return
         val waitForOwnPrepare = msg.epoch == handledEpoch && prepareJob?.isActive == true
         handledEpoch = msg.epoch
@@ -272,8 +438,14 @@ class GroupSession(
     }
 
     private fun onPause(msg: ServerMessage.Pause) {
+        if (solo) {
+            updateRoom { it.copy(phase = "paused", epoch = msg.epoch, positionMs = msg.positionMs) }
+            return
+        }
         if (msg.epoch < handledEpoch) return
         handledEpoch = msg.epoch
+        val by = msg.by
+        if (by != null && by != _snapshot.value.you) _events.tryEmit(RoomEvent.Paused(by))
         updateRoom { it.copy(phase = "paused", epoch = msg.epoch, positionMs = msg.positionMs) }
         cancelPlayback()
         val item = state?.current
@@ -291,6 +463,10 @@ class GroupSession(
      * to do so waits for its player, and anything else loads the item like a late joiner.
      */
     private fun onAdvance(msg: ServerMessage.Advance) {
+        if (solo) {
+            updateRoom { it.copy(index = msg.index, epoch = msg.epoch, startedAt = msg.startedAt, positionMs = 0, phase = "playing") }
+            return
+        }
         if (msg.epoch <= handledEpoch) return
         val current = state ?: return
         val item = current.queue.getOrNull(msg.index) ?: return
@@ -329,6 +505,11 @@ class GroupSession(
         val item = preloaded ?: return
         preloaded = null
         loadedItemId = item.id
+        if (solo) {
+            _snapshot.update { it.copy(soloItemId = item.id) }
+            soloPreload()
+            return
+        }
         val pending = pendingAdopt
         if (pending != null && pending.itemId == item.id) {
             adopt(pending.startedAt)
@@ -573,5 +754,8 @@ class GroupSession(
 
         /** How long to wait for the room's answer, or for our own player, around a gapless advance. */
         const val ADVANCE_WAIT_MS = 4000L
+
+        /** Like most players: "previous" restarts the song unless it has only just begun. */
+        const val PREV_RESTARTS_AFTER_MS = 3000L
     }
 }

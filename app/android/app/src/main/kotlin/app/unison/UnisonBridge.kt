@@ -114,6 +114,7 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
                         }
                     }
                     launch { group.errors.collect { emit(UiJson.error(it.code, it.message)) } }
+                    launch { group.notices.collect { emit(UiJson.notice(it)) } }
                     launch {
                         while (true) {
                             if (visible) emit(UiJson.position(group.view.value, group.playerInfo()))
@@ -210,6 +211,8 @@ class UnisonBridge(private val activity: FlutterActivity, messenger: BinaryMesse
             else -> {
                 if (!group.isActive) throw NoRoomException()
                 when (call.method) {
+                    "solo" -> if (call.argument<Boolean>("on") == true) group.goSolo() else group.rejoin()
+                    "keepPlaying" -> group.keepPlaying()
                     "play" -> group.requestPlay { group.playLocally() }
                     "pause" -> group.requestPause()
                     "next" -> group.requestNext()

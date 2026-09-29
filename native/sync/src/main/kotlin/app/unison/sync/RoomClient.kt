@@ -182,6 +182,6 @@ class RoomClient(
         const val HTTP_UNAUTHORIZED = 401
         const val BURST_PINGS = 8
         const val BURST_GAP_MS = 250L
-        const val REFRESH_MS = 30_000L
+        const val REFRESH_MS = 15_000L
     }
 }

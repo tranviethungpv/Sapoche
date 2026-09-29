@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when a change is not backward compatible. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export interface QueueItem {
   id: string;
@@ -52,6 +52,10 @@ export interface Member {
   id: string;
   name: string;
   ready: boolean;
+  /** Listening on their own: the room's play, pause and skip do not move this device. */
+  solo: boolean;
+  /** Not heard from for a while: probably a dead connection, not counted as listening. */
+  away: boolean;
 }
 
 // ---- client -> server ----
@@ -74,6 +78,10 @@ export type ClientMessage =
   | { t: "next" }
   | { t: "prev" }
   | { t: "repeat"; mode: Repeat }
+  /** Start or stop listening on one's own. A solo device never holds the room back. */
+  | { t: "solo"; on: boolean }
+  /** Ask for the room's current state again, e.g. when rejoining after listening alone. */
+  | { t: "resync" }
   | { t: "ready"; epoch: number }
   | { t: "resolveFailed"; epoch: number; reason?: string }
   | { t: "ended"; epoch: number }
@@ -89,10 +97,11 @@ export type ClientMessage =
 export type ServerMessage =
   | { t: "state"; serverNow: number; you: string; protocol: number; state: PublicState; members: Member[] }
   | { t: "members"; members: Member[] }
-  | { t: "prepare"; epoch: number; index: number; item: QueueItem; seekToMs: number }
+  /** [by] is the client id of whoever caused it (skipped, picked a song); absent when the room moved on by itself. */
+  | { t: "prepare"; epoch: number; index: number; item: QueueItem; seekToMs: number; by?: string }
   /** Play the current item so that its position [positionMs] is heard at server time [startAt]. */
-  | { t: "start"; epoch: number; startAt: number; positionMs: number }
-  | { t: "pause"; epoch: number; positionMs: number }
+  | { t: "start"; epoch: number; startAt: number; positionMs: number; by?: string }
+  | { t: "pause"; epoch: number; positionMs: number; by?: string }
   /** The room moved on to the next item without a barrier; devices that already did the same keep playing. */
   | { t: "advance"; epoch: number; index: number; startedAt: number }
   | { t: "pong"; c0: number; s1: number }

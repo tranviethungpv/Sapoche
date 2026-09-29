@@ -105,4 +105,69 @@ void main() {
     });
     expect(list.isPlaylist, isTrue);
   });
+
+  test('listening alone puts this device on its own song, not the room\'s', () {
+    final snapshot = RoomSnapshot.fromJson({
+      'room': 'X',
+      'index': 0,
+      'solo': true,
+      'soloItemId': 'q2',
+      'queue': [
+        for (final n in [1, 2, 3])
+          {
+            'id': 'q$n',
+            'videoId': 'aaaaaaaaaa$n',
+            'title': 'Song $n',
+            'durMs': 1000,
+            'addedBy': 'me',
+          },
+      ],
+    });
+    expect(snapshot.solo, isTrue);
+    expect(snapshot.current?.title, 'Song 2');
+    expect(snapshot.upNext.map((e) => e.title), ['Song 3']);
+    expect(snapshot.myIndex, 1);
+    expect(
+      snapshot.index,
+      0,
+      reason: 'the room itself is still on the first song',
+    );
+  });
+
+  test('a solo song that left the queue falls back to the room\'s place', () {
+    final snapshot = RoomSnapshot.fromJson({
+      'room': 'X',
+      'index': 0,
+      'solo': true,
+      'soloItemId': 'gone',
+      'queue': [
+        {
+          'id': 'q1',
+          'videoId': 'aaaaaaaaaaa',
+          'title': 'One',
+          'durMs': 1,
+          'addedBy': 'me',
+        },
+      ],
+    });
+    expect(snapshot.current?.title, 'One');
+  });
+
+  test('members carry their mode, and people who are away do not count as listening', () {
+    final snapshot = RoomSnapshot.fromJson({
+      'room': 'X',
+      'members': [
+        {'id': 'a', 'name': 'Anna', 'ready': true},
+        {'id': 'b', 'name': 'Binh', 'ready': true, 'solo': true},
+        {'id': 'c', 'name': 'Chi', 'ready': false, 'away': true},
+      ],
+    });
+    expect(snapshot.members.map((m) => (m.solo, m.away)), [
+      (false, false),
+      (true, false),
+      (false, true),
+    ]);
+    expect(snapshot.listeningCount, 2);
+    expect(snapshot.awayCount, 1);
+  });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/room_controller.dart';
+import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../player_sheet.dart';
 import 'artwork.dart';
@@ -69,7 +70,9 @@ class MiniPlayer extends StatelessWidget {
                                       style: theme.titleSmall,
                                     ),
                                     Text(
-                                      current.artist,
+                                      controller.snapshot.solo
+                                          ? '${current.artist} · ${S.onYourOwn}'
+                                          : current.artist,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: theme.bodySmall?.copyWith(

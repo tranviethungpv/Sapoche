@@ -5,6 +5,6 @@ interface Env {
    * set (local development) the server is open.
    */
   ROOM_KEY?: string;
-  /** Overrides how long a silent device counts as present (milliseconds); only the tests set it. */
+  /** Overrides how long a silent device stays present before it is marked away (milliseconds); only the tests set it. */
   STALE_MS?: string;
 }

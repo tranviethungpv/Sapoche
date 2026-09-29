@@ -59,6 +59,12 @@ class FakeBackend implements Backend {
   Future<void> jump(String itemId) => _record('jump $itemId');
 
   @override
+  Future<void> setSolo(bool on) => _record('solo $on');
+
+  @override
+  Future<void> keepPlaying() => _record('keepPlaying');
+
+  @override
   Future<void> add(Track track, {bool playNext = false}) =>
       _record('add ${track.videoId} next=$playNext');
 
@@ -113,6 +119,9 @@ RoomSnapshot sampleRoom({
   int index = 0,
   int songs = 3,
   Repeat repeat = Repeat.off,
+  List<Member>? members,
+  bool solo = false,
+  String? soloItemId,
 }) => RoomSnapshot(
   room: 'ABC234',
   link: Link.connected,
@@ -120,10 +129,14 @@ RoomSnapshot sampleRoom({
   phase: phase,
   index: index,
   repeat: repeat,
-  members: const [
-    Member(id: 'me', name: 'Anna', ready: true),
-    Member(id: 'b', name: 'Binh', ready: true),
-  ],
+  solo: solo,
+  soloItemId: soloItemId,
+  members:
+      members ??
+      const [
+        Member(id: 'me', name: 'Anna', ready: true),
+        Member(id: 'b', name: 'Binh', ready: true),
+      ],
   queue: [
     for (var i = 0; i < songs; i++)
       QueueEntry(

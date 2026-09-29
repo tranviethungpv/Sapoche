@@ -5,6 +5,7 @@ import '../data/room_controller.dart';
 import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'members_sheet.dart';
 import 'player_sheet.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
@@ -254,16 +255,31 @@ class _RoomStrip extends StatelessWidget {
     final snapshot = controller.snapshot;
     return Row(
       children: [
-        AvatarStack(members: snapshot.members, size: 30),
-        const SizedBox(width: 10),
+        // Who is here: tapping opens the list of members
         Expanded(
-          child: Text(
-            S.listening(snapshot.members.length),
-            style: theme.bodySmall?.copyWith(color: p.textSecondary),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => showMembersSheet(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  AvatarStack(members: snapshot.members, size: 30),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      S.listening(snapshot.listeningCount),
+                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
+        const SizedBox(width: 8),
         ListenableBuilder(
           listenable: controller.player,
           builder: (context, _) => _SyncChip(controller: controller),
@@ -288,7 +304,10 @@ class _SyncChip extends StatelessWidget {
     final drift = player.driftMs;
     final String label;
     final Color color;
-    if (!controller.isPlaying) {
+    if (controller.snapshot.solo) {
+      label = S.onYourOwn;
+      color = p.primary;
+    } else if (!controller.isPlaying) {
       return const SizedBox.shrink();
     } else if (controller.isStarting) {
       label = S.buffering;
@@ -304,27 +323,31 @@ class _SyncChip extends StatelessWidget {
       label = '${S.catchingUp} · ${formatDrift(drift)}';
       color = p.textSecondary;
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelMedium
-                ?.copyWith(color: color),
-          ),
-        ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showMembersSheet(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium
+                  ?.copyWith(color: color),
+            ),
+          ],
+        ),
       ),
     );
   }
