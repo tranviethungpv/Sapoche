@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { PROTOCOL_VERSION } from "./protocol";
 import type {
   ClientMessage,
   Member,
@@ -20,6 +21,11 @@ const ADVANCE_MAX_AGE_MS = 10_000;
 const ADVANCE_FUTURE_SLACK_MS = 500;
 /** An advance more than this far before the item's expected end is ignored. */
 const ADVANCE_EARLY_LIMIT_MS = 15_000;
+/**
+ * A device that has been silent this long (it pings every 30 seconds) is treated as gone when
+ * deciding whether everyone is ready. It stays in the member list until its socket closes.
+ */
+const STALE_AFTER_MS = 75_000;
 /** How long an empty room keeps its state before it is deleted. */
 const EMPTY_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -32,6 +38,8 @@ const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 interface Attachment {
   clientId: string;
   name: string;
+  /** Last time this socket sent anything; clients ping every 30 seconds. */
+  lastSeen: number;
 }
 
 function defaultState(): RoomState {
@@ -43,6 +51,7 @@ function defaultState(): RoomState {
     positionMs: 0,
     epoch: 0,
     readyIds: [],
+    failedIds: [],
     alarm: "none",
   };
 }
@@ -56,7 +65,8 @@ export class Room extends DurableObject<Env> {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       const saved = await ctx.storage.get<RoomState>("state");
-      if (saved) this.s = saved;
+      // Fields added after a room was saved get their defaults
+      if (saved) this.s = { ...defaultState(), ...saved };
     });
   }
 
@@ -76,6 +86,7 @@ export class Room extends DurableObject<Env> {
       return this.fail(ws, "bad_message", "Message must be text of at most 4096 characters");
     }
     if (!this.allow(ws)) return this.fail(ws, "rate_limited", "Too many messages");
+    this.touch(ws);
 
     let msg: ClientMessage;
     try {
@@ -99,6 +110,8 @@ export class Room extends DurableObject<Env> {
     switch (msg.t) {
       case "queue.add": return this.onQueueAdd(me, msg);
       case "queue.remove": return this.onQueueRemove(msg.id);
+      case "queue.clear": return this.onQueueClear();
+      case "jump": return this.onJump(msg.id);
       case "queue.move": return this.onQueueMove(msg.id, msg.toIndex);
       case "play": return this.onPlay();
       case "pause": return this.onPause();
@@ -106,7 +119,7 @@ export class Room extends DurableObject<Env> {
       case "next": return this.onNext();
       case "prev": return this.onPrev();
       case "ready": return this.onReady(me.clientId, msg.epoch);
-      case "resolveFailed": return this.onReady(me.clientId, msg.epoch); // do not hold the room hostage
+      case "resolveFailed": return this.onResolveFailed(me.clientId, msg.epoch);
       case "ended": return this.onEnded(msg.epoch);
       case "advanced": return this.onAdvanced(msg.epoch, msg.itemId, msg.startedAt);
       case "report": return; // diagnostics only for now
@@ -140,7 +153,7 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
-    ws.serializeAttachment({ clientId, name } satisfies Attachment);
+    ws.serializeAttachment({ clientId, name, lastSeen: Date.now() } satisfies Attachment);
 
     // A member is back, so the empty-room cleanup no longer applies
     if (this.s.alarm === "gc") await this.setAlarm("none");
@@ -161,6 +174,7 @@ export class Room extends DurableObject<Env> {
         this.s.epoch++;
       }
       this.s.readyIds = [];
+      this.s.failedIds = [];
       await this.setAlarm("gc", Date.now() + EMPTY_ROOM_TTL_MS);
       return;
     }
@@ -183,10 +197,12 @@ export class Room extends DurableObject<Env> {
       durMs: clamp(Number(msg.durMs) || 0, 0, 12 * 3600 * 1000),
       addedBy: me.clientId,
     };
-    this.s.queue.push(item);
+    // "Play next" only makes sense while something is playing; otherwise the new item is simply the last
+    const at = msg.next === true && this.s.phase !== "idle" ? this.s.index + 1 : this.s.queue.length;
+    this.s.queue.splice(at, 0, item);
 
     if (this.s.phase === "idle") {
-      await this.begin(this.s.queue.length - 1, 0);
+      await this.begin(at, 0);
     } else {
       await this.save();
       this.broadcastState();
@@ -206,6 +222,17 @@ export class Room extends DurableObject<Env> {
     if (at < this.s.index) this.s.index--;
     await this.save();
     this.broadcastState();
+  }
+
+  private async onQueueClear(): Promise<void> {
+    if (this.s.queue.length === 0) return;
+    this.s.queue = [];
+    return this.goIdle();
+  }
+
+  private async onJump(id: string): Promise<void> {
+    const at = this.s.queue.findIndex((q) => q.id === id);
+    if (at >= 0) return this.begin(at, 0);
   }
 
   private async onQueueMove(id: string, toIndex: number): Promise<void> {
@@ -230,6 +257,7 @@ export class Room extends DurableObject<Env> {
     this.s.positionMs = seekToMs;
     this.s.startedAt = 0;
     this.s.readyIds = [];
+    this.s.failedIds = [];
     await this.setAlarm("barrier", Date.now() + BARRIER_TIMEOUT_MS);
     this.broadcastState();
     this.broadcast(this.prepareMessage());
@@ -244,11 +272,27 @@ export class Room extends DurableObject<Env> {
     await this.maybeStart();
   }
 
+  /** A device could not load the item. It counts as answered, so it never holds the others back. */
+  private async onResolveFailed(clientId: string, epoch: number): Promise<void> {
+    if (this.s.phase !== "preparing" || epoch !== this.s.epoch) return;
+    if (!this.s.failedIds.includes(clientId)) this.s.failedIds.push(clientId);
+    return this.onReady(clientId, epoch);
+  }
+
   /** Releases the barrier once every connected device is ready. */
   private async maybeStart(): Promise<void> {
     if (this.s.phase !== "preparing") return;
-    const members = this.members();
-    if (members.length > 0 && members.every((m) => m.ready)) await this.startPlayback();
+    // Devices that stopped answering must not hold the room back
+    const members = this.members().filter((m) => this.isFresh(m.id));
+    if (members.length === 0 || !members.every((m) => m.ready)) return;
+
+    // Nobody can play this item: skip it instead of running a silent clock until it "ends"
+    if (members.every((m) => this.s.failedIds.includes(m.id))) {
+      const item = this.s.queue[this.s.index];
+      this.broadcast({ t: "error", code: "unplayable", message: `Nobody could load: ${item?.title ?? "item"}` });
+      return this.onNext();
+    }
+    await this.startPlayback();
   }
 
   private async startPlayback(): Promise<void> {
@@ -256,6 +300,7 @@ export class Room extends DurableObject<Env> {
     this.s.phase = "playing";
     this.s.startedAt = startAt - this.s.positionMs;
     this.s.readyIds = [];
+    this.s.failedIds = [];
     await this.scheduleEnd();
     this.broadcast({ t: "start", epoch: this.s.epoch, startAt, positionMs: this.s.positionMs });
   }
@@ -339,6 +384,7 @@ export class Room extends DurableObject<Env> {
     this.s.epoch++;
     this.s.positionMs = 0;
     this.s.readyIds = [];
+    this.s.failedIds = [];
     this.s.index = Math.min(this.s.index, Math.max(0, this.s.queue.length - 1));
     await this.setAlarm("none");
     this.broadcastState();
@@ -393,13 +439,37 @@ export class Room extends DurableObject<Env> {
     return out;
   }
 
+  /** Record that a socket just spoke. Attachments live with the socket, so this costs no storage write. */
+  private touch(ws: WebSocket): void {
+    const att = ws.deserializeAttachment() as Attachment | null;
+    if (!att) return;
+    att.lastSeen = Date.now();
+    ws.serializeAttachment(att);
+  }
+
+  private isFresh(clientId: string): boolean {
+    const limit = Number(this.env.STALE_MS) || STALE_AFTER_MS;
+    const now = Date.now();
+    return this.ctx.getWebSockets().some((ws) => {
+      const att = ws.deserializeAttachment() as Attachment | null;
+      return att?.clientId === clientId && now - att.lastSeen < limit;
+    });
+  }
+
   private publicState(): PublicState {
-    const { readyIds: _r, alarm: _a, ...rest } = this.s;
+    const { readyIds: _r, failedIds: _f, alarm: _a, ...rest } = this.s;
     return rest;
   }
 
   private stateMessage(you: string): ServerMessage {
-    return { t: "state", serverNow: Date.now(), you, state: this.publicState(), members: this.members() };
+    return {
+      t: "state",
+      serverNow: Date.now(),
+      you,
+      protocol: PROTOCOL_VERSION,
+      state: this.publicState(),
+      members: this.members(),
+    };
   }
 
   private prepareMessage(): ServerMessage {

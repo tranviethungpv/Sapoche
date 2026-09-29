@@ -6,7 +6,9 @@
     "dev": "wrangler dev --port 8787",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "sim": "node scripts/sim.mjs"
+    "sim": "node scripts/sim.mjs",
+    "sim:keyed": "node scripts/sim-keyed.mjs",
+    "test": "node scripts/sim-keyed.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260929.1",

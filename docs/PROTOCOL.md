@@ -28,21 +28,27 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 
 Đo 8 lần lúc vào phòng, lấy mẫu có `rtt` nhỏ nhất. Đo lại mỗi 30 giây khi màn hình sáng, mỗi vài phút khi nền.
 
+## 2b. Xác thực
+
+`POST /rooms` và `WS /room/<CODE>` cần khóa dùng chung `ROOM_KEY` (header `X-Unison-Key`, hoặc tham số `?key=` khi không đặt được header). Sai hoặc thiếu trả HTTP 401 trước khi nâng cấp WebSocket; client coi đó là lỗi cuối cùng và không thử lại. `GET /health` luôn mở và trả `{"ok":true,"protocol":2}`. Chi tiết vận hành ở [../server/README.md](../server/README.md).
+
 ## 3. Tin nhắn client → server
 
 | `t` | Trường | Ý nghĩa |
 |---|---|---|
 | `join` | `name`, `clientId` | Vào phòng; server trả `state` |
 | `ping` | `c0` | Đo đồng hồ |
-| `queue.add` | `videoId`, metadata | Thêm bài |
+| `queue.add` | `videoId`, metadata, `next?` | Thêm bài; `next: true` chèn ngay sau bài đang phát (nếu phòng đang `idle` thì bài mới chỉ được thêm vào cuối và phát) |
 | `queue.remove` | `id` | Xóa bài |
+| `queue.clear` | | Xóa hết hàng đợi, phòng về `idle` |
+| `jump` | `id` | Phát ngay bài này từ đầu (qua barrier) |
 | `queue.move` | `id`, `toIndex` | Đổi vị trí |
 | `play` / `pause` | | Điều khiển |
 | `seek` | `positionMs` | Tua |
 | `next` / `prev` | | Chuyển bài |
 | `ready` | `epoch` | Máy đã resolve xong và nạp đệm đủ, sẵn sàng phát |
 | `report` | `epoch`, `posMs`, `bufferMs` | Báo vị trí định kỳ (chỉ dùng chẩn đoán, 10 giây một lần) |
-| `resolveFailed` | `epoch`, `reason` | Máy không lấy được luồng |
+| `resolveFailed` | `epoch`, `reason` | Máy không lấy được luồng. Tính như đã trả lời để không kìm các máy khác; nếu **mọi** máy trong phòng đều báo lỗi thì server gửi `error` mã `unplayable` và chuyển sang bài kế (hoặc `idle` nếu hết bài) thay vì chạy đồng hồ im lặng |
 | `ended` | `epoch` | Bài phát hết mà không còn bài nạp trước (bài cuối, hoặc nạp trước thất bại) |
 | `advanced` | `epoch`, `itemId`, `startedAt` | Máy đã tự chuyển sang bài kế đã nạp trước; `startedAt` là giờ server lúc nghe thấy vị trí 0 của bài mới |
 
@@ -50,7 +56,7 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 
 | `t` | Trường | Ý nghĩa |
 |---|---|---|
-| `state` | toàn bộ trạng thái | Gửi khi vào phòng và khi thay đổi lớn |
+| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 2) |
 | `prepare` | `epoch`, bài, `seekToMs` | Chuẩn bị bài: resolve, nạp đệm, rồi gửi `ready` |
 | `start` | `epoch`, `startAt` (giờ server) | Bắt đầu phát tại thời điểm này |
 | `pause` | `epoch`, `positionMs` | Dừng tại vị trí |

@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from "./protocol";
 import { Room } from "./room";
 
 export { Room };
@@ -11,11 +12,41 @@ function newRoomCode(): string {
   return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 }
 
+/** Compares two secrets without leaking, through timing, how much of a guess was right. */
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(given)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
+/**
+ * The key comes in a header (apps) or a `key` query parameter (WebSocket clients that cannot set
+ * headers, such as browsers). Without a configured key everything is allowed.
+ */
+async function authorized(request: Request, url: URL, env: Env): Promise<boolean> {
+  if (!env.ROOM_KEY) return true;
+  const given = request.headers.get("X-Unison-Key") ?? url.searchParams.get("key") ?? "";
+  return sameSecret(given, env.ROOM_KEY);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/health") return new Response("ok");
+    // Open on purpose: lets a phone tell "server down" from "wrong key"
+    if (url.pathname === "/health") return Response.json({ ok: true, protocol: PROTOCOL_VERSION });
+
+    const isRoomRoute = url.pathname === "/rooms" || /^\/room\/[A-Za-z0-9]{6}$/.test(url.pathname);
+    if (isRoomRoute && !(await authorized(request, url, env))) {
+      return new Response("Unauthorized", { status: 401 });
+    }
 
     // Room codes are only a namespace: the Durable Object is created lazily on first connection
     if (request.method === "POST" && url.pathname === "/rooms") {

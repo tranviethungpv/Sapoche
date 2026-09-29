@@ -1,5 +1,8 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
+/** Bumped when a change is not backward compatible. Reported by /health and in every state message. */
+export const PROTOCOL_VERSION = 2;
+
 export interface QueueItem {
   id: string;
   videoId: string;
@@ -26,6 +29,8 @@ export interface RoomState {
   epoch: number;
   /** Client ids that reported ready for the current epoch. Only meaningful while preparing. */
   readyIds: string[];
+  /** Client ids that could not load the current item. Only meaningful while preparing. */
+  failedIds: string[];
   /** What the single Durable Object alarm is currently for. */
   alarm: "none" | "barrier" | "end" | "gc";
 }
@@ -41,8 +46,12 @@ export interface Member {
 export type ClientMessage =
   | { t: "join"; clientId: string; name: string }
   | { t: "ping"; c0: number }
-  | { t: "queue.add"; videoId: string; title: string; artist: string; thumb?: string; durMs: number }
+  /** With [next] the item goes right after the current one instead of at the end of the queue. */
+  | { t: "queue.add"; videoId: string; title: string; artist: string; thumb?: string; durMs: number; next?: boolean }
   | { t: "queue.remove"; id: string }
+  | { t: "queue.clear" }
+  /** Start playing the queue item [id] from the beginning. */
+  | { t: "jump"; id: string }
   | { t: "queue.move"; id: string; toIndex: number }
   | { t: "play" }
   | { t: "pause" }
@@ -62,7 +71,7 @@ export type ClientMessage =
 // ---- server -> client ----
 
 export type ServerMessage =
-  | { t: "state"; serverNow: number; you: string; state: PublicState; members: Member[] }
+  | { t: "state"; serverNow: number; you: string; protocol: number; state: PublicState; members: Member[] }
   | { t: "members"; members: Member[] }
   | { t: "prepare"; epoch: number; index: number; item: QueueItem; seekToMs: number }
   /** Play the current item so that its position [positionMs] is heard at server time [startAt]. */
@@ -74,4 +83,4 @@ export type ServerMessage =
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */
-export type PublicState = Omit<RoomState, "readyIds" | "alarm">;
+export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarm">;

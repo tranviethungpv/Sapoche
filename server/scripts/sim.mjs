@@ -1,8 +1,12 @@
 // End-to-end simulation of the room protocol against a running server (`npm run dev`).
 // Usage: node scripts/sim.mjs [baseUrl]   (default http://127.0.0.1:8787)
+// When the server has a ROOM_KEY, pass it in UNISON_KEY (npm run sim:keyed does this against a local server).
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:8787";
 const WS_BASE = BASE.replace(/^http/, "ws");
+const KEY = process.env.UNISON_KEY ?? "";
+const keyQuery = KEY ? `?key=${encodeURIComponent(KEY)}` : "";
+const keyHeaders = KEY ? { "X-Unison-Key": KEY } : {};
 
 let passed = 0;
 let failed = 0;
@@ -24,7 +28,7 @@ class Client {
     this.name = name;
     this.inbox = [];
     this.waiters = [];
-    this.ws = new WebSocket(`${WS_BASE}/room/${code}`);
+    this.ws = new WebSocket(`${WS_BASE}/room/${code}${keyQuery}`);
     this.opened = new Promise((resolve, reject) => {
       this.ws.onopen = resolve;
       this.ws.onerror = reject;
@@ -89,8 +93,10 @@ const VIDEO_C = "cnHHCR7EW10";
 async function main() {
   console.log("Health and room creation");
   const health = await fetch(`${BASE}/health`);
-  check("GET /health is ok", health.ok);
-  const created = await (await fetch(`${BASE}/rooms`, { method: "POST" })).json();
+  const healthBody = await health.json();
+  check("GET /health is ok and reports the protocol version", health.ok && healthBody.ok === true && healthBody.protocol >= 2, JSON.stringify(healthBody));
+  if (KEY) await authSection();
+  const created = await (await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders })).json();
   check("POST /rooms returns a 6 character code", /^[A-Z2-9]{6}$/.test(created.code), JSON.stringify(created));
   const code = created.code;
 
@@ -215,6 +221,9 @@ async function main() {
   check("nobody ready: the server starts anyway after about 8s", waited > 6500 && waited < 10500, `waited=${waited}ms`);
 
   await gaplessSection();
+  await queueSection();
+  await unplayableSection();
+  if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
   console.log(`\n${passed} passed, ${failed} failed`);
@@ -225,7 +234,7 @@ async function main() {
 /** Gapless advance: devices that already moved on by themselves fix the next start time. */
 async function gaplessSection() {
   console.log("Gapless advance");
-  const { code } = await (await fetch(`${BASE}/rooms`, { method: "POST" })).json();
+  const { code } = await (await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders })).json();
   const a = new Client(code, "g-a", "Anna");
   const b = new Client(code, "g-b", "Ben");
   await all([a, b], (x) => x.join());
@@ -270,7 +279,7 @@ async function gaplessSection() {
   check("advanced past the last item is ignored", await b.stays((m) => m.t === "advance", 500));
 
   // An item that still has a long way to go must not be skipped by a bogus report
-  const room2 = await (await fetch(`${BASE}/rooms`, { method: "POST" })).json();
+  const room2 = await (await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders })).json();
   const x = new Client(room2.code, "g-x", "Xena");
   await x.join();
   x.send({ t: "queue.add", videoId: VIDEO_A, title: "Long", artist: "x", durMs: 200000 });
@@ -283,6 +292,136 @@ async function gaplessSection() {
   check("advanced far from the end of the item is ignored", await x.stays((m) => m.t === "advance", 500));
 
   [a, b, late, x].forEach((c) => c.close());
+}
+
+/** The shared secret keeps strangers from creating rooms or joining them. */
+async function authSection() {
+  console.log("Shared secret");
+  const noKey = await fetch(`${BASE}/rooms`, { method: "POST" });
+  check("creating a room without the key is refused", noKey.status === 401, `status=${noKey.status}`);
+  const wrongKey = await fetch(`${BASE}/rooms`, { method: "POST", headers: { "X-Unison-Key": "wrong" } });
+  check("a wrong key is refused", wrongKey.status === 401, `status=${wrongKey.status}`);
+  const right = await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders });
+  check("the right key in a header is accepted", right.status === 200);
+  const viaQuery = await fetch(`${BASE}/rooms${keyQuery}`, { method: "POST" });
+  check("the right key in the query string is accepted", viaQuery.status === 200);
+  const opened = await new Promise((resolve) => {
+    const ws = new WebSocket(`${WS_BASE}/room/ABCDEF`); // no key
+    ws.onopen = () => {
+      ws.close();
+      resolve(true);
+    };
+    ws.onerror = () => resolve(false);
+  });
+  check("a WebSocket connection without the key is refused", opened === false);
+  const open = await fetch(`${BASE}/health`);
+  check("/health stays open", open.status === 200);
+}
+
+async function freshRoom(names) {
+  const { code } = await (await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders })).json();
+  const clients = names.map((n, i) => new Client(code, `${n}-id`, n));
+  await all(clients, (c) => c.join());
+  return clients;
+}
+
+/** Queue operations that a player UI needs: play next, jump to an item, clear. */
+async function queueSection() {
+  console.log("Queue operations");
+  const [a, b] = await freshRoom(["Qa", "Qb"]);
+  const add = (title, videoId, extra = {}) => a.send({ t: "queue.add", videoId, title, artist: "x", durMs: 200000, ...extra });
+  const titles = (st) => st.state.queue.map((q) => q.title).join(",");
+
+  add("A", VIDEO_A);
+  const prep = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  await all([a, b], (x) => x.send({ t: "ready", epoch: prep[0].epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+
+  add("B", VIDEO_B);
+  await a.waitFor((m) => m.t === "state" && m.state.queue.length === 2);
+  add("C", VIDEO_C, { next: true });
+  const withNext = await a.waitFor((m) => m.t === "state" && m.state.queue.length === 3);
+  check("play next inserts right after the current item", titles(withNext) === "A,C,B", titles(withNext));
+  check("adding does not disturb playback", withNext.state.phase === "playing" && withNext.state.index === 0);
+
+  const idB = withNext.state.queue[2].id;
+  a.send({ t: "jump", id: idB });
+  const jumped = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  check("jump prepares the chosen item for everyone", jumped.every((p) => p.item.title === "B" && p.index === 2));
+
+  a.send({ t: "jump", id: "no-such-item" });
+  check("jump to an unknown item does nothing", await b.stays((m) => m.t === "prepare", 400));
+
+  a.send({ t: "queue.clear" });
+  const cleared = await all([a, b], (x) => x.waitFor((m) => m.t === "state" && m.state.queue.length === 0));
+  check("clear empties the queue and stops playback", cleared.every((m) => m.state.phase === "idle"));
+
+  // "Play next" on an idle room simply appends and starts
+  add("D", VIDEO_A, { next: true });
+  const restarted = await a.waitFor((m) => m.t === "prepare");
+  check("adding to an emptied room starts it", restarted.item.title === "D" && restarted.index === 0);
+
+  [a, b].forEach((x) => x.close());
+}
+
+/** An item nobody can load is skipped instead of playing silence. */
+async function unplayableSection() {
+  console.log("Unplayable items");
+  const [a, b] = await freshRoom(["Ua", "Ub"]);
+  const add = (title, videoId) => a.send({ t: "queue.add", videoId, title, artist: "x", durMs: 200000 });
+
+  add("Broken", VIDEO_A);
+  const first = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  add("Fine", VIDEO_B);
+  await a.waitFor((m) => m.t === "state" && m.state.queue.length === 2);
+
+  a.send({ t: "resolveFailed", epoch: first[0].epoch, reason: "no stream" });
+  check("one failure does not skip while the other is still loading", await b.stays((m) => m.t === "prepare" || m.t === "start", 400));
+  b.send({ t: "resolveFailed", epoch: first[0].epoch, reason: "no stream" });
+  const error = await a.waitFor((m) => m.t === "error" && m.code === "unplayable");
+  check("when nobody can load an item, everyone is told", error.message.includes("Broken"));
+  const second = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  check("and the next item is prepared", second.every((p) => p.item.title === "Fine" && p.index === 1));
+
+  // Partial failure: playback still starts for those who loaded it
+  a.send({ t: "resolveFailed", epoch: second[0].epoch, reason: "no stream" });
+  b.send({ t: "ready", epoch: second[0].epoch });
+  const started = await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  check("a failure on one device does not stop the others", started.every((s) => s.epoch === second[0].epoch));
+
+  // Last item broken: the room goes idle
+  add("Broken again", VIDEO_C);
+  await a.waitFor((m) => m.t === "state" && m.state.queue.length === 3);
+  a.send({ t: "next" });
+  const third = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  a.send({ t: "resolveFailed", epoch: third[0].epoch });
+  b.send({ t: "resolveFailed", epoch: third[0].epoch });
+  const idle = await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  check("with nothing left to play the room goes idle", idle.state.queue.length === 3);
+
+  [a, b].forEach((x) => x.close());
+}
+
+/** A device that went silent (dead battery, out of range) must not make the room wait at every track. */
+async function staleSection(staleMs) {
+  console.log("Silent devices");
+  const [a, b, ghost] = await freshRoom(["Sa", "Sb", "Sghost"]);
+  a.send({ t: "queue.add", videoId: VIDEO_A, title: "One", artist: "x", durMs: 200000 });
+  const first = await all([a, b, ghost], (x) => x.waitFor((m) => m.t === "prepare"));
+  await all([a, b], (x) => x.send({ t: "ready", epoch: first[0].epoch }));
+  // The ghost never answers, but it spoke a moment ago so the room still waits for it
+  check("a device that only just spoke is still waited for", await a.stays((m) => m.t === "start", 500));
+  await sleep(staleMs + 300);
+  // Anyone speaking triggers no re-check by itself, so ask for the next track: the ghost has been silent for too long
+  a.send({ t: "queue.add", videoId: VIDEO_B, title: "Two", artist: "x", durMs: 200000 });
+  await a.waitFor((m) => m.t === "state" && m.state.queue.length === 2);
+  a.send({ t: "next" });
+  const second = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  const t0 = Date.now();
+  await all([a, b], (x) => x.send({ t: "ready", epoch: second[0].epoch }));
+  const start = await a.waitFor((m) => m.t === "start", 4000);
+  check("a silent device no longer holds the barrier", start._at - t0 < 1500, `waited ${start._at - t0}ms`);
+  [a, b, ghost].forEach((x) => x.close());
 }
 
 main().catch((error) => {
