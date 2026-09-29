@@ -7,6 +7,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'members_sheet.dart';
+import 'rooms_sheet.dart';
 import 'scope.dart';
 import 'widgets/appear.dart';
 import 'widgets/avatars.dart';
@@ -14,7 +15,8 @@ import 'widgets/equalizer.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/track_tile.dart';
 
-/// The room: who is here and the shared queue.
+/// What is playing and what is queued: the room's shared queue while in a room, and otherwise
+/// this device's own, with the way into a room at the top.
 class RoomPage extends StatefulWidget {
   const RoomPage({super.key, required this.onAddSongs});
 
@@ -57,6 +59,10 @@ class _RoomPageState extends State<RoomPage> {
               SliverToBoxAdapter(child: LinkBanner(link: snapshot.link)),
               if (snapshot.solo)
                 SliverToBoxAdapter(child: _SoloBanner(controller: controller)),
+              if (snapshot.inRoom &&
+                  snapshot.guestControl == GuestControl.add &&
+                  !snapshot.canControl)
+                const SliverToBoxAdapter(child: _GuestsAddOnlyBanner()),
               if (snapshot.phase == 'idle' &&
                   snapshot.queue.isNotEmpty &&
                   !snapshot.solo)
@@ -66,7 +72,12 @@ class _RoomPageState extends State<RoomPage> {
               if (snapshot.queue.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  child: _EmptyQueue(onAddSongs: onAddSongs),
+                  child: _EmptyQueue(
+                    onAddSongs: onAddSongs,
+                    body: snapshot.inRoom
+                        ? S.emptyQueueBody
+                        : S.emptyQueueBodyAlone,
+                  ),
                 )
               else
                 ..._queueSlivers(context, controller, snapshot),
@@ -233,45 +244,134 @@ class _Header extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(child: Text(S.tabRoom, style: theme.headlineLarge)),
-              _CodeChip(code: snapshot.room ?? ''),
-              IconButton(
-                onPressed: AppScope.roomOf(context).shareInvite,
-                tooltip: S.invite,
-                icon: Icon(Icons.ios_share_rounded, color: p.primary),
+              Expanded(
+                child: Text(
+                  snapshot.inRoom ? snapshot.name ?? S.tabRoom : S.tabListen,
+                  style: theme.headlineLarge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (snapshot.inRoom) ...[
+                _CodeChip(code: snapshot.room ?? ''),
+                IconButton(
+                  onPressed: AppScope.roomOf(context).shareInvite,
+                  tooltip: S.invite,
+                  icon: Icon(Icons.ios_share_rounded, color: p.primary),
+                ),
+                IconButton(
+                  onPressed: () => showRoomSheet(context),
+                  tooltip: S.room,
+                  icon: Icon(Icons.more_horiz_rounded, color: p.primary),
+                ),
+              ] else
+                const _RoomButton(),
+            ],
+          ),
+          if (snapshot.inRoom) ...[
+            const SizedBox(height: 12),
+            // Tapping who is here opens the list of members
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => showMembersSheet(context),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    AvatarStack(members: snapshot.members),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        snapshot.awayCount == 0
+                            ? S.listening(snapshot.listeningCount)
+                            : '${S.listening(snapshot.listeningCount)} · ${S.awayCount(snapshot.awayCount)}',
+                        style: theme.bodyMedium?.copyWith(
+                          color: p.textSecondary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: p.textTertiary,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The way into a room, shown while this device is on its own.
+class _RoomButton extends StatelessWidget {
+  const _RoomButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Material(
+      color: p.primaryContainer,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => showRoomSheet(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.groups_rounded, size: 18, color: p.onPrimaryContainer),
+              const SizedBox(width: 8),
+              Text(
+                S.tabRoom,
+                style: Theme.of(context).textTheme.labelLarge
+                    ?.copyWith(color: p.onPrimaryContainer),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // Tapping who is here opens the list of members
-          InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => showMembersSheet(context),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  AvatarStack(members: snapshot.members),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      snapshot.awayCount == 0
-                          ? S.listening(snapshot.listeningCount)
-                          : '${S.listening(snapshot.listeningCount)} · ${S.awayCount(snapshot.awayCount)}',
-                      style: theme.bodyMedium?.copyWith(color: p.textSecondary),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: p.textTertiary,
-                    size: 20,
-                  ),
-                ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The owner has limited guests to adding songs, and this device is a guest.
+class _GuestsAddOnlyBanner extends StatelessWidget {
+  const _GuestsAddOnlyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: p.primaryContainer,
+          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.lock_outline_rounded,
+              size: 18,
+              color: p.onPrimaryContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                S.guestsAddOnlyBanner,
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: p.onPrimaryContainer),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -482,9 +582,10 @@ class _DeleteBackground extends StatelessWidget {
 }
 
 class _EmptyQueue extends StatelessWidget {
-  const _EmptyQueue({required this.onAddSongs});
+  const _EmptyQueue({required this.onAddSongs, required this.body});
 
   final VoidCallback onAddSongs;
+  final String body;
 
   @override
   Widget build(BuildContext context) {
@@ -508,7 +609,7 @@ class _EmptyQueue extends StatelessWidget {
           Text(S.emptyQueueTitle, style: theme.titleLarge),
           const SizedBox(height: 8),
           Text(
-            S.emptyQueueBody,
+            body,
             textAlign: TextAlign.center,
             style: theme.bodyMedium?.copyWith(color: p.textSecondary),
           ),

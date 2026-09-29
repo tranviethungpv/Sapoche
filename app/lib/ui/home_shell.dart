@@ -8,6 +8,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'player_sheet.dart';
 import 'room_page.dart';
+import 'rooms_sheet.dart';
 import 'scope.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
@@ -94,13 +95,15 @@ class _HomeShellState extends State<HomeShell>
     );
   }
 
-  /// An invitation link arrived while in a room: switch only if it is another room and the user agrees.
+  /// An invitation link arrived. Outside a room it opens the sheet with the code filled in; in a room
+  /// it switches only if it is another room and the user agrees.
   Future<void> _onInvite() async {
     final room = AppScope.roomOf(context);
     final code = room.invite.value;
     if (code == null || !mounted) return;
     room.invite.value = null;
     if (code == room.snapshot.room) return;
+    if (!room.snapshot.inRoom) return showRoomSheet(context, invitedCode: code);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -198,7 +201,7 @@ class _TabBar extends StatelessWidget {
   final ValueChanged<int> onSelect;
 
   static const _items = [
-    (Icons.graphic_eq_rounded, S.tabRoom),
+    (Icons.graphic_eq_rounded, S.tabListen),
     (Icons.search_rounded, S.tabSearch),
     (Icons.tune_rounded, S.tabSettings),
   ];

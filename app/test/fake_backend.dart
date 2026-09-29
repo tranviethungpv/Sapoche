@@ -134,6 +134,24 @@ class FakeBackend implements Backend {
     return lookupResult;
   }
 
+  RoomInfo? roomInfoResult;
+
+  @override
+  Future<RoomInfo?> roomInfo(String code) async {
+    await _record('roomInfo $code');
+    return roomInfoResult;
+  }
+
+  @override
+  Future<void> kick(String memberId) => _record('kick $memberId');
+
+  @override
+  Future<void> setRoomName(String name) => _record('roomName $name');
+
+  @override
+  Future<void> setGuestControl(GuestControl mode) =>
+      _record('guestControl ${mode.name}');
+
   @override
   Future<void> setTrim(int ms) => _record('setTrim $ms');
 
@@ -150,6 +168,9 @@ RoomSnapshot sampleRoom({
   bool video = false,
   bool solo = false,
   String? soloItemId,
+  String? name,
+  String? ownerId,
+  GuestControl guestControl = GuestControl.all,
 }) => RoomSnapshot(
   room: 'ABC234',
   link: Link.connected,
@@ -160,6 +181,9 @@ RoomSnapshot sampleRoom({
   solo: solo,
   video: video,
   soloItemId: soloItemId,
+  name: name,
+  ownerId: ownerId,
+  guestControl: guestControl,
   members:
       members ??
       const [

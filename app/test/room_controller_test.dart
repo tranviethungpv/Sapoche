@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unison/data/backend.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unison/data/models.dart';
+import 'package:unison/data/recent_rooms.dart';
 import 'package:unison/data/room_controller.dart';
 
 import 'fake_backend.dart';
@@ -262,5 +264,90 @@ void main() {
         containsAllInOrder(['solo true', 'keepPlaying', 'solo false']),
       );
     });
+  });
+
+  test(
+    'outside a room the play button follows this device\'s own player',
+    () async {
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await settle();
+      expect(controller.isPlaying, isFalse);
+      backend.emit(
+        const PositionEvent(
+          PlayerPosition(playing: true, positionMs: 1000, durationMs: 60000),
+        ),
+      );
+      await settle();
+      expect(controller.isPlaying, isTrue);
+      await controller.togglePlay();
+      expect(backend.calls.last, 'pause');
+      expect(
+        controller.isPlaying,
+        isFalse,
+        reason: 'shown at once, before the player reports back',
+      );
+      expect(controller.isStarting, isFalse);
+    },
+  );
+
+  test(
+    'rooms are remembered when this device is in them, with their name',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final recents = await RecentRooms.load();
+      final remembering = RoomController(backend, recents: recents);
+      await remembering.start();
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await settle();
+      expect(
+        recents.rooms,
+        isEmpty,
+        reason: 'nothing to remember outside a room',
+      );
+      backend.emit(StateEvent(sampleRoom(name: 'Family')));
+      await settle();
+      expect(recents.rooms.single.code, 'ABC234');
+      expect(recents.rooms.single.name, 'Family');
+      remembering.dispose();
+    },
+  );
+
+  test(
+    'the invitation link lives on the server, or falls back to the app\'s own',
+    () async {
+      expect(controller.inviteLink('K2A5RF'), 'unison://join/K2A5RF');
+      backend.profileValue = const Profile(
+        name: 'Anna',
+        server: 'https://x.example',
+      );
+      final withServer = RoomController(backend);
+      await withServer.start();
+      expect(withServer.inviteLink('K2A5RF'), 'https://x.example/join/K2A5RF');
+      withServer.dispose();
+    },
+  );
+
+  test('sharing an invitation sends the code and the link', () async {
+    backend.profileValue = const Profile(
+      name: 'Anna',
+      server: 'https://x.example',
+    );
+    final sharing = RoomController(backend);
+    await sharing.start();
+    backend.emit(StateEvent(sampleRoom()));
+    await settle();
+    await sharing.shareInvite();
+    expect(backend.calls.last, contains('ABC234'));
+    expect(backend.calls.last, contains('https://x.example/join/ABC234'));
+    sharing.dispose();
+  });
+
+  test('room settings and removals go to the native side', () async {
+    await controller.setRoomName('  Weekend ');
+    expect(backend.calls.last, 'roomName Weekend');
+    await controller.setGuestControl(GuestControl.add);
+    expect(backend.calls.last, 'guestControl add');
+    await controller.kick(const Member(id: 'b', name: 'Binh', ready: true));
+    expect(backend.calls.last, 'kick b');
   });
 }

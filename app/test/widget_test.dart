@@ -7,6 +7,7 @@ import 'package:unison/app.dart';
 import 'package:unison/data/app_settings.dart';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
+import 'package:unison/data/recent_rooms.dart';
 import 'package:unison/data/room_controller.dart';
 import 'package:unison/ui/now_playing_page.dart';
 import 'package:unison/ui/scope.dart';
@@ -18,19 +19,21 @@ import 'fake_backend.dart';
 Future<(FakeBackend, RoomController)> pumpApp(
   WidgetTester tester, {
   ThemeMode mode = ThemeMode.light,
+  Map<String, Object> prefs = const {},
 }) async {
   // A tall phone-shaped window; the default 800x600 one is not what the app runs on. Test text is
   // drawn with the wide Ahem font, so it is 540 dp wide instead of the usual 360 to avoid false overflows.
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2;
   addTearDown(tester.view.reset);
-  SharedPreferences.setMockInitialValues({'theme_mode': mode.name});
+  SharedPreferences.setMockInitialValues({'theme_mode': mode.name, ...prefs});
   final backend = FakeBackend();
-  final room = RoomController(backend);
+  final recents = await RecentRooms.load();
+  final room = RoomController(backend, recents: recents);
   final settings = await AppSettings.load();
   await tester.pumpWidget(
     UnisonApp(
-      model: AppModel(room: room, settings: settings),
+      model: AppModel(room: room, settings: settings, recents: recents),
     ),
   );
   await room.start();
@@ -40,25 +43,38 @@ Future<(FakeBackend, RoomController)> pumpApp(
 void main() {
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
     group('in ${mode.name} mode', () {
-      testWidgets('welcome screen creates a room with the typed name', (
-        tester,
-      ) async {
-        final (backend, _) = await pumpApp(tester, mode: mode);
-        backend.emit(const StateEvent(RoomSnapshot()));
-        // The logo pulses forever, so the tree never settles
-        await tester.pump(const Duration(milliseconds: 500));
+      testWidgets(
+        'the app opens outside a room, and the room sheet creates one with the typed name',
+        (tester) async {
+          final (backend, _) = await pumpApp(tester, mode: mode);
+          backend.emit(const StateEvent(RoomSnapshot()));
+          await tester.pumpAndSettle();
 
-        expect(find.text('Create a room'), findsOneWidget);
-        expect(
-          find.text('Anna'),
-          findsOneWidget,
-          reason: 'the saved name is prefilled',
-        );
+          expect(find.text('Nothing queued yet'), findsOneWidget);
+          expect(
+            find.text('Search for a song and add it to start listening.'),
+            findsOneWidget,
+            reason: 'no talk of a room while there is none',
+          );
+          await tester.tap(find.text('Room'));
+          await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Create a room'));
-        await tester.pump();
-        expect(backend.calls, contains('createRoom Anna'));
-      });
+          expect(find.text('Create a room'), findsOneWidget);
+          expect(
+            find.text('Anna'),
+            findsOneWidget,
+            reason: 'the saved name is prefilled',
+          );
+          await tester.tap(find.text('Create a room'));
+          await tester.pumpAndSettle();
+          expect(backend.calls, contains('createRoom Anna'));
+          expect(
+            find.text('Create a room'),
+            findsNothing,
+            reason: 'the sheet closes once the room is being made',
+          );
+        },
+      );
 
       testWidgets('an empty room invites the user to add songs', (
         tester,
@@ -189,16 +205,280 @@ void main() {
   ) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(const StateEvent(RoomSnapshot()));
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
 
     backend.emit(const InviteEvent('K2A5RF'));
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump(const Duration(milliseconds: 500)); // the sheet slides in
+    await tester.pumpAndSettle();
     expect(find.text('K2A5RF'), findsOneWidget);
 
     await tester.tap(find.text('Join').last);
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
     expect(backend.calls.last, 'join K2A5RF Anna');
+  });
+
+  testWidgets(
+    'a personal queue looks like a room queue without the room parts',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(
+        StateEvent(
+          RoomSnapshot(
+            phase: 'paused',
+            queue: [
+              for (var i = 0; i < 3; i++)
+                QueueEntry(
+                  id: 'q$i',
+                  videoId: 'video$i',
+                  title: 'Song $i',
+                  artist: 'Artist $i',
+                  durMs: 200000,
+                  addedBy: '',
+                ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song 0'), findsWidgets);
+      expect(find.text('Song 2'), findsOneWidget);
+      expect(find.text('Room'), findsOneWidget, reason: 'the way into a room');
+      expect(find.textContaining('listening'), findsNothing);
+      expect(find.byType(MiniPlayer), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.play_arrow_rounded).first);
+      await tester.pump();
+      expect(backend.calls.last, 'play');
+    },
+  );
+
+  testWidgets('settings have no room section outside a room', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(const StateEvent(RoomSnapshot()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('APPEARANCE'), findsOneWidget);
+    expect(find.text('Leave room', skipOffstage: false), findsNothing);
+  });
+
+  testWidgets(
+    'recent rooms are listed with who is there, and one is joined with a tap',
+    (tester) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final (backend, _) = await pumpApp(
+        tester,
+        prefs: {
+          'recent_rooms': '[{"code":"K2A5RF","name":"Family","at":$now}]',
+        },
+      );
+      backend.roomInfoResult = const RoomInfo(
+        exists: true,
+        name: 'Family',
+        members: 2,
+      );
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Room'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Recent rooms'), findsOneWidget);
+      expect(find.text('Family'), findsOneWidget);
+      expect(find.text('K2A5RF · 2 listening'), findsOneWidget);
+      expect(backend.calls, contains('roomInfo K2A5RF'));
+
+      await tester.tap(find.text('Family'));
+      await tester.pumpAndSettle();
+      expect(backend.calls.last, 'join K2A5RF Anna');
+    },
+  );
+
+  testWidgets('a room that no longer exists is marked and cannot be joined', (
+    tester,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final (backend, _) = await pumpApp(
+      tester,
+      prefs: {'recent_rooms': '[{"code":"K2A5RF","name":null,"at":$now}]'},
+    );
+    backend.roomInfoResult = const RoomInfo(exists: false);
+    backend.emit(const StateEvent(RoomSnapshot()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Room'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('K2A5RF · Expired'), findsOneWidget);
+    await tester.tap(find.text('K2A5RF · Expired'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(backend.calls.where((c) => c.startsWith('join')), isEmpty);
+
+    await tester.tap(find.byTooltip('Forget this room'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recent rooms'), findsNothing);
+  });
+
+  testWidgets('a name is needed before starting a room', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(const StateEvent(RoomSnapshot()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Room'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '');
+    await tester.tap(find.text('Create a room'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter your name first'), findsOneWidget);
+    expect(backend.calls.where((c) => c.startsWith('createRoom')), isEmpty);
+  });
+
+  testWidgets(
+    'the room sheet in a room shows the code, the link and lets the owner limit guests',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(
+        StateEvent(
+          sampleRoom(
+            name: 'Family',
+            ownerId: 'me',
+            members: const [
+              Member(id: 'me', name: 'Anna', ready: true, owner: true),
+              Member(id: 'b', name: 'Binh', ready: true),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Family'),
+        findsOneWidget,
+        reason: 'the room name is the title',
+      );
+
+      await tester.tap(find.byTooltip('Room'));
+      await tester.pumpAndSettle();
+      expect(find.text('Scan to join'), findsOneWidget);
+      expect(find.text('Copy link'), findsOneWidget);
+      expect(find.byType(CustomPaint), findsWidgets);
+
+      await tester.tap(find.byType(Switch).last);
+      await tester.pumpAndSettle();
+      expect(backend.calls.last, 'guestControl add');
+
+      await tester.tap(find.byTooltip('Room name'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Weekend');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(backend.calls.last, 'roomName Weekend');
+    },
+  );
+
+  testWidgets(
+    'a guest does not get the owner switch, and is told when guests may only add songs',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(
+        StateEvent(
+          sampleRoom(
+            ownerId: 'b',
+            guestControl: GuestControl.add,
+            members: const [
+              Member(id: 'me', name: 'Anna', ready: true),
+              Member(id: 'b', name: 'Binh', ready: true, owner: true),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('The owner lets guests add songs only'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Room'));
+      await tester.pumpAndSettle();
+      expect(find.text('Guests can only add songs'), findsNothing);
+      expect(
+        find.byTooltip('Room name'),
+        findsNothing,
+        reason: 'a guest cannot rename a restricted room',
+      );
+    },
+  );
+
+  testWidgets(
+    'with the owner away a restricted room is open to everyone again',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(
+        StateEvent(
+          sampleRoom(
+            ownerId: 'b',
+            guestControl: GuestControl.add,
+            members: const [Member(id: 'me', name: 'Anna', ready: true)],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('The owner lets guests add songs only'), findsNothing);
+    },
+  );
+
+  testWidgets('the owner can remove a member from the list of people', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(
+      StateEvent(
+        sampleRoom(
+          ownerId: 'me',
+          members: const [
+            Member(id: 'me', name: 'Anna', ready: true, owner: true),
+            Member(id: 'b', name: 'Binh', ready: true),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2 people listening'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byTooltip('Remove from room'),
+      findsOneWidget,
+      reason: 'not for the owner themself',
+    );
+    await tester.tap(find.byTooltip('Remove from room'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Remove Binh from the room? They can join again with the code.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'kick b');
+  });
+
+  testWidgets('a guest sees no way to remove anyone', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(
+      StateEvent(
+        sampleRoom(
+          ownerId: 'b',
+          members: const [
+            Member(id: 'me', name: 'Anna', ready: true),
+            Member(id: 'b', name: 'Binh', ready: true, owner: true),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2 people listening'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Remove from room'), findsNothing);
+    expect(
+      find.byIcon(Icons.workspace_premium_rounded),
+      findsOneWidget,
+      reason: 'the owner wears a mark',
+    );
   });
 
   testWidgets('an invitation to another room asks before switching', (

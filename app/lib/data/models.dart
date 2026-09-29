@@ -86,6 +86,7 @@ class Member {
     required this.ready,
     this.solo = false,
     this.away = false,
+    this.owner = false,
   });
 
   final String id;
@@ -98,12 +99,58 @@ class Member {
   /// Not heard from for a while, probably a dead connection: not counted as listening.
   final bool away;
 
+  /// Can change the room's settings and remove people.
+  final bool owner;
+
   factory Member.fromJson(Map<String, dynamic> json) => Member(
     id: json['id'] as String,
     name: json['name'] as String,
     ready: json['ready'] as bool? ?? false,
     solo: json['solo'] as bool? ?? false,
     away: json['away'] as bool? ?? false,
+    owner: json['owner'] as bool? ?? false,
+  );
+}
+
+/// What guests may do while the owner is in the room.
+enum GuestControl {
+  /// Everybody controls the room.
+  all,
+
+  /// Guests only add songs.
+  add;
+
+  static GuestControl parse(String? name) =>
+      GuestControl.values.asNameMap()[name] ?? GuestControl.all;
+}
+
+/// What the server says about a room before this device joins it.
+class RoomInfo {
+  const RoomInfo({
+    required this.exists,
+    this.name,
+    this.members = 0,
+    this.playing = false,
+    this.title,
+  });
+
+  /// False when the code was never used or the room has expired.
+  final bool exists;
+  final String? name;
+
+  /// People who are really there right now.
+  final int members;
+  final bool playing;
+
+  /// The song the room is on.
+  final String? title;
+
+  factory RoomInfo.fromMap(Map<Object?, Object?> map) => RoomInfo(
+    exists: map['exists'] as bool? ?? false,
+    name: map['name'] as String?,
+    members: (map['members'] as num?)?.toInt() ?? 0,
+    playing: map['playing'] as bool? ?? false,
+    title: map['title'] as String?,
   );
 }
 
@@ -159,9 +206,13 @@ class RoomSnapshot {
     this.soloItemId,
     this.video = false,
     this.videoHeight = 720,
+    this.name,
+    this.ownerId,
+    this.guestControl = GuestControl.all,
   });
 
-  /// Room code, or null when this device is not in a room.
+  /// Room code, or null when this device is not in a room. Outside a room this describes the
+  /// personal queue: the same fields, no members.
   final String? room;
   final Link link;
   final String? you;
@@ -186,7 +237,25 @@ class RoomSnapshot {
   /// Tallest picture fetched, in pixels.
   final int videoHeight;
 
+  /// Room name, when it has one.
+  final String? name;
+
+  /// The member who owns the room, when it has an owner.
+  final String? ownerId;
+  final GuestControl guestControl;
+
   bool get inRoom => room != null;
+
+  /// This device's own player decides what plays: outside a room, or while listening alone.
+  bool get ownPlayback => solo || !inRoom;
+
+  bool get iOwn => ownerId != null && ownerId == you;
+
+  /// The owner is here, so what guests may do is limited.
+  bool get ownerHere => members.any((m) => m.owner && !m.away);
+
+  /// This device may play, pause, skip and change the queue. The server has the last word.
+  bool get canControl => guestControl == GuestControl.all || iOwn || !ownerHere;
 
   /// Where this device is in the queue: the room's place, or its own while listening alone.
   int get myIndex {
@@ -235,6 +304,9 @@ class RoomSnapshot {
     soloItemId: json['soloItemId'] as String?,
     video: json['video'] as bool? ?? false,
     videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 720,
+    name: json['name'] as String?,
+    ownerId: json['ownerId'] as String?,
+    guestControl: GuestControl.parse(json['guestControl'] as String?),
     queue: [
       for (final e in json['queue'] as List<dynamic>? ?? const [])
         QueueEntry.fromJson(e as Map<String, dynamic>),
@@ -302,16 +374,25 @@ class ServerError {
 }
 
 class Profile {
-  const Profile({this.name, this.device = '', this.trimMs = 0});
+  const Profile({
+    this.name,
+    this.device = '',
+    this.trimMs = 0,
+    this.server = '',
+  });
 
-  /// Name used in the last room, to prefill the welcome screen.
+  /// Name used in the last room, to prefill the field asking for it.
   final String? name;
   final String device;
   final int trimMs;
+
+  /// Address of the room server, where invitation links live.
+  final String server;
 
   factory Profile.fromMap(Map<Object?, Object?> map) => Profile(
     name: map['name'] as String?,
     device: map['device'] as String? ?? '',
     trimMs: (map['trimMs'] as num?)?.toInt() ?? 0,
+    server: map['server'] as String? ?? '',
   );
 }

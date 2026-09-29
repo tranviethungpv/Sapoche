@@ -15,6 +15,7 @@ abstract final class S {
   static const createFailed = 'Could not create a room';
 
   // Tabs
+  static const tabListen = 'Listen';
   static const tabRoom = 'Room';
   static const tabSearch = 'Search';
   static const tabSettings = 'Settings';
@@ -28,6 +29,8 @@ abstract final class S {
   static const emptyQueueTitle = 'Nothing queued yet';
   static const emptyQueueBody =
       'Search for a song and add it. Everyone in the room hears it at the same time.';
+  static const emptyQueueBodyAlone =
+      'Search for a song and add it to start listening.';
   static const addSongs = 'Add songs';
   static const shuffle = 'Shuffle';
   static const playAgain = 'Play again';
@@ -42,13 +45,37 @@ abstract final class S {
   static const codeCopied = 'Room code copied';
   static const removed = 'Removed from queue';
   static const invite = 'Invite friends';
-  static String inviteText(String code) =>
-      'Join my room on Unison with the code $code\nunison://join/$code';
+  static String inviteText(String code, String link) =>
+      'Join my room on Unison with the code $code\n$link';
   static String inviteSwitch(String code) => 'Leave this room and join $code?';
   static const switchRoom = 'Switch room';
   static const repeatOff = 'Repeat off';
   static const repeatAll = 'Repeat all';
   static const repeatOne = 'Repeat this song';
+
+  // Starting and leaving rooms
+  static const roomSheetIntro =
+      'Start a room and everyone in it hears the same song at the same moment.';
+  static const recentRooms = 'Recent rooms';
+  static String recentLive(int n) => n == 0 ? 'Empty' : '$n listening';
+  static const recentGone = 'Expired';
+  static const forgetRoom = 'Forget this room';
+  static const roomName = 'Room name';
+  static const roomNameHint = 'Give it a name';
+  static const addRoomName = 'Add a name';
+  static const copyLink = 'Copy link';
+  static const linkCopied = 'Link copied';
+  static const scanToJoin = 'Scan to join';
+  static const peopleInRoom = 'People in the room';
+  static const guestsAddOnly = 'Guests can only add songs';
+  static const guestsAddOnlyHelp =
+      'Only you can play, pause, skip or change the queue.';
+  static const guestsAddOnlyBanner = 'The owner lets guests add songs only';
+  static const owner = 'Owner';
+  static const removeFromRoom = 'Remove from room';
+  static String removeQuestion(String name) =>
+      'Remove $name from the room? They can join again with the code.';
+  static const remove = 'Remove';
 
   // Connection
   static const reconnecting = 'Reconnecting…';

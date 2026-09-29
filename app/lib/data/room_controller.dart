@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../strings.dart';
 import 'backend.dart';
 import 'models.dart';
+import 'recent_rooms.dart';
 
 /// Something another member did that moved this device: worth a snackbar, sometimes with a way out.
 class Notice {
@@ -21,9 +22,10 @@ class Notice {
 /// Room structure notifies listeners rarely; the player position lives in [player] and is
 /// extrapolated by [positionMs], so nothing has to rebuild sixty times a second.
 class RoomController extends ChangeNotifier {
-  RoomController(this._backend);
+  RoomController(this._backend, {this._recents});
 
   final Backend _backend;
+  final RecentRooms? _recents;
   StreamSubscription<BackendEvent>? _subscription;
 
   RoomSnapshot _snapshot = const RoomSnapshot();
@@ -74,7 +76,9 @@ class RoomController extends ChangeNotifier {
   void _onEvent(BackendEvent event) {
     switch (event) {
       case StateEvent(:final snapshot):
-        if (snapshot.solo != _snapshot.solo) _soloPlaying = null;
+        if (snapshot.ownPlayback != _snapshot.ownPlayback) _soloPlaying = null;
+        final code = snapshot.room;
+        if (code != null) _recents?.touch(code, name: snapshot.name);
         _snapshot = snapshot;
         _ready = true;
         notifyListeners();
@@ -128,14 +132,14 @@ class RoomController extends ChangeNotifier {
     return fromPlayer > 0 ? fromPlayer : (_snapshot.current?.durMs ?? 0);
   }
 
-  /// Sound is coming or is already playing (used for the play/pause glyph). While listening alone
-  /// this is about this device's own player, not the room.
-  bool get isPlaying => _snapshot.solo
+  /// Sound is coming or is already playing (used for the play/pause glyph). Outside a room, and while
+  /// listening alone, this is about this device's own player, not the room.
+  bool get isPlaying => _snapshot.ownPlayback
       ? (_soloPlaying ?? (player.value.playing || player.value.buffering))
       : _snapshot.wantsPlaying;
 
   /// The room started something but nothing is audible yet: everyone is still loading.
-  bool get isStarting => _snapshot.solo
+  bool get isStarting => _snapshot.ownPlayback
       ? isPlaying && player.value.buffering
       : _snapshot.phase == 'preparing' || (isPlaying && player.value.buffering);
 
@@ -162,6 +166,24 @@ class RoomController extends ChangeNotifier {
 
   Future<void> leave() => _run(_backend.leave);
 
+  /// Address that opens the app on this room from a chat message, or the app's own link when the
+  /// server's address is not known.
+  String inviteLink(String code) => _profile.server.isEmpty
+      ? 'unison://join/$code'
+      : '${_profile.server}/join/$code';
+
+  /// What the server says about a room, for the list of recent ones.
+  Future<RoomInfo?> roomInfo(String code) => _backend.roomInfo(code);
+
+  Future<void> setRoomName(String name) =>
+      _run(() => _backend.setRoomName(name.trim()));
+
+  Future<void> setGuestControl(GuestControl mode) =>
+      _run(() => _backend.setGuestControl(mode));
+
+  /// Owner only: remove a member from the room.
+  Future<void> kick(Member member) => _run(() => _backend.kick(member.id));
+
   /// Changes the name the others see; playback carries on.
   Future<void> rename(String name) => _run(() => _backend.rename(name.trim()));
 
@@ -169,14 +191,14 @@ class RoomController extends ChangeNotifier {
   Future<void> shareInvite() {
     final code = _snapshot.room;
     if (code == null) return Future.value();
-    return _run(() => _backend.share(S.inviteText(code)));
+    return _run(() => _backend.share(S.inviteText(code, inviteLink(code))));
   }
 
   // ------------------------------------------------------------------ transport
 
   Future<void> togglePlay() {
     final playing = isPlaying;
-    if (_snapshot.solo) {
+    if (_snapshot.ownPlayback) {
       _soloPlaying = !playing;
       notifyListeners();
     }

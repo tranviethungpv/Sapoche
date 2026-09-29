@@ -92,6 +92,17 @@ abstract class Backend {
   /// The songs behind a pasted YouTube link, or null when the text is not a link.
   Future<LinkResult?> lookup(String text);
 
+  /// What the server says about the room with [code], or null when it cannot be reached.
+  Future<RoomInfo?> roomInfo(String code);
+
+  /// Owner only: remove a member from the room.
+  Future<void> kick(String memberId);
+
+  Future<void> setRoomName(String name);
+
+  /// Owner only.
+  Future<void> setGuestControl(GuestControl mode);
+
   Future<void> rename(String name);
 
   /// Opens the system share sheet with [text].
@@ -253,6 +264,28 @@ class NativeBackend implements Backend {
     final raw = await _call<Map<Object?, Object?>>('lookup', {'text': text});
     return raw == null ? null : LinkResult.fromMap(raw);
   }
+
+  @override
+  Future<RoomInfo?> roomInfo(String code) async {
+    try {
+      final raw = await _call<Map<Object?, Object?>>('roomInfo', {
+        'code': code,
+      });
+      return raw == null ? null : RoomInfo.fromMap(raw);
+    } on BackendException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> kick(String memberId) => _call('kick', {'id': memberId});
+
+  @override
+  Future<void> setRoomName(String name) => _call('roomName', {'name': name});
+
+  @override
+  Future<void> setGuestControl(GuestControl mode) =>
+      _call('roomSettings', {'guestControl': mode.name});
 
   @override
   Future<void> rename(String name) => _call('rename', {'name': name});

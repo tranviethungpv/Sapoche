@@ -211,6 +211,7 @@ class UnisonBridge(
                 "device" to Build.MODEL,
                 "trimMs" to prefs.getLong("trim_ms", 0L),
                 "videoHeight" to UnisonApp.videoMaxHeight,
+                "server" to Config.SERVER,
             )
             "searchPlaylists" -> return searchPlaylists(call.argument<String>("query").orEmpty())
             "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true)

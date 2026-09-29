@@ -1,14 +1,22 @@
 import 'package:flutter/widgets.dart';
 
 import '../data/app_settings.dart';
+import '../data/recent_rooms.dart';
 import '../data/room_controller.dart';
 
-/// The two long-lived objects every screen may need.
+/// The long-lived objects every screen may need.
 class AppModel {
-  const AppModel({required this.room, required this.settings});
+  const AppModel({
+    required this.room,
+    required this.settings,
+    required this.recents,
+  });
 
   final RoomController room;
   final AppSettings settings;
+
+  /// Rooms this device has been in.
+  final RecentRooms recents;
 }
 
 class AppScope extends InheritedWidget {

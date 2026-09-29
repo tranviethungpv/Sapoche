@@ -6,6 +6,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
+import 'widgets/text_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -101,6 +102,7 @@ class SettingsPage extends StatelessWidget {
             listenable: model.room,
             builder: (context, _) {
               final snapshot = model.room.snapshot;
+              if (!snapshot.inRoom) return const SizedBox.shrink();
               return _Group(
                 title: S.room,
                 children: [
@@ -173,9 +175,11 @@ class SettingsPage extends StatelessWidget {
   }
 
   Future<void> _rename(BuildContext context, RoomController room) async {
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => _RenameDialog(initial: room.snapshot.me?.name ?? ''),
+    final name = await showTextDialog(
+      context,
+      title: S.rename,
+      hint: S.yourName,
+      initial: room.snapshot.me?.name ?? '',
     );
     if (name != null && name.isNotEmpty) room.rename(name);
   }
@@ -202,52 +206,6 @@ class SettingsPage extends StatelessWidget {
       ),
     );
     if (confirmed == true) room.leave();
-  }
-}
-
-class _RenameDialog extends StatefulWidget {
-  const _RenameDialog({required this.initial});
-
-  final String initial;
-
-  @override
-  State<_RenameDialog> createState() => _RenameDialogState();
-}
-
-class _RenameDialogState extends State<_RenameDialog> {
-  late final _name = TextEditingController(text: widget.initial);
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  void _submit() => Navigator.pop(context, _name.text.trim());
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text(S.rename),
-      content: TextField(
-        controller: _name,
-        autofocus: true,
-        maxLength: 24,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(
-          hintText: S.yourName,
-          counterText: '',
-        ),
-        onSubmitted: (_) => _submit(),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text(S.cancel),
-        ),
-        TextButton(onPressed: _submit, child: const Text(S.save)),
-      ],
-    );
   }
 }
 

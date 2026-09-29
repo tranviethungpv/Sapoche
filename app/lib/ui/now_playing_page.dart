@@ -181,7 +181,8 @@ class _Body extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                _RoomStrip(controller: controller),
+                if (controller.snapshot.inRoom)
+                  _RoomStrip(controller: controller),
                 const SizedBox(height: 14),
               ],
             ),

@@ -167,4 +167,55 @@ void main() {
       'shuffle null',
     ]);
   });
+
+  test('room info, owner actions and settings use the channel names the native side handles', () async {
+    final seen = <MethodCall>[];
+    messenger.setMockMethodCallHandler(control, (call) async {
+      seen.add(call);
+      if (call.method == 'roomInfo') {
+        return {
+          'exists': true,
+          'name': 'Family',
+          'members': 2,
+          'playing': false,
+          'title': null,
+        };
+      }
+      return null;
+    });
+    final backend = NativeBackend();
+    final info = await backend.roomInfo('K2A5RF');
+    expect((info?.exists, info?.name, info?.members), (true, 'Family', 2));
+    await backend.kick('b');
+    await backend.setRoomName('Weekend');
+    await backend.setGuestControl(GuestControl.add);
+    expect(seen.map((c) => c.method), [
+      'roomInfo',
+      'kick',
+      'roomName',
+      'roomSettings',
+    ]);
+    expect(seen[0].arguments, {'code': 'K2A5RF'});
+    expect(seen[1].arguments, {'id': 'b'});
+    expect(seen[2].arguments, {'name': 'Weekend'});
+    expect(seen[3].arguments, {'guestControl': 'add'});
+  });
+
+  test('room info is null when the server cannot be reached', () async {
+    messenger.setMockMethodCallHandler(control, (call) async {
+      throw PlatformException(code: 'failed', message: 'offline');
+    });
+    expect(await NativeBackend().roomInfo('K2A5RF'), isNull);
+  });
+
+  test('reads the personal queue, which comes in the shape of a room without a code', () async {
+    final received = await receive([
+      '{"type":"state","room":null,"connection":"none","phase":"paused","repeat":"all","index":1,"name":null,"ownerId":null,"guestControl":"all","queue":[{"id":"a","videoId":"aaaaaaaaaaa","title":"One","artist":"x","thumb":null,"durMs":1000,"addedBy":""},{"id":"b","videoId":"bbbbbbbbbbb","title":"Two","artist":"x","thumb":null,"durMs":1000,"addedBy":""}],"members":[]}',
+    ]);
+    final snapshot = (received.single as StateEvent).snapshot;
+    expect(snapshot.inRoom, isFalse);
+    expect(snapshot.current?.title, 'Two');
+    expect(snapshot.repeat, Repeat.all);
+    expect(snapshot.ownPlayback, isTrue);
+  });
 }

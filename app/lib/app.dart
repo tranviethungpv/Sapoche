@@ -6,7 +6,6 @@ import 'theme/palette.dart';
 import 'theme/theme.dart';
 import 'ui/home_shell.dart';
 import 'ui/scope.dart';
-import 'ui/welcome_page.dart';
 import 'ui/widgets/wash.dart';
 
 class UnisonApp extends StatelessWidget {
@@ -33,7 +32,7 @@ class UnisonApp extends StatelessWidget {
   }
 }
 
-/// Chooses between the welcome screen and the room, and paints the pink veil behind both.
+/// Shows the home screen once the first state arrived, and paints the pink veil behind it.
 class _Root extends StatelessWidget {
   const _Root();
 
@@ -55,14 +54,9 @@ class _Root extends StatelessWidget {
         child: ListenableBuilder(
           listenable: room,
           builder: (context, _) {
-            final Widget page;
-            if (!room.ready) {
-              page = const SizedBox.expand(key: ValueKey('splash'));
-            } else if (!room.snapshot.inRoom) {
-              page = const WelcomePage(key: ValueKey('welcome'));
-            } else {
-              page = const HomeShell(key: ValueKey('home'));
-            }
+            final Widget page = room.ready
+                ? const HomeShell(key: ValueKey('home'))
+                : const SizedBox.expand(key: ValueKey('splash'));
             return AnimatedSwitcher(
               duration: const Duration(milliseconds: 350),
               switchInCurve: Curves.easeOut,

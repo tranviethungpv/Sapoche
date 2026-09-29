@@ -189,4 +189,120 @@ void main() {
     expect((position.videoWidth, position.videoHeight), (1280, 720));
     expect(PlayerPosition.fromJson({}).videoWidth, 0);
   });
+
+  test('reads the name, the owner and what guests may do', () {
+    final snapshot = RoomSnapshot.fromJson({
+      'type': 'state',
+      'room': 'ABC234',
+      'connection': 'connected',
+      'you': 'b',
+      'name': 'Family',
+      'ownerId': 'a',
+      'guestControl': 'add',
+      'queue': <Object?>[],
+      'members': [
+        {'id': 'a', 'name': 'Anna', 'ready': true, 'owner': true},
+        {'id': 'b', 'name': 'Binh', 'ready': true},
+      ],
+    });
+    expect(snapshot.name, 'Family');
+    expect(snapshot.guestControl, GuestControl.add);
+    expect(snapshot.iOwn, isFalse);
+    expect(snapshot.ownerHere, isTrue);
+    expect(
+      snapshot.canControl,
+      isFalse,
+      reason: 'a guest of a restricted room',
+    );
+    expect(snapshot.members.map((m) => m.owner), [true, false]);
+  });
+
+  test('an older server without owners leaves everyone in control', () {
+    final snapshot = RoomSnapshot.fromJson({
+      'type': 'state',
+      'room': 'ABC234',
+      'you': 'b',
+      'queue': <Object?>[],
+      'members': [
+        {'id': 'b', 'name': 'Binh', 'ready': true},
+      ],
+    });
+    expect(snapshot.name, isNull);
+    expect(snapshot.guestControl, GuestControl.all);
+    expect(snapshot.canControl, isTrue);
+  });
+
+  test('who may control a restricted room', () {
+    RoomSnapshot room({
+      required String you,
+      bool ownerAway = false,
+      bool ownerIn = true,
+    }) => RoomSnapshot(
+      room: 'ABC234',
+      you: you,
+      ownerId: 'a',
+      guestControl: GuestControl.add,
+      members: [
+        Member(
+          id: 'a',
+          name: 'Anna',
+          ready: true,
+          owner: true,
+          away: ownerAway,
+        ),
+        if (ownerIn) const Member(id: 'b', name: 'Binh', ready: true),
+      ],
+    );
+    expect(room(you: 'a').canControl, isTrue, reason: 'the owner');
+    expect(
+      room(you: 'b').canControl,
+      isFalse,
+      reason: 'a guest while the owner is here',
+    );
+    expect(
+      room(you: 'b', ownerAway: true).canControl,
+      isTrue,
+      reason: 'the owner has gone quiet',
+    );
+    expect(
+      const RoomSnapshot().canControl,
+      isTrue,
+      reason: 'outside a room nothing is limited',
+    );
+  });
+
+  test(
+    'outside a room, or alone in one, this device plays what the person picked',
+    () {
+      expect(const RoomSnapshot().ownPlayback, isTrue);
+      expect(const RoomSnapshot(room: 'ABC234').ownPlayback, isFalse);
+      expect(
+        const RoomSnapshot(room: 'ABC234', solo: true).ownPlayback,
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'reads what the server says about a room, and the address of the server',
+    () {
+      final info = RoomInfo.fromMap({
+        'exists': true,
+        'name': 'Family',
+        'members': 3,
+        'playing': true,
+        'title': 'Song',
+      });
+      expect(
+        (info.exists, info.name, info.members, info.playing, info.title),
+        (true, 'Family', 3, true, 'Song'),
+      );
+      expect(RoomInfo.fromMap({'exists': false}).exists, isFalse);
+      expect(
+        Profile.fromMap({'name': 'Anna', 'server': 'https://x.example'}).server,
+        'https://x.example',
+      );
+      expect(Profile.fromMap({'name': 'Anna'}).server, isEmpty);
+    },
+  );
 }

@@ -54,6 +54,9 @@ class _MembersSheet extends StatelessWidget {
                     member: member,
                     isYou: member.id == snapshot.you,
                     loading: snapshot.phase == 'preparing' && !member.ready,
+                    onRemove: snapshot.iOwn && member.id != snapshot.you
+                        ? () => _confirmRemove(context, member)
+                        : null,
                   ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -70,6 +73,30 @@ class _MembersSheet extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _confirmRemove(BuildContext context, Member member) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(S.removeFromRoom),
+        content: Text(S.removeQuestion(member.name)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              S.remove,
+              style: TextStyle(color: context.palette.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) controller.kick(member);
   }
 
   /// You first, then people who are listening, then those on their own, then those who are away.
@@ -133,11 +160,15 @@ class _MemberRow extends StatelessWidget {
     required this.member,
     required this.isYou,
     required this.loading,
+    this.onRemove,
   });
 
   final Member member;
   final bool isYou;
   final bool loading;
+
+  /// Set when this device may remove the member.
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -160,13 +191,28 @@ class _MemberRow extends StatelessWidget {
           ),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              isYou ? '${member.name} (${S.you})' : member.name,
-              style: theme.titleMedium?.copyWith(
-                color: member.away ? p.textTertiary : p.text,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    isYou ? '${member.name} (${S.you})' : member.name,
+                    style: theme.titleMedium?.copyWith(
+                      color: member.away ? p.textTertiary : p.text,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (member.owner) ...[
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.workspace_premium_rounded,
+                    size: 16,
+                    color: p.primary,
+                    semanticLabel: S.owner,
+                  ),
+                ],
+              ],
             ),
           ),
           Container(
@@ -176,6 +222,17 @@ class _MemberRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(status, style: theme.bodySmall?.copyWith(color: color)),
+          if (onRemove != null)
+            IconButton(
+              onPressed: onRemove,
+              tooltip: S.removeFromRoom,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                Icons.person_remove_outlined,
+                size: 20,
+                color: p.textTertiary,
+              ),
+            ),
         ],
       ),
     );
