@@ -68,10 +68,13 @@ void main() {
           await tester.tap(find.text('Create a room'));
           await tester.pumpAndSettle();
           expect(backend.calls, contains('createRoom Anna'));
+
+          backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+          await tester.pumpAndSettle();
           expect(
-            find.text('Create a room'),
-            findsNothing,
-            reason: 'the sheet closes once the room is being made',
+            find.text('Scan to join'),
+            findsOneWidget,
+            reason: 'the sheet stays and shows how to invite people',
           );
         },
       );
@@ -290,8 +293,38 @@ void main() {
       await tester.tap(find.text('Family'));
       await tester.pumpAndSettle();
       expect(backend.calls.last, 'join K2A5RF Anna');
+      expect(
+        find.text('Recent rooms'),
+        findsNothing,
+        reason: 'joining closes the sheet',
+      );
     },
   );
+
+  testWidgets('joining closes the sheet even when the room arrives first', (
+    tester,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final (backend, _) = await pumpApp(
+      tester,
+      prefs: {'recent_rooms': '[{"code":"ABC234","name":null,"at":$now}]'},
+    );
+    backend.roomInfoResult = const RoomInfo(exists: true, members: 1);
+    backend.emit(const StateEvent(RoomSnapshot()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Room'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('ABC234 · 1 listening'));
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Scan to join'),
+      findsNothing,
+      reason: 'no invitation panel after joining a room',
+    );
+    expect(find.text('ABC234'), findsOneWidget, reason: 'the room page shows');
+  });
 
   testWidgets('a room that no longer exists is marked and cannot be joined', (
     tester,

@@ -97,18 +97,23 @@ class _StartRoomState extends State<_StartRoom> {
     return false;
   }
 
-  /// Runs [enter], which gives back an error message or null, and closes the sheet when it worked.
-  Future<void> _enter(Future<String?> Function() enter) async {
+  /// Runs [enter], which gives back an error message or null. When it worked the sheet closes, unless
+  /// [stayOpen]: it then turns into the room's own panel by itself, which is where an invitation is shared.
+  Future<void> _enter(
+    Future<String?> Function() enter, {
+    bool stayOpen = false,
+  }) async {
     if (!_requireName()) return;
+    // The room's state can arrive before this returns and replace the sheet's content, so hold on to the route
+    final navigator = Navigator.of(context);
     setState(() {
       _busy = true;
       _error = null;
     });
     final error = await enter();
-    if (!mounted) return;
     if (error == null) {
-      Navigator.pop(context);
-    } else {
+      if (!stayOpen) navigator.pop();
+    } else if (mounted) {
       setState(() {
         _busy = false;
         _error = error;
@@ -116,7 +121,8 @@ class _StartRoomState extends State<_StartRoom> {
     }
   }
 
-  Future<void> _create() => _enter(() => widget.room.createRoom(_name.text));
+  Future<void> _create() =>
+      _enter(() => widget.room.createRoom(_name.text), stayOpen: true);
 
   Future<void> _join(String code) =>
       _enter(() => widget.room.join(code, _name.text));
