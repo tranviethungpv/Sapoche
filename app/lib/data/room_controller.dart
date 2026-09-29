@@ -211,6 +211,7 @@ class RoomController extends ChangeNotifier {
   Future<void> move(QueueEntry entry, int toIndex) =>
       _run(() => _backend.move(entry.id, toIndex));
   Future<void> clearQueue() => _run(_backend.clear);
+  Future<void> shuffle() => _run(_backend.shuffle);
   Future<void> addMany(List<Track> tracks, {bool playNext = false}) =>
       _run(() => _backend.addMany(tracks, playNext: playNext));
 
@@ -222,6 +223,8 @@ class RoomController extends ChangeNotifier {
   Future<List<Track>> search(String query, {bool songsOnly = false}) =>
       _backend.search(query, songsOnly: songsOnly);
   Future<LinkResult?> lookup(String text) => _backend.lookup(text);
+  Future<List<PlaylistRef>> searchPlaylists(String query) =>
+      _backend.searchPlaylists(query);
 
   Future<void> setTrim(int ms) => _run(() => _backend.setTrim(ms));
 

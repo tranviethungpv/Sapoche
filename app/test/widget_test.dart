@@ -429,6 +429,118 @@ void main() {
     expect(backend.calls.last, 'search lofi songs');
   });
 
+  testWidgets(
+    'searching playlists lists them, and one can be opened and left again',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+      await tester.pump(const Duration(milliseconds: 500));
+      backend.playlistResults = const [
+        PlaylistRef(
+          id: 'PLroadtrip',
+          title: 'Road trip',
+          uploader: 'Anna',
+          count: 12,
+        ),
+      ];
+      backend.lookupResult = const LinkResult(
+        playlistTitle: 'Road trip',
+        tracks: [
+          Track(
+            videoId: 'aaaaaaaaaaa',
+            title: 'First',
+            artist: 'x',
+            durMs: 1000,
+          ),
+        ],
+      );
+      await tester.tap(find.text('Search'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Playlists'));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'road');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(backend.calls, contains('searchPlaylists road'));
+      expect(find.text('Road trip'), findsOneWidget);
+      expect(find.text('Anna · 12 songs'), findsOneWidget);
+
+      await tester.tap(find.text('Road trip'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        backend.calls,
+        contains('lookup https://www.youtube.com/playlist?list=PLroadtrip'),
+      );
+      expect(find.text('First'), findsOneWidget);
+      expect(find.text('Add all'), findsOneWidget);
+
+      await tester.tap(find.text('All playlists'));
+      await tester.pump(const Duration(milliseconds: 400));
+      // A cross-fade starts on the frame after the change, then needs its own time to end
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Road trip'), findsOneWidget);
+      expect(find.text('First'), findsNothing);
+    },
+  );
+
+  testWidgets('the shuffle button mixes up what is to come', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 4)));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byTooltip('Shuffle'));
+    await tester.pump();
+    expect(backend.calls.last, 'shuffle');
+  });
+
+  testWidgets(
+    'a song that was already played can be swiped away, and tapped to hear it again',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(songs: 3, index: 2)));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      await tester.tap(find.text('Song 0'));
+      await tester.pump();
+      expect(backend.calls.last, 'jump q0');
+
+      await tester.drag(find.text('Song 1'), const Offset(-800, 0));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(backend.calls.last, 'remove q1');
+    },
+  );
+
+  testWidgets('the song that is playing can be swiped away too', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 3, index: 0)));
+    await tester.pump(const Duration(milliseconds: 500));
+    // The mini player shows the title too; the queue row comes first
+    await tester.drag(find.text('Song 0').first, const Offset(-800, 0));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(backend.calls.last, 'remove q0');
+  });
+
+  testWidgets('when the queue has finished, the room offers to play it again', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 3, index: 2, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('The queue has finished'), findsOneWidget);
+
+    await tester.tap(find.text('Play again'));
+    await tester.pump();
+    expect(backend.calls.last, 'play');
+
+    backend.emit(StateEvent(sampleRoom(songs: 3, index: 2)));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('The queue has finished'), findsNothing);
+  });
+
   testWidgets('Back closes the open player instead of leaving the app', (
     tester,
   ) async {

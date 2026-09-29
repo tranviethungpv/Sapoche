@@ -43,9 +43,10 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 | `queue.addMany` | `tracks[]`, `next?` | Thêm nhiều bài một lần (playlist), tối đa 100 bài mỗi tin, bài sai `videoId` bị bỏ; cùng quy tắc `next` như `queue.add`. Một tin, một lần phát `state`, nên không dính giới hạn 20 tin mỗi giây |
 | `queue.remove` | `id` | Xóa bài |
 | `queue.clear` | | Xóa hết hàng đợi, phòng về `idle` |
+| `queue.shuffle` | | Trộn các bài **sắp tới**, bài đang phát giữ nguyên chỗ. Khi phòng đang `idle` (hàng đợi đã hết) thì trộn toàn bộ và phát từ bài đầu. Dưới 2 bài thì không làm gì |
 | `jump` | `id` | Phát ngay bài này từ đầu (qua barrier) |
 | `queue.move` | `id`, `toIndex` | Đổi vị trí |
-| `play` / `pause` | | Điều khiển |
+| `play` / `pause` | | Điều khiển. `play` khi phòng `idle` ở bài cuối (hàng đợi đã hết) phát lại **từ bài đầu**, không chỉ bài cuối |
 | `seek` | `positionMs` | Tua |
 | `next` / `prev` | | Chuyển bài; `next` ở bài cuối khi `repeat=all` quay về bài đầu |
 | `repeat` | `mode` | `off`: dừng sau bài cuối. `all`: hết hàng đợi thì phát lại từ đầu. `one`: bài hiện tại hết thì phát lại chính nó (nút `next` vẫn sang bài kế). Giá trị lạ bị bỏ qua |
@@ -61,7 +62,7 @@ Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong",
 
 | `t` | Trường | Ý nghĩa |
 |---|---|---|
-| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 4) |
+| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 5) |
 | `prepare` | `epoch`, bài, `seekToMs`, `by?` | Chuẩn bị bài: resolve, nạp đệm, rồi gửi `ready`. `by` là `clientId` người vừa bấm chuyển bài; vắng mặt khi phòng tự sang bài kế |
 | `start` | `epoch`, `startAt` (giờ server), `by?` | Bắt đầu phát tại thời điểm này |
 | `pause` | `epoch`, `positionMs`, `by?` | Dừng tại vị trí |

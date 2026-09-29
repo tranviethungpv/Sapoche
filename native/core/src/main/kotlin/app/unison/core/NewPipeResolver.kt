@@ -6,6 +6,7 @@ import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.AudioStream
@@ -32,6 +33,29 @@ class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : Strea
                 .filter { it.duration > 0 && it.streamType != StreamType.LIVE_STREAM }
                 .take(limit)
                 .map { it.toTrack() }
+        }
+
+    override suspend fun searchPlaylists(query: String, limit: Int): List<PlaylistRef> =
+        withContext(Dispatchers.IO) {
+            val handler = youtube.searchQHFactory.fromQuery(
+                query,
+                listOf(YoutubeSearchQueryHandlerFactory.PLAYLISTS),
+                "",
+            )
+            SearchInfo.getInfo(youtube, handler).relatedItems
+                .filterIsInstance<PlaylistInfoItem>()
+                // Auto-generated mixes have no playlist page we can list
+                .mapNotNull { item ->
+                    val id = YoutubeLinks.playlistId(item.url) ?: return@mapNotNull null
+                    PlaylistRef(
+                        id = id,
+                        title = item.name,
+                        uploader = item.uploaderName ?: "",
+                        thumbUrl = item.thumbnails.maxByOrNull { it.width }?.url,
+                        songCount = item.streamCount,
+                    )
+                }
+                .take(limit)
         }
 
     override suspend fun resolve(videoId: String): Resolved = withContext(Dispatchers.IO) {

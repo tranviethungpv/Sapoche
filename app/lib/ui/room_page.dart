@@ -57,6 +57,12 @@ class _RoomPageState extends State<RoomPage> {
               SliverToBoxAdapter(child: LinkBanner(link: snapshot.link)),
               if (snapshot.solo)
                 SliverToBoxAdapter(child: _SoloBanner(controller: controller)),
+              if (snapshot.phase == 'idle' &&
+                  snapshot.queue.isNotEmpty &&
+                  !snapshot.solo)
+                SliverToBoxAdapter(
+                  child: _FinishedBanner(controller: controller),
+                ),
               if (snapshot.queue.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
@@ -86,23 +92,46 @@ class _RoomPageState extends State<RoomPage> {
       if (current != null) ...[
         const _SectionTitle(S.nowPlaying),
         SliverToBoxAdapter(
-          child: ListenableBuilder(
-            listenable: controller.player,
-            builder: (context, _) => TrackTile(
-              track: current,
-              subtitle: _byline(snapshot, current),
-              highlight: true,
-              leadingOverlay: Equalizer(
-                active: controller.isPlaying,
-                color: Colors.white,
+          child: _swipeToRemove(
+            controller,
+            current,
+            ListenableBuilder(
+              listenable: controller.player,
+              builder: (context, _) => TrackTile(
+                track: current,
+                subtitle: _byline(snapshot, current),
+                highlight: true,
+                leadingOverlay: Equalizer(
+                  active: controller.isPlaying,
+                  color: Colors.white,
+                ),
+                onTap: () => controller.jump(current),
               ),
-              onTap: () => controller.jump(current),
             ),
           ),
         ),
       ],
       if (upNext.isNotEmpty) ...[
-        _SectionTitle(S.upNext, action: _ClearButton(controller: controller)),
+        _SectionTitle(
+          S.upNext,
+          action: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  controller.shuffle();
+                },
+                tooltip: S.shuffle,
+                icon: Icon(
+                  Icons.shuffle_rounded,
+                  color: context.palette.primary,
+                ),
+              ),
+              _ClearButton(controller: controller),
+            ],
+          ),
+        ),
         SliverReorderableList(
           itemCount: upNext.length,
           onReorderItem: (from, to) =>
@@ -146,17 +175,38 @@ class _RoomPageState extends State<RoomPage> {
           itemCount: played.length,
           itemBuilder: (context, i) {
             final entry = played[played.length - 1 - i];
-            return TrackTile(
-              track: entry,
-              subtitle: _byline(snapshot, entry),
-              dimmed: true,
-              onTap: () => controller.jump(entry),
+            return _swipeToRemove(
+              controller,
+              entry,
+              TrackTile(
+                track: entry,
+                subtitle: _byline(snapshot, entry),
+                dimmed: true,
+                // Tap to hear it again
+                onTap: () => controller.jump(entry),
+              ),
             );
           },
         ),
       ],
     ];
   }
+
+  /// Swipe a row to the left to take the song off the queue.
+  Widget _swipeToRemove(
+    RoomController controller,
+    QueueEntry entry,
+    Widget child,
+  ) => Dismissible(
+    key: ValueKey(entry.id),
+    direction: DismissDirection.endToStart,
+    background: const _DeleteBackground(),
+    onDismissed: (_) {
+      HapticFeedback.lightImpact();
+      controller.remove(entry);
+    },
+    child: child,
+  );
 
   String _byline(RoomSnapshot snapshot, QueueEntry entry) {
     final who = entry.addedBy == snapshot.you
@@ -222,6 +272,49 @@ class _Header extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The queue played to its end: the songs are still here, with a way to hear them again.
+class _FinishedBanner extends StatelessWidget {
+  const _FinishedBanner({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        decoration: BoxDecoration(
+          color: p.primaryContainer,
+          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                S.queueFinished,
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(color: p.onPrimaryContainer),
+              ),
+            ),
+            IconButton(
+              onPressed: controller.shuffle,
+              tooltip: S.shuffle,
+              icon: Icon(Icons.shuffle_rounded, color: p.onPrimaryContainer),
+            ),
+            FilledButton(
+              onPressed: controller.togglePlay,
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+              child: const Text(S.playAgain),
+            ),
+          ],
+        ),
       ),
     );
   }

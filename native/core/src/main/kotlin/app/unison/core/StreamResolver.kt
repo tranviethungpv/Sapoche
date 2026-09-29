@@ -9,6 +9,15 @@ data class TrackInfo(
     val durationSec: Long,
 )
 
+/** A playlist found by search, not yet opened. */
+data class PlaylistRef(
+    val id: String,
+    val title: String,
+    val uploader: String,
+    val thumbUrl: String?,
+    val songCount: Long,
+)
+
 /** A playlist's songs in order, without the unavailable ones. */
 data class Playlist(val title: String, val tracks: List<TrackInfo>)
 
@@ -50,6 +59,9 @@ interface StreamResolver {
     /** Videos matching [query]; with [songsOnly] only what YouTube Music lists as songs. */
     suspend fun search(query: String, limit: Int = 10, songsOnly: Boolean = false): List<TrackInfo>
     suspend fun resolve(videoId: String): Resolved
+
+    /** Playlists matching [query]. */
+    suspend fun searchPlaylists(query: String, limit: Int = 10): List<PlaylistRef>
 
     /** The first [limit] playable songs of the playlist with the given id. */
     suspend fun playlist(playlistId: String, limit: Int = 50): Playlist

@@ -253,6 +253,7 @@ class GroupController(
         return true
     }
     fun requestClearQueue() = send(Protocol.queueClear())
+    fun requestShuffle() = send(Protocol.queueShuffle())
     fun requestRepeat(mode: String) = send(Protocol.repeat(mode))
     fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = send(Protocol.queueAddMany(tracks, playNext))
     fun requestRemove(itemId: String) = send(Protocol.queueRemove(itemId))

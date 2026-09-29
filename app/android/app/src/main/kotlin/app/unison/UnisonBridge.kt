@@ -195,6 +195,7 @@ class UnisonBridge(
                 "trimMs" to prefs.getLong("trim_ms", 0L),
                 "videoHeight" to UnisonApp.videoMaxHeight,
             )
+            "searchPlaylists" -> return searchPlaylists(call.argument<String>("query").orEmpty())
             "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true)
             "lookup" -> return lookup(call.argument<String>("text").orEmpty())
             "share" -> {
@@ -250,6 +251,7 @@ class UnisonBridge(
                     "seek" -> group.requestSeek((call.argument<Number>("ms") ?: 0).toLong())
                     "jump" -> group.requestJump(call.argument<String>("id").orEmpty())
                     "clear" -> group.requestClearQueue()
+                    "shuffle" -> group.requestShuffle()
                     "repeat" -> group.requestRepeat(call.argument<String>("mode").orEmpty())
                     "addMany" -> group.requestAddMany(
                         call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map {
@@ -295,6 +297,19 @@ class UnisonBridge(
     private suspend fun search(query: String, songsOnly: Boolean): List<Map<String, Any?>> {
         if (query.isBlank()) return emptyList()
         return UnisonApp.resolver.search(query.trim(), SEARCH_LIMIT, songsOnly).map { it.toMap() }
+    }
+
+    private suspend fun searchPlaylists(query: String): List<Map<String, Any?>> {
+        if (query.isBlank()) return emptyList()
+        return UnisonApp.resolver.searchPlaylists(query.trim(), SEARCH_LIMIT).map {
+            mapOf(
+                "id" to it.id,
+                "title" to it.title,
+                "uploader" to it.uploader,
+                "thumb" to it.thumbUrl,
+                "count" to it.songCount,
+            )
+        }
     }
 
     /**

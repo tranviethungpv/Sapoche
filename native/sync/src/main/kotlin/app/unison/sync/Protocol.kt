@@ -156,6 +156,9 @@ object Protocol {
 
     fun queueClear() = msg("queue.clear")
 
+    /** Mix up the songs still to come; with nothing playing, mix them all and play from the first. */
+    fun queueShuffle() = msg("queue.shuffle")
+
     /** Move queue item [id] so that it ends up at [toIndex]. */
     fun queueMove(id: String, toIndex: Int) = msg("queue.move") { put("id", id); put("toIndex", toIndex) }
 

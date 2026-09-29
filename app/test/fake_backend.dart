@@ -92,6 +92,17 @@ class FakeBackend implements Backend {
   @override
   Future<void> clear() => _record('clear');
 
+  List<PlaylistRef> playlistResults = const [];
+
+  @override
+  Future<List<PlaylistRef>> searchPlaylists(String query) async {
+    await _record('searchPlaylists $query');
+    return playlistResults;
+  }
+
+  @override
+  Future<void> shuffle() => _record('shuffle');
+
   @override
   Future<void> setVideoMode(bool on) => _record('video $on');
 

@@ -9,6 +9,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
+import 'widgets/artwork.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/shimmer.dart';
 import 'widgets/track_tile.dart';
@@ -23,6 +24,9 @@ class SearchPage extends StatefulWidget {
 
 enum _Phase { idle, loading, results, failed }
 
+/// What a search looks for.
+enum _Filter { videos, songs, playlists }
+
 class _SearchPageState extends State<SearchPage> {
   final _field = TextEditingController();
   Timer? _debounce;
@@ -35,8 +39,17 @@ class _SearchPageState extends State<SearchPage> {
   /// Ids added during this visit, so the row shows a check instead of the plus.
   final _added = <String>{};
 
-  /// Only what YouTube Music lists as songs, instead of every video.
-  bool _songsOnly = false;
+  _Filter _filter = _Filter.videos;
+
+  /// Playlists found by the last search while looking for playlists.
+  List<PlaylistRef> _playlists = const [];
+
+  /// The songs on screen belong to a playlist that was picked from [_playlists], so there is a way back.
+  bool _fromPlaylists = false;
+
+  /// Showing the list of playlists, as opposed to the songs of one.
+  bool get _showingPlaylists =>
+      _filter == _Filter.playlists && _playlistTitle == null;
 
   /// Guards against a slow answer for an old query replacing a newer one.
   int _generation = 0;
@@ -73,12 +86,27 @@ class _SearchPageState extends State<SearchPage> {
     try {
       final looksLikeLink = query.contains('youtu');
       final link = looksLikeLink ? await _room.lookup(query) : null;
+      if (link == null && _filter == _Filter.playlists) {
+        final lists = await _room.searchPlaylists(query);
+        if (!mounted || generation != _generation) return;
+        setState(() {
+          _playlists = lists;
+          _results = const [];
+          _playlistTitle = null;
+          _fromPlaylists = false;
+          _phase = _Phase.results;
+        });
+        return;
+      }
       final found =
-          link?.tracks ?? await _room.search(query, songsOnly: _songsOnly);
+          link?.tracks ??
+          await _room.search(query, songsOnly: _filter == _Filter.songs);
       if (!mounted || generation != _generation) return;
       setState(() {
         _results = found;
         _playlistTitle = link?.playlistTitle;
+        _playlists = const [];
+        _fromPlaylists = false;
         _phase = _Phase.results;
       });
     } on Object {
@@ -86,6 +114,38 @@ class _SearchPageState extends State<SearchPage> {
       setState(() => _phase = _Phase.failed);
     }
   }
+
+  /// Fetches the songs of a playlist from the list of playlists.
+  Future<void> _openPlaylist(PlaylistRef playlist) async {
+    final generation = ++_generation;
+    setState(() => _phase = _Phase.loading);
+    try {
+      final link = await _room.lookup(
+        'https://www.youtube.com/playlist?list=${playlist.id}',
+      );
+      if (link == null) throw StateError('not a playlist');
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _results = link.tracks;
+        _playlistTitle = link.playlistTitle ?? playlist.title;
+        _fromPlaylists = true;
+        _phase = _Phase.results;
+      });
+    } on Object {
+      if (!mounted || generation != _generation) return;
+      // Stay on the list of playlists
+      setState(() => _phase = _Phase.results);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text(S.playlistFailed)));
+    }
+  }
+
+  void _closePlaylist() => setState(() {
+    _results = const [];
+    _playlistTitle = null;
+    _fromPlaylists = false;
+  });
 
   Future<void> _add(Track track, {bool playNext = false}) => _addTracks(
     [track],
@@ -180,17 +240,18 @@ class _SearchPageState extends State<SearchPage> {
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
             child: Row(
               children: [
-                _FilterChip(
-                  label: S.filterVideos,
-                  selected: !_songsOnly,
-                  onTap: () => _setSongsOnly(false),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: S.filterSongs,
-                  selected: _songsOnly,
-                  onTap: () => _setSongsOnly(true),
-                ),
+                for (final (filter, label) in const [
+                  (_Filter.videos, S.filterVideos),
+                  (_Filter.songs, S.filterSongs),
+                  (_Filter.playlists, S.filterPlaylists),
+                ]) ...[
+                  _FilterChip(
+                    label: label,
+                    selected: _filter == filter,
+                    onTap: () => _setFilter(filter),
+                  ),
+                  const SizedBox(width: 8),
+                ],
               ],
             ),
           ),
@@ -204,9 +265,15 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  void _setSongsOnly(bool value) {
-    if (_songsOnly == value) return;
-    setState(() => _songsOnly = value);
+  void _setFilter(_Filter value) {
+    if (_filter == value) return;
+    setState(() {
+      _filter = value;
+      _results = const [];
+      _playlists = const [];
+      _playlistTitle = null;
+      _fromPlaylists = false;
+    });
     final text = _field.text.trim();
     if (text.isNotEmpty) _run(text);
   }
@@ -235,11 +302,26 @@ class _SearchPageState extends State<SearchPage> {
           icon: Icons.wifi_off_rounded,
           title: S.searchFailed,
         ),
-        _Phase.results when _results.isEmpty => const _Message(
-          key: ValueKey('empty'),
-          icon: Icons.music_off_rounded,
-          title: S.noResults,
-        ),
+        _Phase.results when _showingPlaylists && _playlists.isNotEmpty =>
+          ListView.builder(
+            key: const ValueKey('playlists'),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.only(
+              top: 4,
+              bottom: HomeShell.bottomInset,
+            ),
+            itemCount: _playlists.length,
+            itemBuilder: (context, i) => _PlaylistRow(
+              playlist: _playlists[i],
+              onTap: () => _openPlaylist(_playlists[i]),
+            ),
+          ),
+        _Phase.results when _showingPlaylists || _results.isEmpty =>
+          const _Message(
+            key: ValueKey('empty'),
+            icon: Icons.music_off_rounded,
+            title: S.noResults,
+          ),
         _Phase.results => ListView.builder(
           key: const ValueKey('results'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -250,6 +332,7 @@ class _SearchPageState extends State<SearchPage> {
               return _PlaylistHeader(
                 title: _playlistTitle!,
                 count: _results.length,
+                onBack: _fromPlaylists ? _closePlaylist : null,
                 onAddAll: _addAll,
                 onPlayNext: () => _addAll(playNext: true),
               );
@@ -278,10 +361,14 @@ class _PlaylistHeader extends StatelessWidget {
     required this.count,
     required this.onAddAll,
     required this.onPlayNext,
+    this.onBack,
   });
 
   final String title;
   final int count;
+
+  /// Set when the playlist was picked from a list of playlists.
+  final VoidCallback? onBack;
   final VoidCallback onAddAll;
   final VoidCallback onPlayNext;
 
@@ -294,6 +381,17 @@ class _PlaylistHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (onBack != null)
+            TextButton.icon(
+              onPressed: onBack,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 14),
+              label: const Text(S.backToPlaylists),
+            ),
           Text(
             title,
             maxLines: 2,
@@ -325,6 +423,53 @@ class _PlaylistHeader extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One playlist in the results: tap to see its songs.
+class _PlaylistRow extends StatelessWidget {
+  const _PlaylistRow({required this.playlist, required this.onTap});
+
+  final PlaylistRef playlist;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+        child: Row(
+          children: [
+            Artwork(url: playlist.thumb, size: 54),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    playlist.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.titleMedium,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    S.playlistBy(playlist.uploader, playlist.count),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: p.textTertiary),
+          ],
+        ),
       ),
     );
   }

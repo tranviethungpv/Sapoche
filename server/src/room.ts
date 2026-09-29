@@ -125,6 +125,7 @@ export class Room extends DurableObject<Env> {
       case "queue.addMany": return this.onQueueAddMany(me, msg);
       case "queue.remove": return this.onQueueRemove(msg.id);
       case "queue.clear": return this.onQueueClear();
+      case "queue.shuffle": return this.onQueueShuffle(me.clientId);
       case "jump": return this.onJump(msg.id, me.clientId);
       case "queue.move": return this.onQueueMove(msg.id, msg.toIndex);
       case "play": return this.onPlay(me.clientId);
@@ -313,6 +314,21 @@ export class Room extends DurableObject<Env> {
     return this.goIdle();
   }
 
+  /**
+   * Mixes up what is still to come, so the song playing carries on. When nothing is playing the
+   * whole queue is mixed and played from the top: the way to hear a finished list again in a new order.
+   */
+  private async onQueueShuffle(by: string): Promise<void> {
+    if (this.s.queue.length < 2) return;
+    if (this.s.phase === "idle") {
+      shuffleInPlace(this.s.queue, 0);
+      return this.begin(0, 0, by);
+    }
+    shuffleInPlace(this.s.queue, this.s.index + 1);
+    await this.save();
+    this.broadcastState();
+  }
+
   private async onJump(id: string, by: string): Promise<void> {
     const at = this.s.queue.findIndex((q) => q.id === id);
     if (at >= 0) return this.begin(at, 0, by);
@@ -393,7 +409,11 @@ export class Room extends DurableObject<Env> {
       this.s.epoch++;
       return this.startPlayback(by);
     }
-    if (this.s.phase === "idle" && this.s.queue[this.s.index]) return this.begin(this.s.index, 0, by);
+    if (this.s.phase === "idle" && this.s.queue[this.s.index]) {
+      // After the last song, play means "again": from the top of the list, not just the last song
+      const atEnd = this.s.index >= this.s.queue.length - 1;
+      return this.begin(atEnd ? 0 : this.s.index, 0, by);
+    }
   }
 
   private async onPause(by: string): Promise<void> {
@@ -640,4 +660,13 @@ export class Room extends DurableObject<Env> {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** Fisher-Yates over the items from [from] to the end, with an unbiased random source. */
+function shuffleInPlace<T>(items: T[], from: number): void {
+  for (let i = items.length - 1; i > from; i--) {
+    const range = i - from + 1;
+    const j = from + Math.floor((crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * range);
+    [items[i], items[j]] = [items[j], items[i]];
+  }
 }

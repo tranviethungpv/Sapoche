@@ -225,6 +225,7 @@ async function main() {
   await unplayableSection();
   await playlistAndRepeatSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
+  await shuffleSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
@@ -424,6 +425,48 @@ async function staleSection(staleMs) {
   const start = await a.waitFor((m) => m.t === "start", 4000);
   check("a silent device no longer holds the barrier", start._at - t0 < 1500, `waited ${start._at - t0}ms`);
   [a, b, ghost].forEach((x) => x.close());
+}
+
+/** Shuffling what is to come, shuffling a finished list, and play meaning "again" at the end. */
+async function shuffleSection() {
+  console.log("Shuffle and replay");
+  const [a, b] = await freshRoom(["Ha", "Hb"]);
+  const names = Array.from({ length: 12 }, (_, i) => `Song ${i}`);
+  a.send({ t: "queue.addMany", tracks: names.map((title) => ({ videoId: VIDEO_A, title, artist: "x", durMs: 200000 })) });
+  const first = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  await all([a, b], (x) => x.send({ t: "ready", epoch: first[0].epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  const before = (await a.waitFor((m) => m.t === "state" && m.state.queue.length === 12)).state.queue;
+
+  a.send({ t: "queue.shuffle" });
+  const after = (await b.waitFor((m) => m.t === "state" && m.state.queue.length === 12 && m.state.queue.map((q) => q.id).join() !== before.map((q) => q.id).join())).state.queue;
+  check("shuffle keeps the same songs", after.map((q) => q.id).sort().join() === before.map((q) => q.id).sort().join());
+  check("shuffle leaves the current song where it was", after[0].id === before[0].id);
+  check("shuffle changes the order of what is to come", after.slice(1).map((q) => q.id).join() !== before.slice(1).map((q) => q.id).join());
+
+  // Play through to the end: put the room at the last song and let it finish
+  const last = after[after.length - 1];
+  a.send({ t: "jump", id: last.id });
+  const p = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare" && m.item.id === last.id));
+  await all([a, b], (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  a.send({ t: "next" });
+  const idle = await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  check("the room goes idle after the last song", idle.state.index === 11);
+
+  a.send({ t: "play" });
+  const again = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  check("play after the last song starts the list again from the top", again[0].index === 0 && again[0].by === "Ha-id");
+
+  // Finish again, then shuffle the finished list
+  await all([a, b], (x) => x.send({ t: "ready", epoch: again[0].epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  a.send({ t: "queue.clear" });
+  await a.waitFor((m) => m.t === "state" && m.state.queue.length === 0);
+  a.send({ t: "queue.shuffle" });
+  check("shuffling an empty queue does nothing", await b.stays((m) => m.t === "prepare", 500));
+
+  [a, b].forEach((x) => x.close());
 }
 
 /** Keeps the given clients speaking, as a real device does with its pings. Returns a function that stops it. */

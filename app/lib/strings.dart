@@ -29,6 +29,9 @@ abstract final class S {
   static const emptyQueueBody =
       'Search for a song and add it. Everyone in the room hears it at the same time.';
   static const addSongs = 'Add songs';
+  static const shuffle = 'Shuffle';
+  static const playAgain = 'Play again';
+  static const queueFinished = 'The queue has finished';
   static const clearQueue = 'Clear queue';
   static const clearQueueQuestion = 'Remove every song from the queue?';
   static const clear = 'Clear';
@@ -57,6 +60,13 @@ abstract final class S {
   static const searchHint = 'Videos, songs, or a YouTube link';
   static const filterVideos = 'Videos';
   static const filterSongs = 'Songs';
+  static const filterPlaylists = 'Playlists';
+  static String playlistBy(String uploader, int count) => [
+    if (uploader.isNotEmpty) uploader,
+    if (count > 0) (count == 1 ? '1 song' : '$count songs'),
+  ].join(' · ');
+  static const backToPlaylists = 'All playlists';
+  static const playlistFailed = 'Could not open that playlist';
   static const searchEmptyTitle = 'Find something to play';
   static const searchEmptyBody =
       'Type a song or artist, or paste a YouTube link.';

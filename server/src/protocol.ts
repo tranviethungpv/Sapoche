@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when a change is not backward compatible. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 export interface QueueItem {
   id: string;
@@ -69,6 +69,8 @@ export type ClientMessage =
   | { t: "queue.addMany"; tracks: TrackInput[]; next?: boolean }
   | { t: "queue.remove"; id: string }
   | { t: "queue.clear" }
+  /** Mixes up the songs still to come; with nothing playing (the queue has finished) it mixes them all and plays from the first. */
+  | { t: "queue.shuffle" }
   /** Start playing the queue item [id] from the beginning. */
   | { t: "jump"; id: string }
   | { t: "queue.move"; id: string; toIndex: number }

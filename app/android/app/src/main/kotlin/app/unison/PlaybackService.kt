@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.PowerManager
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -128,6 +129,8 @@ class PlaybackService : MediaSessionService() {
 
         EventLog.d("service", "created")
         main.postDelayed(heartbeat, HEARTBEAT_MS)
+        lastWatchMs = SystemClock.elapsedRealtime()
+        main.postDelayed(stallWatch, STALL_TICK_MS)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -141,12 +144,31 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         EventLog.d("service", "destroyed")
         main.removeCallbacks(heartbeat)
+        main.removeCallbacks(stallWatch)
         group.release()
         UnisonApp.setGroup(null)
         session?.release()
         session = null
         player.release()
         super.onDestroy()
+    }
+
+    /**
+     * Notes every time the main thread was busy for a long stretch. The player and the room session
+     * are driven from it, so a rotation or a heavy screen that blocks it shows up here, next to any
+     * audio underrun, when the log is read afterwards.
+     */
+    private var lastWatchMs = 0L
+    private val stallWatch = object : Runnable {
+        override fun run() {
+            val now = SystemClock.elapsedRealtime()
+            val late = now - lastWatchMs - STALL_TICK_MS
+            if (late > STALL_LOG_MS) {
+                EventLog.d("stall", "main thread was busy for ${late}ms (playing=${player.isPlaying} pos=${player.currentPosition / 1000.0}s)")
+            }
+            lastWatchMs = now
+            main.postDelayed(this, STALL_TICK_MS)
+        }
     }
 
     /** Periodic proof of life, with device power state, so screen-off tests can be analysed later. */
@@ -333,6 +355,8 @@ class PlaybackService : MediaSessionService() {
     private companion object {
         const val SCHEME = "unison"
         const val HEARTBEAT_MS = 30_000L
+        const val STALL_TICK_MS = 100L
+        const val STALL_LOG_MS = 120L
         const val MAX_RECOVERIES = 3
     }
 }

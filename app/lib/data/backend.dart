@@ -71,6 +71,12 @@ abstract class Backend {
   /// Videos matching [query]; with [songsOnly] just what YouTube Music lists as songs.
   Future<List<Track>> search(String query, {bool songsOnly = false});
 
+  /// Playlists matching [query].
+  Future<List<PlaylistRef>> searchPlaylists(String query);
+
+  /// Mixes up the songs still to come; with the queue finished, mixes them all and plays from the top.
+  Future<void> shuffle();
+
   /// Play songs with their picture ([on]) or sound only.
   Future<void> setVideoMode(bool on);
 
@@ -203,6 +209,18 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> clear() => _call('clear');
+
+  @override
+  Future<List<PlaylistRef>> searchPlaylists(String query) async {
+    final raw = await _call<List<Object?>>('searchPlaylists', {'query': query});
+    return [
+      for (final e in raw ?? const [])
+        PlaylistRef.fromMap(e as Map<Object?, Object?>),
+    ];
+  }
+
+  @override
+  Future<void> shuffle() => _call('shuffle');
 
   @override
   Future<void> setVideoMode(bool on) => _call('videoMode', {'on': on});
