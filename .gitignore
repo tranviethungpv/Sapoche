@@ -1,0 +1,24 @@
+# Build outputs
+build/
+.gradle/
+.dart_tool/
+.flutter-plugins*
+node_modules/
+.wrangler/
+dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Android
+local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Secrets
+.env
+.dev.vars
