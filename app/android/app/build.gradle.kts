@@ -46,11 +46,27 @@ android {
         buildConfigField("String", "ROOM_KEY", "\"${localProperties.getProperty("unison.roomKey", "")}\"")
     }
 
+    // The release key lives next to unison.properties and is not committed. Without it the release
+    // build falls back to the debug key, which still installs but cannot update an app signed for real.
+    val releaseKey = localProperties.getProperty("unison.keystore")?.let { rootProject.file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (releaseKey != null) {
+            create("release") {
+                storeFile = releaseKey
+                storePassword = localProperties.getProperty("unison.keystorePassword")
+                keyAlias = localProperties.getProperty("unison.keyAlias")
+                keyPassword = localProperties.getProperty("unison.keystorePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // Not shrunk: NewPipeExtractor reaches parts of itself by name, and a rule missed by R8 would
+            // only show up as a broken search on a phone. The size difference is about ten megabytes.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

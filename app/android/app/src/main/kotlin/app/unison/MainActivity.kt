@@ -32,6 +32,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onPause() {
         bridge?.setVisible(false)
+        EventLog.flush()
         super.onPause()
     }
 

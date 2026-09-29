@@ -100,7 +100,7 @@ Phát lặp không đi đường gapless: hết bài thì client báo `ended` (h
 
 Ai làm gì: `pause`, `start` và `prepare` mang `by` để máy khác hiện thông báo "Ann đã dừng phòng" kèm nút "Keep playing" (chuyển sang nghe riêng và phát tiếp) hoặc "Ann đã chuyển sang bài X".
 
-**Hiện diện (`away`).** Client gửi `ping` mỗi 15 giây, server ghi lại lần nghe cuối của từng socket. Im quá 40 giây thì thành viên được đánh dấu `away` (mờ đi, không tính là đang nghe, không kìm barrier); im quá 90 giây thì server đóng socket và xóa khỏi danh sách. Mỗi tin nhắn của bất kỳ ai là một dịp để server rà soát và phát lại `members` nếu ai đó đổi trạng thái, nên không cần bộ đếm giờ riêng. Đây là lớp dự phòng cho socket chết mà không đóng; app bị tắt cưỡng bức thường được nhận ra ngay khi socket đóng.
+**Hiện diện (`away`).** Client gửi `ping` mỗi 30 giây (mỗi lần ping giữ sóng di động thức, nên thưa hơn thì tiết kiệm pin hơn), server ghi lại lần nghe cuối của từng socket. Im quá 75 giây thì thành viên được đánh dấu `away` (mờ đi, không tính là đang nghe, không kìm barrier); im quá 150 giây thì server đóng socket và xóa khỏi danh sách. Mỗi tin nhắn của bất kỳ ai là một dịp để server rà soát và phát lại `members` nếu ai đó đổi trạng thái, nên không cần bộ đếm giờ riêng. Đây là lớp dự phòng cho socket chết mà không đóng; app bị tắt cưỡng bức thường được nhận ra ngay khi socket đóng.
 
 ## 6. Chỉnh lệch khi đang phát
 

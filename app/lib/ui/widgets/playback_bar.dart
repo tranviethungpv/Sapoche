@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 
 import '../../data/room_controller.dart';
 import '../../format.dart';
 import '../../theme/theme.dart';
+import 'low_rate_timer.dart';
 
-/// Seek bar with elapsed and remaining time. It repaints every frame while playing so the fill
-/// glides instead of jumping once a second, and it grows under the finger like Apple's.
+/// Seek bar with elapsed and remaining time. It moves five times a second while playing, which is
+/// finer than a pixel of the bar, and it grows under the finger like Apple's.
 class PlaybackBar extends StatefulWidget {
   const PlaybackBar({super.key, required this.controller});
 
@@ -16,9 +16,11 @@ class PlaybackBar extends StatefulWidget {
   State<PlaybackBar> createState() => _PlaybackBarState();
 }
 
-class _PlaybackBarState extends State<PlaybackBar>
-    with SingleTickerProviderStateMixin {
-  late final Ticker _ticker = createTicker((_) => setState(() {}));
+class _PlaybackBarState extends State<PlaybackBar> {
+  late final LowRateTimer _ticker = LowRateTimer(
+    const Duration(milliseconds: 200),
+    () => setState(() {}),
+  );
   double? _dragFraction;
 
   RoomController get _c => widget.controller;
@@ -32,12 +34,7 @@ class _PlaybackBarState extends State<PlaybackBar>
   }
 
   void _syncTicker() {
-    final shouldRun = _c.player.value.playing;
-    if (shouldRun && !_ticker.isActive) {
-      _ticker.start();
-    } else if (!shouldRun && _ticker.isActive) {
-      _ticker.stop();
-    }
+    _ticker.run(_c.player.value.playing);
     if (mounted) setState(() {});
   }
 

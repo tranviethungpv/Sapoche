@@ -27,8 +27,13 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -55,7 +60,8 @@ class UnisonBridge(
     private var sink: EventChannel.EventSink? = null
     private var observing: Job? = null
     private var controller: ListenableFuture<MediaController>? = null
-    private var visible = false
+    private val shown = MutableStateFlow(false)
+    private val visible get() = shown.value
 
     /** An invitation that arrived before the UI was listening. */
     private var pendingInvite: String? = null
@@ -86,8 +92,8 @@ class UnisonBridge(
     }
 
     fun setVisible(value: Boolean) {
-        visible = value
         if (value) lastState = null // a UI that just came back wants the full picture again
+        shown.value = value
     }
 
     fun dispose() {
@@ -120,20 +126,27 @@ class UnisonBridge(
                 }
                 coroutineScope {
                     launch {
-                        group.view.collect { view ->
-                            val state = UiJson.state(view, group.trimMs, group.videoMode, UnisonApp.videoMaxHeight)
-                            if (state != lastState) {
-                                lastState = state
-                                emit(state)
+                        // Drift and speed change every half second and are not part of the state; and
+                        // nothing is built or sent while the screen is off, the UI catches up when it returns
+                        combine(group.view.map(::structure).distinctUntilChanged(), shown) { view, on -> view.takeIf { on } }
+                            .filterNotNull()
+                            .collect { view ->
+                                val state = UiJson.state(view, group.trimMs, group.videoMode, UnisonApp.videoMaxHeight)
+                                if (state != lastState) {
+                                    lastState = state
+                                    emit(state)
+                                }
                             }
-                        }
                     }
                     launch { group.errors.collect { emit(UiJson.error(it.code, it.message)) } }
                     launch { group.notices.collect { emit(UiJson.notice(it)) } }
                     launch {
-                        while (true) {
-                            if (visible) emit(UiJson.position(group.view.value, group.playerInfo()))
-                            delay(POSITION_TICK_MS)
+                        // No ticking at all while the screen is off
+                        shown.collectLatest { on ->
+                            while (on) {
+                                emit(UiJson.position(group.view.value, group.playerInfo()))
+                                delay(POSITION_TICK_MS)
+                            }
                         }
                     }
                     // Play, pause and seek should show at once instead of at the next tick
@@ -165,6 +178,9 @@ class UnisonBridge(
         sink = null
         observing?.cancel()
     }
+
+    private fun structure(view: GroupController.View) =
+        view.copy(snapshot = view.snapshot.copy(driftMs = null, speed = 1f))
 
     private fun emit(json: String) {
         sink?.success(json)

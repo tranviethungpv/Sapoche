@@ -2,7 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// Three bouncing bars that show which song is playing; they settle down when paused.
+import 'low_rate_timer.dart';
+
+/// Three bouncing bars that show which song is playing; they settle down when paused. They move
+/// about ten times a second rather than on every frame: same look, a fraction of the wake-ups.
 class Equalizer extends StatefulWidget {
   const Equalizer({
     super.key,
@@ -19,32 +22,39 @@ class Equalizer extends StatefulWidget {
   State<Equalizer> createState() => _EqualizerState();
 }
 
-class _EqualizerState extends State<Equalizer>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  );
+class _EqualizerState extends State<Equalizer> {
+  static const _tick = Duration(milliseconds: 100);
+  static const _cycle = Duration(milliseconds: 1100);
+
+  late final LowRateTimer _timer = LowRateTimer(_tick, () {
+    setState(
+      () => _t = (_t + _tick.inMilliseconds / _cycle.inMilliseconds) % 1,
+    );
+  });
+
+  /// Where the bars are in their cycle, 0 to 1; 0 is at rest.
+  double _t = 0;
+
+  /// False when this screen is not the one showing (another tab, or behind the full player).
+  bool _shown = true;
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.active) _controller.repeat();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _shown = TickerMode.valuesOf(context).enabled;
+    _timer.run(widget.active && _shown);
   }
 
   @override
   void didUpdateWidget(Equalizer old) {
     super.didUpdateWidget(old);
-    if (widget.active && !_controller.isAnimating) {
-      _controller.repeat();
-    } else if (!widget.active && _controller.isAnimating) {
-      _controller.animateTo(0, duration: const Duration(milliseconds: 250));
-    }
+    _timer.run(widget.active && _shown);
+    if (!widget.active) _t = 0;
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _timer.dispose();
     super.dispose();
   }
 
@@ -52,11 +62,8 @@ class _EqualizerState extends State<Equalizer>
   Widget build(BuildContext context) {
     return SizedBox.square(
       dimension: widget.size,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) => CustomPaint(
-          painter: _BarsPainter(_controller.value, widget.active, widget.color),
-        ),
+      child: CustomPaint(
+        painter: _BarsPainter(_t, widget.active, widget.color),
       ),
     );
   }

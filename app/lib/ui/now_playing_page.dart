@@ -74,13 +74,7 @@ class _Body extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        ListenableBuilder(
-          listenable: controller.player,
-          builder: (context, _) => PlayerBackdrop(
-            coverUrl: current.thumb,
-            playing: controller.isPlaying,
-          ),
-        ),
+        PlayerBackdrop(coverUrl: current.thumb),
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),

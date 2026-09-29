@@ -3,6 +3,7 @@ package app.unison
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -21,12 +22,22 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import app.unison.core.OkHttpDownloader
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.io.IOException
 
 /**
@@ -39,6 +50,7 @@ class PlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
     private lateinit var group: GroupController
     private val main = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** Consecutive recovery attempts per media id; reset once an item plays for a while. */
     private val recoveryAttempts = HashMap<String, Int>()
@@ -110,7 +122,35 @@ class PlaybackService : MediaSessionService() {
         )
         session = MediaSession.Builder(this, GroupAwarePlayer(player, group))
             .setSessionActivity(openApp)
+            .setBitmapLoader(CoverLoader())
             .setCallback(object : MediaSession.Callback {
+                override fun onConnect(
+                    mediaSession: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                ): MediaSession.ConnectionResult {
+                    val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                        .add(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
+                        .add(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
+                        .build()
+                    return MediaSession.ConnectionResult.AcceptedResultBuilder(mediaSession)
+                        .setAvailableSessionCommands(commands)
+                        .setMediaButtonPreferences(roomButtons(repeatMode))
+                        .build()
+                }
+
+                override fun onCustomCommand(
+                    mediaSession: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                    customCommand: SessionCommand,
+                    args: Bundle,
+                ): ListenableFuture<SessionResult> {
+                    when (customCommand.customAction) {
+                        CMD_SHUFFLE -> group.requestShuffle()
+                        CMD_REPEAT -> group.requestRepeat(nextRepeat(repeatMode))
+                    }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+
                 override fun onAddMediaItems(
                     mediaSession: MediaSession,
                     controller: MediaSession.ControllerInfo,
@@ -127,10 +167,53 @@ class PlaybackService : MediaSessionService() {
             DefaultMediaNotificationProvider(this).also { it.setSmallIcon(R.drawable.ic_notification) },
         )
 
+        // Shuffle and repeat sit beside the three transport buttons, which makes the notification
+        // expandable: collapsed it shows the three, expanded all five
+        scope.launch {
+            group.view
+                .map { view -> view.roomCode?.let { view.snapshot.state?.repeat ?: "off" } }
+                .distinctUntilChanged()
+                .collect { mode ->
+                    repeatMode = mode
+                    session?.setMediaButtonPreferences(roomButtons(mode))
+                }
+        }
+
         EventLog.d("service", "created")
         main.postDelayed(heartbeat, HEARTBEAT_MS)
-        lastWatchMs = SystemClock.elapsedRealtime()
-        main.postDelayed(stallWatch, STALL_TICK_MS)
+        if (BuildConfig.DEBUG) {
+            lastWatchMs = SystemClock.elapsedRealtime()
+            main.postDelayed(stallWatch, STALL_TICK_MS)
+        }
+    }
+
+    /** The room's repeat mode, or null while not in a room. */
+    private var repeatMode: String? = null
+
+    private fun roomButtons(mode: String?): List<CommandButton> {
+        if (mode == null) return emptyList()
+        return listOf(
+            CommandButton.Builder(CommandButton.ICON_SHUFFLE_OFF)
+                .setDisplayName("Shuffle")
+                .setSessionCommand(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
+                .build(),
+            CommandButton.Builder(
+                when (mode) {
+                    "all" -> CommandButton.ICON_REPEAT_ALL
+                    "one" -> CommandButton.ICON_REPEAT_ONE
+                    else -> CommandButton.ICON_REPEAT_OFF
+                },
+            )
+                .setDisplayName("Repeat")
+                .setSessionCommand(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
+                .build(),
+        )
+    }
+
+    private fun nextRepeat(mode: String?) = when (mode) {
+        "off", null -> "all"
+        "all" -> "one"
+        else -> "off"
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -143,8 +226,10 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         EventLog.d("service", "destroyed")
+        EventLog.flush()
         main.removeCallbacks(heartbeat)
         main.removeCallbacks(stallWatch)
+        scope.cancel()
         group.release()
         UnisonApp.setGroup(null)
         session?.release()
@@ -156,7 +241,7 @@ class PlaybackService : MediaSessionService() {
     /**
      * Notes every time the main thread was busy for a long stretch. The player and the room session
      * are driven from it, so a rotation or a heavy screen that blocks it shows up here, next to any
-     * audio underrun, when the log is read afterwards.
+     * audio underrun, when the log is read afterwards. Debug builds only: it wakes ten times a second.
      */
     private var lastWatchMs = 0L
     private val stallWatch = object : Runnable {
@@ -354,7 +439,9 @@ class PlaybackService : MediaSessionService() {
 
     private companion object {
         const val SCHEME = "unison"
-        const val HEARTBEAT_MS = 30_000L
+        const val CMD_SHUFFLE = "app.unison.SHUFFLE"
+        const val CMD_REPEAT = "app.unison.REPEAT"
+        const val HEARTBEAT_MS = 60_000L
         const val STALL_TICK_MS = 100L
         const val STALL_LOG_MS = 120L
         const val MAX_RECOVERIES = 3

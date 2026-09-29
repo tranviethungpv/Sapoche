@@ -637,6 +637,25 @@ void main() {
     expect(find.byType(SkeletonList), findsNothing);
   });
 
+  testWidgets('music playing does not keep the screen redrawing every frame', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    backend.emit(
+      const PositionEvent(
+        PlayerPosition(playing: true, positionMs: 4000, durationMs: 200000),
+      ),
+    );
+    // pumpAndSettle only returns when no animation is running; a ticker left going by the
+    // equalizer or the seek bar would make it time out, and would cost battery on the real phone
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(MiniPlayer));
+    await tester.pumpAndSettle();
+    expect(find.byType(NowPlayingPage), findsOneWidget);
+  });
+
   testWidgets('the player only says in sync when the drift is small', (
     tester,
   ) async {

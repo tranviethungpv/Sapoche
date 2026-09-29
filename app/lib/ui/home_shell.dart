@@ -136,10 +136,14 @@ class _HomeShellState extends State<HomeShell>
       extendBody: true,
       body: IndexedStack(
         index: _tab,
+        // A tab that is not showing keeps its state but not its animations
         children: [
-          RoomPage(onAddSongs: () => _select(1)),
-          const SearchPage(),
-          const SettingsPage(),
+          for (final (i, page) in [
+            RoomPage(onAddSongs: () => _select(1)),
+            const SearchPage(),
+            const SettingsPage(),
+          ].indexed)
+            TickerMode(enabled: i == _tab, child: page),
         ],
       ),
       bottomNavigationBar: Column(
@@ -170,8 +174,14 @@ class _HomeShellState extends State<HomeShell>
             AnimatedBuilder(
               animation: _sheet.position,
               child: home,
-              builder: (context, home) =>
-                  Offstage(offstage: _sheet.position.value == 1, child: home),
+              // Hidden behind the full player: not drawn, and its small animations stand still too
+              builder: (context, home) => TickerMode(
+                enabled: _sheet.position.value != 1,
+                child: Offstage(
+                  offstage: _sheet.position.value == 1,
+                  child: home,
+                ),
+              ),
             ),
             PlayerSheetLayer(controller: _sheet),
           ],

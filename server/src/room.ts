@@ -24,12 +24,12 @@ const ADVANCE_FUTURE_SLACK_MS = 500;
 /** An advance more than this far before the item's expected end is ignored. */
 const ADVANCE_EARLY_LIMIT_MS = 15_000;
 /**
- * A device that has been silent this long (it pings every 15 seconds) is marked away: it does not
+ * A device that has been silent this long (it pings every 30 seconds) is marked away: it does not
  * count as listening and never holds the room back. Overridable for tests through STALE_MS.
  */
-const AWAY_AFTER_MS = 40_000;
+const AWAY_AFTER_MS = 75_000;
 /** A device silent this long is dropped: its connection is dead even though it never closed. */
-const DROP_AFTER_MS = 90_000;
+const DROP_AFTER_MS = 150_000;
 /** How long an empty room keeps its state before it is deleted. */
 const EMPTY_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -44,7 +44,7 @@ const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 interface Attachment {
   clientId: string;
   name: string;
-  /** Last time this socket sent anything; clients ping every 15 seconds. */
+  /** Last time this socket sent anything; clients ping every 30 seconds. */
   lastSeen: number;
   /** Listening on their own, so the room does not wait for or move this device. */
   solo: boolean;

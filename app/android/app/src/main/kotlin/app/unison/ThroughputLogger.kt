@@ -6,13 +6,11 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 
 /**
- * Logs how fast bytes really arrive from the network, once per second while a transfer is active.
- * Used to find out whether the CDN, the network or the player is the bottleneck.
+ * Logs when a network transfer starts and ends, with the bytes and time it took. Used to find out
+ * whether the CDN, the network or the player is the bottleneck. Not per second: each line is a write.
  */
 class ThroughputLogger : TransferListener {
     private var startMs = 0L
-    private var windowStartMs = 0L
-    private var windowBytes = 0L
     private var totalBytes = 0L
 
     @Synchronized
@@ -25,8 +23,6 @@ class ThroughputLogger : TransferListener {
     override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {
         if (!isNetwork) return
         startMs = SystemClock.elapsedRealtime()
-        windowStartMs = startMs
-        windowBytes = 0
         totalBytes = 0
         EventLog.d("http", "response started (first byte after headers)")
     }
@@ -34,15 +30,7 @@ class ThroughputLogger : TransferListener {
     @Synchronized
     override fun onBytesTransferred(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean, bytesTransferred: Int) {
         if (!isNetwork) return
-        windowBytes += bytesTransferred
         totalBytes += bytesTransferred
-        val now = SystemClock.elapsedRealtime()
-        if (now - windowStartMs >= 1_000) {
-            val kbps = windowBytes * 8 / (now - windowStartMs)
-            EventLog.d("http", "rx ${kbps}kbps, total ${totalBytes / 1024}KB after ${(now - startMs) / 1000}s")
-            windowStartMs = now
-            windowBytes = 0
-        }
     }
 
     @Synchronized

@@ -162,7 +162,7 @@ class RoomClient(
         }
     }
 
-    /** A quick burst right after connecting for a good first estimate, then a slow refresh. */
+    /** A quick burst right after connecting for a good first estimate, then a slow refresh: each ping keeps the radio awake, and the server counts it as presence. */
     private suspend fun pingLoop(ws: WebSocket) {
         repeat(BURST_PINGS) {
             ws.send(Protocol.ping(nowMs()))
@@ -182,6 +182,6 @@ class RoomClient(
         const val HTTP_UNAUTHORIZED = 401
         const val BURST_PINGS = 8
         const val BURST_GAP_MS = 250L
-        const val REFRESH_MS = 15_000L
+        const val REFRESH_MS = 30_000L
     }
 }

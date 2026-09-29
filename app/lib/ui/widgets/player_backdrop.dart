@@ -1,52 +1,34 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
 import '../cover_color.dart';
 import 'wash.dart';
 
-/// Background of the full player: the cover's colour drifting slowly as soft blobs, under the same
-/// pink veil as the rest of the app. The colour changes smoothly from song to song, and the drift
-/// stops while nothing plays.
+/// Background of the full player: the cover's colour as soft blobs, under the same pink veil as the
+/// rest of the app. The colour changes smoothly from song to song. The blobs stand still: drifting
+/// them meant redrawing the whole screen on every frame for as long as the player was open.
 class PlayerBackdrop extends StatefulWidget {
-  const PlayerBackdrop({
-    super.key,
-    required this.coverUrl,
-    required this.playing,
-  });
+  const PlayerBackdrop({super.key, required this.coverUrl});
 
   final String? coverUrl;
-  final bool playing;
 
   @override
   State<PlayerBackdrop> createState() => _PlayerBackdropState();
 }
 
-class _PlayerBackdropState extends State<PlayerBackdrop>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _drift = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 24),
-  );
+class _PlayerBackdropState extends State<PlayerBackdrop> {
   Color? _cover;
 
   @override
   void initState() {
     super.initState();
     _load();
-    if (widget.playing) _drift.repeat();
   }
 
   @override
   void didUpdateWidget(PlayerBackdrop old) {
     super.didUpdateWidget(old);
     if (widget.coverUrl != old.coverUrl) _load();
-    if (widget.playing && !_drift.isAnimating) {
-      _drift.repeat();
-    } else if (!widget.playing && _drift.isAnimating) {
-      _drift.stop();
-    }
   }
 
   void _load() {
@@ -58,12 +40,6 @@ class _PlayerBackdropState extends State<PlayerBackdrop>
     CoverColor.of(url).then((color) {
       if (mounted && widget.coverUrl == url) setState(() => _cover = color);
     });
-  }
-
-  @override
-  void dispose() {
-    _drift.dispose();
-    super.dispose();
   }
 
   @override
@@ -84,15 +60,8 @@ class _PlayerBackdropState extends State<PlayerBackdrop>
           duration: const Duration(milliseconds: 900),
           curve: Curves.easeInOut,
           builder: (context, color, _) => RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: _drift,
-              builder: (context, _) => CustomPaint(
-                painter: _BlobPainter(
-                  color ?? target,
-                  _drift.value,
-                  dark ? 0.6 : 0.42,
-                ),
-              ),
+            child: CustomPaint(
+              painter: _BlobPainter(color ?? target, dark ? 0.6 : 0.42),
             ),
           ),
         ),
@@ -107,38 +76,18 @@ class _PlayerBackdropState extends State<PlayerBackdrop>
 }
 
 class _BlobPainter extends CustomPainter {
-  _BlobPainter(this.color, this.t, this.strength);
+  _BlobPainter(this.color, this.strength);
 
   final Color color;
-  final double t;
   final double strength;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final angle = t * 2 * math.pi;
-    // Three blobs on slow, different orbits
-    final blobs = [
-      (
-        Offset(0.25 + 0.12 * math.sin(angle), 0.22 + 0.08 * math.cos(angle)),
-        0.85,
-        1.0,
-      ),
-      (
-        Offset(
-          0.80 + 0.10 * math.cos(angle * 2),
-          0.55 + 0.10 * math.sin(angle),
-        ),
-        0.75,
-        0.8,
-      ),
-      (
-        Offset(
-          0.40 + 0.15 * math.sin(angle + 2),
-          0.92 + 0.05 * math.cos(angle * 2),
-        ),
-        0.9,
-        0.7,
-      ),
+    // Three blobs: centre as a share of the screen, radius as a share of its width, and strength
+    const blobs = [
+      (Offset(0.25, 0.22), 0.85, 1.0),
+      (Offset(0.80, 0.55), 0.75, 0.8),
+      (Offset(0.40, 0.92), 0.9, 0.7),
     ];
     for (final (center, radius, weight) in blobs) {
       final at = Offset(center.dx * size.width, center.dy * size.height);
@@ -156,5 +105,5 @@ class _BlobPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BlobPainter old) =>
-      old.color != color || old.t != t || old.strength != strength;
+      old.color != color || old.strength != strength;
 }
