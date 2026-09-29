@@ -6,6 +6,7 @@ App Android cho nhóm nhỏ. Mỗi điện thoại tự lấy luồng nhạc, c�
 
 - Kế hoạch triển khai: [docs/PLAN.md](docs/PLAN.md)
 - Giao thức đồng bộ: [docs/PROTOCOL.md](docs/PROTOCOL.md)
+- Nghe nhạc như app bình thường (playlist, yêu thích, lịch sử, gợi ý, tải về): [docs/LIBRARY.md](docs/LIBRARY.md)
 
 ## Trạng thái
 

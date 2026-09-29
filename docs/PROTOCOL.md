@@ -142,7 +142,9 @@ Ngưỡng là giá trị khởi đầu, sẽ chỉnh sau khi đo ở Prototype 2
 - Vào lại phòng đang phát đúng bài đã nạp thì không nạp lại: chỉ căn lại theo gốc thời gian của phòng (và bấm phát nếu máy đang dừng).
 - `prepare` lặp lại cùng `epoch` cho máy đã nạp xong: chỉ gửi lại `ready`.
 - Mất mạng giữa bài: trình phát thử lại lỗi mạng tối đa khoảng 8 phút và phát tiếp từ bộ đệm; riêng URL bị từ chối (401, 403, 404, 410) báo lỗi ngay để nạp lại bằng URL mới. Nạp lại thất bại (chưa có mạng) thì thử lại mỗi 5 giây.
-- Tiến trình bị hệ thống giết: app lưu mã phòng và tự vào lại khi service khởi động.
+- Tiến trình bị hệ thống giết: app lưu mã phòng, thời điểm còn sống lần cuối (ghi mỗi phút khi ở trong phòng) và chế độ nghe riêng. Service khởi động lại trong vòng 10 phút thì vào lại phòng (`join` với `create:false`), và nếu đang nghe riêng thì vào lại ở chế độ nghe riêng, tạm dừng, không tự phát. Ngoài 10 phút, hoặc mở app bình thường, thì bắt đầu ở ngoài phòng với hàng đợi cá nhân.
+- Tạm dừng lâu: ở trong phòng mà không phát và màn hình không hiện quá 20 phút thì client đóng WebSocket (ping mỗi 30 giây giữ sóng thức cả ngày); nối lại khi màn hình hiện hoặc khi có lệnh từ thông báo (lệnh được giữ đến khi nối xong). Server thấy đó là một thành viên rời đi, và phòng cho phép mọi người điều khiển nếu chủ là người đó.
+- Kết nối chết mà không đóng: client dùng đúng một ping (30 giây) và coi kết nối đã chết nếu 45 giây không có `pong`, rồi nối lại; không còn ping cấp giao thức của OkHttp.
 - Máy tự dừng (cuộc gọi, ứng dụng khác chiếm âm thanh) trong lúc phòng đang phát: nút phát chỉ tiếp tục trên máy đó, phòng không bị khởi động lại; drift lớn được xử lý bằng một lần seek.
 - Server DO ngủ (Hibernation): trạng thái lưu trong storage, không mất khi tỉnh dậy.
 - Tin nhắn có `epoch` cũ bị bỏ qua.
