@@ -3,7 +3,9 @@ package app.unison.sync
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -21,16 +23,20 @@ class IdleWatchTest {
         val visible = MutableStateFlow(false)
     }
 
-    private fun kotlinx.coroutines.test.TestScope.watch(inputs: Inputs): List<IdleAction> {
+    /** Time the device spent asleep: the wall clock ran, but no coroutine delay did. */
+    private var asleepMs = 0L
+
+    private fun TestScope.watch(inputs: Inputs): List<IdleAction> {
         val actions = mutableListOf<IdleAction>()
         backgroundScope.launch {
-            idleActions(inputs.inRoom, inputs.playing, inputs.visible, room, service).collect { actions += it }
+            idleActions(inputs.inRoom, inputs.playing, inputs.visible, room, service, now = { currentTime + asleepMs })
+                .collect { actions += it }
         }
         runCurrent()
         return actions
     }
 
-    private fun kotlinx.coroutines.test.TestScope.minutes(n: Long) {
+    private fun TestScope.minutes(n: Long) {
         advanceTimeBy(n * 60_000)
         runCurrent()
     }
@@ -77,6 +83,17 @@ class IdleWatchTest {
         assertEquals(emptyList(), actions, "ten minutes since the last look is not fifteen")
         minutes(6)
         assertEquals(listOf(IdleAction.STOP_SERVICE), actions)
+    }
+
+    @Test
+    fun `time spent asleep counts, at the first moment the device is awake again`() = runTest {
+        asleepMs = 0
+        val actions = watch(Inputs())
+        minutes(2)
+        asleepMs += 20 * 60_000 // the phone slept for twenty minutes: no delay ran, but the wall clock did
+        assertEquals(emptyList(), actions, "nothing runs while asleep")
+        minutes(1)
+        assertEquals(listOf(IdleAction.STOP_SERVICE), actions, "the next check after waking sees how long it has been")
     }
 
     @Test

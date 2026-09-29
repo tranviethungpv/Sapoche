@@ -189,6 +189,8 @@ class PlaybackService : MediaSessionService() {
                 visible = UnisonApp.uiVisible,
                 roomAfterMs = ROOM_IDLE_MS,
                 serviceAfterMs = SERVICE_IDLE_MS,
+                // Counts the time the device sleeps, which a plain delay does not
+                now = { SystemClock.elapsedRealtime() },
             ).collect { action ->
                 when (action) {
                     IdleAction.SUSPEND_ROOM -> group.suspendRoom()
