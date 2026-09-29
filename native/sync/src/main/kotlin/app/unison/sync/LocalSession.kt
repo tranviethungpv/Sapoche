@@ -96,6 +96,9 @@ class LocalSession(
     /** Reloads used on the current item; stops endless retry loops on a broken stream. */
     private var recoveries = 0
 
+    /** Whether the item being loaded starts playing once it is ready; play and pause during a load only flip this. */
+    private var playOnLoad = false
+
     /**
      * Position to show for the current item while nothing is loaded (after a restart), else null: the
      * player knows better then.
@@ -124,6 +127,8 @@ class LocalSession(
     fun play() {
         val s = snapshot.value
         when {
+            // Asked twice (a button and the media session both do): the item is on its way, do not start over
+            loadedId == null && job?.isActive == true -> playOnLoad = true
             loadedId != null -> player.play()
             s.queue.isEmpty() -> Unit
             // After the last song, play means "again": from the top of the list
@@ -133,6 +138,7 @@ class LocalSession(
     }
 
     fun pause() {
+        playOnLoad = false
         player.pause()
         save()
     }
@@ -295,12 +301,13 @@ class LocalSession(
         if (at != snapshot.value.index) recoveries = 0
         // The person sees the new song at once, not when it has loaded
         _snapshot.update { it.copy(index = at, finished = false) }
+        playOnLoad = play
         job = scope.launch {
             try {
                 player.prepare(item, positionMs)
                 loadedId = item.id
                 pendingPositionMs = 0
-                if (play) player.play()
+                if (playOnLoad) player.play()
                 preload()
                 save()
             } catch (e: CancellationException) {

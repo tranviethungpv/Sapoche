@@ -365,6 +365,36 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `asking to play twice while the song is loading loads it once`() = runTest {
+        val song = QueueItem("a", "aaaaaaaaaaa", "One", "x", null, 200_000, "")
+        val h = harness(SavedQueue(listOf(song)))
+        h.player.prepareDelayMs = 2000
+        h.session.play()
+        step(500)
+        h.session.play()
+        // Two seconds after the first press: a restart at the second press would still be loading
+        step(1700)
+        assertTrue(h.player.playing, "the second press must not cancel and restart the load")
+        assertEquals(1, h.player.prepareCount)
+    }
+
+    @Test
+    fun `pausing while the song is loading leaves it paused when it is ready`() = runTest {
+        val song = QueueItem("a", "aaaaaaaaaaa", "One", "x", null, 200_000, "")
+        val h = harness(SavedQueue(listOf(song)))
+        h.player.prepareDelayMs = 2000
+        h.session.play()
+        step(500)
+        h.session.pause()
+        step(3000)
+        assertEquals(song, h.player.loaded)
+        assertFalse(h.player.playing)
+        h.session.play()
+        step(100)
+        assertTrue(h.player.playing)
+    }
+
+    @Test
     fun `a song that cannot be loaded is reported and leaves nothing playing`() = runTest {
         val h = harness()
         h.player.failPrepare = true
