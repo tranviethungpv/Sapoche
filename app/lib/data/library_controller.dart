@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'backend.dart';
 import 'models.dart';
+import 'music_models.dart';
 import 'song_key.dart';
 
 /// The songs a person keeps: the ones they liked, what they heard, and their playlists. The truth is kept on the native side
@@ -23,6 +24,7 @@ class LibraryController extends ChangeNotifier {
   List<HistoryEntry> _recent = const [];
   List<SavedPlaylist> _playlists = const [];
   List<Track> _forYou = const [];
+  List<SeedList> _seedLists = const [];
   List<DownloadEntry> _downloads = const [];
   Map<String, DownloadState> _downloadStates = const {};
 
@@ -46,6 +48,9 @@ class LibraryController extends ChangeNotifier {
 
   /// Songs to offer, from what was kept: there at once, with or without a network.
   List<Track> get forYou => _forYou;
+
+  /// The songs kept beside each of the songs the suggestions are built from.
+  List<SeedList> get seedLists => _seedLists;
 
   /// The songs of a playlist that [openPlaylist] loaded.
   List<Track> playlistTracks(int id) => _items[id] ?? const [];
@@ -76,6 +81,7 @@ class LibraryController extends ChangeNotifier {
       final recent = await _backend.recent();
       final playlists = await _backend.playlists();
       final forYou = await _backend.forYou();
+      final seedLists = await _backend.seedLists();
       final downloads = await _backend.downloads();
       final items = <int, List<Track>>{};
       for (final id in _items.keys.toList()) {
@@ -87,6 +93,7 @@ class LibraryController extends ChangeNotifier {
       _recent = _oncePerSong(recent);
       _playlists = playlists;
       _forYou = forYou;
+      _seedLists = seedLists;
       _downloads = downloads;
       _downloadStates = {for (final d in downloads) d.track.videoId: d.state};
       _items
@@ -208,6 +215,7 @@ class LibraryController extends ChangeNotifier {
   Future<bool> refreshForYou() async {
     try {
       _forYou = await _backend.refreshSuggestions();
+      _seedLists = await _backend.seedLists();
       notifyListeners();
       return true;
     } on Object {

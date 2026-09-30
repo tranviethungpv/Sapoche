@@ -83,6 +83,7 @@ void main() {
           );
           await tester.pump(const Duration(milliseconds: 100));
           await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump(const Duration(milliseconds: 500));
 
           expect(find.text('Up Next'), findsOneWidget);
           expect(find.text('Song 1'), findsOneWidget);
@@ -124,6 +125,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     backend.lookupResult = const LinkResult(
       playlistTitle: 'Road trip',
       tracks: [
@@ -138,6 +140,7 @@ void main() {
     );
 
     await tester.tap(find.text('Search'));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.enterText(
       find.byType(TextField),
@@ -162,6 +165,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byType(MiniPlayer));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
@@ -180,6 +184,7 @@ void main() {
   ) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byType(MiniPlayer));
     await tester.pump();
@@ -260,8 +265,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Settings'));
-    await tester.pumpAndSettle();
+    await openSettingsList(tester);
 
     // Who this is and where, then one row per topic, and nothing of the topics themselves
     expect(find.text('Anna'), findsWidgets);
@@ -308,8 +312,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(const StateEvent(RoomSnapshot()));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Settings'));
-    await tester.pumpAndSettle();
+    await openSettingsList(tester);
     expect(find.byKey(const ValueKey('settings-appearance')), findsOneWidget);
     expect(find.byKey(const ValueKey('settings-room')), findsNothing);
   });
@@ -569,8 +572,10 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
 
     backend.emit(const InviteEvent('ZZZ999'));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Leave this room and join ZZZ999?'), findsOneWidget);
     await tester.tap(find.text('Join'));
@@ -582,7 +587,9 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     backend.emit(const InviteEvent('ABC234'));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Switch room'), findsNothing);
   });
@@ -590,6 +597,7 @@ void main() {
   testWidgets('the name can be changed from settings', (tester) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await openTopic(tester, 'room');
     await tester.tap(find.text('Your name'));
@@ -603,6 +611,7 @@ void main() {
   testWidgets('pulling the full player down closes it', (tester) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byType(MiniPlayer));
     await tester.pump();
@@ -635,6 +644,7 @@ void main() {
   ) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 
     final gesture = await tester.startGesture(
@@ -675,6 +685,7 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('2 people listening · 1 away'), findsOneWidget);
 
       await tester.tap(find.text('2 people listening · 1 away'));
@@ -698,6 +709,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(solo: true, soloItemId: 'q1')));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('You are listening on your own'), findsOneWidget);
     expect(
       find.textContaining('On your own'),
@@ -716,14 +728,16 @@ void main() {
       final (backend, _) = await pumpApp(tester);
       backend.emit(StateEvent(sampleRoom()));
       await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
       backend.emit(const NoticeEvent(kind: 'paused', by: 'Binh'));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Binh paused the room'), findsOneWidget);
 
       await tester.tap(find.text('Keep playing'));
       await tester.pump();
-      expect(backend.calls.last, 'keepPlaying');
+      expect(backend.calls, contains('keepPlaying'));
     },
   );
 
@@ -732,6 +746,7 @@ void main() {
     (tester) async {
       final (backend, _) = await pumpApp(tester);
       backend.emit(StateEvent(sampleRoom()));
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.byType(MiniPlayer));
       for (var i = 0; i < 8; i++) {
@@ -777,6 +792,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.text('Search'));
     await tester.pumpAndSettle();
 
@@ -794,6 +810,7 @@ void main() {
   ) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 3)));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     // Song 1 is waiting in the queue; "Fresh song" is not
     backend.searchResults = const [
@@ -830,6 +847,7 @@ void main() {
     (tester) async {
       final (backend, _) = await pumpApp(tester);
       backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
       backend.playlistResults = const [
         PlaylistRef(
@@ -884,6 +902,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 4)));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byTooltip('Shuffle'));
     await tester.pump();
     expect(backend.calls.last, 'shuffle');
@@ -895,6 +914,7 @@ void main() {
       final (backend, _) = await pumpApp(tester);
       backend.emit(StateEvent(sampleRoom(songs: 3, index: 2)));
       await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
 
       await tester.tap(find.text('Song 0'));
       await tester.pump();
@@ -902,6 +922,7 @@ void main() {
 
       await tester.drag(find.text('Song 1'), const Offset(-800, 0));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
       expect(backend.calls.last, 'remove q1');
     },
@@ -913,9 +934,11 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 3, index: 0)));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     // The mini player shows the title too; the queue row comes first
     await tester.drag(find.text('Song 0').first, const Offset(-800, 0));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     expect(backend.calls.last, 'remove q0');
   });
@@ -926,6 +949,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 3, index: 2, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('The queue has finished'), findsOneWidget);
 
     await tester.tap(find.text('Play again'));
@@ -933,6 +957,7 @@ void main() {
     expect(backend.calls.last, 'play');
 
     backend.emit(StateEvent(sampleRoom(songs: 3, index: 2)));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('The queue has finished'), findsNothing);
   });
@@ -942,6 +967,7 @@ void main() {
   ) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byType(MiniPlayer));
     for (var i = 0; i < 8; i++) {
@@ -963,6 +989,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
 
     await tester.timedDrag(
       find.byType(MiniPlayer),
@@ -979,8 +1006,10 @@ void main() {
   testWidgets('a new song slides in but the ones already there do not', (
     tester,
   ) async {
-    final (backend, _) = await pumpApp(tester);
+    final (backend, _) = await pumpApp(tester, listen: false);
     backend.emit(StateEvent(sampleRoom(songs: 3)));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('Listen'));
     await tester.pump(const Duration(milliseconds: 100));
     // Songs that were there from the start are fully visible at once
     expect(
@@ -1017,8 +1046,10 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     backend.searchGate = Completer<void>();
     await tester.tap(find.text('Search'));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.enterText(find.byType(TextField), 'hello');
     await tester.pump(
@@ -1346,6 +1377,7 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.byType(MiniPlayer));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 700));
@@ -1380,13 +1412,14 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.byType(MiniPlayer));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 700));
 
       await tester.tap(find.byTooltip('Like').first);
       await tester.pumpAndSettle();
-      expect(backend.calls.last, 'like video0 true');
+      expect(backend.calls, contains('like video0 true'));
       expect(find.byTooltip('Unlike'), findsWidgets);
     });
   });
@@ -1836,6 +1869,7 @@ void main() {
         ),
       ),
     );
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byType(MiniPlayer));
     await tester.pump();

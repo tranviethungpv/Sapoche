@@ -241,3 +241,38 @@ class Lyrics {
     plain: map['plain'] as String?,
   );
 }
+
+/// A titled row of a home page: songs, playlists, or both.
+class MusicShelf {
+  const MusicShelf({
+    required this.title,
+    this.tracks = const [],
+    this.playlists = const [],
+  });
+
+  final String title;
+  final List<MusicTrack> tracks;
+  final List<Release> playlists;
+
+  factory MusicShelf.fromMap(Map<Object?, Object?> map) => MusicShelf(
+    title: map['title'] as String? ?? '',
+    tracks: _tracks(map['tracks']),
+    playlists: _releases(map['playlists']),
+  );
+}
+
+/// The songs kept for one seed: a song the person likes or plays a lot, and what YouTube Music lists beside it.
+class SeedList {
+  const SeedList({required this.seed, required this.tracks});
+
+  final String seed;
+  final List<Track> tracks;
+
+  factory SeedList.fromMap(Map<Object?, Object?> map) => SeedList(
+    seed: map['seed'] as String,
+    tracks: [
+      for (final e in map['tracks'] as List<Object?>? ?? const [])
+        Track.fromMap(e as Map<Object?, Object?>),
+    ],
+  );
+}

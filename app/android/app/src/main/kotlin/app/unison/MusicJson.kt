@@ -4,6 +4,7 @@ import app.unison.core.AlbumCard
 import app.unison.core.ArtistCard
 import app.unison.core.ArtistPage
 import app.unison.core.Lyrics
+import app.unison.core.MusicShelf
 import app.unison.core.MusicTrack
 import app.unison.core.PlaylistCard
 import app.unison.core.Related
@@ -59,6 +60,10 @@ object MusicJson {
             "lines" to it.lines.map { line -> listOf(line.ms, line.text) },
             "plain" to it.plain,
         )
+    }
+
+    fun shelves(shelves: List<MusicShelf>): List<Map<String, Any?>> = shelves.map {
+        mapOf("title" to it.title, "tracks" to it.tracks.map(::track), "playlists" to it.playlists.map(::playlistCard))
     }
 
     private fun artistCard(card: ArtistCard) = mapOf("id" to card.id, "name" to card.name, "subtitle" to card.subtitle, "thumb" to card.thumbUrl)

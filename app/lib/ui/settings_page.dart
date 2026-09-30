@@ -7,11 +7,28 @@ import '../data/room_controller.dart';
 import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
-import 'home_shell.dart';
 import 'scope.dart';
 import 'widgets/avatars.dart';
 import 'widgets/text_dialog.dart';
 import 'widgets/wash.dart';
+
+/// Opens the settings on top of everything, with a way back.
+Future<void> openSettings(BuildContext context) =>
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+
+/// The settings as a page of their own. A page on its own has no backdrop: the pink veil is part of the home screen.
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => PinkWash(
+    child: Scaffold(
+      appBar: AppBar(title: const Text(S.settingsTitle)),
+      body: const SettingsPage(),
+    ),
+  );
+}
 
 /// A short list of topics; each opens a page of its own, so no page grows long.
 class SettingsPage extends StatelessWidget {
@@ -20,19 +37,14 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final model = AppScope.of(context);
-    final theme = Theme.of(context).textTheme;
     return SafeArea(
-      bottom: false,
+      top: false,
       child: ListView(
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, HomeShell.bottomInset),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
-            child: Text(S.settingsTitle, style: theme.headlineLarge),
-          ),
           _ProfileCard(room: model.room),
           _Group(
             children: [

@@ -14,6 +14,8 @@ class MusicController {
   final _related = <String, Future<RelatedPage>>{};
   final _artists = <String, Future<ArtistPage>>{};
   final _lyrics = <String, Future<Lyrics?>>{};
+  final _trending = <String, Future<List<MusicShelf>>>{};
+  final _searches = <String, Future<List<MusicTrack>>>{};
 
   static const _keep = 30;
 
@@ -25,6 +27,17 @@ class MusicController {
 
   Future<ArtistPage> artist(String artistId) =>
       _cached(_artists, artistId, () => _backend.musicArtist(artistId));
+
+  /// What YouTube Music shows everybody; the same answer for the rest of the session.
+  Future<List<MusicShelf>> trending() =>
+      _cached(_trending, 'home', _backend.musicTrending);
+
+  Future<List<MusicTrack>> search(String query, {required bool songs}) =>
+      _cached(
+        _searches,
+        '$songs $query',
+        () => _backend.musicSearch(query, songs: songs),
+      );
 
   Future<Lyrics?> lyrics(Track track) =>
       _cached(_lyrics, track.videoId, () => _backend.lyrics(track));

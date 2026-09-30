@@ -17,6 +17,7 @@ class MusicFeed(
     private val related = Recent<String, Related>()
     private val artists = Recent<String, ArtistPage>()
     private val lyricsLock = Mutex()
+    private var trendingKept: Pair<Long, List<MusicShelf>>? = null
 
     /** The radio of the song, with where its lyrics and related page are. */
     suspend fun watchNext(videoId: String): WatchNext = next.getOrPut(videoId) { music.watchNext(videoId) }
@@ -27,6 +28,16 @@ class MusicFeed(
     }
 
     suspend fun artist(artistId: String): ArtistPage = artists.getOrPut(artistId) { music.artist(artistId) }
+
+    /** What YouTube Music shows everybody, kept for [TRENDING_MS]. */
+    suspend fun trending(): List<MusicShelf> {
+        trendingKept?.let { (at, shelves) -> if (now() - at < TRENDING_MS) return shelves }
+        return music.trending().also { trendingKept = now() to it }
+    }
+
+    /** Songs matching [query], as audio releases or as videos. */
+    suspend fun search(query: String, songs: Boolean): List<MusicTrack> =
+        if (songs) music.searchSongs(query) else music.searchVideos(query)
 
     /**
      * The lyrics of a song: lyrics with times when LRCLIB has them, else the plain words YouTube Music has, else
@@ -64,5 +75,8 @@ class MusicFeed(
     companion object {
         /** A song without lyrics is looked up again after this long. */
         const val MISSING_MS = 7L * 24 * 60 * 60 * 1000
+
+        /** The home page of YouTube Music changes by the hour at most. */
+        const val TRENDING_MS = 6L * 60 * 60 * 1000
     }
 }

@@ -15,6 +15,7 @@ abstract final class S {
   static const createFailed = 'Could not create a room';
 
   // Tabs
+  static const tabHome = 'Home';
   static const tabListen = 'Listen';
   static const tabRoom = 'Room';
   static const tabSearch = 'Search';
@@ -321,4 +322,22 @@ abstract final class S {
   static const showMore = 'More';
   static const showLess = 'Less';
   static String subscribers(String count) => '$count subscribers';
+
+  // Home
+  static const goodMorning = 'Good morning';
+  static const goodAfternoon = 'Good afternoon';
+  static const goodEvening = 'Good evening';
+  static const quickPicks = 'Quick picks';
+  static const listenAgain = 'Listen again';
+  static const mixedForYou = 'Mixed for you';
+  static const forgottenFavorites = 'Forgotten favorites';
+  static const trending = 'Trending';
+  static String mixOf(String artist) => '$artist Mix';
+  static String becauseYouListened(String title) =>
+      'Because you listened to $title';
+  static String similarTo(String artist) => 'Similar to $artist';
+  static const homeEmptyTitle = 'Your music starts here';
+  static const homeEmptyBody =
+      'Play some songs and this page fills with what you like: quick picks, mixes and more.';
+  static const mixFailed = 'Couldn’t start the mix';
 }

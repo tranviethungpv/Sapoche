@@ -118,6 +118,37 @@ class MusicFeedTest {
     }
 
     @Test
+    fun `what is trending is asked for once for hours`() = runTest {
+        var time = 0L
+        var asked = 0
+        val music = object : MusicSource by FakeMusic() {
+            override suspend fun trending(): List<MusicShelf> {
+                asked++
+                return listOf(MusicShelf("Hits", listOf(MusicTrack("a", "T", "A"))))
+            }
+        }
+        val feed = MusicFeed(music, LyricsClient(FakeLrclib(null)), LyricsStore(dir)) { time }
+        assertEquals("Hits", feed.trending().single().title)
+        time += MusicFeed.TRENDING_MS - 1
+        feed.trending()
+        assertEquals(1, asked)
+        time += 1
+        feed.trending()
+        assertEquals(2, asked)
+    }
+
+    @Test
+    fun `a search asks for songs or for videos`() = runTest {
+        val music = object : MusicSource by FakeMusic() {
+            override suspend fun searchSongs(query: String) = listOf(MusicTrack("song", "T", "A", isSong = true))
+            override suspend fun searchVideos(query: String) = listOf(MusicTrack("clip", "T", "A"))
+        }
+        val feed = MusicFeed(music, LyricsClient(FakeLrclib(null)), LyricsStore(dir))
+        assertEquals("song", feed.search("q", songs = true).single().videoId)
+        assertEquals("clip", feed.search("q", songs = false).single().videoId)
+    }
+
+    @Test
     fun `a song with no related page gives none`() = runTest {
         val music = object : MusicSource by FakeMusic() {
             override suspend fun watchNext(videoId: String, radio: Boolean) = WatchNext(emptyList(), null, null)

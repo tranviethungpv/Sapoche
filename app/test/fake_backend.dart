@@ -286,10 +286,39 @@ class FakeBackend implements Backend {
   /// When set, these calls wait for it, so a test can look at the loading state.
   Completer<void>? musicGate;
 
+  /// Makes only the calls to YouTube Music fail.
+  Object? musicFailWith;
+
   Future<T> _music<T>(String call, T value) async {
+    if (musicFailWith != null) {
+      calls.add(call);
+      throw musicFailWith!;
+    }
     await _record(call);
     await musicGate?.future;
     return value;
+  }
+
+  List<MusicShelf> trendingResult = const [];
+  List<MusicTrack> songSearchResult = const [];
+  List<MusicTrack> videoSearchResult = const [];
+  List<SeedList> seedListsResult = const [];
+
+  @override
+  Future<List<MusicShelf>> musicTrending() =>
+      _music('musicTrending', trendingResult);
+
+  @override
+  Future<List<MusicTrack>> musicSearch(String query, {required bool songs}) =>
+      _music(
+        'musicSearch ${songs ? 'songs' : 'videos'} $query',
+        songs ? songSearchResult : videoSearchResult,
+      );
+
+  @override
+  Future<List<SeedList>> seedLists() async {
+    await _record('seedLists');
+    return seedListsResult;
   }
 
   @override

@@ -189,6 +189,15 @@ abstract class Backend {
 
   Future<ArtistPage> musicArtist(String artistId);
 
+  /// What YouTube Music shows everybody on its home page.
+  Future<List<MusicShelf>> musicTrending();
+
+  /// Songs (audio releases, with [songs]) or videos matching [query], as YouTube Music lists them.
+  Future<List<MusicTrack>> musicSearch(String query, {required bool songs});
+
+  /// The songs kept for each seed song, for "because you listened to".
+  Future<List<SeedList>> seedLists();
+
   /// The words of a song, with times when there are any; null when nobody wrote them down.
   Future<Lyrics?> lyrics(Track track);
 
@@ -459,6 +468,32 @@ class NativeBackend implements Backend {
   Future<ArtistPage> musicArtist(String artistId) async => ArtistPage.fromMap(
     (await _call<Map<Object?, Object?>>('musicArtist', {'id': artistId}))!,
   );
+
+  @override
+  Future<List<MusicShelf>> musicTrending() async => [
+    for (final e in await _call<List<Object?>>('musicTrending') ?? const [])
+      MusicShelf.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<List<MusicTrack>> musicSearch(
+    String query, {
+    required bool songs,
+  }) async => [
+    for (final e
+        in await _call<List<Object?>>('musicSearch', {
+              'query': query,
+              'songs': songs,
+            }) ??
+            const [])
+      MusicTrack.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<List<SeedList>> seedLists() async => [
+    for (final e in await _call<List<Object?>>('seedLists') ?? const [])
+      SeedList.fromMap(e as Map<Object?, Object?>),
+  ];
 
   @override
   Future<Lyrics?> lyrics(Track track) async {

@@ -28,6 +28,12 @@ String mainArtist(String credit) {
   return _plain(text);
 }
 
+/// The first artist of a credit as it is written, without "- Topic", "VEVO" or "Official": for showing a name.
+String displayArtist(String credit) {
+  final text = credit.trim().replaceFirst(_channelSuffix, '');
+  return text.split(_artistSplit).first.replaceFirst(_channelSuffix, '').trim();
+}
+
 /// The title of the song in plain letters, without what only describes the recording.
 String songTitle(String title, String artist) {
   var text = title.replaceAllMapped(

@@ -6,13 +6,13 @@ import 'package:flutter/services.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'home_page.dart';
 import 'library_page.dart';
 import 'player_sheet.dart';
 import 'room_page.dart';
 import 'rooms_sheet.dart';
 import 'scope.dart';
 import 'search_page.dart';
-import 'settings_page.dart';
 import 'widgets/artwork.dart';
 import 'widgets/glass.dart';
 import 'widgets/mini_player.dart';
@@ -151,10 +151,10 @@ class _HomeShellState extends State<HomeShell>
         // A tab that is not showing keeps its state but not its animations
         children: [
           for (final (i, page) in [
-            RoomPage(onAddSongs: () => _select(1)),
+            const HomePage(),
             const SearchPage(),
             const LibraryPage(),
-            const SettingsPage(),
+            RoomPage(onAddSongs: () => _select(1)),
           ].indexed)
             TickerMode(enabled: i == _tab, child: page),
         ],
@@ -211,10 +211,10 @@ class _TabBar extends StatelessWidget {
   final ValueChanged<int> onSelect;
 
   static const _items = [
-    (Icons.graphic_eq_rounded, S.tabListen),
+    (Icons.home_rounded, S.tabHome),
     (Icons.search_rounded, S.tabSearch),
     (Icons.library_music_rounded, S.tabLibrary),
-    (Icons.tune_rounded, S.tabSettings),
+    (Icons.graphic_eq_rounded, S.tabListen),
   ];
 
   @override

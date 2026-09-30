@@ -40,8 +40,7 @@ class SuggestionFeed(
             val kept = store.cachedSuggestions(seed)
             if (!force && kept != null && now() - kept.fetchedAt < FRESH_MS) continue
             try {
-                val songs = resolver.related(seed).map { TrackRef(it.videoId, it.title, it.artist, it.thumbUrl, it.durationSec * 1000) }
-                store.putSuggestions(seed, songs.filter(Suggestions::isSong), now())
+                store.putSuggestions(seed, radioOf(seed).filter(Suggestions::isSong), now())
                 changed = true
             } catch (e: CancellationException) {
                 throw e
@@ -53,11 +52,19 @@ class SuggestionFeed(
         changed
     }
 
+    /** The songs kept for each seed, for the screens that say "because you listened to". */
+    suspend fun seedLists(): List<Pair<String, List<TrackRef>>> =
+        store.suggestionSeeds(now()).mapNotNull { seed -> store.cachedSuggestions(seed)?.let { seed to it.tracks } }
+
     /**
      * Up to [count] songs to carry on with after [videoId], other than [exclude] and what was heard lately: the radio
      * YouTube Music makes of the song, or what YouTube lists beside it when that cannot be had. Needs the network.
      */
-    suspend fun after(videoId: String, exclude: Set<String>, count: Int): List<TrackRef> {
+    suspend fun after(videoId: String, exclude: Set<String>, count: Int): List<TrackRef> =
+        Suggestions.mix(listOf(radioOf(videoId)), exclude + videoId + store.heardSince(now() - RECENT_MS), count)
+
+    /** The radio YouTube Music makes of the song, or what YouTube lists beside it when that cannot be had. */
+    private suspend fun radioOf(videoId: String): List<TrackRef> {
         val radio = try {
             music.watchNext(videoId).tracks.map { TrackRef(it.videoId, it.title, it.artist, it.thumbUrl, it.durationSec * 1000) }
         } catch (e: CancellationException) {
@@ -66,10 +73,9 @@ class SuggestionFeed(
             log("no radio for $videoId, using the related list: ${e.javaClass.simpleName}: ${e.message}")
             emptyList()
         }
-        val songs = radio.ifEmpty {
+        return radio.ifEmpty {
             resolver.related(videoId).map { TrackRef(it.videoId, it.title, it.artist, it.thumbUrl, it.durationSec * 1000) }
         }
-        return Suggestions.mix(listOf(songs), exclude + videoId + store.heardSince(now() - RECENT_MS), count)
     }
 
     /** Songs not worth offering: the seeds themselves, those liked and those heard this week. */

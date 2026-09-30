@@ -289,6 +289,14 @@ class UnisonBridge(
                 UnisonApp.suggestions.renew(force = true)
                 return UnisonApp.suggestions.forYou().map { it.toMap() }
             }
+            "seedLists" -> return UnisonApp.suggestions.seedLists().map { (seed, tracks) ->
+                mapOf("seed" to seed, "tracks" to tracks.map { it.toMap() })
+            }
+            "musicTrending" -> return MusicJson.shelves(UnisonApp.musicFeed.trending())
+            "musicSearch" -> return UnisonApp.musicFeed.search(
+                call.argument<String>("query").orEmpty(),
+                call.argument<Boolean>("songs") == true,
+            ).map(MusicJson::track)
             "musicNext" -> return MusicJson.next(UnisonApp.musicFeed.watchNext(call.argument<String>("videoId").orEmpty()))
             "musicRelated" -> return MusicJson.related(UnisonApp.musicFeed.related(call.argument<String>("videoId").orEmpty()))
             "musicArtist" -> return MusicJson.artist(UnisonApp.musicFeed.artist(call.argument<String>("id").orEmpty()))

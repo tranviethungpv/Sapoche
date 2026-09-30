@@ -8,6 +8,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
+import 'settings_page.dart';
 import 'widgets/artwork.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
@@ -210,8 +211,17 @@ class _Overview extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-          child: Text(S.tabLibrary, style: theme.headlineLarge),
+          padding: const EdgeInsets.fromLTRB(20, 18, 8, 12),
+          child: Row(
+            children: [
+              Expanded(child: Text(S.tabLibrary, style: theme.headlineLarge)),
+              IconButton(
+                onPressed: () => openSettings(context),
+                tooltip: S.settingsTitle,
+                icon: Icon(Icons.settings_outlined, color: p.textSecondary),
+              ),
+            ],
+          ),
         ),
         _CollectionRow(
           leading: const _IconTile(Icons.favorite_rounded),

@@ -21,6 +21,7 @@ Future<FakeBackend> openPlayer(
     ),
   );
   await tester.pump(const Duration(milliseconds: 500));
+  await tester.pump(const Duration(milliseconds: 500));
   await tester.tap(find.byType(MiniPlayer));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 700));
