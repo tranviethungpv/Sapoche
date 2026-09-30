@@ -30,8 +30,7 @@ class AddActions extends StatelessWidget {
     final room = AppScope.roomOf(context);
     return ListenableBuilder(
       listenable: room,
-      builder: (context, _) =>
-          _row(p, added || room.snapshot.isQueued(track.videoId)),
+      builder: (context, _) => _row(p, added || room.snapshot.isQueued(track)),
     );
   }
 
@@ -77,7 +76,7 @@ Future<void> queueTrack(
   HapticFeedback.selectionClick();
   final room = AppScope.roomOf(context);
   final messenger = ScaffoldMessenger.of(context);
-  final queued = room.snapshot.isQueued(track.videoId);
+  final queued = room.snapshot.isQueued(track);
   if (!queued) await room.add(track, playNext: playNext);
   messenger
     ..hideCurrentSnackBar()

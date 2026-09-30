@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/models.dart';
+import '../data/song_key.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
@@ -145,7 +146,8 @@ class _SearchPageState extends State<SearchPage> {
           await _room.search(query, songsOnly: _filter == _Filter.songs);
       if (!mounted || generation != _generation) return;
       setState(() {
-        _results = found;
+        // A song and its official video come up side by side: one row is enough
+        _results = link == null ? uniqueSongs(found) : found;
         _playlistTitle = link?.playlistTitle;
         _playlists = const [];
         _fromPlaylists = false;

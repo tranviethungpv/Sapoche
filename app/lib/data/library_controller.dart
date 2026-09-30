@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'backend.dart';
 import 'models.dart';
+import 'song_key.dart';
 
 /// The songs a person keeps: the ones they liked, what they heard, and their playlists. The truth is kept on the native side
 /// (the playback service writes the history); this holds a copy for the screens and updates it when told.
@@ -13,8 +14,12 @@ class LibraryController extends ChangeNotifier {
   final Backend _backend;
   StreamSubscription<BackendEvent>? _subscription;
 
+  /// Every song liked, as it was: a song and its video can both be there.
   List<Track> _liked = const [];
-  Set<String> _likedIds = const {};
+
+  /// The liked songs once each, for the screens.
+  List<Track> _likedSongs = const [];
+  Map<String, List<Track>> _likedByKey = const {};
   List<HistoryEntry> _recent = const [];
   List<SavedPlaylist> _playlists = const [];
   List<Track> _forYou = const [];
@@ -24,8 +29,10 @@ class LibraryController extends ChangeNotifier {
   /// Songs of the playlists that were opened, kept up to date while they are.
   final _items = <int, List<Track>>{};
 
-  /// Liked songs, the most recently liked first.
-  List<Track> get liked => _liked;
+  /// Liked songs, the most recently liked first, a song that was liked as audio and as video only once.
+  List<Track> get liked => _likedSongs;
+
+  /// What was heard, the most recent first, a song heard as audio and as video only once.
   List<HistoryEntry> get recent => _recent;
 
   /// The person's playlists, the one changed last first.
@@ -43,7 +50,12 @@ class LibraryController extends ChangeNotifier {
   /// The songs of a playlist that [openPlaylist] loaded.
   List<Track> playlistTracks(int id) => _items[id] ?? const [];
 
-  bool isLiked(String videoId) => _likedIds.contains(videoId);
+  /// The song is liked, in either of its forms: the audio release or a video of it.
+  bool isLikedSong(Track track) =>
+      _likedByKey[songKey(track.title, track.artist)]?.any(
+        (t) => sameSong(t, track),
+      ) ??
+      false;
 
   final _messages = StreamController<String>.broadcast();
 
@@ -72,7 +84,7 @@ class LibraryController extends ChangeNotifier {
         }
       }
       _setLiked(liked);
-      _recent = recent;
+      _recent = _oncePerSong(recent);
       _playlists = playlists;
       _forYou = forYou;
       _downloads = downloads;
@@ -86,21 +98,32 @@ class LibraryController extends ChangeNotifier {
     }
   }
 
-  /// Likes the song, or takes the like back. The heart changes at once; if the write fails it changes back.
+  /// Likes the song, or takes the like back from every form of it. The heart changes at once; if the write
+  /// fails it changes back.
   Future<void> toggleLike(Track track) async {
     final before = _liked;
-    final wasLiked = isLiked(track.videoId);
+    final wasLiked = isLikedSong(track);
+    final forms = [
+      for (final t in _liked)
+        if (sameSong(t, track)) t,
+    ];
     _setLiked(
       wasLiked
           ? [
               for (final t in _liked)
-                if (t.videoId != track.videoId) t,
+                if (!forms.contains(t)) t,
             ]
           : [track, ..._liked],
     );
     notifyListeners();
     try {
-      await _backend.setLiked(track, !wasLiked);
+      if (wasLiked) {
+        for (final form in forms) {
+          await _backend.setLiked(form, false);
+        }
+      } else {
+        await _backend.setLiked(track, true);
+      }
     } on Object catch (e) {
       _setLiked(before);
       notifyListeners();
@@ -275,7 +298,21 @@ class LibraryController extends ChangeNotifier {
 
   void _setLiked(List<Track> liked) {
     _liked = liked;
-    _likedIds = {for (final t in liked) t.videoId};
+    _likedSongs = uniqueSongs(liked);
+    _likedByKey = {};
+    for (final t in liked) {
+      _likedByKey.putIfAbsent(songKey(t.title, t.artist), () => []).add(t);
+    }
+  }
+
+  /// [entries] with each song once, the first (most recent) staying.
+  List<HistoryEntry> _oncePerSong(List<HistoryEntry> entries) {
+    final kept = uniqueSongs([for (final e in entries) e.track]);
+    final keep = {for (final t in kept) t.videoId};
+    return [
+      for (final e in entries)
+        if (keep.contains(e.track.videoId)) e,
+    ];
   }
 
   @override

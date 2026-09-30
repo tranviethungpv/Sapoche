@@ -409,10 +409,10 @@ void main() {
         // video0 was played, video1 plays now, video2 is to come
         backend.emit(StateEvent(sampleRoom(index: 1)));
         await settle();
-        expect(controller.snapshot.isQueued('video0'), isFalse);
-        expect(controller.snapshot.isQueued('video1'), isTrue);
-        expect(controller.snapshot.isQueued('video2'), isTrue);
-        expect(controller.snapshot.isQueued('other'), isFalse);
+        expect(controller.snapshot.isQueued(song('video0')), isFalse);
+        expect(controller.snapshot.isQueued(song('video1')), isTrue);
+        expect(controller.snapshot.isQueued(song('video2')), isTrue);
+        expect(controller.snapshot.isQueued(song('other')), isFalse);
 
         await controller.add(song('video1'));
         await controller.add(song('video2'), playNext: true);
@@ -422,6 +422,21 @@ void main() {
         expect(backend.calls.last, 'add video0 next=false');
       },
     );
+
+    test('the video of a queued song counts as queued', () async {
+      backend.emit(StateEvent(sampleRoom(index: 0)));
+      await settle();
+      // The queue holds "Song 1" by "Artist 1"; this is the same song as a video
+      const video = Track(
+        videoId: 'clipaaaaaaa',
+        title: 'Song 1 (Official Video)',
+        artist: 'Artist 1 - Topic',
+        durMs: 201000,
+      );
+      expect(controller.snapshot.isQueued(video), isTrue);
+      await controller.add(video);
+      expect(backend.calls.where((c) => c.startsWith('add')), isEmpty);
+    });
 
     test('adding many leaves out what is queued and what repeats', () async {
       backend.emit(StateEvent(sampleRoom(index: 1)));
@@ -460,7 +475,7 @@ void main() {
         ),
       );
       await settle();
-      expect(controller.snapshot.isQueued('a'), isFalse);
+      expect(controller.snapshot.isQueued(song('a')), isFalse);
       await controller.add(song('a'));
       expect(backend.calls.last, 'add a next=false');
     });

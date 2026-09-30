@@ -29,8 +29,8 @@ void main() {
     await library.start();
 
     expect(library.liked.single.videoId, _b.videoId);
-    expect(library.isLiked(_b.videoId), isTrue);
-    expect(library.isLiked(_a.videoId), isFalse);
+    expect(library.isLikedSong(_b), isTrue);
+    expect(library.isLikedSong(_a), isFalse);
     expect(library.recent.single.plays, 3);
   });
 
@@ -39,11 +39,7 @@ void main() {
     await library.start();
 
     final done = library.toggleLike(_a);
-    expect(
-      library.isLiked(_a.videoId),
-      isTrue,
-      reason: 'before the write ends',
-    );
+    expect(library.isLikedSong(_a), isTrue, reason: 'before the write ends');
     expect(library.liked.map((t) => t.videoId), [_a.videoId, _b.videoId]);
     await done;
     expect(backend.calls.last, 'like ${_a.videoId} true');
@@ -54,7 +50,7 @@ void main() {
     await library.start();
 
     await library.toggleLike(_a);
-    expect(library.isLiked(_a.videoId), isFalse);
+    expect(library.isLikedSong(_a), isFalse);
     expect(library.liked, isEmpty);
     expect(backend.calls.last, 'like ${_a.videoId} false');
   });
@@ -68,7 +64,7 @@ void main() {
     await library.toggleLike(_a);
     await settle();
 
-    expect(library.isLiked(_a.videoId), isFalse);
+    expect(library.isLikedSong(_a), isFalse);
     expect(messages, isNotEmpty);
   });
 
@@ -319,5 +315,69 @@ void main() {
         expect(await library.storage(), isNull);
       },
     );
+  });
+
+  group('a song and its video are one song', () {
+    const song = Track(
+      videoId: 'songaaaaaaa',
+      title: 'Never Gonna Give You Up',
+      artist: 'Rick Astley',
+      durMs: 213000,
+    );
+    const video = Track(
+      videoId: 'videoaaaaaa',
+      title: 'Never Gonna Give You Up (Official Music Video)',
+      artist: 'Rick Astley',
+      durMs: 214000,
+    );
+
+    test(
+      'liked in both forms, it is listed once and lights both hearts',
+      () async {
+        backend.likedSongs = [video, song];
+        await library.start();
+        expect(library.liked.map((t) => t.videoId), [video.videoId]);
+        expect(library.isLikedSong(song), isTrue);
+        expect(library.isLikedSong(video), isTrue);
+      },
+    );
+
+    test('taking the like back takes it from every form', () async {
+      backend.likedSongs = [video, song];
+      await library.start();
+      await library.toggleLike(song);
+      expect(library.isLikedSong(video), isFalse);
+      expect(
+        backend.calls,
+        containsAll([
+          'like ${video.videoId} false',
+          'like ${song.videoId} false',
+        ]),
+      );
+    });
+
+    test('liking the video of a liked song does not like it twice', () async {
+      backend.likedSongs = [song];
+      await library.start();
+      await library.toggleLike(video);
+      expect(
+        library.isLikedSong(video),
+        isFalse,
+        reason: 'it was liked, so the tap takes the like back',
+      );
+    });
+
+    test('heard in both forms, it is listed once, the most recent', () async {
+      backend.recentSongs = [
+        HistoryEntry(track: video, at: DateTime(2026, 2), plays: 2),
+        HistoryEntry(track: song, at: DateTime(2026, 1), plays: 5),
+        HistoryEntry(track: _a, at: DateTime(2025), plays: 1),
+      ];
+      await library.start();
+      expect(library.recent.map((e) => e.track.videoId), [
+        video.videoId,
+        _a.videoId,
+      ]);
+    });
   });
 }

@@ -237,7 +237,7 @@ class RoomController extends ChangeNotifier {
 
   /// Songs that are waiting in the queue already are not added again.
   Future<void> add(Track track, {bool playNext = false}) async {
-    if (_snapshot.isQueued(track.videoId)) return;
+    if (_snapshot.isQueued(track)) return;
     await _run(() => _backend.add(track, playNext: playNext));
   }
 

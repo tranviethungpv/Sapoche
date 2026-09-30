@@ -1,6 +1,8 @@
 /// Plain data the UI works with. The JSON keys are a contract with UiJson.kt on the native side.
 library;
 
+import 'song_key.dart';
+
 /// A song found by search or a pasted link, not yet in the room's queue.
 class Track {
   const Track({
@@ -386,21 +388,17 @@ class RoomSnapshot {
   List<QueueEntry> get upNext =>
       myIndex + 1 < queue.length ? queue.sublist(myIndex + 1) : const [];
 
-  /// The song is waiting in the queue: playing now or still to come. One that was played already is not.
-  bool isQueued(String videoId) {
+  /// The song is waiting in the queue: playing now or still to come. One that was played already is not. Its
+  /// video and its audio release count as the same song.
+  bool isQueued(Track track) {
     // Outside a room an idle queue has played through
     if (!inRoom && phase == 'idle') return false;
-    return queue.skip(index).any((e) => e.videoId == videoId);
+    return queue.skip(index).any((e) => sameSong(e, track));
   }
 
   /// [tracks] without those that are waiting in the queue already, and without repeats.
-  List<T> fresh<T extends Track>(List<T> tracks) {
-    final seen = <String>{};
-    return [
-      for (final t in tracks)
-        if (!isQueued(t.videoId) && seen.add(t.videoId)) t,
-    ];
-  }
+  List<T> fresh<T extends Track>(List<T> tracks) =>
+      uniqueSongs(tracks.where((t) => !isQueued(t)));
 
   /// People who are really there; someone whose connection went quiet does not count.
   int get listeningCount => members.where((m) => !m.away).length;

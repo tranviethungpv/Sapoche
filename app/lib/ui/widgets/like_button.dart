@@ -20,7 +20,7 @@ class LikeButton extends StatelessWidget {
     return ListenableBuilder(
       listenable: library,
       builder: (context, _) {
-        final liked = library.isLiked(track.videoId);
+        final liked = library.isLikedSong(track);
         return IconButton(
           onPressed: () {
             HapticFeedback.selectionClick();

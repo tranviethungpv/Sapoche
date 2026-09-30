@@ -60,7 +60,7 @@ class TrackMenu extends StatelessWidget {
         },
         PopupMenuItem(
           value: 'like',
-          child: Text(library.isLiked(track.videoId) ? S.unlike : S.like),
+          child: Text(library.isLikedSong(track) ? S.unlike : S.like),
         ),
       ],
     );
