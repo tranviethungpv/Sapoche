@@ -145,7 +145,7 @@ void main() {
 
         await tester.tap(find.text('Settings'));
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('Leave room'));
+        await tester.scrollUntilVisible(find.text('Leave room'), 200);
         await tester.pumpAndSettle();
         await tester.tap(find.text('Leave room'));
         await tester.pumpAndSettle();
@@ -215,6 +215,33 @@ void main() {
     backend.emit(StateEvent(sampleRoom(repeat: Repeat.one)));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byIcon(Icons.repeat_one_rounded), findsOneWidget);
+  });
+
+  testWidgets('the sleep timer is set from the full player and shown there', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byType(MiniPlayer));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    await tester.tap(find.text('Sleep timer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('30 minutes'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'sleep time 30');
+
+    backend.emit(const SleepEvent(SleepState(mode: SleepMode.song)));
+    await tester.pumpAndSettle();
+    expect(find.text('Stops after this song'), findsOneWidget);
+
+    await tester.tap(find.text('Stops after this song'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Turn off timer'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'sleep off 0');
   });
 
   testWidgets('an invitation link opens the join sheet with its code', (
@@ -559,7 +586,7 @@ void main() {
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('Your name'));
+    await tester.scrollUntilVisible(find.text('Your name'), 200);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Your name'));
     await tester.pumpAndSettle();
@@ -1536,6 +1563,35 @@ void main() {
       await tester.tap(find.text('Download liked songs'));
       await tester.pumpAndSettle();
       expect(backend.calls, contains('autoDownload true'));
+    });
+
+    testWidgets('the library is saved to a file and added back from one', (
+      tester,
+    ) async {
+      final backend = await openSettings(tester);
+      await tester.ensureVisible(find.text('Save your library to a file'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save your library to a file'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('backupExport'));
+      expect(find.text('Saved: 2 liked, 1 playlist'), findsOneWidget);
+
+      backend.backupCounts = const BackupCounts(listens: 40);
+      await tester.tap(find.text('Add from a backup file'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('backupImport'));
+      expect(find.text('Added: 40 listens'), findsOneWidget);
+
+      backend.backupCounts = const BackupCounts();
+      await tester.tap(find.text('Add from a backup file'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing new in that file'), findsOneWidget);
+
+      // Backing out of the file picker says nothing
+      backend.backupCounts = null;
+      await tester.tap(find.text('Save your library to a file'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Saved'), findsNothing);
     });
   });
 

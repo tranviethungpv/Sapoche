@@ -72,6 +72,23 @@ void main() {
     expect(messages, isNotEmpty);
   });
 
+  test('a backup gives back what it held, and a bad file is said so', () async {
+    await library.start();
+    final messages = <String>[];
+    library.messages.listen(messages.add);
+
+    final saved = await library.exportBackup();
+    expect(saved?.liked, 2);
+    backend.backupCounts = null; // the person backed out
+    expect(await library.importBackup(), isNull);
+    expect(messages, isEmpty);
+
+    backend.failWith = BackendException('failed', 'Not a Unison backup');
+    expect(await library.importBackup(), isNull);
+    await settle();
+    expect(messages, ['Not a Unison backup']);
+  });
+
   test('a change announced by the native side is read again', () async {
     await library.start();
     backend.recentSongs = [HistoryEntry(track: _a, at: DateTime(2026))];

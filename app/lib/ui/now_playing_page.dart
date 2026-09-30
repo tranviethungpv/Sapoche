@@ -8,6 +8,7 @@ import '../theme/theme.dart';
 import 'members_sheet.dart';
 import 'player_sheet.dart';
 import 'scope.dart';
+import 'sleep_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/like_button.dart';
@@ -52,7 +53,7 @@ class NowPlayingPage extends StatelessWidget {
 /// at this size before the player is ever opened.
 double coverSize(MediaQueryData media) {
   // Everything except the cover needs about this much height; the cover takes what is left
-  const otherContent = 396.0;
+  const otherContent = 436.0;
   return [
     media.size.width - 64,
     380.0,
@@ -197,6 +198,8 @@ class _Body extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 6),
+                _SleepButton(controller: controller),
                 const Spacer(),
                 if (controller.snapshot.inRoom)
                   _RoomStrip(controller: controller),
@@ -206,6 +209,29 @@ class _Body extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Opens the sleep timer; lit up, with the hour it stops at, while one is set.
+class _SleepButton extends StatelessWidget {
+  const _SleepButton({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final sleep = controller.sleep;
+    return TextButton.icon(
+      onPressed: () => showSleepSheet(context, controller),
+      icon: Icon(Icons.bedtime_outlined, size: 20),
+      label: Text(sleepLabel(context, sleep)),
+      style: TextButton.styleFrom(
+        foregroundColor: sleep.on ? p.primary : p.textTertiary,
+        backgroundColor: sleep.on ? p.primaryContainer : Colors.transparent,
+        shape: const StadiumBorder(),
+      ),
     );
   }
 }

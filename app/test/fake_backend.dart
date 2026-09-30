@@ -255,6 +255,25 @@ class FakeBackend implements Backend {
     return suggestions;
   }
 
+  /// What the file the person "picks" holds; null stands for backing out.
+  BackupCounts? backupCounts = const BackupCounts(liked: 2, playlists: 1);
+
+  @override
+  Future<BackupCounts?> exportBackup() async {
+    await _record('backupExport');
+    return backupCounts;
+  }
+
+  @override
+  Future<BackupCounts?> importBackup() async {
+    await _record('backupImport');
+    return backupCounts;
+  }
+
+  @override
+  Future<void> setSleep(SleepMode mode, {int minutes = 0}) =>
+      _record('sleep ${mode.name} $minutes');
+
   @override
   Future<void> setAutoplay(bool on) => _record('autoplay $on');
 

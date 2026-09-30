@@ -29,6 +29,7 @@ class RoomController extends ChangeNotifier {
   StreamSubscription<BackendEvent>? _subscription;
 
   RoomSnapshot _snapshot = const RoomSnapshot();
+  SleepState _sleep = const SleepState();
   Profile _profile = const Profile();
   bool _ready = false;
 
@@ -58,6 +59,9 @@ class RoomController extends ChangeNotifier {
   Stream<String> get messages => _messages.stream;
 
   RoomSnapshot get snapshot => _snapshot;
+
+  /// When the music is set to stop by itself.
+  SleepState get sleep => _sleep;
   Profile get profile => _profile;
 
   /// False until the first state arrived from the native side.
@@ -97,6 +101,9 @@ class RoomController extends ChangeNotifier {
         player.value = position;
       case InviteEvent(:final code):
         invite.value = code;
+      case SleepEvent(:final sleep):
+        _sleep = sleep;
+        notifyListeners();
       case LibraryEvent():
         break; // LibraryController listens for this itself
       case ErrorEvent(:final error):
@@ -245,6 +252,10 @@ class RoomController extends ChangeNotifier {
     if (!_snapshot.inRoom) await _run(_backend.clear);
     await addMany(tracks);
   }
+
+  /// Stops the music in [minutes]; with [SleepMode.song] at the end of this song, with [SleepMode.off] never.
+  Future<void> setSleep(SleepMode mode, {int minutes = 0}) =>
+      _run(() => _backend.setSleep(mode, minutes: minutes));
 
   Future<void> cycleRepeat() =>
       _run(() => _backend.setRepeat(_snapshot.repeat.next));

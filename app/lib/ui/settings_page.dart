@@ -114,6 +114,7 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
           _StorageGroup(library: model.library),
+          _BackupGroup(library: model.library),
           _Group(
             title: S.sync,
             footer: S.latencyTrimHelp,
@@ -341,6 +342,60 @@ class _StorageGroupState extends State<_StorageGroup> {
 }
 
 /// Rounded block of related rows with a small heading, like a settings group on iOS.
+/// Saves the library to a file and adds one back, for a new phone or after a reinstall.
+class _BackupGroup extends StatelessWidget {
+  const _BackupGroup({required this.library});
+
+  final LibraryController library;
+
+  void _say(BuildContext context, String text) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text)));
+
+  Future<void> _save(BuildContext context) async {
+    final saved = await library.exportBackup();
+    if (saved == null || !context.mounted) return;
+    _say(
+      context,
+      saved.isEmpty
+          ? S.backupEmpty
+          : S.backupSaved(saved.liked, saved.playlists, saved.listens),
+    );
+  }
+
+  Future<void> _add(BuildContext context) async {
+    final added = await library.importBackup();
+    if (added == null || !context.mounted) return;
+    _say(
+      context,
+      added.isEmpty
+          ? S.backupNothingNew
+          : S.backupAdded(added.liked, added.playlists, added.listens),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return _Group(
+      title: S.backup,
+      footer: S.backupHelp,
+      children: [
+        _Row(
+          label: S.backupSave,
+          trailing: Icon(Icons.save_alt_rounded, color: p.textTertiary),
+          onTap: () => _save(context),
+        ),
+        _Row(
+          label: S.backupAdd,
+          trailing: Icon(Icons.file_open_outlined, color: p.textTertiary),
+          onTap: () => _add(context),
+        ),
+      ],
+    );
+  }
+}
+
 class _Group extends StatelessWidget {
   const _Group({required this.title, required this.children, this.footer});
 

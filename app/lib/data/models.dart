@@ -524,3 +524,48 @@ class Profile {
     autoplay: map['autoplay'] as bool? ?? true,
   );
 }
+
+/// What the sleep timer is set to.
+enum SleepMode { off, time, song }
+
+class SleepState {
+  const SleepState({this.mode = SleepMode.off, this.endsAt});
+
+  final SleepMode mode;
+
+  /// When the music stops, for [SleepMode.time].
+  final DateTime? endsAt;
+
+  bool get on => mode != SleepMode.off;
+
+  factory SleepState.fromJson(Map<String, dynamic> json) {
+    final endsAt = (json['endsAt'] as num?)?.toInt();
+    return SleepState(
+      mode: switch (json['mode']) {
+        'time' => SleepMode.time,
+        'song' => SleepMode.song,
+        _ => SleepMode.off,
+      },
+      endsAt: endsAt == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(endsAt),
+    );
+  }
+}
+
+/// How many songs, playlists and listens a backup file holds, or how many of them a restore added.
+class BackupCounts {
+  const BackupCounts({this.liked = 0, this.playlists = 0, this.listens = 0});
+
+  final int liked;
+  final int playlists;
+  final int listens;
+
+  bool get isEmpty => liked == 0 && playlists == 0 && listens == 0;
+
+  factory BackupCounts.fromMap(Map<Object?, Object?> map) => BackupCounts(
+    liked: (map['liked'] as num?)?.toInt() ?? 0,
+    playlists: (map['playlists'] as num?)?.toInt() ?? 0,
+    listens: (map['listens'] as num?)?.toInt() ?? 0,
+  );
+}

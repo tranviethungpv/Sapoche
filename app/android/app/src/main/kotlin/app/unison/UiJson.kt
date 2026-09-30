@@ -2,6 +2,7 @@ package app.unison
 
 import app.unison.sync.Connection
 import app.unison.sync.QueueItem
+import app.unison.sync.Sleep
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -67,6 +68,13 @@ object UiJson {
             .put("videoWidth", player.videoWidth)
             .put("videoHeight", player.videoHeight)
             .toString()
+
+    /** The sleep timer was set, ran out or was turned off. */
+    fun sleep(sleep: Sleep): String = JSONObject()
+        .put("type", "sleep")
+        .put("mode", if (sleep is Sleep.At) "time" else if (sleep == Sleep.SongEnd) "song" else "off")
+        .put("endsAt", if (sleep is Sleep.At) sleep.endsAtMs else JSONObject.NULL)
+        .toString()
 
     /** Liked songs or the history changed: the UI reads them again. */
     fun library(): String = JSONObject().put("type", "library").toString()

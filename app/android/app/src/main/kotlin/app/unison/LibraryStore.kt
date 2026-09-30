@@ -38,6 +38,15 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** A playlist as listed: its cover is the first song's picture. */
     data class Playlist(val id: Long, val name: String, val count: Int, val thumb: String?, val updatedAt: Long)
 
+    /** A playlist as kept in a backup: what it is called, when, and its songs in order. */
+    data class SavedPlaylist(val name: String, val createdAt: Long, val updatedAt: Long, val tracks: List<TrackRef>)
+
+    /** What is worth carrying to another phone: likes, playlists and every listen, each with its time. */
+    data class Backup(val liked: List<Entry>, val playlists: List<SavedPlaylist>, val listens: List<Entry>)
+
+    /** How much of a backup was new to this phone. */
+    data class Restored(val liked: Int, val playlists: Int, val listens: Int)
+
     private val io = Executors.newSingleThreadExecutor { Thread(it, "library").apply { isDaemon = true } }.asCoroutineDispatcher()
 
     private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -302,6 +311,105 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     private fun cleanName(name: String) = name.trim().take(MAX_NAME).ifBlank { "Untitled" }
+
+    // ------------------------------------------------------------------ backup
+
+    /** Everything that [restore] can put back. Downloads are not in it: they are the audio itself, and can be fetched again. */
+    suspend fun backup(): Backup = withContext(io) {
+        val db = readableDatabase
+        val liked = db.rawQuery(
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, l.liked_at, 0 " +
+                "FROM likes l JOIN tracks t ON t.video_id = l.video_id ORDER BY l.liked_at, t.video_id",
+            null,
+        ).use(::entries)
+        val listens = db.rawQuery(
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 0 " +
+                "FROM history h JOIN tracks t ON t.video_id = h.video_id ORDER BY h.played_at, h.id",
+            null,
+        ).use(::entries)
+        val playlists = ArrayList<SavedPlaylist>()
+        db.rawQuery("SELECT id, name, created_at, updated_at FROM playlists ORDER BY id", null).use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val songs = db.rawQuery(
+                    "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, 0, 0 " +
+                        "FROM playlist_items i JOIN tracks t ON t.video_id = i.video_id WHERE i.playlist_id = ? ORDER BY i.position",
+                    arrayOf(id.toString()),
+                ).use(::entries).map { it.track }
+                playlists += SavedPlaylist(c.getString(1), c.getLong(2), c.getLong(3), songs)
+            }
+        }
+        Backup(liked, playlists, listens)
+    }
+
+    /**
+     * Adds what [backup] holds to what is here; nothing is removed or overwritten, so restoring twice, or on the
+     * phone it came from, changes nothing. A playlist with the name of one already here gets the songs it lacks.
+     */
+    suspend fun restore(backup: Backup): Restored = withContext(io) {
+        val db = writableDatabase
+        var liked = 0
+        var playlists = 0
+        var listens = 0
+        db.transaction {
+            for (entry in backup.liked) {
+                upsertTrack(entry.track)
+                val row = insertWithOnConflict(
+                    "likes",
+                    null,
+                    ContentValues().apply {
+                        put("video_id", entry.track.videoId)
+                        put("liked_at", entry.at)
+                    },
+                    SQLiteDatabase.CONFLICT_IGNORE,
+                )
+                if (row != -1L) liked++
+            }
+            // Names of the playlists there were before: two in the backup with one name stay two
+            val here = HashMap<String, Long>()
+            rawQuery("SELECT name, id FROM playlists ORDER BY id DESC", null).use { while (it.moveToNext()) here[it.getString(0)] = it.getLong(1) }
+            for (playlist in backup.playlists) {
+                val name = cleanName(playlist.name)
+                val id = here[name]
+                if (id == null) {
+                    val created = insertOrThrow(
+                        "playlists",
+                        null,
+                        ContentValues().apply {
+                            put("name", name)
+                            put("created_at", playlist.createdAt)
+                            put("updated_at", playlist.updatedAt)
+                        },
+                    )
+                    appendTracks(created, playlist.tracks)
+                    playlists++
+                } else if (appendTracks(id, playlist.tracks) > 0) {
+                    // An old playlist that gained songs is not moved to the top
+                    playlists++
+                }
+            }
+            for (entry in backup.listens.sortedBy { it.at }) {
+                val seen = rawQuery(
+                    "SELECT 1 FROM history WHERE video_id = ? AND played_at = ?",
+                    arrayOf(entry.track.videoId, entry.at.toString()),
+                ).use { it.moveToFirst() }
+                if (seen) continue
+                upsertTrack(entry.track)
+                insert("history", null, ContentValues().apply {
+                    put("video_id", entry.track.videoId)
+                    put("played_at", entry.at)
+                })
+                listens++
+            }
+            // Listens from a backup are older than the ones here, so what is over the limit goes by time, not by row
+            execSQL(
+                "DELETE FROM history WHERE id IN (SELECT id FROM history ORDER BY played_at DESC, id DESC LIMIT -1 OFFSET $HISTORY_KEEP)",
+            )
+            dropUnusedTracks()
+        }
+        _changes.tryEmit(Unit)
+        Restored(liked, playlists, listens)
+    }
 
     // ------------------------------------------------------------------ suggestions
 

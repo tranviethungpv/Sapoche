@@ -190,6 +190,39 @@ abstract final class S {
     return '${d.inDays} days ago';
   }
 
+  // Backup
+  static const backup = 'Backup';
+  static const backupSave = 'Save your library to a file';
+  static const backupAdd = 'Add from a backup file';
+  static const backupHelp =
+      'A backup keeps your liked songs, playlists and listening history in one file you can put anywhere. '
+      'Adding one never removes anything. Downloaded songs are not in it.';
+  static String _backupParts(int liked, int playlists, int listens) => [
+    if (liked > 0) '$liked liked',
+    if (playlists > 0) playlists == 1 ? '1 playlist' : '$playlists playlists',
+    if (listens > 0) '$listens listens',
+  ].join(', ');
+  static String backupSaved(int liked, int playlists, int listens) =>
+      'Saved: ${_backupParts(liked, playlists, listens)}';
+  static String backupAdded(int liked, int playlists, int listens) =>
+      'Added: ${_backupParts(liked, playlists, listens)}';
+  static const backupNothingNew = 'Nothing new in that file';
+  static const backupEmpty = 'Saved, but there was nothing in your library yet';
+
+  // Sleep timer
+  static const sleepTimer = 'Sleep timer';
+  static String sleepMinutes(int minutes) => minutes == 60
+      ? '1 hour'
+      : minutes > 60
+      ? '1 hour ${minutes - 60} min'
+      : '$minutes minutes';
+  static const sleepSongEnd = 'End of this song';
+  static const sleepOff = 'Turn off timer';
+  static const sleepInRoom =
+      'In a room only this phone stops; the room plays on without you.';
+  static String sleepStopsAt(String time) => 'Stops at $time';
+  static const sleepStopsAfterSong = 'Stops after this song';
+
   // Player
   static const buffering = 'Loading…';
   static const inSync = 'In sync';

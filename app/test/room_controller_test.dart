@@ -361,6 +361,34 @@ void main() {
     },
   );
 
+  test('the sleep timer follows what the native side reports', () async {
+    expect(controller.sleep.on, isFalse);
+    await controller.setSleep(SleepMode.time, minutes: 30);
+    expect(backend.calls.last, 'sleep time 30');
+
+    final endsAt = DateTime(2026, 9, 30, 23, 40);
+    backend.emit(SleepEvent(SleepState(mode: SleepMode.time, endsAt: endsAt)));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.sleep.mode, SleepMode.time);
+    expect(controller.sleep.endsAt, endsAt);
+
+    // It ran out on its own, while the screen was off
+    backend.emit(const SleepEvent(SleepState()));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.sleep.on, isFalse);
+  });
+
+  test('the sleep state is read from the JSON the native side sends', () {
+    final state = SleepState.fromJson({'mode': 'time', 'endsAt': 1000});
+    expect(state.mode, SleepMode.time);
+    expect(state.endsAt, DateTime.fromMillisecondsSinceEpoch(1000));
+    expect(
+      SleepState.fromJson({'mode': 'song', 'endsAt': null}).mode,
+      SleepMode.song,
+    );
+    expect(SleepState.fromJson({'mode': 'off'}).on, isFalse);
+  });
+
   test(
     'completions come from the backend, and a failing one is just empty',
     () async {

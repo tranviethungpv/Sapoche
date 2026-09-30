@@ -18,6 +18,8 @@ import app.unison.sync.QueueItem
 import app.unison.sync.Protocol
 import app.unison.sync.QueueFile
 import app.unison.sync.RoomClient
+import app.unison.sync.Sleep
+import app.unison.sync.SleepTimer
 import app.unison.sync.TrackRef
 import app.unison.sync.ServerMessage
 import kotlinx.coroutines.CancellationException
@@ -76,6 +78,15 @@ class GroupController(
 
     private var autoplayJob: Job? = null
 
+    /** Stops this device after a while, or when the song is over; the fade is the player's own volume. */
+    val sleep = SleepTimer(
+        ownScope,
+        wallClock = System::currentTimeMillis,
+        stop = ::stopForSleep,
+        fade = { exo.volume = it },
+        pauseAtSongEnd = { exo.setPauseAtEndOfMediaItems(it) },
+    )
+
     private var client: RoomClient? = null
     private var session: GroupSession? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -119,6 +130,16 @@ class GroupController(
     init {
         port.setVideoMode(videoMode)
         local.attach()
+        // After the personal queue's own listener: when the last song ends it must see the timer still set
+        exo.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) sleep.songEnded()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) sleep.songEnded()
+            }
+        })
         ownScope.launch { local.snapshot.collect { publish() } }
     }
 
@@ -128,7 +149,7 @@ class GroupController(
      * asked for something else in the meantime.
      */
     private fun autoplay(last: QueueItem) {
-        if (!autoplayOn || session != null || autoplayJob?.isActive == true) return
+        if (!autoplayOn || session != null || autoplayJob?.isActive == true || sleep.state.value == Sleep.SongEnd) return
         autoplayJob = ownScope.launch {
             try {
                 val more = moreLike(last.videoId, local.snapshot.value.queue.map { it.videoId }.toSet())
@@ -143,6 +164,17 @@ class GroupController(
                 EventLog.d("local", "autoplay found nothing: ${e.javaClass.simpleName}: ${e.message}")
             }
         }
+    }
+
+    /** The sleep timer ran out. In a room only this device stops: it carries on alone, paused, and the room plays on. */
+    private fun stopForSleep() {
+        val s = session
+        if (s == null) {
+            local.pause()
+            return
+        }
+        if (!s.isSolo) s.goSolo()
+        s.soloPause()
     }
 
     /** Whether the music carries on by itself when the queue runs out. */

@@ -156,6 +156,23 @@ class LibraryController extends ChangeNotifier {
   Future<void> setAutoDownload(bool on) =>
       _run(() => _backend.setAutoDownload(on));
 
+  /// Saves the library to a file the person picks. Null when they backed out or it failed, which is said in [messages].
+  Future<BackupCounts?> exportBackup() => _file(_backend.exportBackup);
+
+  /// Adds what a file the person picks holds; gives back how much was new.
+  Future<BackupCounts?> importBackup() => _file(_backend.importBackup);
+
+  Future<BackupCounts?> _file(Future<BackupCounts?> Function() action) async {
+    try {
+      return await action();
+    } on BackendException catch (e) {
+      _messages.add(e.message);
+    } on Object catch (e) {
+      _messages.add('$e');
+    }
+    return null;
+  }
+
   Future<void> _run(Future<void> Function() action) async {
     try {
       await action();

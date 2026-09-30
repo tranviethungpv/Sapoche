@@ -38,6 +38,12 @@ class LibraryEvent extends BackendEvent {
   const LibraryEvent();
 }
 
+/// The sleep timer was set, ran out or was turned off.
+class SleepEvent extends BackendEvent {
+  const SleepEvent(this.sleep);
+  final SleepState sleep;
+}
+
 class ErrorEvent extends BackendEvent {
   const ErrorEvent(this.error);
   final ServerError error;
@@ -165,6 +171,15 @@ abstract class Backend {
   Future<void> removeFromPlaylist(int id, String videoId);
   Future<void> movePlaylistItem(int id, String videoId, int toIndex);
 
+  /// Saves the library to a file the person picks. Null when they backed out.
+  Future<BackupCounts?> exportBackup();
+
+  /// Adds what a file the person picks holds to the library. Null when they backed out; throws when the file is no backup.
+  Future<BackupCounts?> importBackup();
+
+  /// Stops the music in [minutes] (mode time), when the song is over (song) or not at all (off).
+  Future<void> setSleep(SleepMode mode, {int minutes = 0});
+
   Future<void> setTrim(int ms);
   Future<List<String>> log();
 }
@@ -184,6 +199,7 @@ class NativeBackend implements Backend {
     return switch (json['type']) {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
       'library' => const LibraryEvent(),
+      'sleep' => SleepEvent(SleepState.fromJson(json)),
       'invite' => InviteEvent(json['code'] as String),
       'notice' => NoticeEvent(
         kind: json['kind'] as String,
@@ -458,6 +474,22 @@ class NativeBackend implements Backend {
   @override
   Future<void> movePlaylistItem(int id, String videoId, int toIndex) =>
       _call('playlistMove', {'id': id, 'videoId': videoId, 'to': toIndex});
+
+  @override
+  Future<BackupCounts?> exportBackup() async {
+    final raw = await _call<Map<Object?, Object?>>('backupExport');
+    return raw == null ? null : BackupCounts.fromMap(raw);
+  }
+
+  @override
+  Future<BackupCounts?> importBackup() async {
+    final raw = await _call<Map<Object?, Object?>>('backupImport');
+    return raw == null ? null : BackupCounts.fromMap(raw);
+  }
+
+  @override
+  Future<void> setSleep(SleepMode mode, {int minutes = 0}) =>
+      _call('sleep', {'mode': mode.name, 'minutes': minutes});
 
   @override
   Future<void> setTrim(int ms) => _call('setTrim', {'ms': ms});

@@ -74,6 +74,8 @@ class UnisonBridge(
     /** The library changed while the screen was off; the UI is told when it comes back. */
     private var libraryDirty = false
 
+    private val backupFiles = BackupFiles(activity, UnisonApp.library)
+
     /** Where the player's picture is drawn for Flutter's Texture widget; made when first asked for. */
     private var picture: TextureRegistry.SurfaceProducer? = null
 
@@ -118,6 +120,11 @@ class UnisonBridge(
         if (uri == null || !own && !web) return
         val code = uri.lastPathSegment?.trim()?.uppercase()?.takeIf { INVITE_CODE.matches(it) } ?: return
         if (sink != null) emit(UiJson.invite(code)) else pendingInvite = code
+    }
+
+    /** A file picker opened for [BackupFiles] closed. */
+    fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == BackupFiles.REQUEST) backupFiles.onResult(resultCode, data)
     }
 
     fun setVisible(value: Boolean) {
@@ -199,6 +206,7 @@ class UnisonBridge(
                     }
                     launch { group.errors.collect { emit(UiJson.error(it.code, it.message)) } }
                     launch { group.notices.collect { emit(UiJson.notice(it)) } }
+                    launch { group.sleep.state.collect { emit(UiJson.sleep(it)) } }
                     launch {
                         // No ticking at all while the screen is off
                         shown.collectLatest { on ->
@@ -369,6 +377,16 @@ class UnisonBridge(
                 UnisonApp.library.movePlaylistItem(playlistId(call), call.argument<String>("videoId").orEmpty(), call.argument<Int>("to") ?: 0)
                 return null
             }
+            "backupExport" -> return backupFiles.export()?.toMap()
+            "backupImport" -> {
+                val restored = try {
+                    backupFiles.import()
+                } catch (e: LibraryBackup.FormatException) {
+                    throw IllegalArgumentException(e.message)
+                } ?: return null
+                if (restored.liked > 0 && autoDownload) DownloadWorker.enqueue(activity, waiting = true)
+                return restored.toMap()
+            }
             "share" -> {
                 share(call.argument<String>("text").orEmpty())
                 return null
@@ -390,6 +408,11 @@ class UnisonBridge(
                 create = false,
             )
             "leave" -> group.leave()
+            "sleep" -> when (call.argument<String>("mode")) {
+                "time" -> group.sleep.startIn(call.argument<Int>("minutes") ?: 0)
+                "song" -> group.sleep.startAtSongEnd()
+                else -> group.sleep.cancel()
+            }
             "rename" -> group.rename(call.argument<String>("name").orEmpty().trim())
             "setTrim" -> {
                 group.setTrim((call.argument<Number>("ms") ?: 0).toLong())
@@ -565,6 +588,8 @@ class UnisonBridge(
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         activity.startActivity(Intent.createChooser(send, null))
     }
+
+    private fun LibraryStore.Restored.toMap() = mapOf("liked" to liked, "playlists" to playlists, "listens" to listens)
 
     private fun playlistId(call: MethodCall): Long = call.argument<Number>("id")!!.toLong()
 
