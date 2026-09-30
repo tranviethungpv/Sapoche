@@ -112,6 +112,17 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `an end reported while nothing of ours is loaded changes nothing`() = runTest {
+        // What a restarted service's player says when it has nothing to play
+        val h = harness(SavedQueue(listOf(QueueItem("q1", "video1xxxxx", "Song 1", "Artist", null, 200_000, "")), 0, "off", 30_000, false))
+        h.player.onEnded?.invoke()
+        step()
+        assertFalse(h.session.snapshot.value.finished)
+        assertEquals(emptyList(), h.ended)
+        assertEquals(30_000L, h.session.restoredPositionMs, "it still resumes where it was")
+    }
+
+    @Test
     fun `a song ending by itself at the end of the queue is announced`() = runTest {
         val h = harness()
         h.session.add(listOf(track(1)), next = false)

@@ -10,3 +10,13 @@ String formatDuration(int ms) {
 
 /// "12 ms ahead" style text for the sync indicator.
 String formatDrift(int ms) => '${ms >= 0 ? '+' : '−'}${ms.abs()} ms';
+
+/// "340 KB", "12.4 MB" or "1.3 GB".
+String formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+}

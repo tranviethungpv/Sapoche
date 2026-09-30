@@ -17,11 +17,16 @@ class UnisonApp : Application() {
         resolver = NewPipeResolver()
         streams = StreamCache(resolver, Probe())
         library = LibraryStore(this)
+        val limitMb = getSharedPreferences("unison", MODE_PRIVATE).getInt("cache_limit_mb", DEFAULT_CACHE_MB)
+        caches = MediaCaches(this, limitMb * 1024L * 1024L)
+        mediaData = MediaData(caches, streams, { videoMaxHeight }) { EventLog.d("cache", it) }
+        downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
         suggestions = SuggestionFeed(library, resolver) { EventLog.d("suggest", it) }
     }
 
     companion object {
         const val DEFAULT_VIDEO_HEIGHT = 720
+        const val DEFAULT_CACHE_MB = 256
 
         /** Tallest picture to fetch; read by the loader thread, so it is volatile. */
         @Volatile
@@ -34,6 +39,18 @@ class UnisonApp : Application() {
 
         /** Liked songs and listening history; opened when first used. */
         lateinit var library: LibraryStore
+            private set
+
+        /** Songs kept on disk: the downloads and what was played. */
+        lateinit var caches: MediaCaches
+            private set
+
+        /** Where the player and the downloads read songs from. */
+        lateinit var mediaData: MediaData
+            private set
+
+        /** Works through the songs waiting to be downloaded. */
+        lateinit var downloader: Downloader
             private set
 
         /** Songs to offer and to carry on with. */

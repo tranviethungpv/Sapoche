@@ -109,7 +109,9 @@ class LocalSession(
 
     /** Take the player over: from now on its endings and errors are ours. Loads nothing. */
     fun attach() {
-        player.onEnded = { scope.launch { step(+1, auto = true) } }
+        // Only the end of a song this session loaded counts: a player that has nothing (a restart brought the service
+        // back from a media button) also reports "ended", and that must not finish the saved queue
+        player.onEnded = { scope.launch { if (loadedId != null) step(+1, auto = true) } }
         player.onAdvanced = { scope.launch { onAdvanced() } }
         player.onError = { error -> scope.launch { onPlayerError(error) } }
     }

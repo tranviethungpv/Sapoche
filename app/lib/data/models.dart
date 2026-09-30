@@ -35,6 +35,73 @@ class Track {
   };
 }
 
+/// Where a song stands on the way to being kept on this phone.
+enum DownloadState {
+  /// Asked for, waiting its turn or being fetched.
+  queued,
+
+  /// A liked song waiting for Wi-Fi and a charger.
+  waiting,
+
+  /// On the phone: plays without the network.
+  done,
+  failed;
+
+  static DownloadState parse(String? name) =>
+      DownloadState.values.asNameMap()[name] ?? DownloadState.queued;
+}
+
+/// A song on the list of downloads.
+class DownloadEntry {
+  const DownloadEntry({
+    required this.track,
+    required this.state,
+    this.bytes = 0,
+  });
+
+  final Track track;
+  final DownloadState state;
+
+  /// Size on the phone once done.
+  final int bytes;
+
+  factory DownloadEntry.fromMap(Map<Object?, Object?> map) => DownloadEntry(
+    track: Track.fromMap(map),
+    state: DownloadState.parse(map['state'] as String?),
+    bytes: (map['bytes'] as num?)?.toInt() ?? 0,
+  );
+}
+
+/// What the songs kept on the phone take, and the settings about them.
+class StorageInfo {
+  const StorageInfo({
+    this.playBytes = 0,
+    this.playLimitMb = 256,
+    this.downloadBytes = 0,
+    this.downloadCount = 0,
+    this.autoDownload = false,
+  });
+
+  /// Songs played before, kept so that they play again without data.
+  final int playBytes;
+  final int playLimitMb;
+
+  /// Songs downloaded.
+  final int downloadBytes;
+  final int downloadCount;
+
+  /// Liked songs are downloaded by themselves on Wi-Fi while charging.
+  final bool autoDownload;
+
+  factory StorageInfo.fromMap(Map<Object?, Object?> map) => StorageInfo(
+    playBytes: (map['playBytes'] as num?)?.toInt() ?? 0,
+    playLimitMb: (map['playLimitMb'] as num?)?.toInt() ?? 256,
+    downloadBytes: (map['downloadBytes'] as num?)?.toInt() ?? 0,
+    downloadCount: (map['downloadCount'] as num?)?.toInt() ?? 0,
+    autoDownload: map['autoDownload'] as bool? ?? false,
+  );
+}
+
 /// A playlist the person made, as listed: its cover is its first song's picture.
 class SavedPlaylist {
   const SavedPlaylist({

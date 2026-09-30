@@ -7,7 +7,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -347,5 +349,136 @@ class LibraryStoreTest {
         // The suggestion list is its own thing: it stays, and the heard song is gone
         assertEquals(emptyList<String>(), store.recent().map { it.track.videoId })
         assertEquals(1, store.cachedSuggestions("a")!!.tracks.size)
+    }
+
+    // ------------------------------------------------------------------ downloads
+
+    private suspend fun states() = store.downloads().associate { it.track.videoId to it.state }
+
+    @Test
+    fun requestedSongsAreQueuedInOrderAndDoneOnesComeFirst() = runTest {
+        store.requestDownloads(listOf(song("a"), song("b"), song("c")), at = 1)
+        assertEquals("a", store.nextDownload(LibraryStore.QUEUED))
+        store.finishDownload("b", 1234, at = 10)
+        store.finishDownload("a", 99, at = 20)
+        val list = store.downloads()
+        assertEquals("done ones newest first, then the waiting", listOf("a", "b", "c"), list.map { it.track.videoId })
+        assertEquals(listOf(LibraryStore.DONE, LibraryStore.DONE, LibraryStore.QUEUED), list.map { it.state })
+        assertEquals(99L, list[0].bytes)
+        assertEquals("c", store.nextDownload(LibraryStore.QUEUED))
+        assertNull(store.nextDownload(LibraryStore.WAITING))
+    }
+
+    @Test
+    fun asongAlreadyDoneStaysDoneWhenAskedAgain() = runTest {
+        store.requestDownloads(listOf(song("a")))
+        store.finishDownload("a", 10)
+        store.requestDownloads(listOf(song("a")))
+        assertEquals(mapOf("a" to LibraryStore.DONE), states())
+    }
+
+    @Test
+    fun askingForAWaitingSongThePlainWayStartsItNow() = runTest {
+        store.requestDownloads(listOf(song("a")), waiting = true)
+        assertEquals("a", store.nextDownload(LibraryStore.WAITING))
+        assertNull(store.nextDownload(LibraryStore.QUEUED))
+        store.requestDownloads(listOf(song("a")))
+        assertEquals("a", store.nextDownload(LibraryStore.QUEUED))
+        assertNull(store.nextDownload(LibraryStore.WAITING))
+    }
+
+    @Test
+    fun waitingNeverPutsAQueuedSongBackToWaiting() = runTest {
+        store.requestDownloads(listOf(song("a")))
+        store.requestDownloads(listOf(song("a")), waiting = true)
+        assertEquals("a", store.nextDownload(LibraryStore.QUEUED))
+    }
+
+    @Test
+    fun aSongFailsForGoodAfterThreeTriesAndAskingAgainRevivesIt() = runTest {
+        store.requestDownloads(listOf(song("a")))
+        assertFalse(store.failDownload("a"))
+        assertFalse(store.failDownload("a"))
+        assertEquals(mapOf("a" to LibraryStore.QUEUED), states())
+        assertTrue(store.failDownload("a"))
+        assertEquals(mapOf("a" to LibraryStore.FAILED), states())
+        assertNull(store.nextDownload(LibraryStore.QUEUED))
+        store.requestDownloads(listOf(song("a")))
+        assertEquals(mapOf("a" to LibraryStore.QUEUED), states())
+        assertFalse("the count started again", store.failDownload("a"))
+    }
+
+    @Test
+    fun skippedSongsAreLeftOutOfTheNextPick() = runTest {
+        store.requestDownloads(listOf(song("a"), song("b")))
+        assertEquals("b", store.nextDownload(LibraryStore.QUEUED, skip = setOf("a")))
+        assertNull(store.nextDownload(LibraryStore.QUEUED, skip = setOf("a", "b")))
+    }
+
+    @Test
+    fun removingDownloadsForgetsSongsNothingElsePointsTo() = runTest {
+        store.setLiked(song("a"), true, at = 1)
+        store.requestDownloads(listOf(song("a"), song("b")))
+        store.removeDownload("a")
+        store.removeDownload("b")
+        assertEquals(emptyList<String>(), store.downloads().map { it.track.videoId })
+        assertEquals("Title a", store.liked().single().track.title)
+        store.requestDownloads(listOf(song("c")))
+        store.clearDownloads()
+        assertEquals(emptyList<String>(), store.downloads().map { it.track.videoId })
+    }
+
+    @Test
+    fun aDownloadedSongSurvivesEverythingElseLettingGo() = runTest {
+        store.requestDownloads(listOf(song("a")))
+        store.recordListen(song("a"), at = 1)
+        store.setLiked(song("a"), true, at = 2)
+        store.clearHistory()
+        store.setLiked(song("a"), false)
+        assertEquals("Title a", store.downloads().single().track.title)
+    }
+
+    @Test
+    fun likedSongsNotOnTheListYetAreTheOnesToDownloadByThemselves() = runTest {
+        store.setLiked(song("a"), true, at = 1)
+        store.setLiked(song("b"), true, at = 2)
+        store.setLiked(song("c"), true, at = 3)
+        store.requestDownloads(listOf(song("a")))
+        store.finishDownload("a", 1)
+        store.requestDownloads(listOf(song("c")))
+        store.failDownload("c")
+        store.failDownload("c")
+        store.failDownload("c")
+        assertEquals("done and failed ones are not asked again", listOf("b"), store.likedToDownload().map { it.videoId })
+    }
+
+    @Test
+    fun aDatabaseFromVersionThreeGainsDownloads() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = "upgrade-test3.db"
+        context.deleteDatabase(file)
+        context.openOrCreateDatabase(file, android.content.Context.MODE_PRIVATE, null).use { db ->
+            db.execSQL("CREATE TABLE tracks(video_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, thumb TEXT, dur_ms INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE likes(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), liked_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), played_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE playlists(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE playlist_items(playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, video_id TEXT NOT NULL REFERENCES tracks(video_id), position INTEGER NOT NULL, PRIMARY KEY(playlist_id, video_id))")
+            db.execSQL("CREATE TABLE suggestions(seed_video_id TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
+            db.execSQL("INSERT INTO tracks VALUES('old', 'Old song', 'Old artist', NULL, 1000)")
+            db.execSQL("INSERT INTO likes VALUES('old', 5)")
+            db.execSQL("INSERT INTO playlists(name, created_at, updated_at) VALUES('Mix', 1, 1)")
+            db.execSQL("INSERT INTO playlist_items VALUES(1, 'old', 0)")
+            db.version = 3
+        }
+        val upgraded = LibraryStore(context, file)
+        try {
+            assertEquals("Old song", upgraded.liked().single().track.title)
+            assertEquals(1, upgraded.playlists().single().count)
+            upgraded.requestDownloads(listOf(song("new")))
+            assertEquals(listOf("new"), upgraded.downloads().map { it.track.videoId })
+        } finally {
+            upgraded.close()
+            context.deleteDatabase(file)
+        }
     }
 }

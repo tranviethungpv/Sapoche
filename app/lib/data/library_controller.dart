@@ -18,6 +18,8 @@ class LibraryController extends ChangeNotifier {
   List<HistoryEntry> _recent = const [];
   List<SavedPlaylist> _playlists = const [];
   List<Track> _forYou = const [];
+  List<DownloadEntry> _downloads = const [];
+  Map<String, DownloadState> _downloadStates = const {};
 
   /// Songs of the playlists that were opened, kept up to date while they are.
   final _items = <int, List<Track>>{};
@@ -28,6 +30,12 @@ class LibraryController extends ChangeNotifier {
 
   /// The person's playlists, the one changed last first.
   List<SavedPlaylist> get playlists => _playlists;
+
+  /// Songs on the list of downloads, what is on the phone first.
+  List<DownloadEntry> get downloads => _downloads;
+
+  /// Where a song stands, or null when it was never asked for.
+  DownloadState? downloadState(String videoId) => _downloadStates[videoId];
 
   /// Songs to offer, from what was kept: there at once, with or without a network.
   List<Track> get forYou => _forYou;
@@ -56,6 +64,7 @@ class LibraryController extends ChangeNotifier {
       final recent = await _backend.recent();
       final playlists = await _backend.playlists();
       final forYou = await _backend.forYou();
+      final downloads = await _backend.downloads();
       final items = <int, List<Track>>{};
       for (final id in _items.keys.toList()) {
         if (playlists.any((p) => p.id == id)) {
@@ -66,6 +75,8 @@ class LibraryController extends ChangeNotifier {
       _recent = recent;
       _playlists = playlists;
       _forYou = forYou;
+      _downloads = downloads;
+      _downloadStates = {for (final d in downloads) d.track.videoId: d.state};
       _items
         ..clear()
         ..addAll(items);
@@ -106,6 +117,49 @@ class LibraryController extends ChangeNotifier {
     } on Object catch (e) {
       _recent = before;
       notifyListeners();
+      _messages.add('$e');
+    }
+  }
+
+  /// Asks for songs to be downloaded. Gives back false when nothing was done because the phone is on mobile
+  /// data: ask the person, then call again with [allowMetered].
+  Future<bool> download(List<Track> tracks, {bool allowMetered = false}) async {
+    try {
+      final started = await _backend.download(
+        tracks,
+        allowMetered: allowMetered,
+      );
+      if (started) await refresh();
+      return started;
+    } on Object catch (e) {
+      _messages.add('$e');
+      return true; // there is nothing to ask about
+    }
+  }
+
+  Future<void> removeDownload(String videoId) =>
+      _change(() => _backend.removeDownload(videoId));
+
+  Future<void> clearDownloads() => _change(_backend.clearDownloads);
+
+  /// What the kept songs take, for the settings; null when it cannot be read.
+  Future<StorageInfo?> storage() async {
+    try {
+      return await _backend.storage();
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> clearPlayCache() => _run(_backend.clearPlayCache);
+  Future<void> setCacheLimit(int mb) => _run(() => _backend.setCacheLimit(mb));
+  Future<void> setAutoDownload(bool on) =>
+      _run(() => _backend.setAutoDownload(on));
+
+  Future<void> _run(Future<void> Function() action) async {
+    try {
+      await action();
+    } on Object catch (e) {
       _messages.add('$e');
     }
   }

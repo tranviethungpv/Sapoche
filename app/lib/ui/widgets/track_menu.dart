@@ -4,6 +4,7 @@ import '../../data/models.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
+import 'download_actions.dart';
 import 'playlist_picker.dart';
 
 /// The "more" menu of a song row: play it next, queue it, like it.
@@ -34,12 +35,29 @@ class TrackMenu extends StatelessWidget {
         'next' => onPlayNext(),
         'like' => library.toggleLike(track),
         'playlist' => showAddToPlaylist(context, [track]),
+        'download' => startDownload(context, [track]),
+        'undownload' => library.removeDownload(track.videoId),
         _ => onAdd(),
       },
       itemBuilder: (context) => [
         const PopupMenuItem(value: 'next', child: Text(S.playNext)),
         const PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
         const PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
+        ...switch (library.downloadState(track.videoId)) {
+          DownloadState.done => const [
+            PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
+          ],
+          DownloadState.queued || DownloadState.waiting => const [
+            PopupMenuItem(
+              enabled: false,
+              value: 'none',
+              child: Text(S.downloading),
+            ),
+          ],
+          _ => const [
+            PopupMenuItem(value: 'download', child: Text(S.download)),
+          ],
+        },
         PopupMenuItem(
           value: 'like',
           child: Text(library.isLiked(track.videoId) ? S.unlike : S.like),

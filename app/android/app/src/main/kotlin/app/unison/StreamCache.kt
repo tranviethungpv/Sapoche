@@ -1,5 +1,7 @@
 package app.unison
 
+import app.unison.core.AudioPicker
+import app.unison.core.AudioSource
 import app.unison.core.Probe
 import app.unison.core.StreamResolver
 import app.unison.core.VideoPicker
@@ -21,7 +23,17 @@ class StreamCache(
     private val resolver: StreamResolver,
     private val probe: Probe,
 ) {
-    private data class Entry(val url: String, val videos: List<VideoSource>, val resolvedAtMs: Long)
+    private data class Entry(
+        val best: AudioSource,
+        val audio: List<AudioSource>,
+        val videos: List<VideoSource>,
+        val resolvedAtMs: Long,
+    ) {
+        val url get() = best.url
+    }
+
+    /** An audio stream to read a song from: its address, which stream it is, and whether the pinned one was followed. */
+    data class AudioPick(val url: String, val itag: Int, val honoursPin: Boolean)
     private data class VideoEntry(val url: String, val resolvedAtMs: Long)
 
     private val entries = ConcurrentHashMap<String, Entry>()
@@ -29,12 +41,31 @@ class StreamCache(
     private val locks = ConcurrentHashMap<String, Any>()
 
     /** Returns a validated stream URL for [videoId], resolving if needed. */
-    fun get(videoId: String): String {
-        entries[videoId]?.takeIf { isFresh(it) }?.let { return it.url }
-        // One resolve per video at a time, so preload and playback do not race
-        synchronized(locks.getOrPut(videoId) { Any() }) {
-            entries[videoId]?.takeIf { isFresh(it) }?.let { return it.url }
-            return resolveValidated(videoId)
+    fun get(videoId: String): String = getAudio(videoId, null).url
+
+    /**
+     * Returns a validated audio stream for [videoId], resolving if needed. With [pinnedItag] (the stream the bytes
+     * kept on disk belong to) that stream is used as long as the video offers it and it works; see [AudioPicker].
+     */
+    fun getAudio(videoId: String, pinnedItag: Int?): AudioPick {
+        val entry = entries[videoId]?.takeIf { isFresh(it) } ?: run {
+            // One resolve per video at a time, so preload and playback do not race
+            synchronized(locks.getOrPut(videoId) { Any() }) {
+                entries[videoId]?.takeIf { isFresh(it) } ?: run {
+                    resolveValidated(videoId)
+                    entries.getValue(videoId)
+                }
+            }
+        }
+        val pick = AudioPicker.pick(entry.audio, pinnedItag) ?: throw IOException("$videoId has no audio stream")
+        // The best stream was probed when it was resolved; another one has not been looked at yet
+        if (pick.source.itag == entry.best.itag) return AudioPick(pick.source.url, pick.source.itag, pick.honoursPin)
+        val probed = runBlocking { probe.check(pick.source) }
+        EventLog.d("resolve", "$videoId pinned itag=${pick.source.itag} probe=${probed.headStatus}/${probed.midStatus}/${probed.tailStatus}")
+        return if (probed.ok) {
+            AudioPick(pick.source.url, pick.source.itag, pick.honoursPin)
+        } else {
+            AudioPick(entry.best.url, entry.best.itag, false)
         }
     }
 
@@ -93,7 +124,7 @@ class StreamCache(
                         "firstByte=${probed.firstByteMs}ms ${if (probed.ok) "OK" else "POISONED"}",
                 )
                 if (probed.ok) {
-                    entries[videoId] = Entry(resolved.best.url, resolved.videos, System.currentTimeMillis())
+                    entries[videoId] = Entry(resolved.best, resolved.all, resolved.videos, System.currentTimeMillis())
                     return@runBlocking resolved.best.url
                 }
                 lastProblem = "probe ${probed.headStatus}/${probed.midStatus}/${probed.tailStatus}"

@@ -110,6 +110,37 @@ abstract final class S {
   static const willPlayNext = 'Playing next';
   static const notInRoom = 'Join a room first';
 
+  // Downloads and storage
+  static const download = 'Download';
+  static const removeDownload = 'Remove download';
+  static const downloading = 'Downloading…';
+  static const downloadAll = 'Download all';
+  static const downloadedSongs = 'Downloaded';
+  static String downloadStarted(int n) =>
+      n == 1 ? 'Downloading 1 song' : 'Downloading $n songs';
+  static const useMobileData = 'Use mobile data?';
+  static const useMobileDataBody =
+      'You are not on Wi-Fi. Downloading uses your mobile data.';
+  static const waitingToDownload = 'Waiting for Wi-Fi and a charger';
+  static const queuedToDownload = 'Waiting to download';
+  static const downloadFailed = 'Download failed';
+  static const deleteAll = 'Delete all';
+  static const deleteDownloadsQuestion =
+      'Remove every downloaded song from this phone?';
+  static const noDownloadsTitle = 'Nothing downloaded';
+  static const noDownloadsBody =
+      'Choose Download on a song, a playlist or your liked songs to keep them for when there is no network.';
+  static const storage = 'Storage';
+  static const storageDownloads = 'Downloads';
+  static const storagePlayed = 'Played songs';
+  static const cacheLimit = 'Size for played songs';
+  static const cacheLimitHelp =
+      'Songs you listened to are kept so that they play again without using data. The oldest go first when it is full. A new size counts from the next time the app starts.';
+  static const autoDownload = 'Download liked songs';
+  static const autoDownloadHelp =
+      'Saves your liked songs by itself on Wi-Fi while the phone is charging.';
+  static const clearCache = 'Clear';
+
   // Suggestions
   static const forYou = 'For you';
   static const recentSearches = 'Recent searches';

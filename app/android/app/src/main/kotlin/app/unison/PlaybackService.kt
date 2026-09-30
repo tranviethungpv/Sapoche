@@ -15,7 +15,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -61,27 +60,11 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
-        // A plain GET without a Range header is throttled by googlevideo to roughly real-time speed
-        // (~270kbps). ExoPlayer omits Range when starting at byte 0, so always send one; for later
-        // seeks the data source overwrites it with the exact range.
-        val http = DefaultHttpDataSource.Factory()
-            .setDefaultRequestProperties(mapOf("Range" to "bytes=0-"))
-            .setTransferListener(ThroughputLogger())
-            .setUserAgent(OkHttpDownloader.USER_AGENT)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
-            .setAllowCrossProtocolRedirects(true)
+        val http = UnisonApp.mediaData.httpFactory(ThroughputLogger())
 
-        // "unison:<videoId>" URIs are turned into real stream URLs right when the loader opens them
-        val dataSourceFactory = ResolvingDataSource.Factory(http) { spec ->
-            val videoId = spec.uri.schemeSpecificPart
-            when (spec.uri.scheme) {
-                SCHEME -> spec.withUri(Uri.parse(UnisonApp.streams.get(videoId)))
-                UnisonMediaSourceFactory.VIDEO_SCHEME ->
-                    spec.withUri(Uri.parse(UnisonApp.streams.getVideo(videoId, UnisonApp.videoMaxHeight)))
-                else -> spec
-            }
-        }
+        // "unison:<videoId>" URIs are turned into real stream URLs right when the loader opens them, and the sound
+        // is read from the downloads or what was played before if it is there
+        val dataSourceFactory = UnisonApp.mediaData.playerFactory(http)
 
         // Large max buffer so a whole track is buffered early and the next one starts loading sooner
         val loadControl = DefaultLoadControl.Builder()
@@ -103,7 +86,7 @@ class PlaybackService : MediaSessionService() {
                 /* handleAudioFocus = */ true,
             )
             .setHandleAudioBecomingNoisy(true)
-            // Keeps the CPU and Wi-Fi awake while playing with the screen off
+            // Keeps the CPU and Wi-Fi awake while playing with the screen off; see updateWakeMode for songs on disk
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
@@ -218,6 +201,21 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /**
+     * A song that is wholly on disk needs no network while it plays, so the phone does not have to keep its Wi-Fi
+     * awake for it: only the CPU.
+     */
+    private fun updateWakeMode(item: MediaItem?) {
+        val local = item != null && UnisonApp.caches.isComplete(item.mediaId)
+        val mode = if (local) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK
+        if (mode == wakeMode) return
+        wakeMode = mode
+        player.setWakeMode(mode)
+        EventLog.d("player", "wake mode ${if (local) "local (song is on disk)" else "network"}")
+    }
+
+    private var wakeMode = C.WAKE_MODE_NETWORK
+
     /** Sound is playing or about to: it is being listened to, so nothing is let go of. */
     private val soundOn = MutableStateFlow(false)
 
@@ -329,6 +327,7 @@ class PlaybackService : MediaSessionService() {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             EventLog.d("player", "transition to=${mediaItem?.mediaId} reason=$reason")
+            updateWakeMode(mediaItem)
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -393,14 +392,17 @@ class PlaybackService : MediaSessionService() {
      */
     private class GroupAwarePlayer(player: Player, private val group: GroupController) : ForwardingPlayer(player) {
         override fun play() {
+            EventLog.d("session", "play asked by a controller")
             group.requestPlay { super.play() }
         }
 
         override fun pause() {
+            EventLog.d("session", "pause asked by a controller")
             group.requestPause()
         }
 
         override fun setPlayWhenReady(playWhenReady: Boolean) {
+            EventLog.d("session", "playWhenReady=$playWhenReady asked by a controller")
             if (playWhenReady) group.requestPlay { super.setPlayWhenReady(true) } else group.requestPause()
         }
 

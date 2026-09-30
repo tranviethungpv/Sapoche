@@ -180,6 +180,58 @@ class FakeBackend implements Backend {
     recentSongs = [];
   }
 
+  final downloadList = <DownloadEntry>[];
+
+  /// Set to pretend the phone is on mobile data.
+  bool metered = false;
+  StorageInfo storageInfo = const StorageInfo();
+
+  @override
+  Future<List<DownloadEntry>> downloads() async {
+    await _record('downloads');
+    return [...downloadList];
+  }
+
+  @override
+  Future<bool> download(List<Track> tracks, {bool allowMetered = false}) async {
+    await _record(
+      'download ${tracks.map((t) => t.videoId).join(',')} metered=$allowMetered',
+    );
+    if (metered && !allowMetered) return false;
+    for (final t in tracks) {
+      if (downloadList.any((e) => e.track.videoId == t.videoId)) continue;
+      downloadList.add(DownloadEntry(track: t, state: DownloadState.queued));
+    }
+    return true;
+  }
+
+  @override
+  Future<void> removeDownload(String videoId) async {
+    await _record('removeDownload $videoId');
+    downloadList.removeWhere((e) => e.track.videoId == videoId);
+  }
+
+  @override
+  Future<void> clearDownloads() async {
+    await _record('clearDownloads');
+    downloadList.clear();
+  }
+
+  @override
+  Future<StorageInfo> storage() async {
+    await _record('storage');
+    return storageInfo;
+  }
+
+  @override
+  Future<void> clearPlayCache() => _record('clearPlayCache');
+
+  @override
+  Future<void> setCacheLimit(int mb) => _record('cacheLimit $mb');
+
+  @override
+  Future<void> setAutoDownload(bool on) => _record('autoDownload $on');
+
   List<Track> forYouSongs = [];
   List<Track> refreshedSongs = [];
   List<String> suggestions = [];

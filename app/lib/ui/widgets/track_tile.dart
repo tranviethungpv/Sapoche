@@ -4,6 +4,7 @@ import '../../data/models.dart';
 import '../../format.dart';
 import '../../theme/theme.dart';
 import 'artwork.dart';
+import '../scope.dart';
 import 'like_button.dart';
 
 /// One song in a list: cover, title, artist, and something on the right.
@@ -75,11 +76,36 @@ class TrackTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      subtitle ?? track.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+                    Row(
+                      children: [
+                        // A song that is on the phone says so
+                        ListenableBuilder(
+                          listenable: AppScope.of(context).library,
+                          builder: (context, _) =>
+                              AppScope.of(context).library
+                                      .downloadState(track.videoId) ==
+                                  DownloadState.done
+                              ? Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: Icon(
+                                    Icons.download_done_rounded,
+                                    size: 15,
+                                    color: p.primary,
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                        Expanded(
+                          child: Text(
+                            subtitle ?? track.artist,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.bodyMedium?.copyWith(
+                              color: p.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

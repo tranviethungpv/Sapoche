@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/library_controller.dart';
+import '../format.dart';
 import '../data/models.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
@@ -9,6 +10,7 @@ import 'home_shell.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/delete_background.dart';
+import 'widgets/download_actions.dart';
 import 'widgets/text_dialog.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
@@ -32,6 +34,10 @@ class _Liked extends _Open {
 
 class _Recent extends _Open {
   const _Recent();
+}
+
+class _Downloaded extends _Open {
+  const _Downloaded();
 }
 
 class _Playlist extends _Open {
@@ -76,6 +82,42 @@ class _LibraryPageState extends State<LibraryPage> {
                 title: S.likedSongs,
                 tracks: library.liked,
                 onBack: () => _show(null),
+                actions: [
+                  if (library.liked.isNotEmpty)
+                    IconButton(
+                      onPressed: () => startDownload(context, library.liked),
+                      tooltip: S.downloadAll,
+                      icon: Icon(
+                        Icons.download_rounded,
+                        color: context.palette.primary,
+                      ),
+                    ),
+                ],
+              ),
+              _Downloaded() => _TrackList(
+                key: const ValueKey('downloaded'),
+                title: S.downloadedSongs,
+                tracks: [for (final d in library.downloads) d.track],
+                subtitles: [
+                  for (final d in library.downloads)
+                    '${d.track.artist} · ${switch (d.state) {
+                      DownloadState.done => formatBytes(d.bytes),
+                      DownloadState.queued => S.queuedToDownload,
+                      DownloadState.waiting => S.waitingToDownload,
+                      DownloadState.failed => S.downloadFailed,
+                    }}',
+                ],
+                onBack: () => _show(null),
+                emptyTitle: S.noDownloadsTitle,
+                emptyBody: S.noDownloadsBody,
+                actions: [
+                  if (library.downloads.isNotEmpty)
+                    TextButton(
+                      onPressed: () =>
+                          _confirmDeleteDownloads(context, library),
+                      child: const Text(S.deleteAll),
+                    ),
+                ],
               ),
               _Recent() => _TrackList(
                 key: const ValueKey('recent'),
@@ -105,6 +147,29 @@ class _LibraryPageState extends State<LibraryPage> {
         },
       ),
     );
+  }
+
+  Future<void> _confirmDeleteDownloads(
+    BuildContext context,
+    LibraryController library,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: const Text(S.deleteDownloadsQuestion),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(S.delete),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) library.clearDownloads();
   }
 
   Future<void> _confirmClear(
@@ -159,6 +224,16 @@ class _Overview extends StatelessWidget {
           title: S.recentlyPlayed,
           subtitle: S.songCount(library.recent.length),
           onTap: () => onOpen(const _Recent()),
+        ),
+        _CollectionRow(
+          leading: const _IconTile(Icons.download_done_rounded),
+          title: S.downloadedSongs,
+          subtitle: S.songCount(
+            library.downloads
+                .where((d) => d.state == DownloadState.done)
+                .length,
+          ),
+          onTap: () => onOpen(const _Downloaded()),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 22, 8, 4),
@@ -337,6 +412,12 @@ class _PlaylistPage extends StatelessWidget {
       onRemove: (track) => library.removeFromPlaylist(id, track),
       onMove: (track, to) => library.movePlaylistItem(id, track, to),
       actions: [
+        if (tracks.isNotEmpty)
+          IconButton(
+            onPressed: () => startDownload(context, tracks),
+            tooltip: S.downloadAll,
+            icon: Icon(Icons.download_rounded, color: context.palette.primary),
+          ),
         PopupMenuButton<String>(
           icon: Icon(
             Icons.more_horiz_rounded,

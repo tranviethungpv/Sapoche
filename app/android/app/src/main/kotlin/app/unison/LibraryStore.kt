@@ -29,6 +29,9 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** A song with the time it was liked or last heard, and how often it was heard. */
     data class Entry(val track: TrackRef, val at: Long, val plays: Int = 0)
 
+    /** A song to keep: [state] is queued, waiting (for Wi-Fi and a charger), done or failed. */
+    data class Download(val track: TrackRef, val state: String, val bytes: Long)
+
     /** Songs YouTube suggested for a seed, and when they were fetched. */
     data class Cached(val tracks: List<TrackRef>, val fetchedAt: Long)
 
@@ -61,12 +64,22 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         db.execSQL("CREATE INDEX history_by_song ON history(video_id)")
         createPlaylistTables(db)
         createSuggestionsTable(db)
+        createDownloadsTable(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // Each step brings the database one version forward and has a test in LibraryStoreTest
         if (oldVersion < 2) createPlaylistTables(db)
         if (oldVersion < 3) createSuggestionsTable(db)
+        if (oldVersion < 4) createDownloadsTable(db)
+    }
+
+    /** Songs to keep on this phone; the bytes are in [MediaCaches.downloads], this says which and how far along. */
+    private fun createDownloadsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE downloads(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), state TEXT NOT NULL, " +
+                "bytes INTEGER NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL)",
+        )
     }
 
     /** What YouTube listed beside a seed song, kept so suggestions show without the network. */
@@ -375,6 +388,116 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         writableDatabase.execSQL("DELETE FROM suggestions WHERE seed_video_id NOT IN ($marks)", arrayOf<Any?>(*seeds.toTypedArray()))
     }
 
+    // ------------------------------------------------------------------ downloads
+
+    /**
+     * Puts songs on the list to download. Done ones are left alone; failed ones try again; with [waiting] they
+     * wait for Wi-Fi and a charger instead of starting at once, unless already asked for the plain way.
+     */
+    suspend fun requestDownloads(tracks: List<TrackRef>, waiting: Boolean = false, at: Long = System.currentTimeMillis()) = withContext(io) {
+        val db = writableDatabase
+        val wanted = if (waiting) WAITING else QUEUED
+        db.transaction {
+            for (track in tracks) {
+                upsertTrack(track)
+                val inserted = insertWithOnConflict(
+                    "downloads",
+                    null,
+                    ContentValues().apply {
+                        put("video_id", track.videoId)
+                        put("state", wanted)
+                        put("at", at)
+                    },
+                    SQLiteDatabase.CONFLICT_IGNORE,
+                )
+                if (inserted != -1L) continue
+                // Already listed: asking again in the plain way beats waiting, and a failed one gets another go
+                execSQL(
+                    "UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ? AND (state = ? OR (state = ? AND ? = ?))",
+                    arrayOf<Any?>(wanted, track.videoId, FAILED, WAITING, wanted, QUEUED),
+                )
+            }
+        }
+        _changes.tryEmit(Unit)
+    }
+
+    /** The oldest song still to download in [state], other than those in [skip]. */
+    suspend fun nextDownload(state: String, skip: Set<String> = emptySet()): String? = withContext(io) {
+        readableDatabase.rawQuery(
+            "SELECT video_id FROM downloads WHERE state = ? ORDER BY rowid",
+            arrayOf(state),
+        ).use { c ->
+            while (c.moveToNext()) c.getString(0).let { if (it !in skip) return@use it }
+            null
+        }
+    }
+
+    suspend fun finishDownload(videoId: String, bytes: Long, at: Long = System.currentTimeMillis()) = withContext(io) {
+        writableDatabase.execSQL(
+            "UPDATE downloads SET state = ?, bytes = ?, at = ?, tries = 0 WHERE video_id = ?",
+            arrayOf<Any?>(DONE, bytes, at, videoId),
+        )
+        _changes.tryEmit(Unit)
+    }
+
+    /** One try failed. After [MAX_TRIES] the song is marked failed; true when that happened. */
+    suspend fun failDownload(videoId: String): Boolean = withContext(io) {
+        val db = writableDatabase
+        db.execSQL("UPDATE downloads SET tries = tries + 1 WHERE video_id = ?", arrayOf<Any?>(videoId))
+        db.execSQL("UPDATE downloads SET state = ? WHERE video_id = ? AND tries >= ?", arrayOf<Any?>(FAILED, videoId, MAX_TRIES))
+        _changes.tryEmit(Unit)
+        db.rawQuery("SELECT state FROM downloads WHERE video_id = ?", arrayOf(videoId)).use { it.moveToFirst() && it.getString(0) == FAILED }
+    }
+
+    /** Takes a song off the list (the caller removes its bytes). */
+    suspend fun removeDownload(videoId: String) = withContext(io) {
+        val db = writableDatabase
+        db.transaction {
+            delete("downloads", "video_id = ?", arrayOf(videoId))
+            dropUnusedTracks()
+        }
+        _changes.tryEmit(Unit)
+    }
+
+    suspend fun clearDownloads() = withContext(io) {
+        val db = writableDatabase
+        db.transaction {
+            delete("downloads", null, null)
+            dropUnusedTracks()
+        }
+        _changes.tryEmit(Unit)
+    }
+
+    /** The list: what is on the phone first, the most recent first, then what is still to come. */
+    suspend fun downloads(): List<Download> = withContext(io) {
+        readableDatabase.rawQuery(
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, d.at, 0, d.state, d.bytes " +
+                "FROM downloads d JOIN tracks t ON t.video_id = d.video_id " +
+                "ORDER BY d.state = ? DESC, CASE WHEN d.state = ? THEN d.at END DESC, d.rowid",
+            arrayOf(DONE, DONE),
+        ).use { c ->
+            val list = ArrayList<Download>(c.count)
+            while (c.moveToNext()) {
+                list += Download(
+                    TrackRef(c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4)),
+                    c.getString(7),
+                    c.getLong(8),
+                )
+            }
+            list
+        }
+    }
+
+    /** Liked songs that are not on the list yet (or failed), for downloading them by themselves. */
+    suspend fun likedToDownload(): List<TrackRef> = withContext(io) {
+        readableDatabase.rawQuery(
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, 0, 0 FROM likes l " +
+                "JOIN tracks t ON t.video_id = l.video_id LEFT JOIN downloads d ON d.video_id = l.video_id " +
+                "WHERE d.video_id IS NULL ORDER BY l.liked_at DESC",
+            null,
+        ).use { c -> entries(c).map { it.track } }
+    }
+
     // ------------------------------------------------------------------ helpers
 
     /** Adds the song's details, or brings them up to date. A length that is not known does not erase one that is. */
@@ -401,7 +524,8 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         execSQL(
             "DELETE FROM tracks WHERE video_id NOT IN (SELECT video_id FROM likes) " +
                 "AND video_id NOT IN (SELECT video_id FROM history) " +
-                "AND video_id NOT IN (SELECT video_id FROM playlist_items)",
+                "AND video_id NOT IN (SELECT video_id FROM playlist_items) " +
+                "AND video_id NOT IN (SELECT video_id FROM downloads)",
         )
     }
 
@@ -434,12 +558,17 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     companion object {
-        private const val VERSION = 3
+        private const val VERSION = 4
         const val RECENT_LIMIT = 100
         const val HISTORY_KEEP = 2000
         const val MAX_PLAYLIST = 500
         const val MAX_NAME = 60
         const val SEEDS = 3
+        const val QUEUED = "queued"
+        const val WAITING = "waiting"
+        const val DONE = "done"
+        const val FAILED = "failed"
+        const val MAX_TRIES = 3
         private const val SEED_WINDOW_MS = 14L * 24 * 60 * 60 * 1000
     }
 }

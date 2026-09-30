@@ -122,6 +122,23 @@ abstract class Backend {
   Future<void> setLiked(Track track, bool liked);
   Future<void> clearHistory();
 
+  /// The songs on the list of downloads, what is on the phone first.
+  Future<List<DownloadEntry>> downloads();
+
+  /// Asks for [tracks] to be downloaded. Gives back false, having done nothing, when the phone is on mobile
+  /// data and [allowMetered] is not set: the person has to be asked first.
+  Future<bool> download(List<Track> tracks, {bool allowMetered = false});
+
+  Future<void> removeDownload(String videoId);
+  Future<void> clearDownloads();
+
+  Future<StorageInfo> storage();
+  Future<void> clearPlayCache();
+
+  /// Size of the cache of played songs in MB; counts from the next start of the app.
+  Future<void> setCacheLimit(int mb);
+  Future<void> setAutoDownload(bool on);
+
   /// Songs to offer, from what was kept; works without a network.
   Future<List<Track>> forYou();
 
@@ -341,6 +358,43 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> clearHistory() => _call('libraryClearHistory');
+
+  @override
+  Future<List<DownloadEntry>> downloads() async => [
+    for (final e in await _call<List<Object?>>('downloads') ?? const [])
+      DownloadEntry.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<bool> download(
+    List<Track> tracks, {
+    bool allowMetered = false,
+  }) async =>
+      await _call<String>('download', {
+        'tracks': [for (final t in tracks) t.toMap()],
+        'allowMetered': allowMetered,
+      }) ==
+      'queued';
+
+  @override
+  Future<void> removeDownload(String videoId) =>
+      _call('downloadRemove', {'videoId': videoId});
+
+  @override
+  Future<void> clearDownloads() => _call('downloadClear');
+
+  @override
+  Future<StorageInfo> storage() async =>
+      StorageInfo.fromMap((await _call<Map<Object?, Object?>>('storage'))!);
+
+  @override
+  Future<void> clearPlayCache() => _call('clearPlayCache');
+
+  @override
+  Future<void> setCacheLimit(int mb) => _call('setCacheLimit', {'mb': mb});
+
+  @override
+  Future<void> setAutoDownload(bool on) => _call('setAutoDownload', {'on': on});
 
   @override
   Future<List<Track>> forYou() async => [

@@ -145,6 +145,8 @@ void main() {
 
         await tester.tap(find.text('Settings'));
         await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Leave room'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Leave room'));
         await tester.pumpAndSettle();
         expect(
@@ -557,6 +559,8 @@ void main() {
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Your name'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Your name'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Anh');
@@ -1310,6 +1314,228 @@ void main() {
       await tester.pumpAndSettle();
       expect(backend.calls.last, 'like video0 true');
       expect(find.byTooltip('Unlike'), findsWidgets);
+    });
+  });
+
+  group('downloads and storage', () {
+    const songA = Track(
+      videoId: 'aaaaaaaaaaa',
+      title: 'Alpha',
+      artist: 'Ann',
+      durMs: 100000,
+    );
+    const songB = Track(
+      videoId: 'bbbbbbbbbbb',
+      title: 'Beta',
+      artist: 'Ben',
+      durMs: 100000,
+    );
+
+    Future<FakeBackend> openSearchWith(
+      WidgetTester tester, {
+      bool metered = false,
+    }) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.metered = metered;
+      backend.searchResults = [songA];
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'alpha');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      return backend;
+    }
+
+    Future<void> openMenu(WidgetTester tester) async {
+      await tester.tap(find.byType(TrackMenu).first);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a song can be downloaded from its menu', (tester) async {
+      final backend = await openSearchWith(tester);
+      await openMenu(tester);
+      await tester.tap(find.text('Download'));
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains('download aaaaaaaaaaa metered=false'));
+      expect(find.text('Downloading 1 song'), findsOneWidget);
+
+      // While it waits the menu says so instead of offering it again
+      await openMenu(tester);
+      expect(find.text('Downloading…'), findsOneWidget);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('on mobile data the person is asked, and can say no', (
+      tester,
+    ) async {
+      final backend = await openSearchWith(tester, metered: true);
+      await openMenu(tester);
+      await tester.tap(find.text('Download'));
+      await tester.pumpAndSettle();
+      expect(find.text('Use mobile data?'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(backend.calls.where((c) => c.contains('metered=true')), isEmpty);
+      expect(backend.downloadList, isEmpty);
+    });
+
+    testWidgets('on mobile data agreeing starts the download', (tester) async {
+      final backend = await openSearchWith(tester, metered: true);
+      await openMenu(tester);
+      await tester.tap(find.text('Download'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Download').last);
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains('download aaaaaaaaaaa metered=true'));
+      expect(backend.downloadList, hasLength(1));
+    });
+
+    testWidgets('a downloaded song is marked and can be removed', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.downloadList.add(
+        const DownloadEntry(
+          track: songA,
+          state: DownloadState.done,
+          bytes: 4096,
+        ),
+      );
+      backend.searchResults = [songA];
+      backend.emit(const LibraryEvent());
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'alpha');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.download_done_rounded), findsOneWidget);
+      await openMenu(tester);
+      await tester.tap(find.text('Remove download'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('removeDownload aaaaaaaaaaa'));
+      expect(find.byIcon(Icons.download_done_rounded), findsNothing);
+    });
+
+    Future<FakeBackend> openLibrary(WidgetTester tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.downloadList.addAll([
+        const DownloadEntry(
+          track: songA,
+          state: DownloadState.done,
+          bytes: 4 * 1024 * 1024,
+        ),
+        const DownloadEntry(track: songB, state: DownloadState.queued),
+      ]);
+      backend.likedSongs = [songA, songB];
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      backend.emit(const LibraryEvent());
+      await tester.pumpAndSettle();
+      return backend;
+    }
+
+    testWidgets('the library lists what is downloaded and what waits', (
+      tester,
+    ) async {
+      await openLibrary(tester);
+      expect(find.text('Downloaded'), findsOneWidget);
+      expect(
+        find.text('1 song'),
+        findsOneWidget,
+        reason: 'only the finished one counts',
+      );
+
+      await tester.tap(find.text('Downloaded'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ann · 4.0 MB'), findsOneWidget);
+      expect(find.text('Ben · Waiting to download'), findsOneWidget);
+    });
+
+    testWidgets('all downloads can be deleted after a question', (
+      tester,
+    ) async {
+      final backend = await openLibrary(tester);
+      await tester.tap(find.text('Downloaded'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete all'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Remove every downloaded song'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains('clearDownloads'));
+      expect(find.text('Nothing downloaded'), findsOneWidget);
+    });
+
+    testWidgets('the liked songs can be downloaded in one go', (tester) async {
+      final backend = await openLibrary(tester);
+      await tester.tap(find.text('Liked songs'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Download all'));
+      await tester.pumpAndSettle();
+      expect(
+        backend.calls,
+        contains('download aaaaaaaaaaa,bbbbbbbbbbb metered=false'),
+      );
+    });
+
+    Future<FakeBackend> openSettings(WidgetTester tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.storageInfo = const StorageInfo(
+        playBytes: 50 * 1024 * 1024,
+        playLimitMb: 256,
+        downloadBytes: 12 * 1024 * 1024,
+        downloadCount: 3,
+      );
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Played songs'));
+      await tester.pumpAndSettle();
+      return backend;
+    }
+
+    testWidgets('settings show what the kept songs take', (tester) async {
+      await openSettings(tester);
+      expect(find.text('3 songs · 12.0 MB'), findsOneWidget);
+      expect(find.text('50.0 MB / 256 MB'), findsOneWidget);
+    });
+
+    testWidgets('the played songs can be cleared and their size chosen', (
+      tester,
+    ) async {
+      final backend = await openSettings(tester);
+      await tester.tap(find.text('Clear'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('clearPlayCache'));
+
+      await tester.tap(find.text('512 MB'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('cacheLimit 512'));
+    });
+
+    testWidgets('liked songs can be downloaded by themselves', (tester) async {
+      final backend = await openSettings(tester);
+      await tester.ensureVisible(find.text('Download liked songs'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Download liked songs'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('autoDownload true'));
     });
   });
 

@@ -243,4 +243,64 @@ void main() {
       },
     );
   });
+
+  group('downloads', () {
+    test('a song asked for shows as queued', () async {
+      await library.start();
+      expect(library.downloadState(_a.videoId), isNull);
+
+      expect(await library.download([_a, _b]), isTrue);
+      expect(library.downloadState(_a.videoId), DownloadState.queued);
+      expect(library.downloads.map((d) => d.track.videoId), [
+        _a.videoId,
+        _b.videoId,
+      ]);
+    });
+
+    test('on mobile data nothing starts until the person agrees', () async {
+      backend.metered = true;
+      await library.start();
+
+      expect(await library.download([_a]), isFalse);
+      expect(library.downloads, isEmpty);
+      expect(await library.download([_a], allowMetered: true), isTrue);
+      expect(library.downloadState(_a.videoId), DownloadState.queued);
+    });
+
+    test('removing one or all takes them off the list', () async {
+      backend.downloadList.addAll([
+        const DownloadEntry(track: _a, state: DownloadState.done, bytes: 10),
+        const DownloadEntry(track: _b, state: DownloadState.done, bytes: 20),
+      ]);
+      await library.start();
+      await library.removeDownload(_a.videoId);
+      expect(library.downloads.map((d) => d.track.videoId), [_b.videoId]);
+      await library.clearDownloads();
+      expect(library.downloads, isEmpty);
+      expect(library.downloadState(_b.videoId), isNull);
+    });
+
+    test('a download that cannot be asked for says so', () async {
+      await library.start();
+      final messages = <String>[];
+      library.messages.listen(messages.add);
+      backend.failWith = StateError('no worker');
+      await library.download([_a]);
+      await settle();
+      expect(messages, isNotEmpty);
+    });
+
+    test(
+      'storage is read from the native side, or is null when it cannot be',
+      () async {
+        backend.storageInfo = const StorageInfo(
+          downloadCount: 3,
+          downloadBytes: 1000,
+        );
+        expect((await library.storage())!.downloadCount, 3);
+        backend.failWith = StateError('no');
+        expect(await library.storage(), isNull);
+      },
+    );
+  });
 }

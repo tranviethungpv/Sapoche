@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/library_controller.dart';
+import '../data/models.dart';
 import '../data/room_controller.dart';
+import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
@@ -110,6 +113,7 @@ class SettingsPage extends StatelessWidget {
               ),
             ],
           ),
+          _StorageGroup(library: model.library),
           _Group(
             title: S.sync,
             footer: S.latencyTrimHelp,
@@ -223,6 +227,116 @@ class SettingsPage extends StatelessWidget {
       ),
     );
     if (confirmed == true) room.leave();
+  }
+}
+
+/// What the songs kept on the phone take, and the settings that go with them.
+class _StorageGroup extends StatefulWidget {
+  const _StorageGroup({required this.library});
+
+  final LibraryController library;
+
+  @override
+  State<_StorageGroup> createState() => _StorageGroupState();
+}
+
+class _StorageGroupState extends State<_StorageGroup> {
+  StorageInfo _info = const StorageInfo();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.library.addListener(_load);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    widget.library.removeListener(_load);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final info = await widget.library.storage();
+    if (info != null && mounted) setState(() => _info = info);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final library = widget.library;
+    return _Group(
+      title: S.storage,
+      footer: S.cacheLimitHelp,
+      children: [
+        _Row(
+          label: S.storageDownloads,
+          value:
+              '${S.songCount(_info.downloadCount)} · ${formatBytes(_info.downloadBytes)}',
+        ),
+        _Row(
+          label: S.storagePlayed,
+          value: '${formatBytes(_info.playBytes)} / ${_info.playLimitMb} MB',
+          trailing: TextButton(
+            onPressed: _info.playBytes == 0
+                ? null
+                : () async {
+                    await library.clearPlayCache();
+                    _load();
+                  },
+            child: const Text(S.clearCache),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                child: Text(S.cacheLimit, style: theme.bodyMedium),
+              ),
+              SegmentedButton<int>(
+                showSelectedIcon: false,
+                expandedInsets: EdgeInsets.zero,
+                style: SegmentedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  selectedBackgroundColor: p.primaryContainer,
+                  selectedForegroundColor: p.onPrimaryContainer,
+                  foregroundColor: p.textSecondary,
+                  side: BorderSide(color: p.outline),
+                ),
+                segments: [
+                  for (final mb in const [128, 256, 512, 1024])
+                    ButtonSegment(
+                      value: mb,
+                      label: Text(mb == 1024 ? '1 GB' : '$mb MB'),
+                    ),
+                ],
+                selected: {_info.playLimitMb},
+                onSelectionChanged: (s) async {
+                  await library.setCacheLimit(s.first);
+                  _load();
+                },
+              ),
+            ],
+          ),
+        ),
+        Material(
+          type: MaterialType.transparency,
+          child: SwitchListTile(
+            title: const Text(S.autoDownload),
+            subtitle: const Text(S.autoDownloadHelp),
+            value: _info.autoDownload,
+            onChanged: (on) async {
+              await library.setAutoDownload(on);
+              _load();
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 

@@ -130,10 +130,16 @@ class UnisonBridge(
             ensureService()
             UnisonApp.group.value?.resumeRoom()
             renewSuggestionsIfDue()
+            if (autoDownload) DownloadWorker.enqueue(activity, waiting = true)
         }
         shown.value = value
         UnisonApp.setUiVisible(value)
     }
+
+    private val autoDownload get() = prefs.getBoolean(DownloadWorker.KEY_AUTO, false)
+
+    /** On mobile data (or not knowing): songs are not fetched without asking. */
+    private fun isMetered() = activity.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered != false
 
     /**
      * Brings the suggestions up to date when the person opens the app, at most twice an hour and not on a
@@ -142,7 +148,7 @@ class UnisonBridge(
     private fun renewSuggestionsIfDue() {
         val now = SystemClock.elapsedRealtime()
         if (lastRenew != 0L && now - lastRenew < RENEW_EVERY_MS) return
-        if (activity.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered != false) return
+        if (isMetered()) return
         lastRenew = now
         scope.launch { UnisonApp.suggestions.renew(force = false) }
     }
@@ -283,7 +289,52 @@ class UnisonBridge(
             "libraryLiked" -> return UnisonApp.library.liked().map { it.toMap() }
             "libraryRecent" -> return UnisonApp.library.recent().map { it.toMap() }
             "libraryLike" -> {
-                UnisonApp.library.setLiked(trackRef(call.arguments()!!), call.argument<Boolean>("on") == true)
+                val on = call.argument<Boolean>("on") == true
+                UnisonApp.library.setLiked(trackRef(call.arguments()!!), on)
+                if (on && autoDownload) DownloadWorker.enqueue(activity, waiting = true)
+                return null
+            }
+            "downloads" -> return UnisonApp.library.downloads().map {
+                it.track.toMap() + mapOf("state" to it.state, "bytes" to it.bytes)
+            }
+            "download" -> {
+                // Songs the person asked for go on any network, but mobile data is asked about first
+                if (isMetered() && call.argument<Boolean>("allowMetered") != true) return "metered"
+                UnisonApp.library.requestDownloads(call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map(::trackRef))
+                DownloadWorker.enqueue(activity, waiting = false)
+                return "queued"
+            }
+            "downloadRemove" -> {
+                val videoId = call.argument<String>("videoId").orEmpty()
+                UnisonApp.library.removeDownload(videoId)
+                withContext(Dispatchers.IO) { UnisonApp.caches.downloads.removeResource(videoId) }
+                return null
+            }
+            "downloadClear" -> {
+                UnisonApp.library.clearDownloads()
+                withContext(Dispatchers.IO) { UnisonApp.caches.clearDownloads() }
+                return null
+            }
+            "storage" -> return mapOf(
+                "playBytes" to UnisonApp.caches.play.cacheSpace,
+                "playLimitMb" to prefs.getInt("cache_limit_mb", UnisonApp.DEFAULT_CACHE_MB),
+                "downloadBytes" to UnisonApp.caches.downloads.cacheSpace,
+                "downloadCount" to UnisonApp.library.downloads().count { it.state == LibraryStore.DONE },
+                "autoDownload" to autoDownload,
+            )
+            "clearPlayCache" -> {
+                withContext(Dispatchers.IO) { UnisonApp.caches.clearPlay() }
+                return null
+            }
+            "setCacheLimit" -> {
+                // The size of the cache is fixed when it is opened, so this counts from the next start
+                prefs.edit().putInt("cache_limit_mb", (call.argument<Number>("mb") ?: UnisonApp.DEFAULT_CACHE_MB).toInt()).apply()
+                return null
+            }
+            "setAutoDownload" -> {
+                val on = call.argument<Boolean>("on") == true
+                prefs.edit().putBoolean(DownloadWorker.KEY_AUTO, on).apply()
+                if (on) DownloadWorker.enqueue(activity, waiting = true) else DownloadWorker.cancelWaiting(activity)
                 return null
             }
             "libraryClearHistory" -> {
