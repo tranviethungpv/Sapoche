@@ -108,6 +108,9 @@ abstract final class S {
   static const addToQueue = 'Add to queue';
   static const addedToQueue = 'Added to queue';
   static const willPlayNext = 'Playing next';
+  static const alreadyInQueue = 'Already in the queue';
+  static String addedSkipped(int added, int skipped) =>
+      '$added added, $skipped already in the queue';
   static const notInRoom = 'Join a room first';
 
   // Downloads and storage

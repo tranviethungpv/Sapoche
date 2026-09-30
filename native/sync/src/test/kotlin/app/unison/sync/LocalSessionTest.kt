@@ -72,6 +72,29 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `a song already waiting in the queue is not added again`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        h.session.add(listOf(track(1), track(2), track(3), track(3)), next = false)
+        step()
+        assertEquals(listOf("Song 1", "Song 2", "Song 3"), h.titles())
+        assertTrue(h.problems.isEmpty())
+    }
+
+    @Test
+    fun `a song that was played can be added again`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        h.session.next()
+        step()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        assertEquals(listOf("Song 1", "Song 2", "Song 1"), h.titles())
+    }
+
+    @Test
     fun `play next goes right after the current song`() = runTest {
         val h = harness()
         h.session.add(listOf(track(1), track(2)), next = false)

@@ -398,4 +398,71 @@ void main() {
       expect(await controller.suggest('lofi'), isEmpty);
     },
   );
+
+  group('a song that is waiting in the queue is not added again', () {
+    Track song(String id) =>
+        Track(videoId: id, title: id, artist: 'x', durMs: 1000);
+
+    test(
+      'the one playing and those to come count, those played do not',
+      () async {
+        // video0 was played, video1 plays now, video2 is to come
+        backend.emit(StateEvent(sampleRoom(index: 1)));
+        await settle();
+        expect(controller.snapshot.isQueued('video0'), isFalse);
+        expect(controller.snapshot.isQueued('video1'), isTrue);
+        expect(controller.snapshot.isQueued('video2'), isTrue);
+        expect(controller.snapshot.isQueued('other'), isFalse);
+
+        await controller.add(song('video1'));
+        await controller.add(song('video2'), playNext: true);
+        expect(backend.calls.where((c) => c.startsWith('add')), isEmpty);
+
+        await controller.add(song('video0'));
+        expect(backend.calls.last, 'add video0 next=false');
+      },
+    );
+
+    test('adding many leaves out what is queued and what repeats', () async {
+      backend.emit(StateEvent(sampleRoom(index: 1)));
+      await settle();
+      await controller.addMany([
+        song('video2'),
+        song('new1'),
+        song('new2'),
+        song('new1'),
+      ]);
+      expect(backend.calls.last, 'addMany new1,new2 next=false');
+
+      backend.calls.clear();
+      await controller.addMany([song('video1'), song('video2')]);
+      expect(backend.calls, isEmpty, reason: 'nothing new, nothing sent');
+    });
+
+    test('outside a room a queue that has played through is empty of waiting songs', () async {
+      backend.emit(
+        StateEvent(
+          RoomSnapshot(
+            phase: 'idle',
+            index: 0,
+            queue: [
+              for (final id in ['a', 'b'])
+                QueueEntry(
+                  id: id,
+                  videoId: id,
+                  title: id,
+                  artist: 'x',
+                  durMs: 1000,
+                  addedBy: '',
+                ),
+            ],
+          ),
+        ),
+      );
+      await settle();
+      expect(controller.snapshot.isQueued('a'), isFalse);
+      await controller.add(song('a'));
+      expect(backend.calls.last, 'add a next=false');
+    });
+  });
 }

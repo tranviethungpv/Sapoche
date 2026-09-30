@@ -16,6 +16,7 @@ import 'package:unison/ui/scope.dart';
 import 'package:unison/ui/widgets/shimmer.dart';
 import 'package:unison/ui/widgets/mini_player.dart';
 import 'package:unison/ui/widgets/track_menu.dart';
+import 'package:unison/ui/widgets/track_tile.dart';
 
 import 'fake_backend.dart';
 
@@ -783,6 +784,42 @@ void main() {
     await tester.tap(find.text('Songs'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(backend.calls.last, 'search lofi songs');
+  });
+
+  testWidgets('a song that is queued already cannot be added from search', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 3)));
+    await tester.pump(const Duration(milliseconds: 500));
+    // Song 1 is waiting in the queue; "Fresh song" is not
+    backend.searchResults = const [
+      Track(
+        videoId: 'video1',
+        title: 'Song 1',
+        artist: 'Artist 1',
+        durMs: 1000,
+      ),
+      Track(videoId: 'fresh', title: 'Fresh song', artist: 'x', durMs: 1000),
+    ];
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'song');
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TrackTile, 'Song 1'));
+    await tester.pump();
+    expect(find.text('Already in the queue'), findsOneWidget);
+    expect(backend.calls.where((c) => c.startsWith('add')), isEmpty);
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pump();
+    expect(backend.calls.last, 'add fresh next=false');
+    await tester.pump(const Duration(seconds: 2));
   });
 
   testWidgets(

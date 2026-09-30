@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../data/models.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
+import '../theme/palette.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
@@ -217,19 +218,27 @@ class _SearchPageState extends State<SearchPage> {
     HapticFeedback.selectionClick();
     final query = _lastQuery;
     if (query != null) AppScope.of(context).searches.add(query);
-    final ids = tracks.map((t) => t.videoId).toList();
+    // What is waiting in the queue is not added twice
+    final fresh = _room.snapshot.fresh(tracks);
+    final ids = fresh.map((t) => t.videoId).toList();
     setState(() => _added.addAll(ids));
-    if (tracks.length == 1) {
-      await _room.add(tracks.single, playNext: playNext);
-    } else {
-      await _room.addMany(tracks, playNext: playNext);
+    if (fresh.length == 1) {
+      await _room.add(fresh.single, playNext: playNext);
+    } else if (fresh.isNotEmpty) {
+      await _room.addMany(fresh, playNext: playNext);
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(confirmation),
+          content: Text(
+            fresh.isEmpty
+                ? S.alreadyInQueue
+                : fresh.length < tracks.length
+                ? S.addedSkipped(fresh.length, tracks.length - fresh.length)
+                : confirmation,
+          ),
           duration: const Duration(milliseconds: 1400),
         ),
       );
@@ -664,6 +673,15 @@ class _Actions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final room = AppScope.roomOf(context);
+    return ListenableBuilder(
+      listenable: room,
+      builder: (context, _) =>
+          _row(p, added || room.snapshot.isQueued(track.videoId)),
+    );
+  }
+
+  Widget _row(Palette p, bool added) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

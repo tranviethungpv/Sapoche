@@ -169,15 +169,19 @@ class LocalSession(
 
     // ------------------------------------------------------------------ queue
 
-    /** Adds songs at the end, or right after the current one with [next]. With nothing to play, the first one starts. */
+    /**
+     * Adds songs at the end, or right after the current one with [next]. With nothing to play, the first one
+     * starts. A song that is waiting in the queue already is left out.
+     */
     fun add(tracks: List<TrackRef>, next: Boolean) {
         val s = snapshot.value
+        val startNow = s.queue.isEmpty() || s.finished
+        val fresh = Queues.fresh(tracks, s.queue, if (s.finished) s.queue.size else s.index)
         val room = MAX_QUEUE - s.queue.size
-        if (tracks.isNotEmpty() && room <= 0) return problem("The queue is full")
-        val items = tracks.take(room).map { QueueItem(newId(), it.videoId, it.title, it.artist, it.thumb, it.durMs, addedBy = "") }
+        if (fresh.isNotEmpty() && room <= 0) return problem("The queue is full")
+        val items = fresh.take(room).map { QueueItem(newId(), it.videoId, it.title, it.artist, it.thumb, it.durMs, addedBy = "") }
         if (items.isEmpty()) return
 
-        val startNow = s.queue.isEmpty() || s.finished
         val at = if (next && !startNow) s.index + 1 else s.queue.size
         val queue = s.queue.toMutableList().also { it.addAll(at, items) }
         _snapshot.update { it.copy(queue = queue) }

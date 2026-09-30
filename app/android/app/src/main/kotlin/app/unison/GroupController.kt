@@ -17,6 +17,7 @@ import app.unison.sync.LocalSession
 import app.unison.sync.QueueItem
 import app.unison.sync.Protocol
 import app.unison.sync.QueueFile
+import app.unison.sync.Queues
 import app.unison.sync.RoomClient
 import app.unison.sync.Sleep
 import app.unison.sync.SleepTimer
@@ -439,7 +440,11 @@ class GroupController(
     fun requestClearQueue() = onQueue({ it.clear() }) { send(Protocol.queueClear()) }
     fun requestShuffle() = onQueue({ it.shuffle() }) { send(Protocol.queueShuffle()) }
     fun requestRepeat(mode: String) = onQueue({ it.setRepeat(mode) }) { send(Protocol.repeat(mode)) }
-    fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = onQueue({ it.add(tracks, playNext) }) { send(Protocol.queueAddMany(tracks, playNext)) }
+    fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = onQueue({ it.add(tracks, playNext) }) {
+        // What is waiting in the room's queue is not added twice
+        val fresh = Queues.fresh(tracks, queue(), session?.snapshot?.value?.state?.index ?: 0)
+        fresh.isEmpty() || send(Protocol.queueAddMany(fresh, playNext))
+    }
     fun requestRemove(itemId: String) = onQueue({ it.remove(itemId) }) { send(Protocol.queueRemove(itemId)) }
     fun requestMove(itemId: String, toIndex: Int) = onQueue({ it.move(itemId, toIndex) }) { send(Protocol.queueMove(itemId, toIndex)) }
 

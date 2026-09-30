@@ -235,16 +235,23 @@ class RoomController extends ChangeNotifier {
 
   // ------------------------------------------------------------------ queue
 
-  Future<void> add(Track track, {bool playNext = false}) =>
-      _run(() => _backend.add(track, playNext: playNext));
+  /// Songs that are waiting in the queue already are not added again.
+  Future<void> add(Track track, {bool playNext = false}) async {
+    if (_snapshot.isQueued(track.videoId)) return;
+    await _run(() => _backend.add(track, playNext: playNext));
+  }
+
   Future<void> remove(QueueEntry entry) =>
       _run(() => _backend.remove(entry.id));
   Future<void> move(QueueEntry entry, int toIndex) =>
       _run(() => _backend.move(entry.id, toIndex));
   Future<void> clearQueue() => _run(_backend.clear);
   Future<void> shuffle() => _run(_backend.shuffle);
-  Future<void> addMany(List<Track> tracks, {bool playNext = false}) =>
-      _run(() => _backend.addMany(tracks, playNext: playNext));
+  Future<void> addMany(List<Track> tracks, {bool playNext = false}) async {
+    final fresh = _snapshot.fresh(tracks);
+    if (fresh.isEmpty) return;
+    await _run(() => _backend.addMany(fresh, playNext: playNext));
+  }
 
   /// Outside a room: replaces the queue with [tracks] and starts them. In a room the queue belongs
   /// to everybody, so they are only added to it.

@@ -511,6 +511,10 @@ class _TrackList extends StatelessWidget {
     }
 
     Future<void> add(Track track, {bool playNext = false}) async {
+      if (room.snapshot.isQueued(track.videoId)) {
+        confirm(S.alreadyInQueue);
+        return;
+      }
       await room.add(track, playNext: playNext);
       if (context.mounted) {
         confirm(playNext ? S.willPlayNext : S.addedToQueue);

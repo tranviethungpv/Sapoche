@@ -386,6 +386,22 @@ class RoomSnapshot {
   List<QueueEntry> get upNext =>
       myIndex + 1 < queue.length ? queue.sublist(myIndex + 1) : const [];
 
+  /// The song is waiting in the queue: playing now or still to come. One that was played already is not.
+  bool isQueued(String videoId) {
+    // Outside a room an idle queue has played through
+    if (!inRoom && phase == 'idle') return false;
+    return queue.skip(index).any((e) => e.videoId == videoId);
+  }
+
+  /// [tracks] without those that are waiting in the queue already, and without repeats.
+  List<T> fresh<T extends Track>(List<T> tracks) {
+    final seen = <String>{};
+    return [
+      for (final t in tracks)
+        if (!isQueued(t.videoId) && seen.add(t.videoId)) t,
+    ];
+  }
+
   /// People who are really there; someone whose connection went quiet does not count.
   int get listeningCount => members.where((m) => !m.away).length;
   int get awayCount => members.where((m) => m.away).length;
