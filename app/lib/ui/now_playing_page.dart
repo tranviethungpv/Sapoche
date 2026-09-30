@@ -10,6 +10,7 @@ import 'player_sheet.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
+import 'widgets/like_button.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
 import 'widgets/video_view.dart';
@@ -151,6 +152,7 @@ class _Body extends StatelessWidget {
                         ],
                       ),
                     ),
+                    LikeButton(track: current, size: 26),
                     _RepeatButton(controller: controller),
                   ],
                 ),

@@ -26,6 +26,23 @@ class Track {
   );
 }
 
+/// A song from the history: when it was last heard and how often.
+class HistoryEntry {
+  const HistoryEntry({required this.track, required this.at, this.plays = 1});
+
+  final Track track;
+
+  /// When it was last heard.
+  final DateTime at;
+  final int plays;
+
+  factory HistoryEntry.fromMap(Map<Object?, Object?> map) => HistoryEntry(
+    track: Track.fromMap(map),
+    at: DateTime.fromMillisecondsSinceEpoch((map['at'] as num?)?.toInt() ?? 0),
+    plays: (map['plays'] as num?)?.toInt() ?? 1,
+  );
+}
+
 /// A playlist found by search: what it is, before its songs are fetched.
 class PlaylistRef {
   const PlaylistRef({

@@ -152,6 +152,34 @@ class FakeBackend implements Backend {
   Future<void> setGuestControl(GuestControl mode) =>
       _record('guestControl ${mode.name}');
 
+  List<Track> likedSongs = [];
+  List<HistoryEntry> recentSongs = [];
+
+  @override
+  Future<List<Track>> liked() async {
+    await _record('liked');
+    return [...likedSongs];
+  }
+
+  @override
+  Future<List<HistoryEntry>> recent() async {
+    await _record('recent');
+    return [...recentSongs];
+  }
+
+  @override
+  Future<void> setLiked(Track track, bool liked) async {
+    await _record('like ${track.videoId} $liked');
+    likedSongs.removeWhere((t) => t.videoId == track.videoId);
+    if (liked) likedSongs.insert(0, track);
+  }
+
+  @override
+  Future<void> clearHistory() async {
+    await _record('clearHistory');
+    recentSongs = [];
+  }
+
   @override
   Future<void> setTrim(int ms) => _record('setTrim $ms');
 

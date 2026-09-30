@@ -12,6 +12,7 @@ import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/shimmer.dart';
+import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 
 /// Search YouTube (or paste a link) and put songs on the room's queue.
@@ -342,6 +343,7 @@ class _SearchPageState extends State<SearchPage> {
               track: track,
               onTap: () => _add(track),
               trailing: _Actions(
+                track: track,
                 added: _added.contains(track.videoId),
                 onAdd: () => _add(track),
                 onPlayNext: () => _add(track, playNext: true),
@@ -477,11 +479,13 @@ class _PlaylistRow extends StatelessWidget {
 
 class _Actions extends StatelessWidget {
   const _Actions({
+    required this.track,
     required this.added,
     required this.onAdd,
     required this.onPlayNext,
   });
 
+  final Track track;
   final bool added;
   final VoidCallback onAdd;
   final VoidCallback onPlayNext;
@@ -515,21 +519,7 @@ class _Actions extends StatelessWidget {
                   icon: const Icon(Icons.add_rounded),
                 ),
         ),
-        PopupMenuButton<String>(
-          icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
-          color: p.brightness == Brightness.light
-              ? const Color(0xFFFFF7F9)
-              : const Color(0xFF2B1F25),
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          onSelected: (value) => value == 'next' ? onPlayNext() : onAdd(),
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 'next', child: Text(S.playNext)),
-            PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
-          ],
-        ),
+        TrackMenu(track: track, onAdd: onAdd, onPlayNext: onPlayNext),
       ],
     );
   }

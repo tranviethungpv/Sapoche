@@ -33,6 +33,11 @@ class NoticeEvent extends BackendEvent {
   final String? title;
 }
 
+/// Liked songs or the history changed, possibly while the screen was off.
+class LibraryEvent extends BackendEvent {
+  const LibraryEvent();
+}
+
 class ErrorEvent extends BackendEvent {
   const ErrorEvent(this.error);
   final ServerError error;
@@ -108,6 +113,15 @@ abstract class Backend {
   /// Opens the system share sheet with [text].
   Future<void> share(String text);
 
+  /// Liked songs, the most recently liked first.
+  Future<List<Track>> liked();
+
+  /// Songs heard, once each, the most recent first.
+  Future<List<HistoryEntry>> recent();
+
+  Future<void> setLiked(Track track, bool liked);
+  Future<void> clearHistory();
+
   Future<void> setTrim(int ms);
   Future<List<String>> log();
 }
@@ -122,6 +136,7 @@ class NativeBackend implements Backend {
     final json = jsonDecode(raw as String) as Map<String, dynamic>;
     return switch (json['type']) {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
+      'library' => const LibraryEvent(),
       'invite' => InviteEvent(json['code'] as String),
       'notice' => NoticeEvent(
         kind: json['kind'] as String,
@@ -292,6 +307,31 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> share(String text) => _call('share', {'text': text});
+
+  @override
+  Future<List<Track>> liked() async => [
+    for (final e in await _call<List<Object?>>('libraryLiked') ?? const [])
+      Track.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<List<HistoryEntry>> recent() async => [
+    for (final e in await _call<List<Object?>>('libraryRecent') ?? const [])
+      HistoryEntry.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<void> setLiked(Track track, bool liked) => _call('libraryLike', {
+    'videoId': track.videoId,
+    'title': track.title,
+    'artist': track.artist,
+    'thumb': track.thumb,
+    'durMs': track.durMs,
+    'on': liked,
+  });
+
+  @override
+  Future<void> clearHistory() => _call('libraryClearHistory');
 
   @override
   Future<void> setTrim(int ms) => _call('setTrim', {'ms': ms});

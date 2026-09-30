@@ -18,6 +18,7 @@ abstract final class S {
   static const tabListen = 'Listen';
   static const tabRoom = 'Room';
   static const tabSearch = 'Search';
+  static const tabLibrary = 'Library';
   static const tabSettings = 'Settings';
 
   // Room
@@ -108,6 +109,29 @@ abstract final class S {
   static const addedToQueue = 'Added to queue';
   static const willPlayNext = 'Playing next';
   static const notInRoom = 'Join a room first';
+
+  // Library
+  static const likedSongs = 'Liked songs';
+  static const recentlyPlayed = 'Recently played';
+  static String songCount(int n) => n == 1 ? '1 song' : '$n songs';
+  static const like = 'Like';
+  static const unlike = 'Unlike';
+  static const play = 'Play';
+  static const backToLibrary = 'Library';
+  static const clearHistory = 'Clear history';
+  static const clearHistoryQuestion =
+      'Remove everything from your listening history? Liked songs are kept.';
+  static const noLikedTitle = 'No liked songs yet';
+  static const noLikedBody = 'Tap the heart on a song to keep it here.';
+  static const noRecentTitle = 'Nothing played yet';
+  static const noRecentBody = 'Songs you listen to for a while show up here.';
+  static String ago(Duration d) {
+    if (d.inMinutes < 1) return 'Just now';
+    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+    if (d.inHours < 24) return '${d.inHours} h ago';
+    if (d.inDays == 1) return 'Yesterday';
+    return '${d.inDays} days ago';
+  }
 
   // Player
   static const buffering = 'Loading…';

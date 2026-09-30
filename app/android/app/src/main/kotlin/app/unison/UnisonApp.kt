@@ -16,6 +16,7 @@ class UnisonApp : Application() {
         videoMaxHeight = getSharedPreferences("unison", MODE_PRIVATE).getInt("video_height", DEFAULT_VIDEO_HEIGHT)
         resolver = NewPipeResolver()
         streams = StreamCache(resolver, Probe())
+        library = LibraryStore(this)
     }
 
     companion object {
@@ -28,6 +29,10 @@ class UnisonApp : Application() {
         lateinit var resolver: NewPipeResolver
             private set
         lateinit var streams: StreamCache
+            private set
+
+        /** Liked songs and listening history; opened when first used. */
+        lateinit var library: LibraryStore
             private set
 
         private val groupFlow = MutableStateFlow<GroupController?>(null)

@@ -68,6 +68,9 @@ class UnisonBridge(
     /** Last structural state sent, so an unchanged room is not sent again. */
     private var lastState: String? = null
 
+    /** The library changed while the screen was off; the UI is told when it comes back. */
+    private var libraryDirty = false
+
     /** Where the player's picture is drawn for Flutter's Texture widget; made when first asked for. */
     private var picture: TextureRegistry.SurfaceProducer? = null
 
@@ -76,6 +79,11 @@ class UnisonBridge(
         EventChannel(messenger, "app.unison/state").setStreamHandler(this)
         connectToService()
         scope.launch { UnisonApp.serviceStopping.collect { releaseService() } }
+        scope.launch {
+            UnisonApp.library.changes.collect {
+                if (visible) emit(UiJson.library()) else libraryDirty = true
+            }
+        }
     }
 
     /** Connecting a controller is what starts the playback service and keeps it bound to the UI. */
@@ -112,6 +120,10 @@ class UnisonBridge(
     fun setVisible(value: Boolean) {
         if (value) {
             lastState = null // a UI that just came back wants the full picture again
+            if (libraryDirty) {
+                libraryDirty = false
+                emit(UiJson.library())
+            }
             ensureService()
             UnisonApp.group.value?.resumeRoom()
         }
@@ -239,6 +251,16 @@ class UnisonBridge(
             "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true)
             "lookup" -> return lookup(call.argument<String>("text").orEmpty())
             "roomInfo" -> return roomInfo(call.argument<String>("code").orEmpty())
+            "libraryLiked" -> return UnisonApp.library.liked().map { it.toMap() }
+            "libraryRecent" -> return UnisonApp.library.recent().map { it.toMap() }
+            "libraryLike" -> {
+                UnisonApp.library.setLiked(trackRef(call.arguments()!!), call.argument<Boolean>("on") == true)
+                return null
+            }
+            "libraryClearHistory" -> {
+                UnisonApp.library.clearHistory()
+                return null
+            }
             "share" -> {
                 share(call.argument<String>("text").orEmpty())
                 return null
@@ -313,29 +335,13 @@ class UnisonBridge(
                     "shuffle" -> group.requestShuffle()
                     "repeat" -> group.requestRepeat(call.argument<String>("mode").orEmpty())
                     "addMany" -> group.requestAddMany(
-                        call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map {
-                            TrackRef(
-                                videoId = it["videoId"] as String,
-                                title = it["title"] as String,
-                                artist = it["artist"] as? String ?: "",
-                                thumb = it["thumb"] as? String,
-                                durMs = (it["durMs"] as? Number)?.toLong() ?: 0L,
-                            )
-                        },
+                        call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map(::trackRef),
                         call.argument<Boolean>("next") ?: false,
                     )
                     "remove" -> group.requestRemove(call.argument<String>("id").orEmpty())
                     "move" -> group.requestMove(call.argument<String>("id").orEmpty(), call.argument<Int>("to") ?: 0)
                     "add" -> group.requestAddMany(
-                        listOf(
-                            TrackRef(
-                                videoId = call.argument<String>("videoId").orEmpty(),
-                                title = call.argument<String>("title").orEmpty(),
-                                artist = call.argument<String>("artist").orEmpty(),
-                                thumb = call.argument<String>("thumb"),
-                                durMs = (call.argument<Number>("durMs") ?: 0).toLong(),
-                            ),
-                        ),
+                        listOf(trackRef(call.arguments()!!)),
                         call.argument<Boolean>("next") ?: false,
                     )
                     else -> throw UnsupportedOperationException(call.method)
@@ -439,6 +445,25 @@ class UnisonBridge(
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         activity.startActivity(Intent.createChooser(send, null))
     }
+
+    /** A song as the UI sends it. */
+    private fun trackRef(map: Map<String, Any?>) = TrackRef(
+        videoId = map["videoId"] as String,
+        title = map["title"] as String,
+        artist = map["artist"] as? String ?: "",
+        thumb = map["thumb"] as? String,
+        durMs = (map["durMs"] as? Number)?.toLong() ?: 0L,
+    )
+
+    private fun LibraryStore.Entry.toMap() = mapOf(
+        "videoId" to track.videoId,
+        "title" to track.title,
+        "artist" to track.artist,
+        "thumb" to track.thumb,
+        "durMs" to track.durMs,
+        "at" to at,
+        "plays" to plays,
+    )
 
     private fun TrackInfo.toMap() = mapOf(
         "videoId" to videoId,

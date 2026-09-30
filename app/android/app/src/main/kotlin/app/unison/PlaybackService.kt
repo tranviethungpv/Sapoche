@@ -54,6 +54,7 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private lateinit var player: ExoPlayer
     private lateinit var group: GroupController
+    private lateinit var history: ListenHistory
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -109,6 +110,7 @@ class PlaybackService : MediaSessionService() {
         player.setPreloadConfiguration(ExoPlayer.PreloadConfiguration(10_000_000L))
         player.addListener(PlayerEvents())
         player.addAnalyticsListener(LoadEvents())
+        history = ListenHistory(player, UnisonApp.library, scope) { EventLog.d("library", it) }.also { it.start() }
 
         group = GroupController(this, player, getSharedPreferences("unison", MODE_PRIVATE), QueueFile(File(filesDir, "local_queue.json")))
         UnisonApp.setGroup(group)
@@ -260,6 +262,7 @@ class PlaybackService : MediaSessionService() {
         EventLog.flush()
         main.removeCallbacks(heartbeat)
         main.removeCallbacks(stallWatch)
+        history.stop()
         scope.cancel()
         group.release()
         UnisonApp.setGroup(null)

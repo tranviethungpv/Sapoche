@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unison/app.dart';
 import 'package:unison/data/app_settings.dart';
 import 'package:unison/data/backend.dart';
+import 'package:unison/data/library_controller.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/data/recent_rooms.dart';
 import 'package:unison/data/room_controller.dart';
@@ -13,6 +14,7 @@ import 'package:unison/ui/now_playing_page.dart';
 import 'package:unison/ui/scope.dart';
 import 'package:unison/ui/widgets/shimmer.dart';
 import 'package:unison/ui/widgets/mini_player.dart';
+import 'package:unison/ui/widgets/track_menu.dart';
 
 import 'fake_backend.dart';
 
@@ -30,13 +32,20 @@ Future<(FakeBackend, RoomController)> pumpApp(
   final backend = FakeBackend();
   final recents = await RecentRooms.load();
   final room = RoomController(backend, recents: recents);
+  final library = LibraryController(backend);
   final settings = await AppSettings.load();
   await tester.pumpWidget(
     UnisonApp(
-      model: AppModel(room: room, settings: settings, recents: recents),
+      model: AppModel(
+        room: room,
+        settings: settings,
+        recents: recents,
+        library: library,
+      ),
     ),
   );
   await room.start();
+  await library.start();
   return (backend, room);
 }
 
@@ -967,6 +976,148 @@ void main() {
     await tester.tap(find.byType(MiniPlayer));
     await tester.pumpAndSettle();
     expect(find.byType(NowPlayingPage), findsOneWidget);
+  });
+
+  group('the library', () {
+    const songA = Track(
+      videoId: 'aaaaaaaaaaa',
+      title: 'Alpha',
+      artist: 'Ann',
+      durMs: 100000,
+    );
+    const songB = Track(
+      videoId: 'bbbbbbbbbbb',
+      title: 'Beta',
+      artist: 'Ben',
+      durMs: 100000,
+    );
+
+    Future<FakeBackend> openLibrary(WidgetTester tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.likedSongs = [songA, songB];
+      backend.recentSongs = [
+        HistoryEntry(
+          track: songB,
+          at: DateTime.now().subtract(const Duration(minutes: 5)),
+        ),
+      ];
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      backend.emit(const LibraryEvent());
+      await tester.pumpAndSettle();
+      return backend;
+    }
+
+    testWidgets('lists its collections with their sizes', (tester) async {
+      await openLibrary(tester);
+      expect(find.text('Liked songs'), findsOneWidget);
+      expect(find.text('2 songs'), findsOneWidget);
+      expect(find.text('Recently played'), findsOneWidget);
+      expect(find.text('1 song'), findsOneWidget);
+    });
+
+    testWidgets('play outside a room replaces the queue with the liked songs', (
+      tester,
+    ) async {
+      final backend = await openLibrary(tester);
+      await tester.tap(find.text('Liked songs'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alpha'), findsOneWidget);
+
+      await tester.tap(find.text('Play'));
+      await tester.pumpAndSettle();
+      final tail = backend.calls.where(
+        (c) => c == 'clear' || c.startsWith('addMany'),
+      );
+      expect(tail, ['clear', 'addMany aaaaaaaaaaa,bbbbbbbbbbb next=false']);
+    });
+
+    testWidgets('a song tapped plays from there, with the rest behind it', (
+      tester,
+    ) async {
+      final backend = await openLibrary(tester);
+      await tester.tap(find.text('Liked songs'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Beta'));
+      await tester.pumpAndSettle();
+      expect(backend.calls.last, 'addMany bbbbbbbbbbb next=false');
+    });
+
+    testWidgets('in a room the songs are added, never replacing the queue', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.likedSongs = [songA];
+      backend.emit(StateEvent(sampleRoom()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      backend.emit(const LibraryEvent());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Liked songs'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Play'), findsNothing);
+      await tester.tap(find.text('Add all'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, isNot(contains('clear')));
+      expect(backend.calls.last, 'addMany aaaaaaaaaaa next=false');
+    });
+
+    testWidgets('an unliked song leaves the liked list', (tester) async {
+      final backend = await openLibrary(tester);
+      await tester.tap(find.text('Liked songs'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TrackMenu).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Unlike'));
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains('like aaaaaaaaaaa false'));
+      expect(find.text('Alpha'), findsNothing);
+      expect(find.text('Beta'), findsOneWidget);
+    });
+
+    testWidgets('the history says how long ago, and can be cleared', (
+      tester,
+    ) async {
+      final backend = await openLibrary(tester);
+      await tester.tap(find.text('Recently played'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ben · 5 min ago'), findsOneWidget);
+
+      await tester.tap(find.text('Clear history'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clear'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('clearHistory'));
+      expect(find.text('Ben · 5 min ago'), findsNothing);
+    });
+
+    testWidgets('the heart in the full player likes the song that is playing', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom()));
+      backend.emit(
+        const PositionEvent(
+          PlayerPosition(playing: true, positionMs: 4000, durationMs: 200000),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byType(MiniPlayer));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+
+      await tester.tap(find.byTooltip('Like').first);
+      await tester.pumpAndSettle();
+      expect(backend.calls.last, 'like video0 true');
+      expect(find.byTooltip('Unlike'), findsWidgets);
+    });
   });
 
   testWidgets('the player only says in sync when the drift is small', (

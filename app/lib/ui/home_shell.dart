@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'library_page.dart';
 import 'player_sheet.dart';
 import 'room_page.dart';
 import 'rooms_sheet.dart';
@@ -32,6 +33,7 @@ class _HomeShellState extends State<HomeShell>
   int _tab = 0;
   late final _sheet = PlayerSheetController(this);
   StreamSubscription<String>? _messages;
+  StreamSubscription<String>? _libraryMessages;
   StreamSubscription<Notice>? _notices;
   RoomController? _watched;
   String? _precachedCover;
@@ -42,6 +44,12 @@ class _HomeShellState extends State<HomeShell>
     if (_messages != null) return;
     final room = _watched = AppScope.roomOf(context);
     _messages = room.messages.listen((text) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(text)));
+    });
+    _libraryMessages = AppScope.of(context).library.messages.listen((text) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -75,6 +83,7 @@ class _HomeShellState extends State<HomeShell>
     _watched?.invite.removeListener(_onInvite);
     _watched?.removeListener(_precacheCover);
     _messages?.cancel();
+    _libraryMessages?.cancel();
     _notices?.cancel();
     _sheet.dispose();
     super.dispose();
@@ -144,6 +153,7 @@ class _HomeShellState extends State<HomeShell>
           for (final (i, page) in [
             RoomPage(onAddSongs: () => _select(1)),
             const SearchPage(),
+            const LibraryPage(),
             const SettingsPage(),
           ].indexed)
             TickerMode(enabled: i == _tab, child: page),
@@ -203,6 +213,7 @@ class _TabBar extends StatelessWidget {
   static const _items = [
     (Icons.graphic_eq_rounded, S.tabListen),
     (Icons.search_rounded, S.tabSearch),
+    (Icons.library_music_rounded, S.tabLibrary),
     (Icons.tune_rounded, S.tabSettings),
   ];
 

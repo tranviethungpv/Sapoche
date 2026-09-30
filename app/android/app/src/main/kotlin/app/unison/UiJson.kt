@@ -68,6 +68,9 @@ object UiJson {
             .put("videoHeight", player.videoHeight)
             .toString()
 
+    /** Liked songs or the history changed: the UI reads them again. */
+    fun library(): String = JSONObject().put("type", "library").toString()
+
     /** An invitation link was opened: the UI offers to join that room. */
     fun invite(code: String): String = JSONObject().put("type", "invite").put("code", code).toString()
 

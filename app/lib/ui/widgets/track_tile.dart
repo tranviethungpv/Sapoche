@@ -4,6 +4,7 @@ import '../../data/models.dart';
 import '../../format.dart';
 import '../../theme/theme.dart';
 import 'artwork.dart';
+import 'like_button.dart';
 
 /// One song in a list: cover, title, artist, and something on the right.
 class TrackTile extends StatelessWidget {
@@ -86,12 +87,13 @@ class TrackTile extends StatelessWidget {
               if (trailing != null) ...[
                 const SizedBox(width: 8),
                 trailing!,
-              ] else if (track.durMs > 0) ...[
-                const SizedBox(width: 8),
-                Text(
-                  formatDuration(track.durMs),
-                  style: theme.bodySmall?.copyWith(color: p.textTertiary),
-                ),
+              ] else ...[
+                LikeButton(track: track, size: 20),
+                if (track.durMs > 0)
+                  Text(
+                    formatDuration(track.durMs),
+                    style: theme.bodySmall?.copyWith(color: p.textTertiary),
+                  ),
               ],
             ],
           ),

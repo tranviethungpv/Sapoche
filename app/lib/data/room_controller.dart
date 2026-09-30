@@ -97,6 +97,8 @@ class RoomController extends ChangeNotifier {
         player.value = position;
       case InviteEvent(:final code):
         invite.value = code;
+      case LibraryEvent():
+        break; // LibraryController listens for this itself
       case ErrorEvent(:final error):
         final text = _describe(error);
         if (text != null) _messages.add(text);
@@ -236,6 +238,13 @@ class RoomController extends ChangeNotifier {
   Future<void> shuffle() => _run(_backend.shuffle);
   Future<void> addMany(List<Track> tracks, {bool playNext = false}) =>
       _run(() => _backend.addMany(tracks, playNext: playNext));
+
+  /// Outside a room: replaces the queue with [tracks] and starts them. In a room the queue belongs
+  /// to everybody, so they are only added to it.
+  Future<void> playTracks(List<Track> tracks) async {
+    if (!_snapshot.inRoom) await _run(_backend.clear);
+    await addMany(tracks);
+  }
 
   Future<void> cycleRepeat() =>
       _run(() => _backend.setRepeat(_snapshot.repeat.next));

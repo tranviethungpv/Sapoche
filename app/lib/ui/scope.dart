@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../data/app_settings.dart';
+import '../data/library_controller.dart';
 import '../data/recent_rooms.dart';
 import '../data/room_controller.dart';
 
@@ -10,6 +11,7 @@ class AppModel {
     required this.room,
     required this.settings,
     required this.recents,
+    required this.library,
   });
 
   final RoomController room;
@@ -17,6 +19,9 @@ class AppModel {
 
   /// Rooms this device has been in.
   final RecentRooms recents;
+
+  /// Liked songs and history.
+  final LibraryController library;
 }
 
 class AppScope extends InheritedWidget {
