@@ -9,8 +9,10 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
+import 'widgets/avatars.dart';
 import 'widgets/text_dialog.dart';
 
+/// A short list of topics; each opens a page of its own, so no page grows long.
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
@@ -30,149 +32,58 @@ class SettingsPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
             child: Text(S.settingsTitle, style: theme.headlineLarge),
           ),
+          _ProfileCard(room: model.room),
           _Group(
-            title: S.appearance,
             children: [
               ListenableBuilder(
                 listenable: model.settings,
-                builder: (context, _) => SegmentedButton<ThemeMode>(
-                  showSelectedIcon: false,
-                  expandedInsets: EdgeInsets.zero,
-                  style: SegmentedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    selectedBackgroundColor: context.palette.primaryContainer,
-                    selectedForegroundColor: context.palette.onPrimaryContainer,
-                    foregroundColor: context.palette.textSecondary,
-                    side: BorderSide(color: context.palette.outline),
-                  ),
-                  segments: const [
-                    ButtonSegment(
-                      value: ThemeMode.system,
-                      label: Text(S.themeSystem),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.light,
-                      label: Text(S.themeLight),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.dark,
-                      label: Text(S.themeDark),
-                    ),
-                  ],
-                  selected: {model.settings.themeMode},
-                  onSelectionChanged: (s) => model.settings.themeMode = s.first,
+                builder: (context, _) => _NavRow(
+                  key: const ValueKey('settings-appearance'),
+                  icon: Icons.palette_outlined,
+                  label: S.appearance,
+                  value: switch (model.settings.themeMode) {
+                    ThemeMode.system => S.themeSystem,
+                    ThemeMode.light => S.themeLight,
+                    ThemeMode.dark => S.themeDark,
+                  },
+                  onTap: () => _open(context, S.appearance, _appearance),
                 ),
               ),
-            ],
-          ),
-          _Group(
-            title: S.autoplay,
-            footer: S.autoplayHelp,
-            children: [
+              _NavRow(
+                key: const ValueKey('settings-playback'),
+                icon: Icons.play_circle_outline_rounded,
+                label: S.playback,
+                onTap: () => _open(context, S.playback, _playback),
+              ),
               ListenableBuilder(
                 listenable: model.room,
-                builder: (context, _) => Material(
-                  type: MaterialType.transparency,
-                  child: SwitchListTile(
-                    title: const Text(S.autoplay),
-                    value: model.room.autoplay,
-                    onChanged: model.room.setAutoplay,
-                  ),
-                ),
+                builder: (context, _) {
+                  final snapshot = model.room.snapshot;
+                  if (!snapshot.inRoom) return const SizedBox.shrink();
+                  return _NavRow(
+                    key: const ValueKey('settings-room'),
+                    icon: Icons.groups_outlined,
+                    label: S.room,
+                    value: snapshot.room,
+                    onTap: () => _open(context, S.room, _room),
+                  );
+                },
+              ),
+              _NavRow(
+                key: const ValueKey('settings-storage'),
+                icon: Icons.download_for_offline_outlined,
+                label: S.storage,
+                onTap: () => _open(context, S.storage, _storage),
+              ),
+              _NavRow(
+                key: const ValueKey('settings-backup'),
+                icon: Icons.backup_outlined,
+                label: S.backup,
+                onTap: () => _open(context, S.backup, _backup),
               ),
             ],
           ),
           _Group(
-            title: S.videoSection,
-            footer: S.videoQualityHelp,
-            children: [
-              ListenableBuilder(
-                listenable: model.room,
-                builder: (context, _) => Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SegmentedButton<int>(
-                    showSelectedIcon: false,
-                    expandedInsets: EdgeInsets.zero,
-                    style: SegmentedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      selectedBackgroundColor: context.palette.primaryContainer,
-                      selectedForegroundColor:
-                          context.palette.onPrimaryContainer,
-                      foregroundColor: context.palette.textSecondary,
-                      side: BorderSide(color: context.palette.outline),
-                    ),
-                    segments: [
-                      for (final h in const [360, 480, 720, 1080])
-                        ButtonSegment(value: h, label: Text('${h}p')),
-                    ],
-                    selected: {model.room.snapshot.videoHeight},
-                    onSelectionChanged: (s) =>
-                        model.room.setVideoQuality(s.first),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          _StorageGroup(library: model.library),
-          _BackupGroup(library: model.library),
-          _Group(
-            title: S.sync,
-            footer: S.latencyTrimHelp,
-            children: [_TrimRow(controller: model.room)],
-          ),
-          ListenableBuilder(
-            listenable: model.room,
-            builder: (context, _) {
-              final snapshot = model.room.snapshot;
-              if (!snapshot.inRoom) return const SizedBox.shrink();
-              return _Group(
-                title: S.room,
-                children: [
-                  _Row(
-                    label: S.roomCode,
-                    value: snapshot.room ?? '',
-                    trailing: Icon(
-                      Icons.copy_rounded,
-                      size: 18,
-                      color: context.palette.textSecondary,
-                    ),
-                    onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: snapshot.room ?? ''),
-                      );
-                      ScaffoldMessenger.of(context)
-                        ..hideCurrentSnackBar()
-                        ..showSnackBar(
-                          const SnackBar(content: Text(S.codeCopied)),
-                        );
-                    },
-                  ),
-                  _Row(
-                    label: S.tabRoom,
-                    value: S.listening(snapshot.members.length),
-                  ),
-                  _Row(
-                    label: S.yourName,
-                    value: snapshot.me?.name ?? '',
-                    trailing: Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: context.palette.textSecondary,
-                    ),
-                    onTap: () => _rename(context, model.room),
-                  ),
-                  _Row(label: S.invite, onTap: model.room.shareInvite),
-                  _Row(
-                    label: S.leaveRoom,
-                    destructive: true,
-                    onTap: () => _confirmLeave(context, model.room),
-                  ),
-                ],
-              );
-            },
-          ),
-          _Group(
-            title: S.diagnostics,
             footer: S.diagnosticsHelp,
             children: [
               _Row(
@@ -196,7 +107,179 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Future<void> _rename(BuildContext context, RoomController room) async {
+  void _open(
+    BuildContext context,
+    String title,
+    List<Widget> Function(BuildContext context, AppModel model) children,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _SubPage(
+          title: title,
+          children: children(context, AppScope.of(context)),
+        ),
+      ),
+    );
+  }
+
+  static List<Widget> _appearance(BuildContext context, AppModel model) => [
+    _Group(
+      children: [
+        ListenableBuilder(
+          listenable: model.settings,
+          builder: (context, _) => SegmentedButton<ThemeMode>(
+            showSelectedIcon: false,
+            expandedInsets: EdgeInsets.zero,
+            style: SegmentedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              selectedBackgroundColor: context.palette.primaryContainer,
+              selectedForegroundColor: context.palette.onPrimaryContainer,
+              foregroundColor: context.palette.textSecondary,
+              side: BorderSide(color: context.palette.outline),
+            ),
+            segments: const [
+              ButtonSegment(
+                value: ThemeMode.system,
+                label: Text(S.themeSystem),
+              ),
+              ButtonSegment(value: ThemeMode.light, label: Text(S.themeLight)),
+              ButtonSegment(value: ThemeMode.dark, label: Text(S.themeDark)),
+            ],
+            selected: {model.settings.themeMode},
+            onSelectionChanged: (s) => model.settings.themeMode = s.first,
+          ),
+        ),
+      ],
+    ),
+  ];
+
+  static List<Widget> _playback(BuildContext context, AppModel model) => [
+    _Group(
+      title: S.autoplay,
+      footer: S.autoplayHelp,
+      children: [
+        ListenableBuilder(
+          listenable: model.room,
+          builder: (context, _) => Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              title: const Text(S.autoplay),
+              value: model.room.autoplay,
+              onChanged: model.room.setAutoplay,
+            ),
+          ),
+        ),
+      ],
+    ),
+    _Group(
+      title: S.videoSection,
+      footer: S.videoQualityHelp,
+      children: [
+        ListenableBuilder(
+          listenable: model.room,
+          builder: (context, _) => Padding(
+            padding: const EdgeInsets.all(12),
+            child: SegmentedButton<int>(
+              showSelectedIcon: false,
+              expandedInsets: EdgeInsets.zero,
+              style: SegmentedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                selectedBackgroundColor: context.palette.primaryContainer,
+                selectedForegroundColor: context.palette.onPrimaryContainer,
+                foregroundColor: context.palette.textSecondary,
+                side: BorderSide(color: context.palette.outline),
+              ),
+              segments: [
+                for (final h in const [360, 480, 720, 1080])
+                  ButtonSegment(value: h, label: Text('${h}p')),
+              ],
+              selected: {model.room.snapshot.videoHeight},
+              onSelectionChanged: (s) => model.room.setVideoQuality(s.first),
+            ),
+          ),
+        ),
+      ],
+    ),
+    _Group(
+      title: S.sync,
+      footer: S.latencyTrimHelp,
+      children: [_TrimRow(controller: model.room)],
+    ),
+  ];
+
+  static List<Widget> _storage(BuildContext context, AppModel model) => [
+    _StorageGroup(library: model.library),
+  ];
+
+  static List<Widget> _backup(BuildContext context, AppModel model) => [
+    _BackupGroup(library: model.library),
+  ];
+
+  static List<Widget> _room(BuildContext context, AppModel model) => [
+    _RoomGroup(room: model.room),
+  ];
+}
+
+/// The room this device is in: its code, who is there, the name shown, inviting and leaving.
+class _RoomGroup extends StatelessWidget {
+  const _RoomGroup({required this.room});
+
+  final RoomController room;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: room,
+      builder: (context, _) {
+        final snapshot = room.snapshot;
+        if (!snapshot.inRoom) {
+          // The room was left from this page: nothing left to show
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) Navigator.of(context).maybePop();
+          });
+          return const SizedBox.shrink();
+        }
+        return _Group(
+          children: [
+            _Row(
+              label: S.roomCode,
+              value: snapshot.room ?? '',
+              trailing: Icon(
+                Icons.copy_rounded,
+                size: 18,
+                color: context.palette.textSecondary,
+              ),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: snapshot.room ?? ''));
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(const SnackBar(content: Text(S.codeCopied)));
+              },
+            ),
+            _Row(label: S.tabRoom, value: S.listening(snapshot.members.length)),
+            _Row(
+              label: S.yourName,
+              value: snapshot.me?.name ?? '',
+              trailing: Icon(
+                Icons.edit_outlined,
+                size: 18,
+                color: context.palette.textSecondary,
+              ),
+              onTap: () => _rename(context),
+            ),
+            _Row(label: S.invite, onTap: room.shareInvite),
+            _Row(
+              label: S.leaveRoom,
+              destructive: true,
+              onTap: () => _confirmLeave(context),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _rename(BuildContext context) async {
     final name = await showTextDialog(
       context,
       title: S.rename,
@@ -206,7 +289,7 @@ class SettingsPage extends StatelessWidget {
     if (name != null && name.isNotEmpty) room.rename(name);
   }
 
-  Future<void> _confirmLeave(BuildContext context, RoomController room) async {
+  Future<void> _confirmLeave(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -268,7 +351,6 @@ class _StorageGroupState extends State<_StorageGroup> {
     final theme = Theme.of(context).textTheme;
     final library = widget.library;
     return _Group(
-      title: S.storage,
       footer: S.cacheLimitHelp,
       children: [
         _Row(
@@ -378,7 +460,6 @@ class _BackupGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return _Group(
-      title: S.backup,
       footer: S.backupHelp,
       children: [
         _Row(
@@ -396,10 +477,115 @@ class _BackupGroup extends StatelessWidget {
   }
 }
 
-class _Group extends StatelessWidget {
-  const _Group({required this.title, required this.children, this.footer});
+/// A page of one topic, opened from the settings list.
+class _SubPage extends StatelessWidget {
+  const _SubPage({required this.title, required this.children});
 
   final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: ListView(
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: children,
+      ),
+    );
+  }
+}
+
+/// Who this is and where: the name shown to others and the room, if any.
+class _ProfileCard extends StatelessWidget {
+  const _ProfileCard({required this.room});
+
+  final RoomController room;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return ListenableBuilder(
+      listenable: room,
+      builder: (context, _) {
+        final snapshot = room.snapshot;
+        final name = snapshot.me?.name ?? room.profile.name ?? '';
+        return _Group(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Avatar(name: name, size: 52),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name.isEmpty ? S.appName : name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.titleLarge,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          snapshot.inRoom
+                              ? '${S.room} ${snapshot.room} · ${S.listening(snapshot.members.length)}'
+                              : S.noRoom,
+                          style: theme.bodyMedium?.copyWith(
+                            color: p.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// A row of the settings list that opens a page.
+class _NavRow extends StatelessWidget {
+  const _NavRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return _Row(
+      label: label,
+      value: value,
+      leading: Icon(icon, color: p.primary),
+      trailing: Icon(Icons.chevron_right_rounded, color: p.textTertiary),
+      onTap: onTap,
+    );
+  }
+}
+
+class _Group extends StatelessWidget {
+  const _Group({this.title, required this.children, this.footer});
+
+  final String? title;
   final List<Widget> children;
   final String? footer;
 
@@ -412,13 +598,14 @@ class _Group extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: Text(
-              title.toUpperCase(),
-              style: theme.labelSmall?.copyWith(letterSpacing: 0.8),
+          if (title != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Text(
+                title!.toUpperCase(),
+                style: theme.labelSmall?.copyWith(letterSpacing: 0.8),
+              ),
             ),
-          ),
           Container(
             decoration: BoxDecoration(
               color: p.surfaceRaised.withValues(
@@ -453,6 +640,7 @@ class _Row extends StatelessWidget {
   const _Row({
     required this.label,
     this.value,
+    this.leading,
     this.trailing,
     this.onTap,
     this.destructive = false,
@@ -460,6 +648,7 @@ class _Row extends StatelessWidget {
 
   final String label;
   final String? value;
+  final Widget? leading;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool destructive;
@@ -474,6 +663,7 @@ class _Row extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         child: Row(
           children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 14)],
             Expanded(
               child: Text(
                 label,

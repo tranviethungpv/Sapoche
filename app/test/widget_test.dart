@@ -53,6 +53,14 @@ Future<(FakeBackend, RoomController)> pumpApp(
   return (backend, room);
 }
 
+/// Opens the settings list and one of its topics: appearance, playback, room, storage or backup.
+Future<void> openTopic(WidgetTester tester, String topic) async {
+  await tester.tap(find.text('Settings'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(ValueKey('settings-$topic')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
     group('in ${mode.name} mode', () {
@@ -144,10 +152,7 @@ void main() {
         backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Settings'));
-        await tester.pumpAndSettle();
-        await tester.scrollUntilVisible(find.text('Leave room'), 200);
-        await tester.pumpAndSettle();
+        await openTopic(tester, 'room');
         await tester.tap(find.text('Leave room'));
         await tester.pumpAndSettle();
         expect(
@@ -297,14 +302,64 @@ void main() {
     },
   );
 
+  testWidgets('settings are a short list, and every topic has a page', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    // Who this is and where, then one row per topic, and nothing of the topics themselves
+    expect(find.text('Anna'), findsWidgets);
+    expect(find.text('Room ABC234 · 2 people listening'), findsOneWidget);
+    for (final topic in [
+      'appearance',
+      'playback',
+      'room',
+      'storage',
+      'backup',
+    ]) {
+      expect(find.byKey(ValueKey('settings-$topic')), findsOneWidget);
+    }
+    expect(find.text('Played songs'), findsNothing);
+    expect(find.text('Autoplay'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('settings-playback')));
+    await tester.pumpAndSettle();
+    expect(find.text('Autoplay'), findsWidgets);
+    expect(find.text('Latency trim'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settings-playback')), findsOneWidget);
+  });
+
+  testWidgets('the room page closes itself once the room is left', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pumpAndSettle();
+    await openTopic(tester, 'room');
+    expect(find.text('Leave room'), findsOneWidget);
+
+    backend.emit(const StateEvent(RoomSnapshot()));
+    await tester.pumpAndSettle();
+    expect(find.text('Leave room'), findsNothing);
+    expect(find.byKey(const ValueKey('settings-appearance')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-room')), findsNothing);
+  });
+
   testWidgets('settings have no room section outside a room', (tester) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(const StateEvent(RoomSnapshot()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    expect(find.text('APPEARANCE'), findsOneWidget);
-    expect(find.text('Leave room', skipOffstage: false), findsNothing);
+    expect(find.byKey(const ValueKey('settings-appearance')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-room')), findsNothing);
   });
 
   testWidgets(
@@ -584,11 +639,7 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.text('Settings'));
-    await tester.pumpAndSettle();
-
-    await tester.scrollUntilVisible(find.text('Your name'), 200);
-    await tester.pumpAndSettle();
+    await openTopic(tester, 'room');
     await tester.tap(find.text('Your name'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Anh');
@@ -1557,7 +1608,10 @@ void main() {
       );
     });
 
-    Future<FakeBackend> openSettings(WidgetTester tester) async {
+    Future<FakeBackend> openSettings(
+      WidgetTester tester, {
+      String topic = 'storage',
+    }) async {
       final (backend, _) = await pumpApp(tester);
       backend.storageInfo = const StorageInfo(
         playBytes: 50 * 1024 * 1024,
@@ -1567,10 +1621,7 @@ void main() {
       );
       backend.emit(const StateEvent(RoomSnapshot()));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Settings'));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Played songs'));
-      await tester.pumpAndSettle();
+      await openTopic(tester, topic);
       return backend;
     }
 
@@ -1605,9 +1656,7 @@ void main() {
     testWidgets('the library is saved to a file and added back from one', (
       tester,
     ) async {
-      final backend = await openSettings(tester);
-      await tester.ensureVisible(find.text('Save your library to a file'));
-      await tester.pumpAndSettle();
+      final backend = await openSettings(tester, topic: 'backup');
       await tester.tap(find.text('Save your library to a file'));
       await tester.pumpAndSettle();
       expect(backend.calls, contains('backupExport'));
@@ -1805,8 +1854,7 @@ void main() {
       final (backend, _) = await pumpApp(tester);
       backend.emit(const StateEvent(RoomSnapshot()));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Settings'));
-      await tester.pumpAndSettle();
+      await openTopic(tester, 'playback');
 
       await tester.tap(find.text('Autoplay').last);
       await tester.pumpAndSettle();

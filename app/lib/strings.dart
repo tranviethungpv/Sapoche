@@ -267,6 +267,8 @@ abstract final class S {
   // Settings
   static const settingsTitle = 'Settings';
   static const appearance = 'Appearance';
+  static const playback = 'Playback';
+  static const noRoom = 'Not in a room';
   static const themeSystem = 'System';
   static const themeLight = 'Light';
   static const themeDark = 'Dark';
@@ -282,7 +284,6 @@ abstract final class S {
   static const leaveQuestion =
       'Leave this room? You can join again with the code.';
   static const leave = 'Leave';
-  static const diagnostics = 'Diagnostics';
   static const diagnosticsHelp =
       'Recent events, useful when something goes wrong.';
   static const copyLog = 'Copy log';
