@@ -325,7 +325,7 @@ class GroupSession(
         } else {
             null
         }
-        if (wanted?.id == preloaded?.id) return
+        if (wanted == preloaded) return
         preloaded = wanted
         player.setNext(wanted)
     }
@@ -579,7 +579,7 @@ class GroupSession(
         // Repeating one item is not gapless: it ends and the server starts it over through a barrier
         val following = startedAtServer != null && s != null && s.current?.id == loadedItemId && s.repeat != "one"
         val wanted = if (following) s?.queue?.getOrNull(s.index + 1) else null
-        if (wanted?.id == preloaded?.id) return
+        if (wanted == preloaded) return
         preloaded = wanted
         player.setNext(wanted)
     }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/models.dart';
+import '../data/music_models.dart';
 import '../data/room_controller.dart';
 import '../format.dart';
 import '../strings.dart';
@@ -585,7 +586,49 @@ class _RepeatButton extends StatelessWidget {
   }
 }
 
-/// Audio or Video, like the switch at the top of YouTube Music's player. A choice for this device only.
+/// What a touch on Audio or Video does. The picture is this device's own choice and follows at once. The song also
+/// changes to its other release (the music video, or the audio release) like YouTube Music's switch does: outside a
+/// room for this device, in a room for everybody, because the queue is shared. A room only goes to the video
+/// that way, not back: somebody else may be watching it.
+Future<void> _chooseMode(BuildContext context, bool video) async {
+  final controller = AppScope.roomOf(context);
+  final music = AppScope.of(context).music;
+  final messenger = ScaffoldMessenger.of(context);
+  final snapshot = controller.snapshot;
+  final current = snapshot.current;
+  if (video == snapshot.video) return;
+  await controller.setVideoMode(video);
+  if (current == null ||
+      (snapshot.inRoom && (!video || !snapshot.canControl))) {
+    return;
+  }
+  MusicTrack? other;
+  try {
+    // Already the release asked for?
+    if (await music.isAudioRelease(current) == !video) return;
+    other = await music.otherRelease(current, video: video);
+  } on Object {
+    return; // no network: the picture alone
+  }
+  // The person may have moved on while YouTube was asked
+  if (controller.snapshot.current?.id != current.id) return;
+  if (other == null) {
+    if (video) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text(S.noVideoVersion)));
+    }
+    return;
+  }
+  await controller.swapVersion(current, other);
+  if (snapshot.inRoom) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text(S.videoForEveryone)));
+  }
+}
+
+/// Audio or Video, like the switch at the top of YouTube Music's player.
 class _ModePill extends StatelessWidget {
   const _ModePill({required this.controller});
 
@@ -622,8 +665,8 @@ class _ModePill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          segment(S.modeAudio, !video, () => controller.setVideoMode(false)),
-          segment(S.modeVideo, video, () => controller.setVideoMode(true)),
+          segment(S.modeAudio, !video, () => _chooseMode(context, false)),
+          segment(S.modeVideo, video, () => _chooseMode(context, true)),
         ],
       ),
     );

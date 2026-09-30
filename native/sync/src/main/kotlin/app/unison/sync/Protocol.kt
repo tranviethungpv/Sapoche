@@ -181,6 +181,18 @@ object Protocol {
 
     fun queueRemove(id: String) = msg("queue.remove") { put("id", id) }
 
+    /** Put [track], another release of the same song, in place of queue item [id]. */
+    fun queueSwap(id: String, track: TrackRef) = msg("queue.swap") {
+        put("id", id)
+        put("track", buildJsonObject {
+            put("videoId", track.videoId)
+            put("title", track.title)
+            put("artist", track.artist)
+            if (track.thumb != null) put("thumb", track.thumb)
+            put("durMs", track.durMs)
+        })
+    }
+
     fun queueClear() = msg("queue.clear")
 
     /** Mix up the songs still to come; with nothing playing, mix them all and play from the first. */

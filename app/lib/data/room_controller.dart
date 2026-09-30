@@ -241,6 +241,10 @@ class RoomController extends ChangeNotifier {
     await _run(() => _backend.add(track, playNext: playNext));
   }
 
+  /// Plays [other], another release of the song, in place of [entry].
+  Future<void> swapVersion(QueueEntry entry, Track other) =>
+      _run(() => _backend.swap(entry.id, other));
+
   Future<void> remove(QueueEntry entry) =>
       _run(() => _backend.remove(entry.id));
   Future<void> move(QueueEntry entry, int toIndex) =>

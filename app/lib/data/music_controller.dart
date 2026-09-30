@@ -1,6 +1,9 @@
 import 'backend.dart';
 import 'models.dart';
 import 'music_models.dart';
+import 'song_key.dart';
+
+final _lyricVideo = RegExp(r'lyric', caseSensitive: false);
 
 /// What the full player shows about a song, asked for once and kept for the next look: going back and forth
 /// between the lyrics and the queue, or between songs, does not ask again. A failed ask is not kept, so
@@ -38,6 +41,25 @@ class MusicController {
         '$songs $query',
         () => _backend.musicSearch(query, songs: songs),
       );
+
+  /// Whether [track] is the audio release of a song (true) or a video (false); null when YouTube Music does not say.
+  Future<bool?> isAudioRelease(Track track) async =>
+      (await radio(track.videoId)).songOf(track.videoId)?.isSong;
+
+  /// The other release of [track]: the music video of a song when [video], else the audio release of a video.
+  /// Null when YouTube Music has no such release of it.
+  Future<MusicTrack?> otherRelease(Track track, {required bool video}) async {
+    final name =
+        '${songTitle(track.title, track.artist)} ${displayArtist(track.artist)}';
+    final found = await search(name, songs: !video);
+    final same = found.where(
+      (t) =>
+          t.videoId != track.videoId && t.isSong != video && sameSong(track, t),
+    );
+    // A video that only shows the words is the last resort
+    return same.where((t) => !_lyricVideo.hasMatch(t.title)).firstOrNull ??
+        same.firstOrNull;
+  }
 
   Future<Lyrics?> lyrics(Track track) =>
       _cached(_lyrics, track.videoId, () => _backend.lyrics(track));

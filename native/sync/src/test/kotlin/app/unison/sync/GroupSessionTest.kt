@@ -166,6 +166,28 @@ class GroupSessionTest {
     }
 
     @Test
+    fun `the song swapped for its video is loaded again from the same moment and the room carries on`() = runTest {
+        val h = harness()
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Start(1, startAt = h.serverNow() + 1500, positionMs = 0))
+        step(4000)
+        assertTrue(h.player.playing)
+
+        // The same queue item, now the other release, prepared by the server under a new epoch
+        val video = item.copy(videoId = "videoSwappd", durMs = 210_000)
+        h.session.onMessage(ServerMessage.Prepare(2, 0, video, seekToMs = 2500))
+        runCurrent()
+        assertEquals(video, h.player.loaded)
+        assertTrue(h.sent.any { it.contains("\"ready\"") && it.contains("\"epoch\":2") })
+        assertEquals(2500L, h.player.position)
+
+        h.session.onMessage(ServerMessage.Start(2, startAt = h.serverNow() + 1500, positionMs = 2500))
+        step(1500)
+        assertTrue(h.player.playing)
+    }
+
+    @Test
     fun `a device that arrives late skips ahead instead of starting from zero`() = runTest {
         val h = harness()
         h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))

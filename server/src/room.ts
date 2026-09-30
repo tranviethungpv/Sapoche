@@ -62,6 +62,7 @@ interface Attachment {
 /** What only the owner may do once the owner has restricted guests to adding songs. */
 const CONTROL_MESSAGES = new Set([
   "queue.remove",
+  "queue.swap",
   "queue.clear",
   "queue.shuffle",
   "queue.move",
@@ -74,6 +75,17 @@ const CONTROL_MESSAGES = new Set([
   "repeat",
   "room.name",
 ]);
+
+/** The fields of a song as the queue keeps them, cut to size. */
+function cleanTrack(track: TrackInput) {
+  return {
+    videoId: track.videoId,
+    title: String(track.title ?? "").slice(0, 200),
+    artist: String(track.artist ?? "").slice(0, 100),
+    thumb: typeof track.thumb === "string" ? track.thumb.slice(0, 300) : undefined,
+    durMs: clamp(Number(track.durMs) || 0, 0, 12 * 3600 * 1000),
+  };
+}
 
 function millis(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
@@ -169,6 +181,7 @@ export class Room extends DurableObject<Env> {
       case "queue.add": return this.onQueueAdd(me, msg);
       case "queue.addMany": return this.onQueueAddMany(me, msg);
       case "queue.remove": return this.onQueueRemove(msg.id);
+      case "queue.swap": return this.onQueueSwap(me, msg);
       case "queue.clear": return this.onQueueClear();
       case "queue.shuffle": return this.onQueueShuffle(me.clientId);
       case "jump": return this.onJump(msg.id, me.clientId);
@@ -407,15 +420,7 @@ export class Room extends DurableObject<Env> {
         this.failAll(me, "queue_full", "Queue is full");
         break;
       }
-      items.push({
-        id: crypto.randomUUID(),
-        videoId: track.videoId,
-        title: String(track.title ?? "").slice(0, 200),
-        artist: String(track.artist ?? "").slice(0, 100),
-        thumb: typeof track.thumb === "string" ? track.thumb.slice(0, 300) : undefined,
-        durMs: clamp(Number(track.durMs) || 0, 0, 12 * 3600 * 1000),
-        addedBy: me.clientId,
-      });
+      items.push({ id: crypto.randomUUID(), ...cleanTrack(track), addedBy: me.clientId });
     }
     if (items.length === 0) return;
 
@@ -442,6 +447,23 @@ export class Room extends DurableObject<Env> {
       return this.goIdle();
     }
     if (at < this.s.index) this.s.index--;
+    await this.save();
+    this.broadcastState();
+  }
+
+  private async onQueueSwap(me: Attachment, msg: Extract<ClientMessage, { t: "queue.swap" }>): Promise<void> {
+    const at = this.s.queue.findIndex((q) => q.id === msg.id);
+    if (at < 0) return;
+    if (!VIDEO_ID.test(msg.track?.videoId ?? "")) return this.failAll(me, "bad_video", "Invalid videoId");
+    const item = this.s.queue[at];
+    if (item.videoId === msg.track.videoId) return;
+    Object.assign(item, cleanTrack(msg.track));
+
+    if (at === this.s.index && this.s.phase !== "idle") {
+      // The same moment of the song, from the other release
+      const positionMs = clamp(this.currentPositionMs(), 0, item.durMs || Number.MAX_SAFE_INTEGER);
+      return this.begin(at, positionMs, me.clientId);
+    }
     await this.save();
     this.broadcastState();
   }

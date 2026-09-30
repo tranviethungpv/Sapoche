@@ -46,7 +46,196 @@ const song = MusicTrack(
   isSong: true,
 );
 
+const _mv = MusicTrack(
+  videoId: 'videoMVaaaa',
+  title: 'Song 0 (Official Video)',
+  artist: 'Artist 0',
+  durMs: 206000,
+);
+
 void main() {
+  group('song and video', () {
+    Future<FakeBackend> open(
+      WidgetTester tester, {
+      RoomSnapshot? snapshot,
+      bool songFirst = true,
+      List<MusicTrack> videos = const [_mv],
+    }) async {
+      final backend = await openPlayer(
+        tester,
+        snapshot: snapshot ?? sampleRoom(local: true),
+      );
+      backend.radioResult = SongRadio(
+        tracks: [
+          MusicTrack(
+            videoId: 'video0',
+            title: 'Song 0',
+            artist: 'Artist 0',
+            durMs: 200000,
+            isSong: songFirst,
+          ),
+        ],
+      );
+      backend.videoSearchResult = videos;
+      backend.songSearchResult = [
+        const MusicTrack(
+          videoId: 'songAudioaa',
+          title: 'Song 0',
+          artist: 'Artist 0',
+          durMs: 200000,
+          isSong: true,
+        ),
+      ];
+      return backend;
+    }
+
+    Future<void> tapMode(WidgetTester tester, String label) async {
+      await tester.tap(find.text(label));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    testWidgets('video turns the song into its music video outside a room', (
+      tester,
+    ) async {
+      final backend = await open(tester);
+      await tapMode(tester, 'Video');
+      expect(
+        backend.calls,
+        containsAllInOrder([
+          'video true',
+          'musicSearch videos song 0 Artist 0',
+          'swap q0 videoMVaaaa',
+        ]),
+      );
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('audio puts the song back in place of its video', (
+      tester,
+    ) async {
+      final backend = await open(
+        tester,
+        snapshot: sampleRoom(local: true, video: true),
+        songFirst: false,
+      );
+      await tapMode(tester, 'Audio');
+      expect(
+        backend.calls,
+        containsAllInOrder([
+          'video false',
+          'musicSearch songs song 0 Artist 0',
+          'swap q0 songAudioaa',
+        ]),
+      );
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('a video that already is the music video is not swapped', (
+      tester,
+    ) async {
+      final backend = await open(tester, songFirst: false);
+      await tapMode(tester, 'Video');
+      expect(backend.calls, contains('video true'));
+      expect(backend.calls.where((c) => c.startsWith('swap')), isEmpty);
+      expect(backend.calls.where((c) => c.startsWith('musicSearch')), isEmpty);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('a song without a music video shows the picture and says so', (
+      tester,
+    ) async {
+      final backend = await open(tester, videos: const []);
+      await tapMode(tester, 'Video');
+      expect(backend.calls, contains('video true'));
+      expect(backend.calls.where((c) => c.startsWith('swap')), isEmpty);
+      expect(
+        find.text('No video version of this song was found'),
+        findsOneWidget,
+      );
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('a video of something else is not taken for the song', (
+      tester,
+    ) async {
+      final backend = await open(
+        tester,
+        videos: const [
+          MusicTrack(
+            videoId: 'otherVideoa',
+            title: 'Song 0 (Live in Paris)',
+            artist: 'Artist 0',
+            durMs: 200000,
+          ),
+          MusicTrack(
+            videoId: 'elseVideoaa',
+            title: 'Song 0',
+            artist: 'Somebody Else',
+            durMs: 200000,
+          ),
+        ],
+      );
+      await tapMode(tester, 'Video');
+      expect(backend.calls.where((c) => c.startsWith('swap')), isEmpty);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('in a room the video is for everybody and says so', (
+      tester,
+    ) async {
+      final backend = await open(tester, snapshot: sampleRoom());
+      await tapMode(tester, 'Video');
+      expect(backend.calls, contains('swap q0 videoMVaaaa'));
+      expect(
+        find.text('Switched to the video version for everyone'),
+        findsOneWidget,
+      );
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('in a room audio only hides the picture', (tester) async {
+      final backend = await open(
+        tester,
+        snapshot: sampleRoom(video: true),
+        songFirst: false,
+      );
+      await tapMode(tester, 'Audio');
+      expect(backend.calls, contains('video false'));
+      expect(backend.calls.where((c) => c.startsWith('swap')), isEmpty);
+    });
+
+    testWidgets('a guest who may only add songs does not change the room', (
+      tester,
+    ) async {
+      final backend = await open(
+        tester,
+        snapshot: sampleRoom(
+          guestControl: GuestControl.add,
+          ownerId: 'o',
+          members: const [
+            Member(id: 'me', name: 'Anna', ready: true),
+            Member(id: 'o', name: 'Olga', ready: true, owner: true),
+          ],
+        ),
+      );
+      await tapMode(tester, 'Video');
+      expect(backend.calls, contains('video true'));
+      expect(backend.calls.where((c) => c.startsWith('swap')), isEmpty);
+    });
+
+    testWidgets('without a network the picture is all that changes', (
+      tester,
+    ) async {
+      final backend = await open(tester);
+      backend.musicFailWith = StateError('offline');
+      await tapMode(tester, 'Video');
+      expect(backend.calls, contains('video true'));
+      expect(backend.calls.where((c) => c.startsWith('swap')), isEmpty);
+    });
+  });
+
   group('shuffle and repeat', () {
     testWidgets('sit beside the play button, with or without a panel open', (
       tester,

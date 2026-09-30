@@ -757,7 +757,7 @@ void main() {
 
       await tester.tap(find.text('Video'));
       await tester.pump();
-      expect(backend.calls.last, 'video true');
+      expect(backend.calls, contains('video true'));
 
       // The native side reports the mode back, and the picture view takes the cover's place
       backend.emit(StateEvent(sampleRoom(video: true)));

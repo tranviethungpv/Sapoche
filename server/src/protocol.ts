@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 export interface QueueItem {
   id: string;
@@ -92,6 +92,11 @@ export type ClientMessage =
   /** Adds several songs in one go (a playlist). With [next] they go right after the current item. */
   | { t: "queue.addMany"; tracks: TrackInput[]; next?: boolean }
   | { t: "queue.remove"; id: string }
+  /**
+   * Replaces the queue item [id] by another release of the same song (its video for its audio, or back),
+   * keeping its place. If it is the current item, everyone loads the new one and carries on from the same position.
+   */
+  | { t: "queue.swap"; id: string; track: TrackInput }
   | { t: "queue.clear" }
   /** Mixes up the songs still to come; with nothing playing (the queue has finished) it mixes them all and plays from the first. */
   | { t: "queue.shuffle" }

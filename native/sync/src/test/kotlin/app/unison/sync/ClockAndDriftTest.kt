@@ -119,6 +119,10 @@ class ProtocolTest {
         assertEquals("""{"t":"jump","id":"q9"}""", Protocol.jump("q9"))
         assertEquals("""{"t":"queue.clear"}""", Protocol.queueClear())
         assertEquals("""{"t":"queue.move","id":"q3","toIndex":0}""", Protocol.queueMove("q3", 0))
+        assertEquals(
+            """{"t":"queue.swap","id":"q3","track":{"videoId":"vid","title":"T","artist":"A","durMs":5}}""",
+            Protocol.queueSwap("q3", TrackRef("vid", "T", "A", null, 5)),
+        )
         val next = Protocol.queueAdd("bNp9pn0ni3I", "Song", "Artist", null, 1000, playNext = true)
         assertTrue(next.contains(""""next":true"""), next)
         assertTrue(!Protocol.queueAdd("bNp9pn0ni3I", "Song", "Artist", null, 1000).contains("\"next\""))

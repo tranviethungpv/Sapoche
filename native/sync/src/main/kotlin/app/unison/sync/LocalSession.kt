@@ -216,6 +216,25 @@ class LocalSession(
         save()
     }
 
+    /**
+     * Puts [track], another release of the same song (its video for its audio, or back), in place of the item [id]. If
+     * that item is loaded, the new release takes over from the same moment, playing if it was playing.
+     */
+    fun swap(id: String, track: TrackRef) {
+        val s = snapshot.value
+        val at = s.queue.indexOfFirst { it.id == id }
+        if (at < 0 || s.queue[at].videoId == track.videoId) return
+        val item = s.queue[at].copy(videoId = track.videoId, title = track.title, artist = track.artist, thumb = track.thumb, durMs = track.durMs)
+        _snapshot.update { it.copy(queue = it.queue.toMutableList().also { queue -> queue[at] = item }) }
+        if (loadedId == id) {
+            val end = if (item.durMs > 0) item.durMs else Long.MAX_VALUE
+            load(item, player.positionMs().coerceAtMost(end), play = player.isPlaying())
+        } else {
+            preload()
+        }
+        save()
+    }
+
     fun move(id: String, toIndex: Int) {
         val s = snapshot.value
         val from = s.queue.indexOfFirst { it.id == id }
@@ -334,7 +353,7 @@ class LocalSession(
     private fun preload() {
         val s = snapshot.value
         val wanted = if (loadedId != null && s.current?.id == loadedId && s.repeat != "one") s.queue.getOrNull(s.index + 1) else null
-        if (wanted?.id == preloaded?.id) return
+        if (wanted == preloaded) return
         preloaded = wanted
         player.setNext(wanted)
     }

@@ -469,6 +469,7 @@ class GroupController(
         val fresh = Queues.fresh(tracks, queue(), session?.snapshot?.value?.state?.index ?: 0)
         fresh.isEmpty() || send(Protocol.queueAddMany(fresh, playNext))
     }
+    fun requestSwap(itemId: String, track: TrackRef) = onQueue({ it.swap(itemId, track) }) { send(Protocol.queueSwap(itemId, track)) }
     fun requestRemove(itemId: String) = onQueue({ it.remove(itemId) }) { send(Protocol.queueRemove(itemId)) }
     fun requestMove(itemId: String, toIndex: Int) = onQueue({ it.move(itemId, toIndex) }) { send(Protocol.queueMove(itemId, toIndex)) }
 

@@ -489,6 +489,7 @@ class UnisonBridge(
                         call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map(::trackRef),
                         call.argument<Boolean>("next") ?: false,
                     )
+                    "swap" -> group.requestSwap(call.argument<String>("id").orEmpty(), trackRef(call.argument<Map<String, Any?>>("track")!!))
                     "remove" -> group.requestRemove(call.argument<String>("id").orEmpty())
                     "move" -> group.requestMove(call.argument<String>("id").orEmpty(), call.argument<Int>("to") ?: 0)
                     "add" -> group.requestAddMany(

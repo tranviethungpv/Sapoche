@@ -77,6 +77,10 @@ abstract class Backend {
   Future<void> addMany(List<Track> tracks, {bool playNext = false});
   Future<void> setRepeat(Repeat mode);
   Future<void> remove(String itemId);
+
+  /// Puts [track], another release of the same song, in place of the queue item [itemId]; the one playing carries
+  /// on from the same moment. In a room it changes for everybody.
+  Future<void> swap(String itemId, Track track);
   Future<void> move(String itemId, int toIndex);
   Future<void> clear();
 
@@ -301,6 +305,10 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> remove(String itemId) => _call('remove', {'id': itemId});
+
+  @override
+  Future<void> swap(String itemId, Track track) =>
+      _call('swap', {'id': itemId, 'track': track.toMap()});
 
   @override
   Future<void> move(String itemId, int toIndex) =>

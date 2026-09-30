@@ -36,6 +36,8 @@ abstract final class S {
   static const addSongs = 'Add songs';
   static const shuffle = 'Shuffle';
   static const upNextShuffled = 'Up Next shuffled';
+  static const noVideoVersion = 'No video version of this song was found';
+  static const videoForEveryone = 'Switched to the video version for everyone';
   static const playAgain = 'Play again';
   static const queueFinished = 'The queue has finished';
   static const clearQueue = 'Clear queue';

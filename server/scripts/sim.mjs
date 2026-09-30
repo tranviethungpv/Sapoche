@@ -237,6 +237,7 @@ async function main() {
 
   await gaplessSection();
   await queueSection();
+  await swapSection();
   await unplayableSection();
   await playlistAndRepeatSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
@@ -386,6 +387,47 @@ async function queueSection() {
   [a, b].forEach((x) => x.close());
 }
 
+/** A song and its video are two releases of one song: the queue item can change from one to the other. */
+async function swapSection() {
+  console.log("Swapping a song for its video");
+  const [a, b] = await freshRoom(["Sa", "Sb"]);
+  a.send({ t: "queue.add", videoId: VIDEO_A, title: "Song", artist: "x", durMs: 200000 });
+  a.send({ t: "queue.add", videoId: VIDEO_B, title: "Later", artist: "x", durMs: 200000 });
+  const prep = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  await all([a, b], (x) => x.send({ t: "ready", epoch: prep[0].epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  const queued = (await a.waitFor((m) => m.t === "state" && m.state.queue.length === 2)).state.queue;
+  const video = { videoId: VIDEO_C, title: "Song (Official Video)", artist: "x", durMs: 210000 };
+
+  // An item still to come changes quietly, in its place
+  a.send({ t: "queue.swap", id: queued[1].id, track: { ...video, title: "Later (Video)" } });
+  const later = await b.waitFor((m) => m.t === "state" && m.state.queue[1]?.videoId === VIDEO_C);
+  check("a song still to come is replaced in its place, keeping its id and who added it", later.state.queue[1].id === queued[1].id && later.state.queue[1].addedBy === "Sa-id" && later.state.queue[1].durMs === 210000);
+  check("replacing a song to come does not disturb playback", later.state.phase === "playing" && later.state.index === 0 && await b.stays((m) => m.t === "prepare", 400));
+
+  // The current one is prepared again for everyone, from about where it was
+  await sleep(3200); // the start is 1.5 s ahead, then the song plays for a while
+  a.send({ t: "queue.swap", id: queued[0].id, track: video });
+  const again = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  check("swapping the current song prepares the other release for everyone", again.every((p) => p.item.videoId === VIDEO_C && p.index === 0 && p.item.id === queued[0].id && p.by === "Sa-id"));
+  check("it carries on from the same moment", again[0].seekToMs >= 1000 && again[0].seekToMs < 6000, String(again[0].seekToMs));
+  await all([a, b], (x) => x.send({ t: "ready", epoch: again[0].epoch }));
+  const started = await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  check("and starts again once everyone is ready", started[0].positionMs === again[0].seekToMs);
+
+  await sleep(200);
+  a.inbox.length = 0; // leftovers of the change
+  b.inbox.length = 0;
+  a.send({ t: "queue.swap", id: queued[0].id, track: video });
+  check("swapping for the same release does nothing", await b.stays((m) => m.t === "prepare" || m.t === "state", 400));
+  a.send({ t: "queue.swap", id: "no-such-item", track: video });
+  check("swapping an unknown item does nothing", await b.stays((m) => m.t === "prepare" || m.t === "state", 400));
+  a.send({ t: "queue.swap", id: queued[0].id, track: { ...video, videoId: "bad" } });
+  check("a bad video id is refused", (await a.waitFor((m) => m.t === "error")).code === "bad_video");
+
+  [a, b].forEach((x) => x.close());
+}
+
 /** An item nobody can load is skipped instead of playing silence. */
 async function unplayableSection() {
   console.log("Unplayable items");
@@ -514,6 +556,7 @@ async function ownerSection() {
   check("a restricted guest cannot pause", await refuses(guest, { t: "pause" }));
   check("a restricted guest cannot skip", await refuses(guest, { t: "next" }));
   check("a restricted guest cannot clear the queue", await refuses(guest, { t: "queue.clear" }));
+  check("a restricted guest cannot swap a song for its video", await refuses(guest, { t: "queue.swap", id: prepared.item.id, track: { videoId: VIDEO_B, title: "One", artist: "x", durMs: 200000 } }));
   check("a restricted guest cannot rename the room", await refuses(guest, { t: "room.name", name: "Mine" }));
   guest.send({ t: "solo", on: true });
   const alone = await guest.waitFor((m) => m.t === "members" && m.members.find((x) => x.id === "g-id")?.solo);

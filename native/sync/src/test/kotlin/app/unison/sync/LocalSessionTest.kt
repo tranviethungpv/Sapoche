@@ -250,6 +250,62 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `swapping the song that plays loads the other release from the same moment`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        step(5_000)
+        val before = h.player.position
+        h.session.swap("id1", TrackRef("videoSwappd", "Song 1 (Video)", "Artist", null, 210_000))
+        step()
+        assertEquals("videoSwappd", h.player.loaded?.videoId)
+        assertEquals("id1", h.player.loaded?.id, "the same place in the queue")
+        assertTrue(h.player.position >= before, "from where it was, not from the start")
+        assertTrue(h.player.playing, "still playing")
+        assertEquals(listOf("Song 1 (Video)", "Song 2"), h.titles())
+        assertEquals("Song 2", h.player.queuedNext?.title)
+    }
+
+    @Test
+    fun `swapping a song that is paused keeps it paused`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        h.session.pause()
+        step()
+        h.session.swap("id1", TrackRef("videoSwappd", "Song 1 (Video)", "Artist", null, 210_000))
+        step()
+        assertEquals("videoSwappd", h.player.loaded?.videoId)
+        assertFalse(h.player.playing)
+    }
+
+    @Test
+    fun `swapping a song still to come changes it quietly`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        val loads = h.player.prepareCount
+        h.session.swap("id2", TrackRef("videoSwappd", "Song 2 (Video)", "Artist", null, 210_000))
+        step()
+        assertEquals(loads, h.player.prepareCount, "what plays is not touched")
+        assertEquals("videoSwappd", h.player.queuedNext?.videoId, "and the next one is the other release")
+        assertEquals(listOf("Song 1", "Song 2 (Video)"), h.titles())
+    }
+
+    @Test
+    fun `swapping for the same release or an unknown song does nothing`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        val loads = h.player.prepareCount
+        h.session.swap("id1", track(1))
+        h.session.swap("nope", track(5))
+        step()
+        assertEquals(loads, h.player.prepareCount)
+        assertEquals(listOf("Song 1"), h.titles())
+    }
+
+    @Test
     fun `removing the current song plays the one after it`() = runTest {
         val h = harness()
         h.session.add(listOf(track(1), track(2), track(3)), next = false)
