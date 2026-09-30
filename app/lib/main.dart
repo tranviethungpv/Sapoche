@@ -4,6 +4,7 @@ import 'app.dart';
 import 'data/app_settings.dart';
 import 'data/backend.dart';
 import 'data/library_controller.dart';
+import 'data/music_controller.dart';
 import 'data/recent_rooms.dart';
 import 'data/recent_searches.dart';
 import 'data/room_controller.dart';
@@ -27,6 +28,7 @@ Future<void> main() async {
         recents: recents,
         library: library,
         searches: searches,
+        music: MusicController(backend),
       ),
     ),
   );

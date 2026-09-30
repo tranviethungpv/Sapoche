@@ -289,6 +289,17 @@ class UnisonBridge(
                 UnisonApp.suggestions.renew(force = true)
                 return UnisonApp.suggestions.forYou().map { it.toMap() }
             }
+            "musicNext" -> return MusicJson.next(UnisonApp.musicFeed.watchNext(call.argument<String>("videoId").orEmpty()))
+            "musicRelated" -> return MusicJson.related(UnisonApp.musicFeed.related(call.argument<String>("videoId").orEmpty()))
+            "musicArtist" -> return MusicJson.artist(UnisonApp.musicFeed.artist(call.argument<String>("id").orEmpty()))
+            "lyrics" -> return MusicJson.lyrics(
+                UnisonApp.musicFeed.lyrics(
+                    call.argument<String>("videoId").orEmpty(),
+                    call.argument<String>("title").orEmpty(),
+                    call.argument<String>("artist").orEmpty(),
+                    (call.argument<Number>("durMs") ?: 0).toLong() / 1000,
+                ),
+            )
             "suggest" -> return suggest(call.argument<String>("query").orEmpty())
             "searchPlaylists" -> return searchPlaylists(call.argument<String>("query").orEmpty())
             "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true)

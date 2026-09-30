@@ -288,4 +288,37 @@ abstract final class S {
       'Recent events, useful when something goes wrong.';
   static const copyLog = 'Copy log';
   static const logCopied = 'Log copied';
+
+  // Full player: lyrics, queue, related songs, song and artist pages
+  static const lyrics = 'Lyrics';
+  static const related = 'Related';
+  static const noLyrics = 'No lyrics for this song';
+  static const lyricsFailed = 'Couldn’t load the lyrics';
+  static const musicFailed = 'Couldn’t reach YouTube Music';
+  static const tryAgain = 'Try again';
+  static const songInfo = 'Song info';
+  static const goToArtist = 'Go to artist';
+  static const suggested = 'Suggested';
+  static const autoplayNote =
+      'Similar songs keep playing when the queue runs out.';
+  static const nothingAfter = 'Nothing is queued after this song.';
+  static const youMightAlsoLike = 'You might also like';
+  static const otherPerformances = 'Other performances';
+  static const similarArtists = 'Similar artists';
+  static const aboutArtist = 'About the artist';
+  static const nothingRelated = 'Nothing related to this song was found';
+  static const topSongs = 'Top songs';
+  static const fansAlsoLike = 'Fans might also like';
+  static const infoArtist = 'Artist';
+  static const infoAlbum = 'Album';
+  static const infoYear = 'Year';
+  static const infoLength = 'Length';
+  static const infoReach = 'Reach';
+  static const infoKind = 'Version';
+  static const addedByLabel = 'Added by';
+  static const kindSong = 'Song';
+  static const kindVideo = 'Video';
+  static const showMore = 'More';
+  static const showLess = 'Less';
+  static String subscribers(String count) => '$count subscribers';
 }

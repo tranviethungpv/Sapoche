@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../data/app_settings.dart';
 import '../data/library_controller.dart';
+import '../data/music_controller.dart';
 import '../data/recent_rooms.dart';
 import '../data/recent_searches.dart';
 import '../data/room_controller.dart';
@@ -14,6 +15,7 @@ class AppModel {
     required this.recents,
     required this.library,
     required this.searches,
+    required this.music,
   });
 
   final RoomController room;
@@ -27,6 +29,9 @@ class AppModel {
 
   /// What was searched for lately.
   final RecentSearches searches;
+
+  /// What the full player shows about a song: lyrics, related songs, the artist.
+  final MusicController music;
 }
 
 class AppScope extends InheritedWidget {

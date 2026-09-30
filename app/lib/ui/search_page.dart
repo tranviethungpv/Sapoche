@@ -6,14 +6,13 @@ import 'package:flutter/services.dart';
 import '../data/models.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
-import '../theme/palette.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/shimmer.dart';
-import 'widgets/track_menu.dart';
+import 'widgets/add_actions.dart';
 import 'widgets/track_tile.dart';
 
 /// Search YouTube (or paste a link) and put songs on the room's queue.
@@ -327,7 +326,7 @@ class _SearchPageState extends State<SearchPage> {
                   TrackTile(
                     track: track,
                     onTap: () => _add(track),
-                    trailing: _Actions(
+                    trailing: AddActions(
                       track: track,
                       added: _added.contains(track.videoId),
                       onAdd: () => _add(track),
@@ -515,7 +514,7 @@ class _SearchPageState extends State<SearchPage> {
             return TrackTile(
               track: track,
               onTap: () => _add(track),
-              trailing: _Actions(
+              trailing: AddActions(
                 track: track,
                 added: _added.contains(track.videoId),
                 onAdd: () => _add(track),
@@ -653,63 +652,6 @@ class _PlaylistRow extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _Actions extends StatelessWidget {
-  const _Actions({
-    required this.track,
-    required this.added,
-    required this.onAdd,
-    required this.onPlayNext,
-  });
-
-  final Track track;
-  final bool added;
-  final VoidCallback onAdd;
-  final VoidCallback onPlayNext;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final room = AppScope.roomOf(context);
-    return ListenableBuilder(
-      listenable: room,
-      builder: (context, _) =>
-          _row(p, added || room.snapshot.isQueued(track.videoId)),
-    );
-  }
-
-  Widget _row(Palette p, bool added) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          transitionBuilder: (child, animation) =>
-              ScaleTransition(scale: animation, child: child),
-          child: added
-              ? Icon(
-                  Icons.check_circle_rounded,
-                  key: const ValueKey('done'),
-                  color: p.success,
-                  size: 30,
-                )
-              : IconButton.filledTonal(
-                  key: const ValueKey('add'),
-                  onPressed: onAdd,
-                  style: IconButton.styleFrom(
-                    backgroundColor: p.primaryContainer,
-                    foregroundColor: p.onPrimaryContainer,
-                    fixedSize: const Size(36, 36),
-                  ),
-                  iconSize: 20,
-                  icon: const Icon(Icons.add_rounded),
-                ),
-        ),
-        TrackMenu(track: track, onAdd: onAdd, onPlayNext: onPlayNext),
-      ],
     );
   }
 }

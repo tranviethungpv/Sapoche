@@ -29,6 +29,7 @@ class MusicParserTest {
         assertEquals("Whenever You Need Somebody", first.album)
         assertEquals("1987", first.year)
         assertEquals(214, first.durationSec)
+        assertNull(first.stats)
         assertTrue(first.isSong)
         assertTrue(next.tracks.drop(1).all { it.isSong }, "the radio of a song is made of songs")
         assertNotNull(next.lyricsId)
@@ -44,6 +45,7 @@ class MusicParserTest {
         assertEquals("Rick Astley", first.artist, "the views and likes that follow are not part of the artist")
         assertNull(first.album)
         assertNull(first.year)
+        assertEquals("1.8B views · 19M likes", first.stats)
     }
 
     @Test

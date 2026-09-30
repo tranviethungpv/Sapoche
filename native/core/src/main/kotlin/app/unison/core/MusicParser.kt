@@ -152,6 +152,10 @@ object MusicParser {
         fun pageId(run: JsonElement?) = run.at("navigationEndpoint", "browseEndpoint", "browseId").string()
         val album = parts.drop(1).flatten().firstOrNull { pageId(it)?.startsWith("MPRE") == true }
         val year = parts.drop(1).lastOrNull()?.singleOrNull()?.at("text").string()?.takeIf { YEAR.matches(it) }
+        // A video's line says how many watched it instead of which album it is on
+        val stats = parts.drop(1).map { part -> part.joinToString("") { it.at("text").string().orEmpty() }.trim() }
+            .filter { it.endsWith("views") || it.endsWith("likes") || it.endsWith("plays") }
+            .joinToString(" · ").takeIf { it.isNotEmpty() }
         return MusicTrack(
             videoId = videoId,
             title = title,
@@ -163,6 +167,7 @@ object MusicParser {
             durationSec = seconds(duration),
             thumbUrl = thumbs.thumbnail(),
             isSong = type == "MUSIC_VIDEO_TYPE_ATV",
+            stats = stats,
         )
     }
 

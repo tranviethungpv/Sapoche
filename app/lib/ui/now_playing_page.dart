@@ -5,13 +5,19 @@ import '../data/room_controller.dart';
 import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'artist_page.dart';
 import 'members_sheet.dart';
+import 'player/lyrics_view.dart';
+import 'player/related_view.dart';
+import 'player/up_next_view.dart';
 import 'player_sheet.dart';
+import 'song_info_sheet.dart';
 import 'scope.dart';
 import 'sleep_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/like_button.dart';
+import 'widgets/download_actions.dart';
 import 'widgets/playlist_picker.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
@@ -61,8 +67,254 @@ double coverSize(MediaQueryData media) {
   ].reduce((a, b) => a < b ? a : b).clamp(140.0, 380.0);
 }
 
-class _Body extends StatelessWidget {
+/// What the middle of the full player shows: the cover, or one of the panels that take its place.
+enum _Panel { cover, lyrics, upNext, related }
+
+class _Body extends StatefulWidget {
   const _Body({required this.controller, required this.current});
+
+  final RoomController controller;
+  final QueueEntry current;
+
+  @override
+  State<_Body> createState() => _BodyState();
+}
+
+class _BodyState extends State<_Body> {
+  _Panel _panel = _Panel.cover;
+
+  RoomController get _c => widget.controller;
+
+  /// A second touch on the button of the panel that is open goes back to the cover.
+  void _show(_Panel panel) =>
+      setState(() => _panel = _panel == panel ? _Panel.cover : panel);
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final current = widget.current;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PlayerBackdrop(coverUrl: current.thumb),
+        SafeArea(
+          child: Column(
+            children: [
+              const SizedBox(height: 6),
+              _Grabber(color: p.textTertiary.withValues(alpha: 0.5)),
+              const SizedBox(height: 10),
+              _ModePill(controller: _c),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 240),
+                  layoutBuilder: (current, previous) => Stack(
+                    fit: StackFit.expand,
+                    children: [...previous, ?current],
+                  ),
+                  child: switch (_panel) {
+                    _Panel.cover => _CoverStage(
+                      key: const ValueKey('cover'),
+                      controller: _c,
+                      current: current,
+                    ),
+                    _ => _PanelStage(
+                      key: ValueKey(_panel),
+                      controller: _c,
+                      current: current,
+                      panel: _panel,
+                      onCover: () => setState(() => _panel = _Panel.cover),
+                    ),
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 14),
+                    PlaybackBar(controller: _c),
+                    const SizedBox(height: 10),
+                    ListenableBuilder(
+                      listenable: _c.player,
+                      builder: (context, _) => Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          SkipButton(
+                            forward: false,
+                            onPressed: _c.prev,
+                            size: 52,
+                          ),
+                          PlayPauseButton(
+                            playing: _c.isPlaying,
+                            starting: _c.isStarting,
+                            onPressed: _c.togglePlay,
+                          ),
+                          SkipButton(
+                            forward: true,
+                            onPressed: _c.next,
+                            size: 52,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _Toolbar(controller: _c, panel: _panel, onPanel: _show),
+                    if (_c.snapshot.inRoom) ...[
+                      const SizedBox(height: 6),
+                      _RoomStrip(controller: _c),
+                    ],
+                    const SizedBox(height: 14),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The big cover (or the picture) with the title and the buttons that go with the song.
+class _CoverStage extends StatelessWidget {
+  const _CoverStage({
+    super.key,
+    required this.controller,
+    required this.current,
+  });
+
+  final RoomController controller;
+  final QueueEntry current;
+
+  @override
+  Widget build(BuildContext context) {
+    final sheet = PlayerSheetScope.of(context);
+    final artSize = coverSize(MediaQuery.of(context));
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Column(
+        children: [
+          const Spacer(flex: 2),
+          if (controller.snapshot.video)
+            VideoView(
+              key: const ValueKey('video'),
+              controller: controller,
+              cover: current,
+            )
+          else
+            ListenableBuilder(
+              listenable: controller.player,
+              builder: (context, _) => AnimatedScale(
+                // Paused covers shrink, like in Apple Music
+                scale: controller.isPlaying ? 1 : 0.86,
+                duration: const Duration(milliseconds: 420),
+                curve: Curves.easeOutBack,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: controller.isPlaying ? 0.28 : 0.14,
+                        ),
+                        blurRadius: controller.isPlaying ? 36 : 18,
+                        offset: Offset(0, controller.isPlaying ? 18 : 8),
+                      ),
+                    ],
+                  ),
+                  child: CoverSlot(
+                    controller: sheet,
+                    child: Artwork(
+                      key: sheet.pageCover,
+                      url: current.thumb,
+                      size: artSize,
+                      radius: 16,
+                      sharp: true,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          const Spacer(flex: 2),
+          _TitleRow(controller: controller, current: current),
+        ],
+      ),
+    );
+  }
+}
+
+/// A panel in place of the cover, under a small cover and the title so that the song stays in view.
+class _PanelStage extends StatelessWidget {
+  const _PanelStage({
+    super.key,
+    required this.controller,
+    required this.current,
+    required this.panel,
+    required this.onCover,
+  });
+
+  final RoomController controller;
+  final QueueEntry current;
+  final _Panel panel;
+  final VoidCallback onCover;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(28, 14, 20, 8),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: onCover,
+                child: Artwork(url: current.thumb, size: 56, radius: 10),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      current.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.titleMedium,
+                    ),
+                    Text(
+                      current.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.bodyMedium?.copyWith(color: p.primary),
+                    ),
+                  ],
+                ),
+              ),
+              LikeButton(track: current, size: 24),
+              _MoreButton(controller: controller, current: current),
+            ],
+          ),
+        ),
+        Expanded(
+          child: switch (panel) {
+            _Panel.lyrics => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: LyricsView(controller: controller, track: current),
+            ),
+            _Panel.upNext => UpNextView(controller: controller),
+            _ => RelatedView(track: current),
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _TitleRow extends StatelessWidget {
+  const _TitleRow({required this.controller, required this.current});
 
   final RoomController controller;
   final QueueEntry current;
@@ -71,143 +323,152 @@ class _Body extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    final sheet = PlayerSheetScope.of(context);
-    final artSize = coverSize(MediaQuery.of(context));
-
-    return Stack(
-      fit: StackFit.expand,
+    return Row(
       children: [
-        PlayerBackdrop(coverUrl: current.thumb),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(
-              children: [
-                const SizedBox(height: 6),
-                _Grabber(color: p.textTertiary.withValues(alpha: 0.5)),
-                const SizedBox(height: 10),
-                _ModePill(controller: controller),
-                const Spacer(flex: 2),
-                if (controller.snapshot.video)
-                  VideoView(
-                    key: const ValueKey('video'),
-                    controller: controller,
-                    cover: current,
-                  )
-                else
-                  ListenableBuilder(
-                    listenable: controller.player,
-                    builder: (context, _) => AnimatedScale(
-                      // Paused covers shrink, like in Apple Music
-                      scale: controller.isPlaying ? 1 : 0.86,
-                      duration: const Duration(milliseconds: 420),
-                      curve: Curves.easeOutBack,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(
-                                alpha: controller.isPlaying ? 0.28 : 0.14,
-                              ),
-                              blurRadius: controller.isPlaying ? 36 : 18,
-                              offset: Offset(0, controller.isPlaying ? 18 : 8),
-                            ),
-                          ],
-                        ),
-                        child: CoverSlot(
-                          controller: sheet,
-                          child: Artwork(
-                            key: sheet.pageCover,
-                            url: current.thumb,
-                            size: artSize,
-                            radius: 16,
-                            sharp: true,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                const Spacer(flex: 2),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            current.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.headlineSmall,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            current.artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.titleMedium?.copyWith(
-                              color: p.primary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => showAddToPlaylist(context, [current]),
-                      tooltip: S.addToPlaylist,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 42,
-                        height: 42,
-                      ),
-                      icon: Icon(
-                        Icons.playlist_add_rounded,
-                        size: 26,
-                        color: p.textTertiary,
-                      ),
-                    ),
-                    LikeButton(track: current, size: 26),
-                    _RepeatButton(controller: controller),
-                  ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                current.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.headlineSmall,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                current.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.titleMedium?.copyWith(
+                  color: p.primary,
+                  fontWeight: FontWeight.w500,
                 ),
-                const SizedBox(height: 14),
-                PlaybackBar(controller: controller),
-                const SizedBox(height: 10),
-                ListenableBuilder(
-                  listenable: controller.player,
-                  builder: (context, _) => Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      SkipButton(
-                        forward: false,
-                        onPressed: controller.prev,
-                        size: 52,
-                      ),
-                      PlayPauseButton(
-                        playing: controller.isPlaying,
-                        starting: controller.isStarting,
-                        onPressed: controller.togglePlay,
-                      ),
-                      SkipButton(
-                        forward: true,
-                        onPressed: controller.next,
-                        size: 52,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                _SleepButton(controller: controller),
-                const Spacer(),
-                if (controller.snapshot.inRoom)
-                  _RoomStrip(controller: controller),
-                const SizedBox(height: 14),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
+        LikeButton(track: current, size: 26),
+        _RepeatButton(controller: controller),
+        _MoreButton(controller: controller, current: current),
+      ],
+    );
+  }
+}
+
+/// The "…" of the song: its info, its artist, a playlist to put it in, keeping it on the phone.
+class _MoreButton extends StatelessWidget {
+  const _MoreButton({required this.controller, required this.current});
+
+  final RoomController controller;
+  final QueueEntry current;
+
+  Future<void> _openArtist(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    String? id;
+    try {
+      final radio = await AppScope.of(context).music.radio(current.videoId);
+      id = radio.songOf(current.videoId)?.artistId;
+    } on Object {
+      // Said below
+    }
+    if (id == null) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text(S.musicFailed)));
+      return;
+    }
+    if (navigator.mounted) await openArtist(navigator.context, id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final library = AppScope.of(context).library;
+    final snapshot = controller.snapshot;
+    final who = current.addedBy == snapshot.you
+        ? S.you
+        : snapshot.nameOf(current.addedBy);
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
+      color: p.brightness == Brightness.light
+          ? const Color(0xFFFFF7F9)
+          : const Color(0xFF2B1F25),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      onSelected: (value) => switch (value) {
+        'info' => showSongInfo(
+          context,
+          current,
+          addedBy: who.isEmpty ? null : who,
+        ),
+        'artist' => _openArtist(context),
+        'playlist' => showAddToPlaylist(context, [current]),
+        'download' => startDownload(context, [current]),
+        _ => library.removeDownload(current.videoId),
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(value: 'info', child: Text(S.songInfo)),
+        const PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
+        const PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
+        ...switch (library.downloadState(current.videoId)) {
+          DownloadState.done => const [
+            PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
+          ],
+          DownloadState.queued || DownloadState.waiting => const [
+            PopupMenuItem(
+              enabled: false,
+              value: 'none',
+              child: Text(S.downloading),
+            ),
+          ],
+          _ => const [
+            PopupMenuItem(value: 'download', child: Text(S.download)),
+          ],
+        },
+      ],
+    );
+  }
+}
+
+/// Lyrics, the queue, related songs and the sleep timer: the things to reach for while listening.
+class _Toolbar extends StatelessWidget {
+  const _Toolbar({
+    required this.controller,
+    required this.panel,
+    required this.onPanel,
+  });
+
+  final RoomController controller;
+  final _Panel panel;
+  final ValueChanged<_Panel> onPanel;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    Widget button(IconData icon, String label, _Panel target) {
+      final on = panel == target;
+      return IconButton(
+        onPressed: () => onPanel(target),
+        tooltip: label,
+        isSelected: on,
+        icon: Icon(icon, size: 26),
+        style: IconButton.styleFrom(
+          foregroundColor: on ? p.onPrimaryContainer : p.textTertiary,
+          backgroundColor: on ? p.primaryContainer : Colors.transparent,
+          fixedSize: const Size(52, 44),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
+        button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
+        button(Icons.explore_outlined, S.related, _Panel.related),
+        Flexible(child: _SleepButton(controller: controller)),
       ],
     );
   }
@@ -223,13 +484,28 @@ class _SleepButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final sleep = controller.sleep;
+    if (!sleep.on) {
+      return IconButton(
+        onPressed: () => showSleepSheet(context, controller),
+        tooltip: S.sleepTimer,
+        icon: const Icon(Icons.bedtime_outlined, size: 26),
+        style: IconButton.styleFrom(
+          foregroundColor: p.textTertiary,
+          fixedSize: const Size(52, 44),
+        ),
+      );
+    }
     return TextButton.icon(
       onPressed: () => showSleepSheet(context, controller),
-      icon: Icon(Icons.bedtime_outlined, size: 20),
-      label: Text(sleepLabel(context, sleep)),
+      icon: const Icon(Icons.bedtime_outlined, size: 20),
+      label: Text(
+        sleepLabel(context, sleep),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       style: TextButton.styleFrom(
-        foregroundColor: sleep.on ? p.primary : p.textTertiary,
-        backgroundColor: sleep.on ? p.primaryContainer : Colors.transparent,
+        foregroundColor: p.primary,
+        backgroundColor: p.primaryContainer,
         shape: const StadiumBorder(),
       ),
     );

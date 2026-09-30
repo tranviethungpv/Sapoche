@@ -1,12 +1,17 @@
 package app.unison
 
 import android.app.Application
+import app.unison.core.LyricsClient
+import app.unison.core.LyricsStore
+import app.unison.core.MusicClient
+import app.unison.core.MusicFeed
 import app.unison.core.NewPipeResolver
 import app.unison.core.Probe
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.io.File
 
 class UnisonApp : Application() {
 
@@ -21,7 +26,9 @@ class UnisonApp : Application() {
         caches = MediaCaches(this, limitMb * 1024L * 1024L)
         mediaData = MediaData(caches, streams, { videoMaxHeight }) { EventLog.d("cache", it) }
         downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
-        suggestions = SuggestionFeed(library, resolver) { EventLog.d("suggest", it) }
+        val music = MusicClient()
+        musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
+        suggestions = SuggestionFeed(library, resolver, musicFeed) { EventLog.d("suggest", it) }
     }
 
     companion object {
@@ -51,6 +58,10 @@ class UnisonApp : Application() {
 
         /** Works through the songs waiting to be downloaded. */
         lateinit var downloader: Downloader
+            private set
+
+        /** What the full player shows about a song: the radio, related songs, lyrics, the artist. */
+        lateinit var musicFeed: MusicFeed
             private set
 
         /** Songs to offer and to carry on with. */

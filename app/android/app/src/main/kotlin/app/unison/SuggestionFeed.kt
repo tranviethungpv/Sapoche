@@ -1,5 +1,6 @@
 package app.unison
 
+import app.unison.core.MusicFeed
 import app.unison.core.StreamResolver
 import app.unison.sync.Suggestions
 import app.unison.sync.TrackRef
@@ -15,6 +16,7 @@ import kotlinx.coroutines.sync.withLock
 class SuggestionFeed(
     private val store: LibraryStore,
     private val resolver: StreamResolver,
+    private val music: MusicFeed,
     private val now: () -> Long = System::currentTimeMillis,
     private val log: (String) -> Unit = {},
 ) {
@@ -51,10 +53,23 @@ class SuggestionFeed(
         changed
     }
 
-    /** Up to [count] songs to carry on with after [videoId], other than [exclude] and what was heard lately. Needs the network. */
+    /**
+     * Up to [count] songs to carry on with after [videoId], other than [exclude] and what was heard lately: the radio
+     * YouTube Music makes of the song, or what YouTube lists beside it when that cannot be had. Needs the network.
+     */
     suspend fun after(videoId: String, exclude: Set<String>, count: Int): List<TrackRef> {
-        val related = resolver.related(videoId).map { TrackRef(it.videoId, it.title, it.artist, it.thumbUrl, it.durationSec * 1000) }
-        return Suggestions.mix(listOf(related), exclude + videoId + store.heardSince(now() - RECENT_MS), count)
+        val radio = try {
+            music.watchNext(videoId).tracks.map { TrackRef(it.videoId, it.title, it.artist, it.thumbUrl, it.durationSec * 1000) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("no radio for $videoId, using the related list: ${e.javaClass.simpleName}: ${e.message}")
+            emptyList()
+        }
+        val songs = radio.ifEmpty {
+            resolver.related(videoId).map { TrackRef(it.videoId, it.title, it.artist, it.thumbUrl, it.durationSec * 1000) }
+        }
+        return Suggestions.mix(listOf(songs), exclude + videoId + store.heardSince(now() - RECENT_MS), count)
     }
 
     /** Songs not worth offering: the seeds themselves, those liked and those heard this week. */

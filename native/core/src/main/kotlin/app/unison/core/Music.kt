@@ -15,6 +15,8 @@ data class MusicTrack(
     val durationSec: Long = 0,
     val thumbUrl: String? = null,
     val isSong: Boolean = false,
+    /** What YouTube says about a video's reach, like "1.8B views · 19M likes"; null for a song. */
+    val stats: String? = null,
     val counterpart: MusicTrack? = null,
 )
 

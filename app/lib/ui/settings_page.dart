@@ -11,6 +11,7 @@ import 'home_shell.dart';
 import 'scope.dart';
 import 'widgets/avatars.dart';
 import 'widgets/text_dialog.dart';
+import 'widgets/wash.dart';
 
 /// A short list of topics; each opens a page of its own, so no page grows long.
 class SettingsPage extends StatelessWidget {
@@ -486,14 +487,17 @@ class _SubPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: ListView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
+    // A page on its own has no backdrop: the pink veil is part of the home screen
+    return PinkWash(
+      child: Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: ListView(
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: children,
         ),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: children,
       ),
     );
   }

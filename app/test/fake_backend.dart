@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
+import 'package:unison/data/music_models.dart';
 
 /// In-memory [Backend] that records calls and lets a test push state.
 class FakeBackend implements Backend {
@@ -276,6 +277,36 @@ class FakeBackend implements Backend {
 
   @override
   Future<void> setAutoplay(bool on) => _record('autoplay $on');
+
+  SongRadio radioResult = const SongRadio();
+  RelatedPage relatedResult = const RelatedPage();
+  ArtistPage artistResult = const ArtistPage(id: 'UC1', name: 'Artist');
+  Lyrics? lyricsResult;
+
+  /// When set, these calls wait for it, so a test can look at the loading state.
+  Completer<void>? musicGate;
+
+  Future<T> _music<T>(String call, T value) async {
+    await _record(call);
+    await musicGate?.future;
+    return value;
+  }
+
+  @override
+  Future<SongRadio> musicNext(String videoId) =>
+      _music('musicNext $videoId', radioResult);
+
+  @override
+  Future<RelatedPage> musicRelated(String videoId) =>
+      _music('musicRelated $videoId', relatedResult);
+
+  @override
+  Future<ArtistPage> musicArtist(String artistId) =>
+      _music('musicArtist $artistId', artistResult);
+
+  @override
+  Future<Lyrics?> lyrics(Track track) =>
+      _music('lyrics ${track.videoId}', lyricsResult);
 
   /// Playlists by id, in the order they were made; the songs of each in order.
   final playlistSongs = <int, List<Track>>{};

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 
 import 'models.dart';
+import 'music_models.dart';
 
 sealed class BackendEvent {
   const BackendEvent();
@@ -179,6 +180,17 @@ abstract class Backend {
 
   /// Stops the music in [minutes] (mode time), when the song is over (song) or not at all (off).
   Future<void> setSleep(SleepMode mode, {int minutes = 0});
+
+  /// What YouTube Music would play after the song, with the song itself first. Throws without a network.
+  Future<SongRadio> musicNext(String videoId);
+
+  /// The "related" page of a song: more like it, other performances, similar artists.
+  Future<RelatedPage> musicRelated(String videoId);
+
+  Future<ArtistPage> musicArtist(String artistId);
+
+  /// The words of a song, with times when there are any; null when nobody wrote them down.
+  Future<Lyrics?> lyrics(Track track);
 
   Future<void> setTrim(int ms);
   Future<List<String>> log();
@@ -432,6 +444,32 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> setAutoplay(bool on) => _call('setAutoplay', {'on': on});
+
+  @override
+  Future<SongRadio> musicNext(String videoId) async => SongRadio.fromMap(
+    (await _call<Map<Object?, Object?>>('musicNext', {'videoId': videoId}))!,
+  );
+
+  @override
+  Future<RelatedPage> musicRelated(String videoId) async => RelatedPage.fromMap(
+    (await _call<Map<Object?, Object?>>('musicRelated', {'videoId': videoId}))!,
+  );
+
+  @override
+  Future<ArtistPage> musicArtist(String artistId) async => ArtistPage.fromMap(
+    (await _call<Map<Object?, Object?>>('musicArtist', {'id': artistId}))!,
+  );
+
+  @override
+  Future<Lyrics?> lyrics(Track track) async {
+    final found = await _call<Map<Object?, Object?>>('lyrics', {
+      'videoId': track.videoId,
+      'title': track.title,
+      'artist': track.artist,
+      'durMs': track.durMs,
+    });
+    return found == null ? null : Lyrics.fromMap(found);
+  }
 
   @override
   Future<List<SavedPlaylist>> playlists() async => [
