@@ -112,7 +112,12 @@ class PlaybackService : MediaSessionService() {
         player.addAnalyticsListener(LoadEvents())
         history = ListenHistory(player, UnisonApp.library, scope) { EventLog.d("library", it) }.also { it.start() }
 
-        group = GroupController(this, player, getSharedPreferences("unison", MODE_PRIVATE), QueueFile(File(filesDir, "local_queue.json")))
+        group = GroupController(
+            this,
+            player,
+            getSharedPreferences("unison", MODE_PRIVATE),
+            QueueFile(File(filesDir, "local_queue.json")),
+        ) { videoId, exclude -> UnisonApp.suggestions.after(videoId, exclude, AUTOPLAY_COUNT) }
         UnisonApp.setGroup(group)
         group.recoverRoom()
 
@@ -447,6 +452,9 @@ class PlaybackService : MediaSessionService() {
         /** In a room, this long without sound or a look and the connection is let go of; outside one, the service. */
         const val ROOM_IDLE_MS = 20 * 60_000L
         const val SERVICE_IDLE_MS = 15 * 60_000L
+
+        /** Songs added each time the queue runs out and the music carries on by itself. */
+        const val AUTOPLAY_COUNT = 5
         const val STALL_TICK_MS = 100L
         const val STALL_LOG_MS = 120L
     }

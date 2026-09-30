@@ -65,4 +65,10 @@ interface StreamResolver {
 
     /** The first [limit] playable songs of the playlist with the given id. */
     suspend fun playlist(playlistId: String, limit: Int = 50): Playlist
+
+    /** Videos YouTube lists beside the one with [videoId], in its order; live streams and lengthless ones left out. */
+    suspend fun related(videoId: String, limit: Int = 25): List<TrackInfo>
+
+    /** What YouTube would complete [query] to while it is being typed. */
+    suspend fun suggest(query: String): List<String>
 }

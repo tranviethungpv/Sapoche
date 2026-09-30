@@ -105,6 +105,18 @@ class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : Strea
         Playlist(info.name, tracks)
     }
 
+    override suspend fun related(videoId: String, limit: Int): List<TrackInfo> = withContext(Dispatchers.IO) {
+        StreamInfo.getInfo(youtube, "https://www.youtube.com/watch?v=$videoId").relatedItems
+            .filterIsInstance<StreamInfoItem>()
+            .filter { it.duration > 0 && it.streamType != StreamType.LIVE_STREAM && it.url.contains("v=") }
+            .take(limit)
+            .map { it.toTrack() }
+    }
+
+    override suspend fun suggest(query: String): List<String> = withContext(Dispatchers.IO) {
+        youtube.suggestionExtractor.suggestionList(query)
+    }
+
     private fun StreamInfoItem.toTrack() = TrackInfo(
         videoId = url.substringAfter("v=").substringBefore('&'),
         title = name,

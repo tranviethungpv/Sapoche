@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
 import java.util.concurrent.Executors
 
 /**
@@ -25,6 +28,9 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
 
     /** A song with the time it was liked or last heard, and how often it was heard. */
     data class Entry(val track: TrackRef, val at: Long, val plays: Int = 0)
+
+    /** Songs YouTube suggested for a seed, and when they were fetched. */
+    data class Cached(val tracks: List<TrackRef>, val fetchedAt: Long)
 
     /** A playlist as listed: its cover is the first song's picture. */
     data class Playlist(val id: Long, val name: String, val count: Int, val thumb: String?, val updatedAt: Long)
@@ -54,11 +60,18 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         )
         db.execSQL("CREATE INDEX history_by_song ON history(video_id)")
         createPlaylistTables(db)
+        createSuggestionsTable(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // Each step brings the database one version forward and has a test in LibraryStoreTest
         if (oldVersion < 2) createPlaylistTables(db)
+        if (oldVersion < 3) createSuggestionsTable(db)
+    }
+
+    /** What YouTube listed beside a seed song, kept so suggestions show without the network. */
+    private fun createSuggestionsTable(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE suggestions(seed_video_id TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
     }
 
     private fun createPlaylistTables(db: SQLiteDatabase) {
@@ -277,6 +290,91 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
 
     private fun cleanName(name: String) = name.trim().take(MAX_NAME).ifBlank { "Untitled" }
 
+    // ------------------------------------------------------------------ suggestions
+
+    /**
+     * The songs suggestions are built from, at most [SEEDS]: the two liked last, the one heard most in the last
+     * two weeks, then whatever was heard last if that leaves room.
+     */
+    suspend fun suggestionSeeds(now: Long = System.currentTimeMillis()): List<String> = withContext(io) {
+        val db = readableDatabase
+        fun ids(sql: String, vararg args: Any): List<String> =
+            db.rawQuery(sql, args.map { it.toString() }.toTypedArray()).use { c ->
+                val list = ArrayList<String>()
+                while (c.moveToNext()) list += c.getString(0)
+                list
+            }
+        val seeds = LinkedHashSet<String>()
+        seeds += ids("SELECT video_id FROM likes ORDER BY liked_at DESC, video_id LIMIT 2")
+        seeds += ids(
+            "SELECT video_id FROM history WHERE played_at >= ? GROUP BY video_id " +
+                "ORDER BY COUNT(*) DESC, MAX(played_at) DESC LIMIT 1",
+            now - SEED_WINDOW_MS,
+        )
+        seeds += ids("SELECT video_id FROM history GROUP BY video_id ORDER BY MAX(played_at) DESC LIMIT $SEEDS")
+        seeds.take(SEEDS)
+    }
+
+    /** Ids of the songs heard since [since]. */
+    suspend fun heardSince(since: Long): Set<String> = withContext(io) {
+        readableDatabase.rawQuery("SELECT DISTINCT video_id FROM history WHERE played_at >= ?", arrayOf(since.toString())).use { c ->
+            val set = HashSet<String>()
+            while (c.moveToNext()) set += c.getString(0)
+            set
+        }
+    }
+
+    suspend fun likedIds(): Set<String> = withContext(io) {
+        readableDatabase.rawQuery("SELECT video_id FROM likes", null).use { c ->
+            val set = HashSet<String>()
+            while (c.moveToNext()) set += c.getString(0)
+            set
+        }
+    }
+
+    /** What was kept for [seed], or null. */
+    suspend fun cachedSuggestions(seed: String): Cached? = withContext(io) {
+        readableDatabase.rawQuery("SELECT json, fetched_at FROM suggestions WHERE seed_video_id = ?", arrayOf(seed)).use { c ->
+            if (!c.moveToFirst()) return@use null
+            val array = try {
+                JSONArray(c.getString(0))
+            } catch (_: JSONException) {
+                return@use null
+            }
+            Cached(
+                (0 until array.length()).map {
+                    val o = array.getJSONObject(it)
+                    TrackRef(o.getString("v"), o.getString("t"), o.getString("a"), o.optString("i").ifEmpty { null }, o.getLong("d"))
+                },
+                c.getLong(1),
+            )
+        }
+    }
+
+    suspend fun putSuggestions(seed: String, tracks: List<TrackRef>, at: Long = System.currentTimeMillis()) = withContext(io) {
+        val json = JSONArray()
+        for (t in tracks) {
+            json.put(JSONObject().put("v", t.videoId).put("t", t.title).put("a", t.artist).put("i", t.thumb ?: "").put("d", t.durMs))
+        }
+        writableDatabase.insertWithOnConflict(
+            "suggestions",
+            null,
+            ContentValues().apply {
+                put("seed_video_id", seed)
+                put("json", json.toString())
+                put("fetched_at", at)
+            },
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
+        _changes.tryEmit(Unit)
+    }
+
+    /** Forgets what was kept for every seed but [seeds]. */
+    suspend fun keepSuggestionsFor(seeds: Collection<String>) = withContext(io) {
+        val marks = seeds.joinToString(",") { "?" }
+        writableDatabase.execSQL("DELETE FROM suggestions WHERE seed_video_id NOT IN ($marks)", arrayOf<Any?>(*seeds.toTypedArray()))
+    }
+
     // ------------------------------------------------------------------ helpers
 
     /** Adds the song's details, or brings them up to date. A length that is not known does not erase one that is. */
@@ -336,10 +434,12 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     companion object {
-        private const val VERSION = 2
+        private const val VERSION = 3
         const val RECENT_LIMIT = 100
         const val HISTORY_KEEP = 2000
         const val MAX_PLAYLIST = 500
         const val MAX_NAME = 60
+        const val SEEDS = 3
+        private const val SEED_WINDOW_MS = 14L * 24 * 60 * 60 * 1000
     }
 }

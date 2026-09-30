@@ -63,6 +63,23 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
           _Group(
+            title: S.autoplay,
+            footer: S.autoplayHelp,
+            children: [
+              ListenableBuilder(
+                listenable: model.room,
+                builder: (context, _) => Material(
+                  type: MaterialType.transparency,
+                  child: SwitchListTile(
+                    title: const Text(S.autoplay),
+                    value: model.room.autoplay,
+                    onChanged: model.room.setAutoplay,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          _Group(
             title: S.videoSection,
             footer: S.videoQualityHelp,
             children: [

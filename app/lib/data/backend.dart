@@ -122,6 +122,18 @@ abstract class Backend {
   Future<void> setLiked(Track track, bool liked);
   Future<void> clearHistory();
 
+  /// Songs to offer, from what was kept; works without a network.
+  Future<List<Track>> forYou();
+
+  /// Fetches the suggestions again, whatever their age, and gives back the new list.
+  Future<List<Track>> refreshSuggestions();
+
+  /// What YouTube would complete [query] to; empty when it cannot say.
+  Future<List<String>> suggest(String query);
+
+  /// Whether the music carries on with similar songs when the queue runs out.
+  Future<void> setAutoplay(bool on);
+
   /// The person's playlists, the one changed last first.
   Future<List<SavedPlaylist>> playlists();
   Future<List<Track>> playlistTracks(int id);
@@ -329,6 +341,27 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> clearHistory() => _call('libraryClearHistory');
+
+  @override
+  Future<List<Track>> forYou() async => [
+    for (final e in await _call<List<Object?>>('forYou') ?? const [])
+      Track.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<List<Track>> refreshSuggestions() async => [
+    for (final e
+        in await _call<List<Object?>>('refreshSuggestions') ?? const [])
+      Track.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<List<String>> suggest(String query) async =>
+      (await _call<List<Object?>>('suggest', {'query': query}) ?? const [])
+          .cast<String>();
+
+  @override
+  Future<void> setAutoplay(bool on) => _call('setAutoplay', {'on': on});
 
   @override
   Future<List<SavedPlaylist>> playlists() async => [

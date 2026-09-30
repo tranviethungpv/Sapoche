@@ -204,4 +204,43 @@ void main() {
       expect(messages, isNotEmpty);
     });
   });
+
+  group('suggestions', () {
+    test('start with what the native side kept', () async {
+      backend.forYouSongs = [_a, _b];
+      await library.start();
+      expect(library.forYou.map((t) => t.videoId), [_a.videoId, _b.videoId]);
+    });
+
+    test('a pull to refresh replaces them with the fetched ones', () async {
+      backend.forYouSongs = [_a];
+      backend.refreshedSongs = [_b];
+      await library.start();
+
+      expect(await library.refreshForYou(), isTrue);
+      expect(library.forYou.map((t) => t.videoId), [_b.videoId]);
+      expect(backend.calls, contains('refreshSuggestions'));
+    });
+
+    test('a refresh that fails keeps what was there', () async {
+      backend.forYouSongs = [_a];
+      await library.start();
+      backend.failWith = StateError('offline');
+
+      expect(await library.refreshForYou(), isFalse);
+      expect(library.forYou.map((t) => t.videoId), [_a.videoId]);
+    });
+
+    test(
+      'a change announced by the native side brings new suggestions in',
+      () async {
+        await library.start();
+        backend.forYouSongs = [_b];
+        backend.emit(const LibraryEvent());
+        await settle();
+        await settle();
+        expect(library.forYou.map((t) => t.videoId), [_b.videoId]);
+      },
+    );
+  });
 }

@@ -20,6 +20,7 @@ class LocalSessionTest {
     private fun track(n: Int) = TrackRef("video$n".padEnd(11, 'x').take(11), "Song $n", "Artist", null, 200_000)
 
     private class Harness(scope: TestScope, saved: SavedQueue?) {
+        val ended = mutableListOf<String>()
         val now: () -> Long = { scope.currentTime }
         val player = FakePlayer(now)
         val saved = mutableListOf<SavedQueue>()
@@ -31,6 +32,7 @@ class LocalSessionTest {
             saved,
             persist = { this.saved += it },
             problem = { problems += it },
+            onQueueEnd = { ended += it.title },
             newId = { "id${++counter}" },
             random = Random(7),
         ).also { it.attach() }
@@ -94,6 +96,58 @@ class LocalSessionTest {
         assertFalse(h.player.playing)
         assertNull(h.player.loaded, "the player is let go of")
         assertTrue(h.session.snapshot.value.finished)
+    }
+
+    @Test
+    fun `the queue running out is announced with the last song, once`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        h.session.next()
+        step()
+        assertEquals(emptyList(), h.ended, "a song is still to come")
+        h.session.next()
+        step()
+        assertEquals(listOf("Song 2"), h.ended)
+    }
+
+    @Test
+    fun `a song ending by itself at the end of the queue is announced`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        h.player.onEnded?.invoke()
+        step()
+        assertEquals(listOf("Song 1"), h.ended)
+    }
+
+    @Test
+    fun `repeating or removing the last song does not announce an end`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        h.session.setRepeat("all")
+        h.player.onEnded?.invoke()
+        step()
+        assertEquals(emptyList(), h.ended, "repeat all starts over")
+        h.session.setRepeat("off")
+        h.session.remove(h.session.snapshot.value.queue.last().id)
+        step()
+        assertEquals(emptyList(), h.ended, "the person took it away")
+    }
+
+    @Test
+    fun `songs added after the end start playing`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        h.session.next()
+        step()
+        assertTrue(h.session.snapshot.value.finished)
+        h.session.add(listOf(track(2), track(3)), next = false)
+        step()
+        assertEquals("Song 2", h.player.loaded?.title)
+        assertTrue(h.player.playing)
     }
 
     @Test

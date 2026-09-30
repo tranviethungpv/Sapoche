@@ -350,4 +350,24 @@ void main() {
     await controller.kick(const Member(id: 'b', name: 'Binh', ready: true));
     expect(backend.calls.last, 'kick b');
   });
+
+  test(
+    'autoplay is on until turned off, and the choice goes to the native side',
+    () async {
+      expect(controller.autoplay, isTrue);
+      await controller.setAutoplay(false);
+      expect(controller.autoplay, isFalse);
+      expect(backend.calls.last, 'autoplay false');
+    },
+  );
+
+  test(
+    'completions come from the backend, and a failing one is just empty',
+    () async {
+      backend.suggestions = ['lofi girl', 'lofi beats'];
+      expect(await controller.suggest('lofi'), ['lofi girl', 'lofi beats']);
+      backend.failWith = StateError('offline');
+      expect(await controller.suggest('lofi'), isEmpty);
+    },
+  );
 }

@@ -14,13 +14,16 @@ import app.unison.sync.ClockSync
 import app.unison.sync.Connection
 import app.unison.sync.GroupSession
 import app.unison.sync.LocalSession
+import app.unison.sync.QueueItem
 import app.unison.sync.Protocol
 import app.unison.sync.QueueFile
 import app.unison.sync.RoomClient
 import app.unison.sync.TrackRef
 import app.unison.sync.ServerMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -46,6 +49,8 @@ class GroupController(
     private val exo: ExoPlayer,
     private val prefs: SharedPreferences,
     private val queueFile: QueueFile,
+    /** Songs to carry on with after [String] (a video id), leaving out the ids given; asked when the personal queue runs out. */
+    private val moreLike: suspend (String, Set<String>) -> List<TrackRef> = { _, _ -> emptyList() },
 ) {
     // Main thread: ExoPlayer must be used there, and the session only does light work
     private var scope = newScope()
@@ -66,7 +71,10 @@ class GroupController(
         persist = { saved -> writer.execute { runCatching { queueFile.write(saved) } } },
         problem = { text -> _errors.tryEmit(ServerMessage.Error("unplayable", text)) },
         log = { EventLog.d("local", it) },
+        onQueueEnd = ::autoplay,
     )
+
+    private var autoplayJob: Job? = null
 
     private var client: RoomClient? = null
     private var session: GroupSession? = null
@@ -113,6 +121,34 @@ class GroupController(
         local.attach()
         ownScope.launch { local.snapshot.collect { publish() } }
     }
+
+    /**
+     * The personal queue ran out. Unless the person turned it off, it carries on with songs like the last
+     * one, so the music does not just stop. Nothing happens without a network, in a room, or when they
+     * asked for something else in the meantime.
+     */
+    private fun autoplay(last: QueueItem) {
+        if (!autoplayOn || session != null || autoplayJob?.isActive == true) return
+        autoplayJob = ownScope.launch {
+            try {
+                val more = moreLike(last.videoId, local.snapshot.value.queue.map { it.videoId }.toSet())
+                if (more.isEmpty() || session != null || !local.snapshot.value.finished) return@launch
+                EventLog.d("local", "autoplay adds ${more.size} songs like '${last.title}'")
+                // A queue that has grown long by carrying on is started afresh rather than filling up
+                if (local.snapshot.value.queue.size > AUTOPLAY_RESTART_AT) local.clear()
+                local.add(more, next = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                EventLog.d("local", "autoplay found nothing: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
+    }
+
+    /** Whether the music carries on by itself when the queue runs out. */
+    var autoplayOn: Boolean
+        get() = prefs.getBoolean(KEY_AUTOPLAY, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTOPLAY, value).apply()
 
     fun setVideoMode(on: Boolean) {
         videoMode = on
@@ -486,6 +522,8 @@ class GroupController(
         const val KEY_ROOM_SOLO_ITEM = "room_solo_item"
         const val KEY_LAST_ACTIVE = "room_last_active"
         const val KEY_VIDEO = "video_mode"
+        const val KEY_AUTOPLAY = "autoplay"
+        const val AUTOPLAY_RESTART_AT = 150
         const val KEY_TRIM_MS = "trim_ms"
         const val KEY_START_BIAS_MS = "start_bias_ms"
         const val MAX_TRIM_MS = 1000L

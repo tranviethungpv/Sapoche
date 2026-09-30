@@ -55,23 +55,35 @@ class _SearchPageState extends State<SearchPage> {
   /// Guards against a slow answer for an old query replacing a newer one.
   int _generation = 0;
 
+  /// How YouTube would complete what is typed, and the timer that waits for a pause before asking.
+  List<String> _suggestions = const [];
+  Timer? _suggestTimer;
+  int _suggestGeneration = 0;
+
+  /// The words of the search on screen, remembered once the person does something with its results.
+  String? _lastQuery;
+
   RoomController get _room => AppScope.roomOf(context);
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _suggestTimer?.cancel();
     _field.dispose();
     super.dispose();
   }
 
   void _onChanged(String text) {
     _debounce?.cancel();
+    _suggestTimer?.cancel();
     if (text.trim().isEmpty) {
       _generation++;
+      _suggestGeneration++;
       setState(() {
         _phase = _Phase.idle;
         _results = const [];
         _playlistTitle = null;
+        _suggestions = const [];
       });
       return;
     }
@@ -79,10 +91,39 @@ class _SearchPageState extends State<SearchPage> {
       const Duration(milliseconds: 450),
       () => _run(text.trim()),
     );
+    // A link needs no completing
+    if (!text.contains('youtu')) {
+      _suggestTimer = Timer(
+        const Duration(milliseconds: 250),
+        () => _suggest(text.trim()),
+      );
+    }
+  }
+
+  Future<void> _suggest(String text) async {
+    final generation = ++_suggestGeneration;
+    final found = await _room.suggest(text);
+    if (!mounted || generation != _suggestGeneration) return;
+    setState(() => _suggestions = found);
+  }
+
+  /// A completion was picked: search for it now.
+  void _pick(String term) {
+    _debounce?.cancel();
+    _suggestTimer?.cancel();
+    _field.value = TextEditingValue(
+      text: term,
+      selection: TextSelection.collapsed(offset: term.length),
+    );
+    FocusScope.of(context).unfocus();
+    setState(() => _suggestions = const []);
+    AppScope.of(context).searches.add(term);
+    _run(term);
   }
 
   Future<void> _run(String query) async {
     final generation = ++_generation;
+    _lastQuery = query.contains('youtu') ? null : query;
     setState(() => _phase = _Phase.loading);
     try {
       final looksLikeLink = query.contains('youtu');
@@ -174,6 +215,8 @@ class _SearchPageState extends State<SearchPage> {
     required bool playNext,
   }) async {
     HapticFeedback.selectionClick();
+    final query = _lastQuery;
+    if (query != null) AppScope.of(context).searches.add(query);
     final ids = tracks.map((t) => t.videoId).toList();
     setState(() => _added.addAll(ids));
     if (tracks.length == 1) {
@@ -193,6 +236,101 @@ class _SearchPageState extends State<SearchPage> {
     Future.delayed(const Duration(milliseconds: 1800), () {
       if (mounted) setState(() => _added.removeAll(ids));
     });
+  }
+
+  /// Nothing typed: what was searched for lately and songs to try, or a hint when there is neither.
+  Widget _idle(BuildContext context) {
+    final model = AppScope.of(context);
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return ListenableBuilder(
+      listenable: Listenable.merge([model.library, model.searches]),
+      builder: (context, _) {
+        final terms = model.searches.terms;
+        final songs = model.library.forYou;
+        if (terms.isEmpty && songs.isEmpty) {
+          return const _Message(
+            key: ValueKey('idle'),
+            icon: Icons.search_rounded,
+            title: S.searchEmptyTitle,
+            body: S.searchEmptyBody,
+          );
+        }
+        return RefreshIndicator(
+          key: const ValueKey('idle'),
+          onRefresh: model.library.refreshForYou,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
+            children: [
+              if (terms.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 8, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(S.recentSearches, style: theme.titleMedium),
+                      ),
+                      TextButton(
+                        onPressed: model.searches.clear,
+                        child: const Text(S.clear),
+                      ),
+                    ],
+                  ),
+                ),
+                for (final term in terms)
+                  InkWell(
+                    onTap: () => _pick(term),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 8, 4),
+                      child: Row(
+                        children: [
+                          Icon(Icons.history_rounded, color: p.textTertiary),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              term,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.bodyLarge,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => model.searches.remove(term),
+                            tooltip: S.remove,
+                            icon: Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: p.textTertiary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+              if (songs.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+                  child: Text(S.forYou, style: theme.titleMedium),
+                ),
+                for (final track in songs)
+                  TrackTile(
+                    track: track,
+                    onTap: () => _add(track),
+                    trailing: _Actions(
+                      track: track,
+                      added: _added.contains(track.videoId),
+                      onAdd: () => _add(track),
+                      onPlayNext: () => _add(track, playNext: true),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -216,7 +354,11 @@ class _SearchPageState extends State<SearchPage> {
                 onChanged: _onChanged,
                 onSubmitted: (text) {
                   _debounce?.cancel();
-                  if (text.trim().isNotEmpty) _run(text.trim());
+                  if (text.trim().isEmpty) return;
+                  if (!text.contains('youtu')) {
+                    AppScope.of(context).searches.add(text);
+                  }
+                  _run(text.trim());
                 },
                 textInputAction: TextInputAction.search,
                 style: theme.bodyLarge,
@@ -267,6 +409,21 @@ class _SearchPageState extends State<SearchPage> {
               ],
             ),
           ),
+          if (_suggestions.isNotEmpty && _field.text.trim().isNotEmpty)
+            SizedBox(
+              height: 46,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                itemCount: _suggestions.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, i) => _FilterChip(
+                  label: _suggestions[i],
+                  selected: false,
+                  onTap: () => _pick(_suggestions[i]),
+                ),
+              ),
+            ),
           ListenableBuilder(
             listenable: _room,
             builder: (context, _) => LinkBanner(link: _room.snapshot.link),
@@ -302,12 +459,7 @@ class _SearchPageState extends State<SearchPage> {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       child: switch (_phase) {
-        _Phase.idle => const _Message(
-          key: ValueKey('idle'),
-          icon: Icons.search_rounded,
-          title: S.searchEmptyTitle,
-          body: S.searchEmptyBody,
-        ),
+        _Phase.idle => _idle(context),
         _Phase.loading => const SkeletonList(key: ValueKey('loading')),
         _Phase.failed => const _Message(
           key: ValueKey('failed'),

@@ -257,6 +257,24 @@ class RoomController extends ChangeNotifier {
   Future<List<PlaylistRef>> searchPlaylists(String query) =>
       _backend.searchPlaylists(query);
 
+  /// Whether the music carries on with similar songs when the queue runs out.
+  bool get autoplay => _profile.autoplay;
+
+  Future<void> setAutoplay(bool on) {
+    _profile = _profile.withAutoplay(on);
+    notifyListeners();
+    return _run(() => _backend.setAutoplay(on));
+  }
+
+  /// What YouTube would complete a half-typed search to.
+  Future<List<String>> suggest(String query) async {
+    try {
+      return await _backend.suggest(query);
+    } on Object {
+      return const [];
+    }
+  }
+
   Future<void> setTrim(int ms) => _run(() => _backend.setTrim(ms));
 
   /// Play songs with their picture on this device, or sound only.

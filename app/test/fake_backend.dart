@@ -180,6 +180,32 @@ class FakeBackend implements Backend {
     recentSongs = [];
   }
 
+  List<Track> forYouSongs = [];
+  List<Track> refreshedSongs = [];
+  List<String> suggestions = [];
+
+  @override
+  Future<List<Track>> forYou() async {
+    await _record('forYou');
+    return [...forYouSongs];
+  }
+
+  @override
+  Future<List<Track>> refreshSuggestions() async {
+    await _record('refreshSuggestions');
+    forYouSongs = [...refreshedSongs];
+    return [...forYouSongs];
+  }
+
+  @override
+  Future<List<String>> suggest(String query) async {
+    await _record('suggest $query');
+    return suggestions;
+  }
+
+  @override
+  Future<void> setAutoplay(bool on) => _record('autoplay $on');
+
   /// Playlists by id, in the order they were made; the songs of each in order.
   final playlistSongs = <int, List<Track>>{};
   final playlistNames = <int, String>{};

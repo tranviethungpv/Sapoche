@@ -66,6 +66,8 @@ class LocalSession(
     /** Something the person should be told, e.g. a song that would not load. */
     private val problem: (String) -> Unit = {},
     private val log: (String) -> Unit = {},
+    /** The queue ran out of songs after [QueueItem] (it played through, or next was pressed on the last one). */
+    private val onQueueEnd: (QueueItem) -> Unit = {},
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val random: Random = Random.Default,
 ) {
@@ -279,9 +281,11 @@ class LocalSession(
 
     /** Ran out of songs: nothing is current until play starts the list again. */
     private fun finish() {
+        val last = snapshot.value.queue.lastOrNull()
         stopPlayer()
         _snapshot.update { it.copy(index = it.queue.size - 1, finished = true) }
         save()
+        last?.let(onQueueEnd)
     }
 
     private fun stopPlayer() {

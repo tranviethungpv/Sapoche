@@ -17,6 +17,7 @@ class UnisonApp : Application() {
         resolver = NewPipeResolver()
         streams = StreamCache(resolver, Probe())
         library = LibraryStore(this)
+        suggestions = SuggestionFeed(library, resolver) { EventLog.d("suggest", it) }
     }
 
     companion object {
@@ -33,6 +34,10 @@ class UnisonApp : Application() {
 
         /** Liked songs and listening history; opened when first used. */
         lateinit var library: LibraryStore
+            private set
+
+        /** Songs to offer and to carry on with. */
+        lateinit var suggestions: SuggestionFeed
             private set
 
         private val groupFlow = MutableStateFlow<GroupController?>(null)

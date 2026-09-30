@@ -9,6 +9,7 @@ import 'package:unison/data/backend.dart';
 import 'package:unison/data/library_controller.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/data/recent_rooms.dart';
+import 'package:unison/data/recent_searches.dart';
 import 'package:unison/data/room_controller.dart';
 import 'package:unison/ui/now_playing_page.dart';
 import 'package:unison/ui/scope.dart';
@@ -31,6 +32,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
   SharedPreferences.setMockInitialValues({'theme_mode': mode.name, ...prefs});
   final backend = FakeBackend();
   final recents = await RecentRooms.load();
+  final searches = await RecentSearches.load();
   final room = RoomController(backend, recents: recents);
   final library = LibraryController(backend);
   final settings = await AppSettings.load();
@@ -41,6 +43,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
         settings: settings,
         recents: recents,
         library: library,
+        searches: searches,
       ),
     ),
   );
@@ -1307,6 +1310,188 @@ void main() {
       await tester.pumpAndSettle();
       expect(backend.calls.last, 'like video0 true');
       expect(find.byTooltip('Unlike'), findsWidgets);
+    });
+  });
+
+  group('suggestions and search history', () {
+    const songA = Track(
+      videoId: 'aaaaaaaaaaa',
+      title: 'Alpha',
+      artist: 'Ann',
+      durMs: 100000,
+    );
+    const songB = Track(
+      videoId: 'bbbbbbbbbbb',
+      title: 'Beta',
+      artist: 'Ben',
+      durMs: 100000,
+    );
+
+    Future<void> openSearch(WidgetTester tester, FakeBackend backend) async {
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Search'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('songs for you are there when search opens, and can be added', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.forYouSongs = [songA, songB];
+      backend.emit(const LibraryEvent());
+      await openSearch(tester, backend);
+
+      expect(find.text('For you'), findsOneWidget);
+      expect(find.text('Alpha'), findsOneWidget);
+      await tester.tap(find.text('Alpha'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('add aaaaaaaaaaa next=false'));
+      await tester.pump(const Duration(seconds: 2)); // the check mark times out
+    });
+
+    testWidgets('pulling the list down asks for fresh suggestions', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.forYouSongs = [songA];
+      backend.refreshedSongs = [songB];
+      backend.emit(const LibraryEvent());
+      await openSearch(tester, backend);
+
+      await tester.fling(find.text('Alpha'), const Offset(0, 400), 1000);
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('refreshSuggestions'));
+      expect(find.text('Beta'), findsOneWidget);
+      expect(find.text('Alpha'), findsNothing);
+    });
+
+    testWidgets('with nothing to suggest the page keeps its hint', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      await openSearch(tester, backend);
+      expect(find.text('For you'), findsNothing);
+      expect(find.text('Find something to play'), findsOneWidget);
+    });
+
+    testWidgets(
+      'recent searches are listed, run again with a tap and cleared',
+      (tester) async {
+        final (backend, _) = await pumpApp(
+          tester,
+          prefs: {
+            'recent_searches': ['lofi girl', 'jazz'],
+          },
+        );
+        backend.searchResults = [songA];
+        await openSearch(tester, backend);
+
+        expect(find.text('Recent searches'), findsOneWidget);
+        await tester.tap(find.text('jazz'));
+        await tester.pumpAndSettle();
+        expect(backend.calls, contains('search jazz'));
+        expect(find.text('Alpha'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a recent search can be removed and all of them cleared', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(
+        tester,
+        prefs: {
+          'recent_searches': ['lofi girl', 'jazz'],
+        },
+      );
+      await openSearch(tester, backend);
+
+      await tester.tap(find.byTooltip('Remove').first);
+      await tester.pumpAndSettle();
+      expect(find.text('lofi girl'), findsNothing);
+      expect(find.text('jazz'), findsOneWidget);
+
+      await tester.tap(find.text('Clear'));
+      await tester.pumpAndSettle();
+      expect(find.text('Recent searches'), findsNothing);
+    });
+
+    testWidgets(
+      'typing offers completions, and one runs the search and is remembered',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.suggestions = ['lofi girl', 'lofi beats'];
+        backend.searchResults = [songA];
+        await openSearch(tester, backend);
+
+        await tester.enterText(find.byType(TextField), 'lofi');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        expect(backend.calls, contains('suggest lofi'));
+        expect(find.text('lofi beats'), findsOneWidget);
+
+        await tester.tap(find.text('lofi beats'));
+        await tester.pumpAndSettle();
+        expect(backend.calls, contains('search lofi beats'));
+        expect(find.text('Alpha'), findsOneWidget);
+        expect(
+          find.text('lofi girl'),
+          findsNothing,
+          reason: 'the chips went away',
+        );
+
+        // Back to an empty field: the search is in the recent ones
+        await tester.tap(find.byIcon(Icons.cancel_rounded));
+        await tester.pumpAndSettle();
+        expect(find.text('Recent searches'), findsOneWidget);
+        expect(find.text('lofi beats'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a search that led to adding a song is remembered', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.searchResults = [songA];
+      await openSearch(tester, backend);
+
+      await tester.enterText(find.byType(TextField), 'alpha');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Alpha'));
+      await tester.pumpAndSettle();
+
+      await tester.pump(const Duration(seconds: 2)); // the check mark times out
+      await tester.tap(find.byIcon(Icons.cancel_rounded));
+      await tester.pumpAndSettle();
+      expect(find.text('alpha'), findsOneWidget);
+    });
+
+    testWidgets('a pasted link gets no completions', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.suggestions = ['nope'];
+      await openSearch(tester, backend);
+
+      await tester.enterText(
+        find.byType(TextField),
+        'https://youtu.be/dQw4w9WgXcQ',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(backend.calls.where((c) => c.startsWith('suggest')), isEmpty);
+    });
+
+    testWidgets('the autoplay switch in settings tells the native side', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Autoplay').last);
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('autoplay false'));
     });
   });
 

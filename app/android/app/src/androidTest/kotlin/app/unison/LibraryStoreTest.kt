@@ -7,6 +7,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -250,9 +251,101 @@ class LibraryStoreTest {
             // The old song is still pointed to by its like and its history, so it is kept
             upgraded.deletePlaylist(id)
             assertEquals("Old song", upgraded.liked().single().track.title)
+            // and the tables of the versions after it are there too
+            upgraded.putSuggestions("old", listOf(song("s")), at = 9)
+            assertEquals(9L, upgraded.cachedSuggestions("old")?.fetchedAt)
         } finally {
             upgraded.close()
             context.deleteDatabase(file)
         }
+    }
+
+    // ------------------------------------------------------------------ suggestions
+
+    private val day = 24L * 60 * 60 * 1000
+
+    @Test
+    fun seedsAreTheLatestLikesThenTheMostHeardThenTheLatestHeard() = runTest {
+        val now = 100 * day
+        store.setLiked(song("like1"), true, at = now - 5 * day)
+        store.setLiked(song("like2"), true, at = now - 4 * day)
+        store.setLiked(song("like3"), true, at = now - 3 * day)
+        repeat(3) { store.recordListen(song("fav"), at = now - day + it) }
+        store.recordListen(song("once"), at = now - 100)
+        assertEquals(listOf("like3", "like2", "fav"), store.suggestionSeeds(now))
+    }
+
+    @Test
+    fun withoutLikesTheSeedsComeFromWhatWasHeard() = runTest {
+        val now = 100 * day
+        store.recordListen(song("a"), at = now - 3 * day)
+        store.recordListen(song("b"), at = now - 2 * day)
+        store.recordListen(song("b"), at = now - 2 * day + 1)
+        store.recordListen(song("c"), at = now - day)
+        store.recordListen(song("d"), at = now - 1000)
+        assertEquals(listOf("b", "d", "c"), store.suggestionSeeds(now))
+    }
+
+    @Test
+    fun songsHeardLongAgoAreNotTheMostHeard() = runTest {
+        val now = 100 * day
+        repeat(5) { store.recordListen(song("old"), at = now - 40 * day + it) }
+        store.recordListen(song("new"), at = now - day)
+        // "old" was heard most, but not in the last two weeks: it only comes in as one of the latest
+        assertEquals(listOf("new", "old"), store.suggestionSeeds(now))
+    }
+
+    @Test
+    fun noLikesAndNoHistoryMeansNoSeeds() = runTest {
+        assertEquals(emptyList<String>(), store.suggestionSeeds())
+    }
+
+    @Test
+    fun whatWasFetchedForASeedComesBackWithItsTime() = runTest {
+        assertNull(store.cachedSuggestions("seed"))
+        store.putSuggestions("seed", listOf(song("a"), song("b").copy(thumb = null, title = "Quote \" and, comma")), at = 42)
+        val kept = store.cachedSuggestions("seed")!!
+        assertEquals(42L, kept.fetchedAt)
+        assertEquals(listOf("a", "b"), kept.tracks.map { it.videoId })
+        assertEquals(song("a"), kept.tracks[0])
+        assertEquals(song("b").copy(thumb = null, title = "Quote \" and, comma"), kept.tracks[1])
+    }
+
+    @Test
+    fun fetchingAgainReplacesTheOldList() = runTest {
+        store.putSuggestions("seed", listOf(song("a")), at = 1)
+        store.putSuggestions("seed", listOf(song("b")), at = 2)
+        assertEquals(listOf("b"), store.cachedSuggestions("seed")!!.tracks.map { it.videoId })
+    }
+
+    @Test
+    fun suggestionsOfSeedsThatAreGoneAreForgotten() = runTest {
+        store.putSuggestions("a", listOf(song("x")), at = 1)
+        store.putSuggestions("b", listOf(song("y")), at = 1)
+        store.keepSuggestionsFor(listOf("b"))
+        assertNull(store.cachedSuggestions("a"))
+        assertEquals(1, store.cachedSuggestions("b")!!.tracks.size)
+        store.keepSuggestionsFor(emptyList())
+        assertNull(store.cachedSuggestions("b"))
+    }
+
+    @Test
+    fun heardAndLikedSongsCanBeListed() = runTest {
+        store.recordListen(song("old"), at = 10)
+        store.recordListen(song("new"), at = 100)
+        store.setLiked(song("liked"), true, at = 5)
+        assertEquals(setOf("new"), store.heardSince(50))
+        assertEquals(setOf("old", "new"), store.heardSince(0))
+        assertEquals(setOf("liked"), store.likedIds())
+    }
+
+    @Test
+    fun suggestionsDoNotKeepASongAliveInTheLibrary() = runTest {
+        store.recordListen(song("a"), at = 1)
+        store.putSuggestions("a", listOf(song("x")), at = 1)
+        store.clearHistory()
+        // The suggestion list is its own thing: it stays, and the heard song is gone
+        assertEquals(emptyList<String>(), store.recent().map { it.track.videoId })
+        assertEquals(1, store.cachedSuggestions("a")!!.tracks.size)
     }
 }

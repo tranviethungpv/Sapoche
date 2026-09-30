@@ -17,6 +17,7 @@ class LibraryController extends ChangeNotifier {
   Set<String> _likedIds = const {};
   List<HistoryEntry> _recent = const [];
   List<SavedPlaylist> _playlists = const [];
+  List<Track> _forYou = const [];
 
   /// Songs of the playlists that were opened, kept up to date while they are.
   final _items = <int, List<Track>>{};
@@ -27,6 +28,9 @@ class LibraryController extends ChangeNotifier {
 
   /// The person's playlists, the one changed last first.
   List<SavedPlaylist> get playlists => _playlists;
+
+  /// Songs to offer, from what was kept: there at once, with or without a network.
+  List<Track> get forYou => _forYou;
 
   /// The songs of a playlist that [openPlaylist] loaded.
   List<Track> playlistTracks(int id) => _items[id] ?? const [];
@@ -51,6 +55,7 @@ class LibraryController extends ChangeNotifier {
       final liked = await _backend.liked();
       final recent = await _backend.recent();
       final playlists = await _backend.playlists();
+      final forYou = await _backend.forYou();
       final items = <int, List<Track>>{};
       for (final id in _items.keys.toList()) {
         if (playlists.any((p) => p.id == id)) {
@@ -60,6 +65,7 @@ class LibraryController extends ChangeNotifier {
       _setLiked(liked);
       _recent = recent;
       _playlists = playlists;
+      _forYou = forYou;
       _items
         ..clear()
         ..addAll(items);
@@ -101,6 +107,17 @@ class LibraryController extends ChangeNotifier {
       _recent = before;
       notifyListeners();
       _messages.add('$e');
+    }
+  }
+
+  /// Fetches the suggestions again, for a pull to refresh. Gives back false when that failed.
+  Future<bool> refreshForYou() async {
+    try {
+      _forYou = await _backend.refreshSuggestions();
+      notifyListeners();
+      return true;
+    } on Object {
+      return false;
     }
   }
 

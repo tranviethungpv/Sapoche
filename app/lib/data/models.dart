@@ -427,6 +427,7 @@ class Profile {
     this.device = '',
     this.trimMs = 0,
     this.server = '',
+    this.autoplay = true,
   });
 
   /// Name used in the last room, to prefill the field asking for it.
@@ -437,10 +438,22 @@ class Profile {
   /// Address of the room server, where invitation links live.
   final String server;
 
+  /// The music carries on with similar songs when the queue runs out.
+  final bool autoplay;
+
+  Profile withAutoplay(bool value) => Profile(
+    name: name,
+    device: device,
+    trimMs: trimMs,
+    server: server,
+    autoplay: value,
+  );
+
   factory Profile.fromMap(Map<Object?, Object?> map) => Profile(
     name: map['name'] as String?,
     device: map['device'] as String? ?? '',
     trimMs: (map['trimMs'] as num?)?.toInt() ?? 0,
     server: map['server'] as String? ?? '',
+    autoplay: map['autoplay'] as bool? ?? true,
   );
 }

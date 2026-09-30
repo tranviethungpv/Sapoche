@@ -110,6 +110,13 @@ abstract final class S {
   static const willPlayNext = 'Playing next';
   static const notInRoom = 'Join a room first';
 
+  // Suggestions
+  static const forYou = 'For you';
+  static const recentSearches = 'Recent searches';
+  static const autoplay = 'Autoplay';
+  static const autoplayHelp =
+      'When your queue runs out, keep playing songs like the last one.';
+
   // Library
   static const likedSongs = 'Liked songs';
   static const recentlyPlayed = 'Recently played';

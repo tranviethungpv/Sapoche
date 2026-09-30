@@ -3,7 +3,9 @@ package app.unison
 import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -20,6 +22,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
@@ -126,10 +129,25 @@ class UnisonBridge(
             }
             ensureService()
             UnisonApp.group.value?.resumeRoom()
+            renewSuggestionsIfDue()
         }
         shown.value = value
         UnisonApp.setUiVisible(value)
     }
+
+    /**
+     * Brings the suggestions up to date when the person opens the app, at most twice an hour and not on a
+     * metered connection: they are shown from what was kept, so there is no hurry and no reason to spend data.
+     */
+    private fun renewSuggestionsIfDue() {
+        val now = SystemClock.elapsedRealtime()
+        if (lastRenew != 0L && now - lastRenew < RENEW_EVERY_MS) return
+        if (activity.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered != false) return
+        lastRenew = now
+        scope.launch { UnisonApp.suggestions.renew(force = false) }
+    }
+
+    private var lastRenew = 0L
 
     fun dispose() {
         picture?.let {
@@ -246,7 +264,18 @@ class UnisonBridge(
                 "trimMs" to prefs.getLong("trim_ms", 0L),
                 "videoHeight" to UnisonApp.videoMaxHeight,
                 "server" to Config.SERVER,
+                "autoplay" to prefs.getBoolean("autoplay", true),
             )
+            "setAutoplay" -> {
+                prefs.edit().putBoolean("autoplay", call.argument<Boolean>("on") == true).apply()
+                return null
+            }
+            "forYou" -> return UnisonApp.suggestions.forYou().map { it.toMap() }
+            "refreshSuggestions" -> {
+                UnisonApp.suggestions.renew(force = true)
+                return UnisonApp.suggestions.forYou().map { it.toMap() }
+            }
+            "suggest" -> return suggest(call.argument<String>("query").orEmpty())
             "searchPlaylists" -> return searchPlaylists(call.argument<String>("query").orEmpty())
             "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true)
             "lookup" -> return lookup(call.argument<String>("text").orEmpty())
@@ -418,6 +447,18 @@ class UnisonBridge(
         return UnisonApp.resolver.search(query.trim(), SEARCH_LIMIT, songsOnly).map { it.toMap() }
     }
 
+    /** Completions of a half-typed search; empty when YouTube cannot be reached, since they are only a help. */
+    private suspend fun suggest(query: String): List<String> {
+        if (query.isBlank()) return emptyList()
+        return try {
+            UnisonApp.resolver.suggest(query.trim()).take(SUGGESTION_LIMIT)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     private suspend fun searchPlaylists(query: String): List<Map<String, Any?>> {
         if (query.isBlank()) return emptyList()
         return UnisonApp.resolver.searchPlaylists(query.trim(), SEARCH_LIMIT).map {
@@ -515,6 +556,8 @@ class UnisonBridge(
         const val POSITION_TICK_MS = 1_000L
         const val SERVICE_START_TIMEOUT_MS = 10_000L
         const val SEARCH_LIMIT = 20
+        const val SUGGESTION_LIMIT = 6
+        const val RENEW_EVERY_MS = 30 * 60_000L
         const val PLAYLIST_LIMIT = 50
         const val VIDEO_DEFAULT_WIDTH = 1280
         const val VIDEO_DEFAULT_HEIGHT = 720
