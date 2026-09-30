@@ -4,10 +4,10 @@ import 'package:flutter/services.dart';
 import '../../data/models.dart';
 import '../../strings.dart';
 import '../scope.dart';
-import 'add_actions.dart';
+import 'queue_actions.dart';
 
-/// Plays [track] now. Outside a room that starts it in place of the queue, as YouTube Music does, and autoplay
-/// carries on with songs like it; in a room the queue belongs to everybody, so it is put on the queue instead.
+/// What a touch on a song does. Outside a room the song starts in place of the queue, as YouTube Music does, and
+/// the queue fills with songs like it; in a room the queue belongs to everybody, so it is put on the queue instead.
 void playNow(BuildContext context, Track track) {
   HapticFeedback.selectionClick();
   final room = AppScope.roomOf(context);
@@ -15,7 +15,18 @@ void playNow(BuildContext context, Track track) {
     queueTrack(context, track);
     return;
   }
-  room.playTracks([track]);
+  room.playSong(track);
+}
+
+/// A touch on song [index] of [tracks] (a playlist, a search for a playlist): outside a room it plays from there
+/// to the end of the list, in a room the song is queued.
+void playFrom(BuildContext context, List<Track> tracks, int index) {
+  if (AppScope.roomOf(context).snapshot.inRoom) {
+    playNow(context, tracks[index]);
+    return;
+  }
+  HapticFeedback.selectionClick();
+  AppScope.roomOf(context).playTracks(tracks.sublist(index));
 }
 
 /// Starts a mix: the radio of [seed], the song itself first. Without a network it plays the song alone.

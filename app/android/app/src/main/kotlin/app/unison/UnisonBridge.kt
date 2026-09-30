@@ -483,6 +483,7 @@ class UnisonBridge(
                     "jump" -> group.requestJump(call.argument<String>("id").orEmpty())
                     "clear" -> group.requestClearQueue()
                     "shuffle" -> group.requestShuffle()
+                    "radio" -> group.requestRadio(call.argument<String>("videoId").orEmpty())
                     "repeat" -> group.requestRepeat(call.argument<String>("mode").orEmpty())
                     "addMany" -> group.requestAddMany(
                         call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map(::trackRef),

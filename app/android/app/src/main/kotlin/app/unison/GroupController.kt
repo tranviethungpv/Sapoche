@@ -52,8 +52,8 @@ class GroupController(
     private val exo: ExoPlayer,
     private val prefs: SharedPreferences,
     private val queueFile: QueueFile,
-    /** Songs to carry on with after [String] (a video id), leaving out the ids given; asked when the personal queue runs out. */
-    private val moreLike: suspend (String, Set<String>) -> List<TrackRef> = { _, _ -> emptyList() },
+    /** Up to [Int] songs to carry on with after [String] (a video id), leaving out the ids given. */
+    private val moreLike: suspend (String, Set<String>, Int) -> List<TrackRef> = { _, _, _ -> emptyList() },
 ) {
     // Main thread: ExoPlayer must be used there, and the session only does light work
     private var scope = newScope()
@@ -78,6 +78,7 @@ class GroupController(
     )
 
     private var autoplayJob: Job? = null
+    private var radioJob: Job? = null
 
     /** Stops this device after a while, or when the song is over; the fade is the player's own volume. */
     val sleep = SleepTimer(
@@ -153,7 +154,7 @@ class GroupController(
         if (!autoplayOn || session != null || autoplayJob?.isActive == true || sleep.state.value == Sleep.SongEnd) return
         autoplayJob = ownScope.launch {
             try {
-                val more = moreLike(last.videoId, local.snapshot.value.queue.map { it.videoId }.toSet())
+                val more = moreLike(last.videoId, local.snapshot.value.queue.map { it.videoId }.toSet(), AUTOPLAY_COUNT)
                 if (more.isEmpty() || session != null || !local.snapshot.value.finished) return@launch
                 EventLog.d("local", "autoplay adds ${more.size} songs like '${last.title}'")
                 // A queue that has grown long by carrying on is started afresh rather than filling up
@@ -163,6 +164,29 @@ class GroupController(
                 throw e
             } catch (e: Exception) {
                 EventLog.d("local", "autoplay found nothing: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * A song was started on its own, from a search or a shelf. Like YouTube Music, the queue fills with songs like
+     * it, so skipping works at once and the music carries on. Nothing is added when autoplay is off, in a room, or
+     * when the person has changed the queue by the time the songs arrive.
+     */
+    fun requestRadio(videoId: String) {
+        radioJob?.cancel()
+        if (!autoplayOn || session != null) return
+        radioJob = ownScope.launch {
+            try {
+                val more = moreLike(videoId, setOf(videoId), RADIO_COUNT)
+                val queue = local.snapshot.value.queue
+                if (more.isEmpty() || session != null || queue.singleOrNull()?.videoId != videoId) return@launch
+                EventLog.d("local", "radio adds ${more.size} songs like $videoId")
+                local.add(more, next = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                EventLog.d("local", "no radio for $videoId: ${e.javaClass.simpleName}: ${e.message}")
             }
         }
     }
@@ -561,6 +585,12 @@ class GroupController(
         const val KEY_VIDEO = "video_mode"
         const val KEY_AUTOPLAY = "autoplay"
         const val AUTOPLAY_RESTART_AT = 150
+
+        /** Songs added each time the queue runs out and the music carries on by itself. */
+        const val AUTOPLAY_COUNT = 5
+
+        /** Songs that follow one that was played on its own. */
+        const val RADIO_COUNT = 20
         const val KEY_TRIM_MS = "trim_ms"
         const val KEY_START_BIAS_MS = "start_bias_ms"
         const val MAX_TRIM_MS = 1000L

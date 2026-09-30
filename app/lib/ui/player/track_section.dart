@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../data/music_models.dart';
 import '../../theme/theme.dart';
-import '../widgets/add_actions.dart';
+import '../widgets/queue_actions.dart';
+import '../widgets/play_actions.dart';
+import '../widgets/track_menu.dart';
 import '../widgets/track_tile.dart';
 
-/// A heading and rows of songs that a touch puts on the queue, each with the usual plus and "more" menu.
+/// A heading and rows of songs that a touch plays, each with the usual "more" menu.
 class TrackSection extends StatelessWidget {
   const TrackSection({
     super.key,
@@ -31,10 +33,9 @@ class TrackSection extends StatelessWidget {
         for (final track in tracks)
           TrackTile(
             track: track,
-            onTap: () => queueTrack(context, track),
-            trailing: AddActions(
+            onTap: () => playNow(context, track),
+            trailing: TrackMenu(
               track: track,
-              added: false,
               onAdd: () => queueTrack(context, track),
               onPlayNext: () => queueTrack(context, track, playNext: true),
             ),

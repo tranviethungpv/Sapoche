@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/data/music_models.dart';
+import 'package:unison/ui/player_sheet.dart';
 import 'package:unison/ui/widgets/mini_player.dart';
 
 import 'fake_backend.dart';
@@ -46,6 +47,43 @@ const song = MusicTrack(
 );
 
 void main() {
+  group('shuffle and repeat', () {
+    testWidgets('sit beside the play button, with or without a panel open', (
+      tester,
+    ) async {
+      final backend = await openPlayer(tester);
+      expect(find.byTooltip('Shuffle'), findsOneWidget);
+      expect(find.byTooltip('Repeat off'), findsOneWidget);
+
+      await openPanel(tester, 'Lyrics');
+      expect(find.byTooltip('Shuffle'), findsOneWidget);
+      expect(find.byTooltip('Repeat off'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Repeat off'));
+      await tester.pump();
+      expect(backend.calls.last, 'repeat all');
+    });
+
+    testWidgets('shuffle mixes what comes next and says so', (tester) async {
+      final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 4));
+      await tester.tap(find.byTooltip('Shuffle'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(backend.calls.last, 'shuffle');
+      expect(find.text('Up Next shuffled'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('shuffle waits until two songs are left to mix', (
+      tester,
+    ) async {
+      final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 2));
+      await tester.tap(find.byTooltip('Shuffle'));
+      await tester.pump();
+      expect(backend.calls, isNot(contains('shuffle')));
+    });
+  });
+
   group('lyrics', () {
     testWidgets('run along with the song, and a touch on a line jumps there', (
       tester,
@@ -108,11 +146,11 @@ void main() {
 
     testWidgets('close again with the same button', (tester) async {
       await openPlayer(tester);
-      expect(find.byTooltip('Repeat off'), findsOneWidget);
+      expect(find.byType(CoverSlot), findsOneWidget);
       await openPanel(tester, 'Lyrics');
-      expect(find.byTooltip('Repeat off'), findsNothing);
+      expect(find.byType(CoverSlot), findsNothing);
       await openPanel(tester, 'Lyrics');
-      expect(find.byTooltip('Repeat off'), findsOneWidget);
+      expect(find.byType(CoverSlot), findsOneWidget);
     });
   });
 

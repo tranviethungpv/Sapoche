@@ -260,6 +260,13 @@ class RoomController extends ChangeNotifier {
     await addMany(tracks);
   }
 
+  /// Outside a room: plays [track] in place of the queue and lets songs like it follow, as YouTube Music does
+  /// when a song is tapped.
+  Future<void> playSong(Track track) async {
+    await playTracks([track]);
+    await _run(() => _backend.fillRadio(track.videoId));
+  }
+
   /// Stops the music in [minutes]; with [SleepMode.song] at the end of this song, with [SleepMode.off] never.
   Future<void> setSleep(SleepMode mode, {int minutes = 0}) =>
       _run(() => _backend.setSleep(mode, minutes: minutes));

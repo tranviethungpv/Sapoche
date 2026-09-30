@@ -105,6 +105,9 @@ class FakeBackend implements Backend {
   Future<void> shuffle() => _record('shuffle');
 
   @override
+  Future<void> fillRadio(String videoId) => _record('radio $videoId');
+
+  @override
   Future<void> setVideoMode(bool on) => _record('video $on');
 
   @override

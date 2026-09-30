@@ -100,7 +100,7 @@ class PlaybackService : MediaSessionService() {
             player,
             getSharedPreferences("unison", MODE_PRIVATE),
             QueueFile(File(filesDir, "local_queue.json")),
-        ) { videoId, exclude -> UnisonApp.suggestions.after(videoId, exclude, AUTOPLAY_COUNT) }
+        ) { videoId, exclude, count -> UnisonApp.suggestions.after(videoId, exclude, count) }
         UnisonApp.setGroup(group)
         group.recoverRoom()
 
@@ -455,8 +455,6 @@ class PlaybackService : MediaSessionService() {
         const val ROOM_IDLE_MS = 20 * 60_000L
         const val SERVICE_IDLE_MS = 15 * 60_000L
 
-        /** Songs added each time the queue runs out and the music carries on by itself. */
-        const val AUTOPLAY_COUNT = 5
         const val STALL_TICK_MS = 100L
         const val STALL_LOG_MS = 120L
     }

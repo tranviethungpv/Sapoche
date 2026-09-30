@@ -131,7 +131,11 @@ void main() {
     await tester.pump();
     expect(
       backend.calls,
-      containsAllInOrder(['clear', 'addMany ${beck.videoId} next=false']),
+      containsAllInOrder([
+        'clear',
+        'addMany ${beck.videoId} next=false',
+        'radio ${beck.videoId}',
+      ]),
     );
   });
 
@@ -146,6 +150,7 @@ void main() {
     await tester.tap(find.text('Hello'));
     await tester.pump();
     expect(backend.calls, isNot(contains('clear')));
+    expect(backend.calls.where((c) => c.startsWith('radio')), isEmpty);
     expect(backend.calls, contains('add ${anna.videoId} next=false'));
     await tester.pump(const Duration(seconds: 2));
   });
@@ -238,5 +243,37 @@ void main() {
       contains('lookup https://www.youtube.com/playlist?list=PLabc'),
     );
     expect(find.text('Calm Song'), findsOneWidget);
+  });
+
+  testWidgets('a touch on a song of a playlist plays from that song on', (
+    tester,
+  ) async {
+    final backend = await openHome(
+      tester,
+      prepare: (b) {
+        b.trendingResult = [
+          MusicShelf(
+            title: 'Featured',
+            playlists: [Release(id: 'PLabc', title: 'Chill Mix')],
+          ),
+        ];
+        b.lookupResult = LinkResult(
+          playlistTitle: 'Chill Mix',
+          tracks: [
+            song('pl1aaaaaaaa', 'Calm Song', 'Zen'),
+            song('pl2aaaaaaaa', 'Quiet Song', 'Zen'),
+          ],
+        );
+      },
+    );
+    await tester.tap(find.text('Chill Mix'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Quiet Song'));
+    await tester.pump();
+    expect(
+      backend.calls,
+      containsAllInOrder(['clear', 'addMany pl2aaaaaaaa next=false']),
+    );
+    await tester.pumpAndSettle();
   });
 }

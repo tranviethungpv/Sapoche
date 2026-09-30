@@ -4,8 +4,9 @@ import '../data/models.dart';
 import '../strings.dart';
 import 'player/player_message.dart';
 import 'scope.dart';
-import 'widgets/add_actions.dart';
+import 'widgets/queue_actions.dart';
 import 'widgets/play_actions.dart';
+import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 import 'widgets/wash.dart';
 
@@ -88,13 +89,13 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                     ],
                   ),
                 ),
-                for (final track in tracks)
+                for (final (i, track) in tracks.indexed)
                   TrackTile(
                     track: track,
-                    onTap: () => playNow(context, track),
-                    trailing: AddActions(
+                    // The playlist plays on from the song touched, as in the library
+                    onTap: () => playFrom(context, tracks, i),
+                    trailing: TrackMenu(
                       track: track,
-                      added: false,
                       onAdd: () => queueTrack(context, track),
                       onPlayNext: () =>
                           queueTrack(context, track, playNext: true),

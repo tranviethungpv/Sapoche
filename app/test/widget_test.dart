@@ -828,18 +828,87 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
-
+    // In a room a touch queues the song
     await tester.tap(find.widgetWithText(TrackTile, 'Song 1'));
     await tester.pump();
     expect(find.text('Already in the queue'), findsOneWidget);
     expect(backend.calls.where((c) => c.startsWith('add')), isEmpty);
 
-    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.tap(find.widgetWithText(TrackTile, 'Fresh song'));
     await tester.pump();
     expect(backend.calls.last, 'add fresh next=false');
     await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets(
+    'a touch on a result outside a room plays it, and its radio fills the queue',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(const StateEvent(RoomSnapshot()));
+      backend.searchResults = const [
+        Track(videoId: 'aaaaaaaaaaa', title: 'Found', artist: 'x', durMs: 1000),
+      ];
+      await tester.tap(find.text('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'found');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // The plus is gone: a touch plays, the menu holds the rest
+      expect(find.byIcon(Icons.add_rounded), findsNothing);
+      await tester.tap(find.widgetWithText(TrackTile, 'Found'));
+      await tester.pump();
+      expect(
+        backend.calls,
+        containsAllInOrder([
+          'clear',
+          'addMany aaaaaaaaaaa next=false',
+          'radio aaaaaaaaaaa',
+        ]),
+      );
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('a touch on a song of a playlist result plays from there', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(const StateEvent(RoomSnapshot()));
+    backend.lookupResult = const LinkResult(
+      playlistTitle: 'Road trip',
+      tracks: [
+        Track(videoId: 'aaaaaaaaaaa', title: 'First', artist: 'x', durMs: 1000),
+        Track(
+          videoId: 'bbbbbbbbbbb',
+          title: 'Second',
+          artist: 'x',
+          durMs: 1000,
+        ),
+        Track(videoId: 'ccccccccccc', title: 'Third', artist: 'x', durMs: 1000),
+      ],
+    );
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextField),
+      'https://www.youtube.com/playlist?list=PLroadtrip',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.tap(find.widgetWithText(TrackTile, 'Second'));
+    await tester.pump();
+    expect(
+      backend.calls,
+      containsAllInOrder([
+        'clear',
+        'addMany bbbbbbbbbbb,ccccccccccc next=false',
+      ]),
+    );
+    expect(backend.calls.where((c) => c.startsWith('radio')), isEmpty);
+    await tester.pumpAndSettle();
   });
 
   testWidgets(
@@ -1694,21 +1763,29 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('songs for you are there when search opens, and can be added', (
-      tester,
-    ) async {
-      final (backend, _) = await pumpApp(tester);
-      backend.forYouSongs = [songA, songB];
-      backend.emit(const LibraryEvent());
-      await openSearch(tester, backend);
+    testWidgets(
+      'songs for you are there when search opens, and a touch plays one',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.forYouSongs = [songA, songB];
+        backend.emit(const LibraryEvent());
+        await openSearch(tester, backend);
 
-      expect(find.text('For you'), findsOneWidget);
-      expect(find.text('Alpha'), findsOneWidget);
-      await tester.tap(find.text('Alpha'));
-      await tester.pumpAndSettle();
-      expect(backend.calls, contains('add aaaaaaaaaaa next=false'));
-      await tester.pump(const Duration(seconds: 2)); // the check mark times out
-    });
+        expect(find.text('For you'), findsOneWidget);
+        expect(find.text('Alpha'), findsOneWidget);
+        await tester.tap(find.text('Alpha'));
+        await tester.pumpAndSettle();
+        // Outside a room the song replaces the queue and songs like it follow
+        expect(
+          backend.calls,
+          containsAllInOrder([
+            'clear',
+            'addMany aaaaaaaaaaa next=false',
+            'radio aaaaaaaaaaa',
+          ]),
+        );
+      },
+    );
 
     testWidgets('pulling the list down asks for fresh suggestions', (
       tester,

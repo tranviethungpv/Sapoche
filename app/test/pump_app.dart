@@ -27,6 +27,10 @@ Future<(FakeBackend, RoomController)> pumpApp(
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2;
   addTearDown(tester.view.reset);
+  // Long titles would scroll for ever, and a test could never settle; the system setting stops that
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
   SharedPreferences.setMockInitialValues({'theme_mode': mode.name, ...prefs});
   final backend = FakeBackend();
   final recents = await RecentRooms.load();

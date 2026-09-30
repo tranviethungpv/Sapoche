@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/models.dart';
 import '../data/room_controller.dart';
@@ -17,6 +18,7 @@ import 'sleep_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/like_button.dart';
+import 'widgets/marquee_text.dart';
 import 'widgets/download_actions.dart';
 import 'widgets/playlist_picker.dart';
 import 'widgets/playback_bar.dart';
@@ -138,8 +140,9 @@ class _BodyState extends State<_Body> {
                     ListenableBuilder(
                       listenable: _c.player,
                       builder: (context, _) => Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
+                          _ShuffleButton(controller: _c),
                           SkipButton(
                             forward: false,
                             onPressed: _c.prev,
@@ -155,6 +158,7 @@ class _BodyState extends State<_Body> {
                             onPressed: _c.next,
                             size: 52,
                           ),
+                          _RepeatButton(controller: _c),
                         ],
                       ),
                     ),
@@ -278,16 +282,9 @@ class _PanelStage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      current.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.titleMedium,
-                    ),
-                    Text(
+                    MarqueeText(current.title, style: theme.titleMedium),
+                    MarqueeText(
                       current.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.bodyMedium?.copyWith(color: p.primary),
                     ),
                   ],
@@ -329,17 +326,10 @@ class _TitleRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                current.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.headlineSmall,
-              ),
+              MarqueeText(current.title, style: theme.headlineSmall),
               const SizedBox(height: 2),
-              Text(
+              MarqueeText(
                 current.artist,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
                 style: theme.titleMedium?.copyWith(
                   color: p.primary,
                   fontWeight: FontWeight.w500,
@@ -349,7 +339,6 @@ class _TitleRow extends StatelessWidget {
           ),
         ),
         LikeButton(track: current, size: 26),
-        _RepeatButton(controller: controller),
         _MoreButton(controller: controller, current: current),
       ],
     );
@@ -512,6 +501,53 @@ class _SleepButton extends StatelessWidget {
   }
 }
 
+/// Mixes up what comes next. It is an action, not a mode, so it says what it did: the icon turns once and a
+/// note follows. Dimmed when there is nothing to mix.
+class _ShuffleButton extends StatefulWidget {
+  const _ShuffleButton({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  State<_ShuffleButton> createState() => _ShuffleButtonState();
+}
+
+class _ShuffleButtonState extends State<_ShuffleButton> {
+  int _turns = 0;
+
+  void _shuffle() {
+    HapticFeedback.selectionClick();
+    setState(() => _turns++);
+    widget.controller.shuffle();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(S.upNextShuffled),
+          duration: Duration(milliseconds: 1400),
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final enough = widget.controller.snapshot.upNext.length > 1;
+    return IconButton(
+      onPressed: enough ? _shuffle : null,
+      tooltip: S.shuffle,
+      color: p.primary,
+      disabledColor: p.textTertiary.withValues(alpha: 0.5),
+      icon: AnimatedRotation(
+        turns: _turns.toDouble(),
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        child: const Icon(Icons.shuffle_rounded),
+      ),
+    );
+  }
+}
+
 /// Cycles off, repeat all, repeat this song. Lit up while repeating.
 class _RepeatButton extends StatelessWidget {
   const _RepeatButton({required this.controller});
@@ -531,7 +567,6 @@ class _RepeatButton extends StatelessWidget {
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(left: 12),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: on ? p.primaryContainer : Colors.transparent,

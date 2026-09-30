@@ -35,6 +35,7 @@ abstract final class S {
       'Search for a song and add it to start listening.';
   static const addSongs = 'Add songs';
   static const shuffle = 'Shuffle';
+  static const upNextShuffled = 'Up Next shuffled';
   static const playAgain = 'Play again';
   static const queueFinished = 'The queue has finished';
   static const clearQueue = 'Clear queue';

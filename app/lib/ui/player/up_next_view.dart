@@ -32,24 +32,7 @@ class UpNextView extends StatelessWidget {
             parent: AlwaysScrollableScrollPhysics(),
           ),
           slivers: [
-            SliverToBoxAdapter(
-              child: SectionHeading(
-                S.upNext,
-                action: upNext.length > 1
-                    ? IconButton(
-                        onPressed: () {
-                          HapticFeedback.selectionClick();
-                          controller.shuffle();
-                        },
-                        tooltip: S.shuffle,
-                        icon: Icon(
-                          Icons.shuffle_rounded,
-                          color: context.palette.primary,
-                        ),
-                      )
-                    : null,
-              ),
-            ),
+            SliverToBoxAdapter(child: SectionHeading(S.upNext)),
             if (upNext.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(

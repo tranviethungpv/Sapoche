@@ -13,7 +13,8 @@ import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/shimmer.dart';
-import 'widgets/add_actions.dart';
+import 'widgets/play_actions.dart';
+import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 
 /// Search YouTube (or paste a link) and put songs on the room's queue.
@@ -37,9 +38,6 @@ class _SearchPageState extends State<SearchPage> {
 
   /// Set when the results are the songs of a pasted playlist link.
   String? _playlistTitle;
-
-  /// Ids added during this visit, so the row shows a check instead of the plus.
-  final _added = <String>{};
 
   _Filter _filter = _Filter.videos;
 
@@ -221,8 +219,6 @@ class _SearchPageState extends State<SearchPage> {
     if (query != null) AppScope.of(context).searches.add(query);
     // What is waiting in the queue is not added twice
     final fresh = _room.snapshot.fresh(tracks);
-    final ids = fresh.map((t) => t.videoId).toList();
-    setState(() => _added.addAll(ids));
     if (fresh.length == 1) {
       await _room.add(fresh.single, playNext: playNext);
     } else if (fresh.isNotEmpty) {
@@ -243,9 +239,17 @@ class _SearchPageState extends State<SearchPage> {
           duration: const Duration(milliseconds: 1400),
         ),
       );
-    Future.delayed(const Duration(milliseconds: 1800), () {
-      if (mounted) setState(() => _added.removeAll(ids));
-    });
+  }
+
+  /// A touch on result [index]: it plays, or in a room is queued. Songs of a playlist play on from there.
+  void _play(int index) {
+    final query = _lastQuery;
+    if (query != null) AppScope.of(context).searches.add(query);
+    if (_playlistTitle != null) {
+      playFrom(context, _results, index);
+    } else {
+      playNow(context, _results[index]);
+    }
   }
 
   /// Nothing typed: what was searched for lately and songs to try, or a hint when there is neither.
@@ -327,10 +331,9 @@ class _SearchPageState extends State<SearchPage> {
                 for (final track in songs)
                   TrackTile(
                     track: track,
-                    onTap: () => _add(track),
-                    trailing: AddActions(
+                    onTap: () => playNow(context, track),
+                    trailing: TrackMenu(
                       track: track,
-                      added: _added.contains(track.videoId),
                       onAdd: () => _add(track),
                       onPlayNext: () => _add(track, playNext: true),
                     ),
@@ -515,10 +518,9 @@ class _SearchPageState extends State<SearchPage> {
             final track = _results[index - (_playlistTitle == null ? 0 : 1)];
             return TrackTile(
               track: track,
-              onTap: () => _add(track),
-              trailing: AddActions(
+              onTap: () => _play(index - (_playlistTitle == null ? 0 : 1)),
+              trailing: TrackMenu(
                 track: track,
-                added: _added.contains(track.videoId),
                 onAdd: () => _add(track),
                 onPlayNext: () => _add(track, playNext: true),
               ),
