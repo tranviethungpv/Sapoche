@@ -41,6 +41,21 @@ void main() {
     expect((notice.kind, notice.by, notice.title), ('paused', 'Binh', null));
   });
 
+  test('everyone who listens shares one platform subscription', () async {
+    var listens = 0;
+    messenger.setMockStreamHandler(
+      events,
+      MockStreamHandler.inline(onListen: (arguments, sink) => listens++),
+    );
+    final backend = NativeBackend();
+    final first = backend.events.listen((_) {});
+    final second = backend.events.listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+    expect(listens, 1);
+    await first.cancel();
+    await second.cancel();
+  });
+
   test('a link result comes back as tracks, with the playlist title when there is one', () async {
     messenger.setMockMethodCallHandler(control, (call) async {
       expect(call.method, 'lookup');

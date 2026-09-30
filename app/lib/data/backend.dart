@@ -131,8 +131,12 @@ class NativeBackend implements Backend {
   static const _control = MethodChannel('app.unison/control');
   static const _state = EventChannel('app.unison/state');
 
+  /// One subscription to the platform channel, shared by everyone who listens: a second call to
+  /// receiveBroadcastStream would take the stream over from the first listener.
   @override
-  Stream<BackendEvent> get events => _state.receiveBroadcastStream().map((raw) {
+  late final Stream<BackendEvent> events = _state.receiveBroadcastStream().map((
+    raw,
+  ) {
     final json = jsonDecode(raw as String) as Map<String, dynamic>;
     return switch (json['type']) {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
