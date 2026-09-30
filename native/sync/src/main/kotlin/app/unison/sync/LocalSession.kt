@@ -228,7 +228,8 @@ class LocalSession(
         _snapshot.update { it.copy(queue = it.queue.toMutableList().also { queue -> queue[at] = item }) }
         if (loadedId == id) {
             val end = if (item.durMs > 0) item.durMs else Long.MAX_VALUE
-            load(item, player.positionMs().coerceAtMost(end), play = player.isPlaying())
+            // A player that is buffering does not report playing, but the person did not pause it
+            load(item, player.positionMs().coerceAtMost(end), play = player.isPlaying() || playOnLoad)
         } else {
             preload()
         }

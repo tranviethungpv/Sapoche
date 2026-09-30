@@ -267,6 +267,18 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `swapping a song that is buffering still plays the other release`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        h.player.playing = false // rebuffering: not heard, but not paused by anybody
+        h.session.swap("id1", TrackRef("videoSwappd", "Song 1 (Video)", "Artist", null, 210_000))
+        step()
+        assertEquals("videoSwappd", h.player.loaded?.videoId)
+        assertTrue(h.player.playing)
+    }
+
+    @Test
     fun `swapping a song that is paused keeps it paused`() = runTest {
         val h = harness()
         h.session.add(listOf(track(1)), next = false)
