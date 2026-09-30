@@ -122,6 +122,20 @@ abstract class Backend {
   Future<void> setLiked(Track track, bool liked);
   Future<void> clearHistory();
 
+  /// The person's playlists, the one changed last first.
+  Future<List<SavedPlaylist>> playlists();
+  Future<List<Track>> playlistTracks(int id);
+
+  /// Makes a playlist and gives back its id.
+  Future<int> createPlaylist(String name, List<Track> tracks);
+  Future<void> renamePlaylist(int id, String name);
+  Future<void> deletePlaylist(int id);
+
+  /// Adds songs to the end; those already there stay put. Gives back how many were added.
+  Future<int> addToPlaylist(int id, List<Track> tracks);
+  Future<void> removeFromPlaylist(int id, String videoId);
+  Future<void> movePlaylistItem(int id, String videoId, int toIndex);
+
   Future<void> setTrim(int ms);
   Future<List<String>> log();
 }
@@ -202,28 +216,13 @@ class NativeBackend implements Backend {
   Future<void> keepPlaying() => _call('keepPlaying');
 
   @override
-  Future<void> add(Track track, {bool playNext = false}) => _call('add', {
-    'videoId': track.videoId,
-    'title': track.title,
-    'artist': track.artist,
-    'thumb': track.thumb,
-    'durMs': track.durMs,
-    'next': playNext,
-  });
+  Future<void> add(Track track, {bool playNext = false}) =>
+      _call('add', {...track.toMap(), 'next': playNext});
 
   @override
   Future<void> addMany(List<Track> tracks, {bool playNext = false}) =>
       _call('addMany', {
-        'tracks': [
-          for (final t in tracks)
-            {
-              'videoId': t.videoId,
-              'title': t.title,
-              'artist': t.artist,
-              'thumb': t.thumb,
-              'durMs': t.durMs,
-            },
-        ],
+        'tracks': [for (final t in tracks) t.toMap()],
         'next': playNext,
       });
 
@@ -325,17 +324,53 @@ class NativeBackend implements Backend {
   ];
 
   @override
-  Future<void> setLiked(Track track, bool liked) => _call('libraryLike', {
-    'videoId': track.videoId,
-    'title': track.title,
-    'artist': track.artist,
-    'thumb': track.thumb,
-    'durMs': track.durMs,
-    'on': liked,
-  });
+  Future<void> setLiked(Track track, bool liked) =>
+      _call('libraryLike', {...track.toMap(), 'on': liked});
 
   @override
   Future<void> clearHistory() => _call('libraryClearHistory');
+
+  @override
+  Future<List<SavedPlaylist>> playlists() async => [
+    for (final e in await _call<List<Object?>>('playlists') ?? const [])
+      SavedPlaylist.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<List<Track>> playlistTracks(int id) async => [
+    for (final e
+        in await _call<List<Object?>>('playlistTracks', {'id': id}) ?? const [])
+      Track.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<int> createPlaylist(String name, List<Track> tracks) async =>
+      (await _call<int>('playlistCreate', {
+        'name': name,
+        'tracks': [for (final t in tracks) t.toMap()],
+      }))!;
+
+  @override
+  Future<void> renamePlaylist(int id, String name) =>
+      _call('playlistRename', {'id': id, 'name': name});
+
+  @override
+  Future<void> deletePlaylist(int id) => _call('playlistDelete', {'id': id});
+
+  @override
+  Future<int> addToPlaylist(int id, List<Track> tracks) async =>
+      (await _call<int>('playlistAdd', {
+        'id': id,
+        'tracks': [for (final t in tracks) t.toMap()],
+      }))!;
+
+  @override
+  Future<void> removeFromPlaylist(int id, String videoId) =>
+      _call('playlistRemove', {'id': id, 'videoId': videoId});
+
+  @override
+  Future<void> movePlaylistItem(int id, String videoId, int toIndex) =>
+      _call('playlistMove', {'id': id, 'videoId': videoId, 'to': toIndex});
 
   @override
   Future<void> setTrim(int ms) => _call('setTrim', {'ms': ms});

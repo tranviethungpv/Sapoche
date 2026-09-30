@@ -154,6 +154,17 @@ class _SearchPageState extends State<SearchPage> {
     playNext: playNext,
   );
 
+  /// Keeps the songs of the playlist that is showing as a playlist of the person's own.
+  Future<void> _saveAsPlaylist() async {
+    final id = await AppScope.of(context).library
+        .createPlaylist(_playlistTitle ?? '', _results);
+    if (id == null || !mounted) return;
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text(S.playlistSaved)));
+  }
+
   Future<void> _addAll({bool playNext = false}) =>
       _addTracks(_results, S.playlistAdded, playNext: playNext);
 
@@ -336,6 +347,7 @@ class _SearchPageState extends State<SearchPage> {
                 onBack: _fromPlaylists ? _closePlaylist : null,
                 onAddAll: _addAll,
                 onPlayNext: () => _addAll(playNext: true),
+                onSave: _saveAsPlaylist,
               );
             }
             final track = _results[index - (_playlistTitle == null ? 0 : 1)];
@@ -363,6 +375,7 @@ class _PlaylistHeader extends StatelessWidget {
     required this.count,
     required this.onAddAll,
     required this.onPlayNext,
+    required this.onSave,
     this.onBack,
   });
 
@@ -373,6 +386,7 @@ class _PlaylistHeader extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback onAddAll;
   final VoidCallback onPlayNext;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -423,6 +437,11 @@ class _PlaylistHeader extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          TextButton.icon(
+            onPressed: onSave,
+            icon: const Icon(Icons.bookmark_add_outlined),
+            label: const Text(S.saveAsPlaylist),
           ),
         ],
       ),

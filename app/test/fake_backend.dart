@@ -180,6 +180,86 @@ class FakeBackend implements Backend {
     recentSongs = [];
   }
 
+  /// Playlists by id, in the order they were made; the songs of each in order.
+  final playlistSongs = <int, List<Track>>{};
+  final playlistNames = <int, String>{};
+  int _nextPlaylist = 1;
+
+  @override
+  Future<List<SavedPlaylist>> playlists() async {
+    await _record('playlists');
+    return [
+      for (final id in playlistNames.keys.toList().reversed)
+        SavedPlaylist(
+          id: id,
+          name: playlistNames[id]!,
+          count: playlistSongs[id]!.length,
+          thumb: playlistSongs[id]!.firstOrNull?.thumb,
+        ),
+    ];
+  }
+
+  @override
+  Future<List<Track>> playlistTracks(int id) async {
+    await _record('playlistTracks $id');
+    return [...?playlistSongs[id]];
+  }
+
+  @override
+  Future<int> createPlaylist(String name, List<Track> tracks) async {
+    await _record(
+      'createPlaylist $name ${tracks.map((t) => t.videoId).join(',')}',
+    );
+    final id = _nextPlaylist++;
+    playlistNames[id] = name;
+    playlistSongs[id] = [...tracks];
+    return id;
+  }
+
+  @override
+  Future<void> renamePlaylist(int id, String name) async {
+    await _record('renamePlaylist $id $name');
+    playlistNames[id] = name;
+  }
+
+  @override
+  Future<void> deletePlaylist(int id) async {
+    await _record('deletePlaylist $id');
+    playlistNames.remove(id);
+    playlistSongs.remove(id);
+  }
+
+  @override
+  Future<int> addToPlaylist(int id, List<Track> tracks) async {
+    await _record(
+      'addToPlaylist $id ${tracks.map((t) => t.videoId).join(',')}',
+    );
+    final songs = playlistSongs[id]!;
+    var added = 0;
+    for (final t in tracks) {
+      if (songs.any((s) => s.videoId == t.videoId)) continue;
+      songs.add(t);
+      added++;
+    }
+    return added;
+  }
+
+  @override
+  Future<void> removeFromPlaylist(int id, String videoId) async {
+    await _record('removeFromPlaylist $id $videoId');
+    playlistSongs[id]!.removeWhere((t) => t.videoId == videoId);
+  }
+
+  @override
+  Future<void> movePlaylistItem(int id, String videoId, int toIndex) async {
+    await _record('movePlaylistItem $id $videoId $toIndex');
+    final songs = playlistSongs[id]!;
+    final at = songs.indexWhere((t) => t.videoId == videoId);
+    if (at < 0) return;
+    final song = songs.removeAt(at);
+    songs.insert(toIndex.clamp(0, songs.length), song);
+  }
+
   @override
   Future<void> setTrim(int ms) => _record('setTrim $ms');
 

@@ -102,4 +102,106 @@ void main() {
       expect(library.liked, isEmpty);
     },
   );
+
+  group('playlists', () {
+    const c = Track(
+      videoId: 'ccccccccccc',
+      title: 'C',
+      artist: 'z',
+      durMs: 3000,
+    );
+
+    test('a new playlist is listed with its songs counted', () async {
+      await library.start();
+      final id = await library.createPlaylist('Road trip', [_a, _b]);
+
+      expect(id, isNotNull);
+      expect(library.playlists.single.name, 'Road trip');
+      expect(library.playlists.single.count, 2);
+      expect(
+        backend.calls,
+        contains('createPlaylist Road trip ${_a.videoId},${_b.videoId}'),
+      );
+    });
+
+    test(
+      'opening a playlist loads its songs, and they follow later changes',
+      () async {
+        await library.start();
+        final id = (await library.createPlaylist('Mix', [_a]))!;
+        await library.openPlaylist(id);
+        expect(library.playlistTracks(id).map((t) => t.videoId), [_a.videoId]);
+
+        expect(
+          await library.addToPlaylist(id, [_a, _b]),
+          1,
+          reason: 'a is already there',
+        );
+        expect(library.playlistTracks(id).map((t) => t.videoId), [
+          _a.videoId,
+          _b.videoId,
+        ]);
+        expect(library.playlistTracks(999), isEmpty);
+      },
+    );
+
+    test('a song leaves the list before the write ends', () async {
+      await library.start();
+      final id = (await library.createPlaylist('Mix', [_a, _b]))!;
+      await library.openPlaylist(id);
+
+      final done = library.removeFromPlaylist(id, _a);
+      expect(library.playlistTracks(id).map((t) => t.videoId), [_b.videoId]);
+      await done;
+      expect(backend.calls, contains('removeFromPlaylist $id ${_a.videoId}'));
+      expect(library.playlists.single.count, 1);
+    });
+
+    test('a song moves to its new place before the write ends', () async {
+      await library.start();
+      final id = (await library.createPlaylist('Mix', [_a, _b, c]))!;
+      await library.openPlaylist(id);
+
+      final done = library.movePlaylistItem(id, c, 0);
+      expect(library.playlistTracks(id).map((t) => t.videoId), [
+        c.videoId,
+        _a.videoId,
+        _b.videoId,
+      ]);
+      await done;
+      expect(library.playlistTracks(id).map((t) => t.videoId), [
+        c.videoId,
+        _a.videoId,
+        _b.videoId,
+      ]);
+      expect(backend.calls, contains('movePlaylistItem $id ${c.videoId} 0'));
+    });
+
+    test('renaming and deleting show up in the list', () async {
+      await library.start();
+      final id = (await library.createPlaylist('Old'))!;
+      await library.renamePlaylist(id, 'New');
+      expect(library.playlists.single.name, 'New');
+
+      await library.openPlaylist(id);
+      await library.deletePlaylist(id);
+      expect(library.playlists, isEmpty);
+      expect(
+        library.playlistTracks(id),
+        isEmpty,
+        reason: 'nothing kept of a deleted playlist',
+      );
+    });
+
+    test('a playlist that could not be made gives no id and says so', () async {
+      await library.start();
+      final messages = <String>[];
+      library.messages.listen(messages.add);
+      backend.failWith = StateError('disk full');
+
+      expect(await library.createPlaylist('Nope'), isNull);
+      await settle();
+      expect(messages, isNotEmpty);
+    });
+  });
 }

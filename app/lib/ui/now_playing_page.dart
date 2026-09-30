@@ -11,6 +11,7 @@ import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/like_button.dart';
+import 'widgets/playlist_picker.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
 import 'widgets/video_view.dart';
@@ -150,6 +151,20 @@ class _Body extends StatelessWidget {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => showAddToPlaylist(context, [current]),
+                      tooltip: S.addToPlaylist,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 42,
+                        height: 42,
+                      ),
+                      icon: Icon(
+                        Icons.playlist_add_rounded,
+                        size: 26,
+                        color: p.textTertiary,
                       ),
                     ),
                     LikeButton(track: current, size: 26),

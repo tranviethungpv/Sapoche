@@ -26,6 +26,9 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** A song with the time it was liked or last heard, and how often it was heard. */
     data class Entry(val track: TrackRef, val at: Long, val plays: Int = 0)
 
+    /** A playlist as listed: its cover is the first song's picture. */
+    data class Playlist(val id: Long, val name: String, val count: Int, val thumb: String?, val updatedAt: Long)
+
     private val io = Executors.newSingleThreadExecutor { Thread(it, "library").apply { isDaemon = true } }.asCoroutineDispatcher()
 
     private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -50,10 +53,26 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
                 "played_at INTEGER NOT NULL)",
         )
         db.execSQL("CREATE INDEX history_by_song ON history(video_id)")
+        createPlaylistTables(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Version 1 is the first; later versions add their steps here, each with a test
+        // Each step brings the database one version forward and has a test in LibraryStoreTest
+        if (oldVersion < 2) createPlaylistTables(db)
+    }
+
+    private fun createPlaylistTables(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE playlists(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, " +
+                "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+        )
+        // A song is in a playlist once; position gives the order and may have gaps
+        db.execSQL(
+            "CREATE TABLE playlist_items(playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, " +
+                "video_id TEXT NOT NULL REFERENCES tracks(video_id), position INTEGER NOT NULL, " +
+                "PRIMARY KEY(playlist_id, video_id))",
+        )
+        db.execSQL("CREATE INDEX playlist_items_by_song ON playlist_items(video_id)")
     }
 
     // ------------------------------------------------------------------ likes
@@ -128,6 +147,136 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         _changes.tryEmit(Unit)
     }
 
+    // ------------------------------------------------------------------ playlists
+
+    /** Playlists, the one changed last first. */
+    suspend fun playlists(): List<Playlist> = withContext(io) {
+        readableDatabase.rawQuery(
+            "SELECT p.id, p.name, p.updated_at, COUNT(i.video_id), " +
+                "(SELECT t.thumb FROM playlist_items f JOIN tracks t ON t.video_id = f.video_id " +
+                "WHERE f.playlist_id = p.id ORDER BY f.position LIMIT 1) " +
+                "FROM playlists p LEFT JOIN playlist_items i ON i.playlist_id = p.id " +
+                "GROUP BY p.id ORDER BY p.updated_at DESC, p.id DESC",
+            null,
+        ).use { c ->
+            val list = ArrayList<Playlist>(c.count)
+            while (c.moveToNext()) list += Playlist(c.getLong(0), c.getString(1), c.getInt(3), c.getString(4), c.getLong(2))
+            list
+        }
+    }
+
+    /** The songs of a playlist in order; empty when there is no such playlist. */
+    suspend fun playlistTracks(id: Long): List<TrackRef> = withContext(io) {
+        readableDatabase.rawQuery(
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, 0, 0 " +
+                "FROM playlist_items i JOIN tracks t ON t.video_id = i.video_id WHERE i.playlist_id = ? ORDER BY i.position",
+            arrayOf(id.toString()),
+        ).use { c -> entries(c).map { it.track } }
+    }
+
+    /** Makes a playlist, with [tracks] in it if given, and returns its id. */
+    suspend fun createPlaylist(name: String, tracks: List<TrackRef> = emptyList(), at: Long = System.currentTimeMillis()): Long =
+        withContext(io) {
+            val db = writableDatabase
+            var id = 0L
+            db.transaction {
+                id = insertOrThrow(
+                    "playlists",
+                    null,
+                    ContentValues().apply {
+                        put("name", cleanName(name))
+                        put("created_at", at)
+                        put("updated_at", at)
+                    },
+                )
+                appendTracks(id, tracks)
+            }
+            _changes.tryEmit(Unit)
+            id
+        }
+
+    suspend fun renamePlaylist(id: Long, name: String, at: Long = System.currentTimeMillis()) = changePlaylist(id, at) {
+        update("playlists", ContentValues().apply { put("name", cleanName(name)) }, "id = ?", arrayOf(id.toString()))
+    }
+
+    /** Deletes the playlist; the songs stay wherever else they are kept. */
+    suspend fun deletePlaylist(id: Long) = withContext(io) {
+        val db = writableDatabase
+        db.transaction {
+            delete("playlists", "id = ?", arrayOf(id.toString()))
+            dropUnusedTracks()
+        }
+        _changes.tryEmit(Unit)
+    }
+
+    /** Adds songs at the end; those already in the playlist are left where they are. Returns how many were added. */
+    suspend fun addToPlaylist(id: Long, tracks: List<TrackRef>, at: Long = System.currentTimeMillis()): Int {
+        var added = 0
+        changePlaylist(id, at) { added = appendTracks(id, tracks) }
+        return added
+    }
+
+    suspend fun removeFromPlaylist(id: Long, videoId: String, at: Long = System.currentTimeMillis()) = changePlaylist(id, at) {
+        delete("playlist_items", "playlist_id = ? AND video_id = ?", arrayOf(id.toString(), videoId))
+        dropUnusedTracks()
+    }
+
+    /** Puts a song at place [toIndex] (0 is the top) of the playlist. */
+    suspend fun movePlaylistItem(id: Long, videoId: String, toIndex: Int, at: Long = System.currentTimeMillis()) =
+        changePlaylist(id, at) {
+            val order = ArrayList<String>()
+            rawQuery("SELECT video_id FROM playlist_items WHERE playlist_id = ? ORDER BY position", arrayOf(id.toString())).use {
+                while (it.moveToNext()) order += it.getString(0)
+            }
+            if (!order.remove(videoId)) return@changePlaylist
+            order.add(toIndex.coerceIn(0, order.size), videoId)
+            order.forEachIndexed { position, video ->
+                execSQL("UPDATE playlist_items SET position = ? WHERE playlist_id = ? AND video_id = ?", arrayOf<Any?>(position, id, video))
+            }
+        }
+
+    /** Runs [change] on one playlist in a transaction, stamps it as changed and announces it. */
+    private suspend fun changePlaylist(id: Long, at: Long, change: SQLiteDatabase.() -> Unit) = withContext(io) {
+        val db = writableDatabase
+        db.transaction {
+            change()
+            execSQL("UPDATE playlists SET updated_at = ? WHERE id = ?", arrayOf<Any?>(at, id))
+        }
+        _changes.tryEmit(Unit)
+    }
+
+    private fun SQLiteDatabase.appendTracks(id: Long, tracks: List<TrackRef>): Int {
+        var next = 0
+        var room = 0
+        rawQuery("SELECT COALESCE(MAX(position) + 1, 0), COUNT(*) FROM playlist_items WHERE playlist_id = ?", arrayOf(id.toString())).use {
+            it.moveToFirst()
+            next = it.getInt(0)
+            room = MAX_PLAYLIST - it.getInt(1)
+        }
+        var added = 0
+        for (track in tracks) {
+            if (room <= 0) break
+            upsertTrack(track)
+            val row = insertWithOnConflict(
+                "playlist_items",
+                null,
+                ContentValues().apply {
+                    put("playlist_id", id)
+                    put("video_id", track.videoId)
+                    put("position", next)
+                },
+                SQLiteDatabase.CONFLICT_IGNORE,
+            )
+            if (row == -1L) continue
+            next++
+            room--
+            added++
+        }
+        return added
+    }
+
+    private fun cleanName(name: String) = name.trim().take(MAX_NAME).ifBlank { "Untitled" }
+
     // ------------------------------------------------------------------ helpers
 
     /** Adds the song's details, or brings them up to date. A length that is not known does not erase one that is. */
@@ -153,7 +302,8 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     private fun SQLiteDatabase.dropUnusedTracks() {
         execSQL(
             "DELETE FROM tracks WHERE video_id NOT IN (SELECT video_id FROM likes) " +
-                "AND video_id NOT IN (SELECT video_id FROM history)",
+                "AND video_id NOT IN (SELECT video_id FROM history) " +
+                "AND video_id NOT IN (SELECT video_id FROM playlist_items)",
         )
     }
 
@@ -186,8 +336,10 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     companion object {
-        private const val VERSION = 1
+        private const val VERSION = 2
         const val RECENT_LIMIT = 100
         const val HISTORY_KEEP = 2000
+        const val MAX_PLAYLIST = 500
+        const val MAX_NAME = 60
     }
 }

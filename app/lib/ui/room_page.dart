@@ -11,6 +11,7 @@ import 'rooms_sheet.dart';
 import 'scope.dart';
 import 'widgets/appear.dart';
 import 'widgets/avatars.dart';
+import 'widgets/delete_background.dart';
 import 'widgets/equalizer.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/track_tile.dart';
@@ -160,7 +161,7 @@ class _RoomPageState extends State<RoomPage> {
             return Dismissible(
               key: ValueKey(entry.id),
               direction: DismissDirection.endToStart,
-              background: const _DeleteBackground(),
+              background: const DeleteBackground(),
               onDismissed: (_) {
                 HapticFeedback.lightImpact();
                 controller.remove(entry);
@@ -211,7 +212,7 @@ class _RoomPageState extends State<RoomPage> {
   ) => Dismissible(
     key: ValueKey(entry.id),
     direction: DismissDirection.endToStart,
-    background: const _DeleteBackground(),
+    background: const DeleteBackground(),
     onDismissed: (_) {
       HapticFeedback.lightImpact();
       controller.remove(entry);
@@ -562,21 +563,6 @@ class _ClearButton extends StatelessWidget {
         if (confirmed == true) controller.clearQueue();
       },
       child: const Text(S.clear),
-    );
-  }
-}
-
-class _DeleteBackground extends StatelessWidget {
-  const _DeleteBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Container(
-      alignment: Alignment.centerRight,
-      padding: const EdgeInsets.only(right: 28),
-      color: p.error.withValues(alpha: 0.16),
-      child: Icon(Icons.delete_outline_rounded, color: p.error),
     );
   }
 }

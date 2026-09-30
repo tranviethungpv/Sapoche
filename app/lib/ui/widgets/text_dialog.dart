@@ -9,6 +9,7 @@ Future<String?> showTextDialog(
   required String hint,
   String initial = '',
   int maxLength = 24,
+  TextCapitalization capitalization = TextCapitalization.words,
 }) => showDialog<String>(
   context: context,
   builder: (_) => _TextDialog(
@@ -16,6 +17,7 @@ Future<String?> showTextDialog(
     hint: hint,
     initial: initial,
     maxLength: maxLength,
+    capitalization: capitalization,
   ),
 );
 
@@ -25,12 +27,14 @@ class _TextDialog extends StatefulWidget {
     required this.hint,
     required this.initial,
     required this.maxLength,
+    required this.capitalization,
   });
 
   final String title;
   final String hint;
   final String initial;
   final int maxLength;
+  final TextCapitalization capitalization;
 
   @override
   State<_TextDialog> createState() => _TextDialogState();
@@ -55,7 +59,7 @@ class _TextDialogState extends State<_TextDialog> {
         controller: _text,
         autofocus: true,
         maxLength: widget.maxLength,
-        textCapitalization: TextCapitalization.words,
+        textCapitalization: widget.capitalization,
         decoration: InputDecoration(hintText: widget.hint, counterText: ''),
         onSubmitted: (_) => _submit(),
       ),

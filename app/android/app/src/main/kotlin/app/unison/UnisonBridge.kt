@@ -261,6 +261,34 @@ class UnisonBridge(
                 UnisonApp.library.clearHistory()
                 return null
             }
+            "playlists" -> return UnisonApp.library.playlists().map {
+                mapOf("id" to it.id, "name" to it.name, "count" to it.count, "thumb" to it.thumb, "updatedAt" to it.updatedAt)
+            }
+            "playlistTracks" -> return UnisonApp.library.playlistTracks(playlistId(call)).map { it.toMap() }
+            "playlistCreate" -> return UnisonApp.library.createPlaylist(
+                call.argument<String>("name").orEmpty(),
+                call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map(::trackRef),
+            )
+            "playlistRename" -> {
+                UnisonApp.library.renamePlaylist(playlistId(call), call.argument<String>("name").orEmpty())
+                return null
+            }
+            "playlistDelete" -> {
+                UnisonApp.library.deletePlaylist(playlistId(call))
+                return null
+            }
+            "playlistAdd" -> return UnisonApp.library.addToPlaylist(
+                playlistId(call),
+                call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map(::trackRef),
+            )
+            "playlistRemove" -> {
+                UnisonApp.library.removeFromPlaylist(playlistId(call), call.argument<String>("videoId").orEmpty())
+                return null
+            }
+            "playlistMove" -> {
+                UnisonApp.library.movePlaylistItem(playlistId(call), call.argument<String>("videoId").orEmpty(), call.argument<Int>("to") ?: 0)
+                return null
+            }
             "share" -> {
                 share(call.argument<String>("text").orEmpty())
                 return null
@@ -446,6 +474,8 @@ class UnisonBridge(
         activity.startActivity(Intent.createChooser(send, null))
     }
 
+    private fun playlistId(call: MethodCall): Long = call.argument<Number>("id")!!.toLong()
+
     /** A song as the UI sends it. */
     private fun trackRef(map: Map<String, Any?>) = TrackRef(
         videoId = map["videoId"] as String,
@@ -453,6 +483,14 @@ class UnisonBridge(
         artist = map["artist"] as? String ?: "",
         thumb = map["thumb"] as? String,
         durMs = (map["durMs"] as? Number)?.toLong() ?: 0L,
+    )
+
+    private fun TrackRef.toMap() = mapOf(
+        "videoId" to videoId,
+        "title" to title,
+        "artist" to artist,
+        "thumb" to thumb,
+        "durMs" to durMs,
     )
 
     private fun LibraryStore.Entry.toMap() = mapOf(

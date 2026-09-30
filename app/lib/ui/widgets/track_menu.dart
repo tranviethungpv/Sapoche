@@ -4,6 +4,7 @@ import '../../data/models.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
+import 'playlist_picker.dart';
 
 /// The "more" menu of a song row: play it next, queue it, like it.
 class TrackMenu extends StatelessWidget {
@@ -32,11 +33,13 @@ class TrackMenu extends StatelessWidget {
       onSelected: (value) => switch (value) {
         'next' => onPlayNext(),
         'like' => library.toggleLike(track),
+        'playlist' => showAddToPlaylist(context, [track]),
         _ => onAdd(),
       },
       itemBuilder: (context) => [
         const PopupMenuItem(value: 'next', child: Text(S.playNext)),
         const PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
+        const PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
         PopupMenuItem(
           value: 'like',
           child: Text(library.isLiked(track.videoId) ? S.unlike : S.like),

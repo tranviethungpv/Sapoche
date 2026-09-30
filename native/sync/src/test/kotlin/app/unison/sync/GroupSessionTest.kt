@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** A player whose position advances with virtual time, so timing can be asserted to the millisecond. */
@@ -272,6 +273,20 @@ class GroupSessionTest {
         assertEquals(2400L, h.player.position)
         step(5000)
         assertEquals(2400L, h.player.position, "stays put while paused")
+    }
+
+    @Test
+    fun `closing the session silences the player at once`() = runTest {
+        val h = harness()
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Start(1, h.serverNow() + 100, 0))
+        step(2000)
+        assertTrue(h.player.playing)
+
+        h.session.close() // no runCurrent: whoever leaves cancels the scope right away
+        assertFalse(h.player.playing)
+        assertNull(h.player.loaded)
     }
 
     @Test

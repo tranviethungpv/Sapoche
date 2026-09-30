@@ -1098,6 +1098,196 @@ void main() {
       expect(find.text('Ben · 5 min ago'), findsNothing);
     });
 
+    Future<void> openPlaylists(WidgetTester tester, FakeBackend backend) async {
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      backend.emit(const LibraryEvent());
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a new playlist is named, made and opened', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      await openPlaylists(tester, backend);
+
+      await tester.tap(find.byTooltip('New playlist'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New playlist').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Road trip');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains('createPlaylist Road trip '));
+      expect(find.text('Road trip'), findsOneWidget);
+      expect(find.text('This playlist is empty'), findsOneWidget);
+    });
+
+    testWidgets('a YouTube link becomes a playlist with its songs', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.lookupResult = const LinkResult(
+        playlistTitle: 'Chill mix',
+        tracks: [songA, songB],
+      );
+      await openPlaylists(tester, backend);
+
+      await tester.tap(find.byTooltip('New playlist'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import from a link'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField),
+        'https://www.youtube.com/playlist?list=PLabc',
+      );
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(
+        backend.calls,
+        contains('createPlaylist Chill mix aaaaaaaaaaa,bbbbbbbbbbb'),
+      );
+      expect(find.text('Chill mix'), findsOneWidget);
+      expect(find.text('Alpha'), findsOneWidget);
+      expect(find.text('Beta'), findsOneWidget);
+    });
+
+    testWidgets('a link that is not music says so and makes nothing', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      await openPlaylists(tester, backend);
+
+      await tester.tap(find.byTooltip('New playlist'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import from a link'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'https://example.com');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Could not read that link'), findsOneWidget);
+      expect(
+        backend.calls.where((c) => c.startsWith('createPlaylist')),
+        isEmpty,
+      );
+    });
+
+    testWidgets('a playlist plays outside a room, and a song is swiped out', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.playlistNames[1] = 'Mix';
+      backend.playlistSongs[1] = [songA, songB];
+      await openPlaylists(tester, backend);
+
+      await tester.tap(find.text('Mix'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Play'));
+      await tester.pumpAndSettle();
+      final started = backend.calls.where(
+        (c) => c == 'clear' || c.startsWith('addMany'),
+      );
+      expect(started, ['clear', 'addMany aaaaaaaaaaa,bbbbbbbbbbb next=false']);
+
+      await tester.drag(find.text('Alpha'), const Offset(-600, 0));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('removeFromPlaylist 1 aaaaaaaaaaa'));
+      expect(find.text('Alpha'), findsNothing);
+      expect(find.text('Beta'), findsOneWidget);
+    });
+
+    testWidgets('deleting a playlist asks first and goes back to the library', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.playlistNames[1] = 'Mix';
+      backend.playlistSongs[1] = [songA];
+      await openPlaylists(tester, backend);
+
+      await tester.tap(find.text('Mix'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.more_horiz_rounded).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete playlist'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('This cannot be undone'), findsOneWidget);
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains('deletePlaylist 1'));
+      expect(find.text('Playlists'), findsOneWidget);
+      expect(find.text('Mix'), findsNothing);
+    });
+
+    testWidgets('a song from search goes into a chosen playlist', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.playlistNames[1] = 'Mix';
+      backend.playlistSongs[1] = [];
+      backend.searchResults = [songA];
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      backend.emit(const LibraryEvent());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'alpha');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TrackMenu).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add to playlist'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mix'));
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains('addToPlaylist 1 aaaaaaaaaaa'));
+      expect(find.text('Added to Mix'), findsOneWidget);
+
+      // The same song again is recognised
+      await tester.tap(find.byType(TrackMenu).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add to playlist'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mix'));
+      await tester.pumpAndSettle();
+      expect(find.text('Already in Mix'), findsOneWidget);
+    });
+
+    testWidgets('the picker can start a new playlist for the song', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom()));
+      backend.emit(
+        const PositionEvent(
+          PlayerPosition(playing: true, positionMs: 4000, durationMs: 200000),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byType(MiniPlayer));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+
+      await tester.tap(find.byTooltip('Add to playlist').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New playlist'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Favourites');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(backend.calls, contains('createPlaylist Favourites video0'));
+      expect(find.text('Added to Favourites'), findsOneWidget);
+    });
+
     testWidgets('the heart in the full player likes the song that is playing', (
       tester,
     ) async {

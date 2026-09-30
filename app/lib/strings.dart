@@ -121,6 +121,25 @@ abstract final class S {
   static const clearHistory = 'Clear history';
   static const clearHistoryQuestion =
       'Remove everything from your listening history? Liked songs are kept.';
+  static const playlists = 'Playlists';
+  static const newPlaylist = 'New playlist';
+  static const importFromLink = 'Import from a link';
+  static const playlistName = 'Playlist name';
+  static const importHint = 'YouTube playlist or song link';
+  static const importFailed = 'Could not read that link';
+  static const importEmpty = 'That link has no songs';
+  static const addToPlaylist = 'Add to playlist';
+  static String addedToPlaylist(String name) => 'Added to $name';
+  static String alreadyInPlaylist(String name) => 'Already in $name';
+  static const deletePlaylist = 'Delete playlist';
+  static String deletePlaylistQuestion(String name) =>
+      'Delete “$name”? This cannot be undone.';
+  static const delete = 'Delete';
+  static const emptyPlaylistTitle = 'This playlist is empty';
+  static const emptyPlaylistBody =
+      'Choose “Add to playlist” on any song to put it here.';
+  static const saveAsPlaylist = 'Save as playlist';
+  static const playlistSaved = 'Playlist saved';
   static const noLikedTitle = 'No liked songs yet';
   static const noLikedBody = 'Tap the heart on a song to keep it here.';
   static const noRecentTitle = 'Nothing played yet';

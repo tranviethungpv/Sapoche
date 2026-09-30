@@ -24,6 +24,37 @@ class Track {
     thumb: map['thumb'] as String?,
     durMs: (map['durMs'] as num?)?.toInt() ?? 0,
   );
+
+  /// The shape the native side reads a song in.
+  Map<String, Object?> toMap() => {
+    'videoId': videoId,
+    'title': title,
+    'artist': artist,
+    'thumb': thumb,
+    'durMs': durMs,
+  };
+}
+
+/// A playlist the person made, as listed: its cover is its first song's picture.
+class SavedPlaylist {
+  const SavedPlaylist({
+    required this.id,
+    required this.name,
+    this.count = 0,
+    this.thumb,
+  });
+
+  final int id;
+  final String name;
+  final int count;
+  final String? thumb;
+
+  factory SavedPlaylist.fromMap(Map<Object?, Object?> map) => SavedPlaylist(
+    id: (map['id'] as num).toInt(),
+    name: map['name'] as String,
+    count: (map['count'] as num?)?.toInt() ?? 0,
+    thumb: map['thumb'] as String?,
+  );
 }
 
 /// A song from the history: when it was last heard and how often.

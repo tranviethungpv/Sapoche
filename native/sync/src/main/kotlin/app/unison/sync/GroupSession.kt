@@ -171,14 +171,15 @@ class GroupSession(
         }
     }
 
-    /** Stop everything and silence the player. */
+    /**
+     * Stop everything and silence the player. Done at once, not through [scope]: the caller cancels the scope
+     * right after, and work still waiting in it would never run and leave the room's song playing.
+     */
     fun close() {
-        scope.launch {
-            cancelPlayback()
-            player.stop()
-            loadedItemId = null
-            preloaded = null
-        }
+        cancelPlayback()
+        player.stop()
+        loadedItemId = null
+        preloaded = null
     }
 
     // ------------------------------------------------------------------ listening alone

@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'backend.dart';
 import 'models.dart';
 
-/// The songs a person keeps: the ones they liked, and what they heard. The truth is kept on the native side
+/// The songs a person keeps: the ones they liked, what they heard, and their playlists. The truth is kept on the native side
 /// (the playback service writes the history); this holds a copy for the screens and updates it when told.
 class LibraryController extends ChangeNotifier {
   LibraryController(this._backend);
@@ -16,10 +16,20 @@ class LibraryController extends ChangeNotifier {
   List<Track> _liked = const [];
   Set<String> _likedIds = const {};
   List<HistoryEntry> _recent = const [];
+  List<SavedPlaylist> _playlists = const [];
+
+  /// Songs of the playlists that were opened, kept up to date while they are.
+  final _items = <int, List<Track>>{};
 
   /// Liked songs, the most recently liked first.
   List<Track> get liked => _liked;
   List<HistoryEntry> get recent => _recent;
+
+  /// The person's playlists, the one changed last first.
+  List<SavedPlaylist> get playlists => _playlists;
+
+  /// The songs of a playlist that [openPlaylist] loaded.
+  List<Track> playlistTracks(int id) => _items[id] ?? const [];
 
   bool isLiked(String videoId) => _likedIds.contains(videoId);
 
@@ -40,8 +50,19 @@ class LibraryController extends ChangeNotifier {
     try {
       final liked = await _backend.liked();
       final recent = await _backend.recent();
+      final playlists = await _backend.playlists();
+      final items = <int, List<Track>>{};
+      for (final id in _items.keys.toList()) {
+        if (playlists.any((p) => p.id == id)) {
+          items[id] = await _backend.playlistTracks(id);
+        }
+      }
       _setLiked(liked);
       _recent = recent;
+      _playlists = playlists;
+      _items
+        ..clear()
+        ..addAll(items);
       notifyListeners();
     } on Object {
       // Nothing to show is better than an error on every screen
@@ -81,6 +102,87 @@ class LibraryController extends ChangeNotifier {
       notifyListeners();
       _messages.add('$e');
     }
+  }
+
+  /// Loads the songs of a playlist; from then on they follow the changes made to it.
+  Future<void> openPlaylist(int id) async {
+    try {
+      _items[id] = await _backend.playlistTracks(id);
+      notifyListeners();
+    } on Object catch (e) {
+      _messages.add('$e');
+    }
+  }
+
+  /// Makes a playlist with [tracks] in it. Gives back its id, or null when it could not be made.
+  Future<int?> createPlaylist(
+    String name, [
+    List<Track> tracks = const [],
+  ]) async {
+    try {
+      final id = await _backend.createPlaylist(name, tracks);
+      await refresh();
+      return id;
+    } on Object catch (e) {
+      _messages.add('$e');
+      return null;
+    }
+  }
+
+  /// Adds songs to a playlist. Gives back how many were new to it.
+  Future<int> addToPlaylist(int id, List<Track> tracks) async {
+    try {
+      final added = await _backend.addToPlaylist(id, tracks);
+      await refresh();
+      return added;
+    } on Object catch (e) {
+      _messages.add('$e');
+      return 0;
+    }
+  }
+
+  Future<void> renamePlaylist(int id, String name) =>
+      _change(() => _backend.renamePlaylist(id, name));
+
+  Future<void> deletePlaylist(int id) =>
+      _change(() => _backend.deletePlaylist(id));
+
+  /// Takes a song out of a playlist; it leaves the list at once.
+  Future<void> removeFromPlaylist(int id, Track track) {
+    final songs = _items[id];
+    if (songs != null) {
+      _items[id] = [
+        for (final t in songs)
+          if (t.videoId != track.videoId) t,
+      ];
+      notifyListeners();
+    }
+    return _change(() => _backend.removeFromPlaylist(id, track.videoId));
+  }
+
+  /// Puts the song at place [toIndex] of the playlist; the list changes at once.
+  Future<void> movePlaylistItem(int id, Track track, int toIndex) {
+    final songs = _items[id];
+    if (songs != null) {
+      final moved = [...songs];
+      final at = moved.indexWhere((t) => t.videoId == track.videoId);
+      if (at >= 0) {
+        moved.insert(toIndex.clamp(0, moved.length - 1), moved.removeAt(at));
+        _items[id] = moved;
+        notifyListeners();
+      }
+    }
+    return _change(() => _backend.movePlaylistItem(id, track.videoId, toIndex));
+  }
+
+  /// Runs a write, then reads everything again so the screens show what was really stored.
+  Future<void> _change(Future<void> Function() write) async {
+    try {
+      await write();
+    } on Object catch (e) {
+      _messages.add('$e');
+    }
+    await refresh();
   }
 
   void _setLiked(List<Track> liked) {
