@@ -315,7 +315,7 @@ void main() {
     await tester.tap(find.text('Room'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('ABC234 · 1 listening'));
+    await tester.tap(find.text('1 listening'));
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pumpAndSettle();
     expect(
@@ -340,8 +340,8 @@ void main() {
     await tester.tap(find.text('Room'));
     await tester.pumpAndSettle();
 
-    expect(find.text('K2A5RF · Expired'), findsOneWidget);
-    await tester.tap(find.text('K2A5RF · Expired'), warnIfMissed: false);
+    expect(find.text('Expired'), findsOneWidget);
+    await tester.tap(find.text('Expired'), warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(backend.calls.where((c) => c.startsWith('join')), isEmpty);
 

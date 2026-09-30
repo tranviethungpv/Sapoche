@@ -244,6 +244,7 @@ class _RecentTileState extends State<_RecentTile> {
             : gone
             ? S.recentGone
             : S.recentLive(info.members);
+        final title = info?.name ?? widget.room.title;
         return ListTile(
           contentPadding: EdgeInsets.zero,
           enabled: widget.enabled && !gone,
@@ -255,13 +256,12 @@ class _RecentTileState extends State<_RecentTile> {
               color: gone ? p.textTertiary : p.onPrimaryContainer,
             ),
           ),
-          title: Text(
-            info?.name ?? widget.room.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
-            [widget.room.code, ?status].join(' · '),
+            [
+              if (title != widget.room.code) widget.room.code,
+              ?status,
+            ].join(' · '),
             style: TextStyle(color: gone ? p.textTertiary : p.textSecondary),
           ),
           trailing: IconButton(
