@@ -76,6 +76,8 @@ class UnisonBridge(
 
     private val backupFiles = BackupFiles(activity, UnisonApp.library)
 
+    private val display = SmoothDisplay(activity)
+
     /** Where the player's picture is drawn for Flutter's Texture widget; made when first asked for. */
     private var picture: TextureRegistry.SurfaceProducer? = null
 
@@ -139,6 +141,7 @@ class UnisonBridge(
                 emit(UiJson.library())
             }
             ensureService()
+            display.reapply()
             emit(UiJson.calm(UnisonApp.heat.calm.value))
             UnisonApp.updater.refreshPermission()
             UnisonApp.updater.check(force = false)
@@ -299,6 +302,10 @@ class UnisonBridge(
                 "server" to Config.SERVER,
                 "autoplay" to prefs.getBoolean("autoplay", true),
             )
+            "smooth" -> {
+                display.smooth(call.argument<Boolean>("on") == true)
+                return null
+            }
             "setLanguage" -> {
                 UnisonApp.setLanguage(call.argument<String>("code") ?: "en")
                 return null

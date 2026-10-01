@@ -9,6 +9,7 @@ import 'data/recent_rooms.dart';
 import 'data/recent_searches.dart';
 import 'data/room_controller.dart';
 import 'data/update_controller.dart';
+import 'frame_boost.dart';
 import 'frame_stats.dart';
 import 'ui/scope.dart';
 
@@ -21,6 +22,8 @@ Future<void> main() async {
   final recents = await RecentRooms.load();
   final searches = await RecentSearches.load();
   final backend = NativeBackend();
+  // The display runs at its fastest only while something moves
+  FrameBoost((on) => backend.setSmooth(on)).start();
   final room = RoomController(backend, recents: recents)..start();
   final library = LibraryController(backend)..start();
   runApp(

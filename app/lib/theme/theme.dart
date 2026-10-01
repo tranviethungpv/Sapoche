@@ -28,6 +28,10 @@ extension UnisonThemeContext on BuildContext {
 
 const fontFamily = 'Inter';
 
+/// The full player is always dark, like Apple Music's: its background takes the cover's colours, and light text
+/// reads on all of them where dark text would not. Built once, when first needed.
+final playerTheme = buildTheme(Palette.dark);
+
 ThemeData buildTheme(Palette p) {
   final scheme = ColorScheme(
     brightness: p.brightness,

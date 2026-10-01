@@ -32,6 +32,25 @@ class NowPlayingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: playerTheme,
+      // Light icons in the status bar and the navigation bar, whatever the rest of the app wears
+      child: const AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle(
+          statusBarIconBrightness: Brightness.light,
+          systemNavigationBarIconBrightness: Brightness.light,
+        ),
+        child: _PlayerPage(),
+      ),
+    );
+  }
+}
+
+class _PlayerPage extends StatelessWidget {
+  const _PlayerPage();
+
+  @override
+  Widget build(BuildContext context) {
     final controller = AppScope.roomOf(context);
     final sheet = PlayerSheetScope.of(context);
     return PlayerPull(

@@ -225,6 +225,9 @@ abstract class Backend {
   Future<void> setTrim(int ms);
   Future<List<String>> log();
 
+  /// Asks the display for its fastest refresh rate while the screen is moving, and gives it back when it is still.
+  Future<void> setSmooth(bool on);
+
   /// Tells the native side which language the app speaks, for the few texts it shows itself.
   Future<void> setLanguage(String code);
 
@@ -616,6 +619,9 @@ class NativeBackend implements Backend {
   @override
   Future<List<String>> log() async =>
       (await _call<List<Object?>>('log') ?? const []).cast<String>();
+
+  @override
+  Future<void> setSmooth(bool on) => _call<void>('smooth', {'on': on});
 
   @override
   Future<void> setLanguage(String code) =>

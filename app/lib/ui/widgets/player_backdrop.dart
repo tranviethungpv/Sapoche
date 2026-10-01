@@ -1,12 +1,17 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
-import '../cover_color.dart';
+import '../cover_glow.dart';
 import 'wash.dart';
 
-/// Background of the full player: the cover's colour as soft blobs, under the same pink veil as the
-/// rest of the app. The colour changes smoothly from song to song. The blobs stand still: drifting
-/// them meant redrawing the whole screen on every frame for as long as the player was open.
+/// Background of the full player, in the manner of Apple Music: the cover's own colours, enlarged and blurred
+/// until they are only light, with the bottom darkened for the controls. It changes from song to song by fading
+/// from one picture to the next. A song with no cover, or one that cannot be read, gets the app's pink veil.
+///
+/// The picture is made once per cover (see [CoverGlow]) and is not drawn again until the song changes, so the
+/// player costs no more with it than without.
 class PlayerBackdrop extends StatefulWidget {
   const PlayerBackdrop({super.key, required this.coverUrl});
 
@@ -17,7 +22,9 @@ class PlayerBackdrop extends StatefulWidget {
 }
 
 class _PlayerBackdropState extends State<PlayerBackdrop> {
-  Color? _cover;
+  /// The picture on show and the address it is of; kept while the next one is being made.
+  ui.Image? _glow;
+  String? _shownFor;
 
   @override
   void initState() {
@@ -34,76 +41,82 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
   void _load() {
     final url = widget.coverUrl;
     if (url == null) {
-      setState(() => _cover = null);
+      setState(() {
+        _glow = null;
+        _shownFor = null;
+      });
       return;
     }
-    CoverColor.of(url).then((color) {
-      if (mounted && widget.coverUrl == url) setState(() => _cover = color);
+    CoverGlow.of(url).then((image) {
+      if (!mounted || widget.coverUrl != url) return;
+      setState(() {
+        _glow = image;
+        _shownFor = url;
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final dark = p.brightness == Brightness.dark;
-    // A song without a usable colour falls back to the app's own pink
-    // Pulled towards the app's rose so a beige or green cover still reads as a pink veil, not mud
-    final target = _cover == null
-        ? p.primary
-        : Color.lerp(_cover, p.primary, 0.45)!;
+    final glow = _glow;
     return Stack(
       fit: StackFit.expand,
       children: [
         ColoredBox(color: p.base),
-        TweenAnimationBuilder<Color?>(
-          tween: ColorTween(end: target),
+        AnimatedSwitcher(
           duration: const Duration(milliseconds: 900),
-          curve: Curves.easeInOut,
-          builder: (context, color, _) => RepaintBoundary(
-            child: CustomPaint(
-              painter: _BlobPainter(color ?? target, dark ? 0.6 : 0.42),
+          switchInCurve: Curves.easeInOut,
+          switchOutCurve: Curves.easeInOut,
+          layoutBuilder: (current, previous) =>
+              Stack(fit: StackFit.expand, children: [...previous, ?current]),
+          child: glow == null
+              ? const PinkWash(
+                  key: ValueKey('pink'),
+                  intensity: 0.55,
+                  opaque: false,
+                  child: SizedBox.expand(),
+                )
+              : RepaintBoundary(
+                  key: ValueKey(_shownFor),
+                  child: CustomPaint(
+                    painter: _GlowPainter(glow),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+        ),
+        // Darker towards the bottom, where the controls are
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: [0, 0.45, 1],
+              colors: [Color(0x14000000), Color(0x26000000), Color(0x73000000)],
             ),
           ),
-        ),
-        const PinkWash(
-          intensity: 0.55,
-          opaque: false,
-          child: SizedBox.expand(),
         ),
       ],
     );
   }
 }
 
-class _BlobPainter extends CustomPainter {
-  _BlobPainter(this.color, this.strength);
+class _GlowPainter extends CustomPainter {
+  _GlowPainter(this.image);
 
-  final Color color;
-  final double strength;
+  final ui.Image image;
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Three blobs: centre as a share of the screen, radius as a share of its width, and strength
-    const blobs = [
-      (Offset(0.25, 0.22), 0.85, 1.0),
-      (Offset(0.80, 0.55), 0.75, 0.8),
-      (Offset(0.40, 0.92), 0.9, 0.7),
-    ];
-    for (final (center, radius, weight) in blobs) {
-      final at = Offset(center.dx * size.width, center.dy * size.height);
-      final r = radius * size.width;
-      final paint = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            color.withValues(alpha: strength * weight),
-            color.withValues(alpha: 0),
-          ],
-        ).createShader(Rect.fromCircle(center: at, radius: r));
-      canvas.drawCircle(at, r, paint);
-    }
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Offset.zero & size,
+      // Stretched far, so it is smoothed the best way there is
+      Paint()..filterQuality = FilterQuality.high,
+    );
   }
 
   @override
-  bool shouldRepaint(_BlobPainter old) =>
-      old.color != color || old.strength != strength;
+  bool shouldRepaint(_GlowPainter old) => old.image != image;
 }

@@ -3,8 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/data/music_models.dart';
+import 'package:unison/ui/home_shell.dart';
 import 'package:unison/ui/player_sheet.dart';
 import 'package:unison/ui/widgets/mini_player.dart';
+import 'package:unison/ui/widgets/player_backdrop.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';
@@ -54,6 +56,20 @@ const _mv = MusicTrack(
 );
 
 void main() {
+  testWidgets('the full player is dark, whatever the rest of the app wears', (
+    tester,
+  ) async {
+    await openPlayer(tester); // the app itself is in the light theme here
+    expect(
+      Theme.of(tester.element(find.byType(HomeShell))).brightness,
+      Brightness.light,
+    );
+    expect(
+      Theme.of(tester.element(find.byType(PlayerBackdrop))).brightness,
+      Brightness.dark,
+    );
+  });
+
   group('song and video', () {
     Future<FakeBackend> open(
       WidgetTester tester, {

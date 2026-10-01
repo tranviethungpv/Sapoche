@@ -1,0 +1,150 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:unison/theme/palette.dart';
+import 'package:unison/theme/theme.dart';
+import 'package:unison/ui/cover_glow.dart';
+import 'package:unison/ui/widgets/player_backdrop.dart';
+
+Future<ui.Image> solid(int r, int g, int b, {int size = 16}) async {
+  final bytes = Uint8List(size * size * 4);
+  for (var i = 0; i < bytes.length; i += 4) {
+    bytes[i] = r;
+    bytes[i + 1] = g;
+    bytes[i + 2] = b;
+    bytes[i + 3] = 255;
+  }
+  final done = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+    bytes,
+    size,
+    size,
+    ui.PixelFormat.rgba8888,
+    done.complete,
+  );
+  return done.future;
+}
+
+Future<List<int>> pixelAt(ui.Image image, int x, int y) async {
+  final data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+  final i = (y * image.width + x) * 4;
+  return [
+    data.getUint8(i),
+    data.getUint8(i + 1),
+    data.getUint8(i + 2),
+    data.getUint8(i + 3),
+  ];
+}
+
+void main() {
+  group('the numbers behind it', () {
+    test('a pale cover is darkened a lot, a dark one hardly at all', () {
+      expect(CoverGlow.darkening(0.95), lessThan(0.4));
+      expect(CoverGlow.darkening(0.1), 0.9);
+      expect(
+        CoverGlow.darkening(0.0),
+        0.9,
+        reason: 'black does not divide by zero',
+      );
+    });
+
+    test('the average brightness counts clear pixels only', () {
+      final white = Uint8List.fromList([255, 255, 255, 255, 0, 0, 0, 255]);
+      expect(CoverGlow.averageLuma(white), closeTo(0.5, 0.01));
+      final clear = Uint8List.fromList([255, 255, 255, 0, 0, 0, 0, 255]);
+      expect(CoverGlow.averageLuma(clear), closeTo(0, 0.01));
+      expect(CoverGlow.averageLuma(Uint8List(0)), 0.5);
+    });
+
+    test('the colour matrix keeps grey grey and pulls colours apart', () {
+      final m = CoverGlow.tint(1);
+      double apply(List<double> row, List<double> rgb) =>
+          row[0] * rgb[0] + row[1] * rgb[1] + row[2] * rgb[2];
+      const grey = [100.0, 100.0, 100.0];
+      expect(apply(m.sublist(0, 5), grey), closeTo(100, 0.01));
+      expect(apply(m.sublist(5, 10), grey), closeTo(100, 0.01));
+      const orange = [200.0, 120.0, 40.0];
+      final red = apply(m.sublist(0, 5), orange);
+      final blue = apply(m.sublist(10, 15), orange);
+      expect(
+        red - blue,
+        greaterThan(200 - 40),
+        reason: 'more vivid than before',
+      );
+    });
+  });
+
+  group('the picture', () {
+    testWidgets('has the colour of the cover and is darker than it', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final cover = await solid(220, 40, 60);
+        final glow = await CoverGlow.render(cover);
+        expect(glow.width, CoverGlow.width);
+        expect(glow.height, CoverGlow.height);
+        final centre = await pixelAt(glow, 36, 78);
+        expect(centre[0], greaterThan(centre[1] + 40), reason: 'still red');
+        double luma(List<int> px) =>
+            0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2];
+        // The red is stronger than in the cover (more vivid), the picture as a whole darker
+        expect(luma(centre), lessThan(luma([220, 40, 60])), reason: 'darkened');
+        expect(centre[3], 255);
+      });
+    });
+
+    testWidgets('of a white cover is dark enough for white text', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final glow = await CoverGlow.render(await solid(255, 255, 255));
+        final px = await pixelAt(glow, 36, 78);
+        final luma = (0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]) / 255;
+        expect(luma, lessThan(0.45));
+      });
+    });
+
+    testWidgets('of a black cover stays dark and does not break', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final glow = await CoverGlow.render(await solid(0, 0, 0));
+        final px = await pixelAt(glow, 10, 10);
+        expect(px[0] + px[1] + px[2], lessThan(30));
+      });
+    });
+  });
+
+  group('the background of the player', () {
+    testWidgets('is the pink veil when the song has no cover', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Palette.dark),
+          home: const Scaffold(body: PlayerBackdrop(coverUrl: null)),
+        ),
+      );
+      expect(find.byKey(const ValueKey('pink')), findsOneWidget);
+    });
+
+    testWidgets('falls back to the veil when the cover cannot be read', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Palette.dark),
+          home: const Scaffold(
+            body: PlayerBackdrop(coverUrl: 'https://example.invalid/none.jpg'),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byKey(const ValueKey('pink')), findsOneWidget);
+    });
+  });
+}
