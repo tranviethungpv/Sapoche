@@ -9,7 +9,6 @@ import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
 import 'settings_page.dart';
-import 'widgets/glass.dart';
 import 'widgets/artwork.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
@@ -216,12 +215,11 @@ class _Overview extends StatelessWidget {
           child: Row(
             children: [
               Expanded(child: Text(S.tabLibrary, style: theme.headlineLarge)),
-              GlassIconButton(
+              IconButton(
                 onPressed: () => openSettings(context),
                 tooltip: S.settingsTitle,
-                icon: Icons.settings_outlined,
+                icon: Icon(Icons.settings_outlined, color: p.textSecondary),
               ),
-              const SizedBox(width: 8),
             ],
           ),
         ),
@@ -339,7 +337,10 @@ class _IconTile extends StatelessWidget {
     return Container(
       width: 54,
       height: 54,
-      decoration: GlassDecoration.of(p, radius: 16, tint: p.primaryContainer),
+      decoration: BoxDecoration(
+        color: p.primaryContainer,
+        borderRadius: BorderRadius.circular(UnisonTheme.artworkRadius),
+      ),
       child: Icon(icon, color: p.primary),
     );
   }

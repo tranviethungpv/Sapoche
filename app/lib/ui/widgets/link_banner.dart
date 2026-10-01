@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
-import 'glass.dart';
 
 /// A small pill that slides in when the connection to the room is not healthy.
 class LinkBanner extends StatelessWidget {
@@ -35,10 +34,9 @@ class LinkBanner extends StatelessWidget {
               key: ValueKey(text),
               margin: const EdgeInsets.fromLTRB(20, 4, 20, 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: GlassDecoration.of(
-                p,
-                radius: 999,
-                tint: p.primaryContainer,
+              decoration: BoxDecoration(
+                color: p.primaryContainer,
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,

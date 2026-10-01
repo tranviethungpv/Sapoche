@@ -15,7 +15,6 @@ import '../theme/theme.dart';
 import 'scope.dart';
 import 'setup_dialog.dart';
 import 'widgets/avatars.dart';
-import 'widgets/glass.dart';
 import 'widgets/text_dialog.dart';
 import 'widgets/wash.dart';
 
@@ -31,10 +30,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PinkWash(
     child: Scaffold(
-      appBar: AppBar(
-        leading: const GlassBackButton(),
-        title: Text(S.settingsTitle),
-      ),
+      appBar: AppBar(title: Text(S.settingsTitle)),
       body: const SettingsPage(),
     ),
   );
@@ -911,7 +907,7 @@ class _SubPage extends StatelessWidget {
     // A page on its own has no backdrop: the pink veil is part of the home screen
     return PinkWash(
       child: Scaffold(
-        appBar: AppBar(leading: const GlassBackButton(), title: Text(title)),
+        appBar: AppBar(title: Text(title)),
         body: ListView(
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
@@ -1032,7 +1028,13 @@ class _Group extends StatelessWidget {
               ),
             ),
           Container(
-            decoration: GlassDecoration.of(p, radius: 26),
+            decoration: BoxDecoration(
+              color: p.surfaceRaised.withValues(
+                alpha: p.brightness == Brightness.dark ? 0.9 : 0.75,
+              ),
+              borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+              border: Border.all(color: p.outlineSoft),
+            ),
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [

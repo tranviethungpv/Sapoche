@@ -76,8 +76,8 @@ class MiniPlayerCapsule extends StatelessWidget {
     final current = controller.snapshot.current;
     if (current == null) return const SizedBox.shrink();
     return Glass(
-      borderRadius: BorderRadius.circular(30),
-      floating: true,
+      borderRadius: BorderRadius.circular(22),
+      border: true,
       child: InkWell(
         onTap: onTap,
         child: SizedBox(

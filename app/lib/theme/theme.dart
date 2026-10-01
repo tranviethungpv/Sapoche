@@ -78,13 +78,9 @@ ThemeData buildTheme(Palette p) {
         labelSmall: _style(11, FontWeight.w600, 0.2, p.textTertiary),
       );
 
-  // Glass panes have a bright edge; the dialogs, sheets and messages that float over the screen get a plain one
-  final dark = p.brightness == Brightness.dark;
-  final edge = BorderSide(
-    color: dark ? const Color(0x2EFFFFFF) : const Color(0xCCFFFFFF),
-    width: 1.2,
+  final buttonShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(14),
   );
-  const buttonShape = StadiumBorder();
 
   return ThemeData(
     useMaterial3: true,
@@ -147,48 +143,41 @@ ThemeData buildTheme(Palette p) {
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: p.brightness == Brightness.light
-          ? const Color(0xF5FFF7F9)
-          : const Color(0xF5241A1F),
+          ? const Color(0xFFFFF7F9)
+          : const Color(0xFF241A1F),
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(30),
-        side: edge,
-      ),
-      elevation: 0,
-      shadowColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       titleTextStyle: text.titleLarge,
       contentTextStyle: text.bodyMedium?.copyWith(color: p.textSecondary),
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: p.brightness == Brightness.light
-          ? const Color(0xF5FFF7F9)
-          : const Color(0xF5211820),
+          ? const Color(0xFFFFF7F9)
+          : const Color(0xFF211820),
       surfaceTintColor: Colors.transparent,
       showDragHandle: true,
       dragHandleColor: p.outline,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
-        side: edge,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: p.brightness == Brightness.light
-          ? const Color(0xB3FFFFFF)
-          : const Color(0x14FFFFFF),
+          ? p.surfaceRaised
+          : p.surfaceRaised,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       hintStyle: text.bodyLarge?.copyWith(color: p.textTertiary),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide(color: p.primary, width: 1.5),
       ),
     ),
@@ -202,12 +191,7 @@ ThemeData buildTheme(Palette p) {
             ? const Color(0xFFFFF3F7)
             : const Color(0xFF22161A),
       ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: BorderSide(
-          color: dark ? const Color(0x1F3A2A31) : const Color(0x33FFFFFF),
-        ),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
     sliderTheme: SliderThemeData(
       activeTrackColor: p.primary,

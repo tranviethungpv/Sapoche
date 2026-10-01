@@ -6,7 +6,6 @@ import '../../theme/theme.dart';
 import '../scope.dart';
 import 'artwork.dart';
 import 'text_dialog.dart';
-import 'glass.dart';
 
 /// Asks which playlist [tracks] go into, or offers to make one, and says what happened.
 Future<void> showAddToPlaylist(BuildContext context, List<Track> tracks) async {
@@ -72,10 +71,11 @@ class _Picker extends StatelessWidget {
               leading: Container(
                 width: 46,
                 height: 46,
-                decoration: GlassDecoration.of(
-                  p,
-                  radius: 14,
-                  tint: p.primaryContainer,
+                decoration: BoxDecoration(
+                  color: p.primaryContainer,
+                  borderRadius: BorderRadius.circular(
+                    UnisonTheme.artworkRadius,
+                  ),
                 ),
                 child: Icon(Icons.add_rounded, color: p.primary),
               ),
