@@ -10,6 +10,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
 import 'scope.dart';
+import 'widgets/glass.dart';
 import 'widgets/artwork.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/shimmer.dart';
@@ -362,43 +363,50 @@ class _SearchPageState extends State<SearchPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ListenableBuilder(
               listenable: _field,
-              builder: (context, _) => TextField(
-                controller: _field,
-                onChanged: _onChanged,
-                onSubmitted: (text) {
-                  _debounce?.cancel();
-                  if (text.trim().isEmpty) return;
-                  if (!text.contains('youtu')) {
-                    AppScope.of(context).searches.add(text);
-                  }
-                  _run(text.trim());
-                },
-                textInputAction: TextInputAction.search,
-                style: theme.bodyLarge,
-                decoration: InputDecoration(
-                  hintText: S.searchHint,
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: context.palette.textTertiary,
+              builder: (context, _) => DecoratedBox(
+                decoration: GlassDecoration.of(context.palette, radius: 26),
+                child: TextField(
+                  controller: _field,
+                  onChanged: _onChanged,
+                  onSubmitted: (text) {
+                    _debounce?.cancel();
+                    if (text.trim().isEmpty) return;
+                    if (!text.contains('youtu')) {
+                      AppScope.of(context).searches.add(text);
+                    }
+                    _run(text.trim());
+                  },
+                  textInputAction: TextInputAction.search,
+                  style: theme.bodyLarge,
+                  decoration: InputDecoration(
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    hintText: S.searchHint,
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: context.palette.textTertiary,
+                    ),
+                    suffixIcon: _field.text.isEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.content_paste_rounded,
+                              color: context.palette.textTertiary,
+                            ),
+                            onPressed: _paste,
+                          )
+                        : IconButton(
+                            icon: Icon(
+                              Icons.cancel_rounded,
+                              color: context.palette.textTertiary,
+                            ),
+                            onPressed: () {
+                              _field.clear();
+                              _onChanged('');
+                            },
+                          ),
                   ),
-                  suffixIcon: _field.text.isEmpty
-                      ? IconButton(
-                          icon: Icon(
-                            Icons.content_paste_rounded,
-                            color: context.palette.textTertiary,
-                          ),
-                          onPressed: _paste,
-                        )
-                      : IconButton(
-                          icon: Icon(
-                            Icons.cancel_rounded,
-                            color: context.palette.textTertiary,
-                          ),
-                          onPressed: () {
-                            _field.clear();
-                            _onChanged('');
-                          },
-                        ),
                 ),
               ),
             ),
@@ -721,16 +729,15 @@ class _FilterChip extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? p.primaryContainer : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: selected ? p.primary : p.outline),
+        decoration: GlassDecoration.of(
+          p,
+          radius: 999,
+          tint: selected ? p.primaryContainer : null,
         ),
         child: Text(
           label,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: selected ? p.onPrimaryContainer : p.textSecondary,
-          ),
+          style: Theme.of(context).textTheme.labelMedium
+              ?.copyWith(color: selected ? p.primary : p.textSecondary),
         ),
       ),
     );

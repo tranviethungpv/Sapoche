@@ -47,7 +47,9 @@ jobs:
       - name: Build the app
         run: |
           set -o pipefail
-          flutter build ios --release --no-codesign 2>&1 | tee build.log
+          # The frame statistics go into the log of the app (Settings > copy log): the look changed, so the refresh rate
+          # is measured again on a real phone
+          flutter build ios --release --no-codesign --dart-define=FRAME_STATS=true 2>&1 | tee build.log
 
       # The log of a run is only readable when signed in to GitHub; the compiler's complaints are also put where
       # anybody can read them, in the annotation of the run.

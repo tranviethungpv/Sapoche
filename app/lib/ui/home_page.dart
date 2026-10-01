@@ -12,6 +12,7 @@ import 'playlist_screen.dart';
 import 'player/track_section.dart';
 import 'scope.dart';
 import 'settings_page.dart';
+import 'widgets/glass.dart';
 import 'widgets/artwork.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/song_card.dart';
@@ -111,21 +112,22 @@ class _Header extends StatelessWidget {
               style: Theme.of(context).textTheme.headlineLarge,
             ),
           ),
-          IconButton(
+          GlassIconButton(
             onPressed: () => openSettings(context),
             tooltip: S.settingsTitle,
             // A dot while a newer version of the app is waiting
-            icon: ListenableBuilder(
+            child: ListenableBuilder(
               listenable: AppScope.of(context).update,
               builder: (context, _) => Badge(
                 key: const ValueKey('update-dot'),
                 smallSize: 9,
                 backgroundColor: p.primary,
                 isLabelVisible: AppScope.of(context).update.info.hasUpdate,
-                child: Icon(Icons.settings_outlined, color: p.textSecondary),
+                child: Icon(Icons.settings_outlined, color: p.text, size: 20),
               ),
             ),
           ),
+          const SizedBox(width: 8),
         ],
       ),
     );
@@ -144,10 +146,7 @@ class _Welcome extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
       child: Container(
         padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: p.primaryContainer.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
-        ),
+        decoration: GlassDecoration.of(p, radius: 24, tint: p.primaryContainer),
         child: Row(
           children: [
             Icon(Icons.auto_awesome_rounded, color: p.primary, size: 30),

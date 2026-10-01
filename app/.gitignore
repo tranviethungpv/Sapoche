@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Pictures of the screens made by test/shots_test.dart
+test/shots/

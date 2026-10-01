@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,7 +24,7 @@ class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
   /// Bottom padding lists need so their last row can scroll clear of the bars.
-  static const bottomInset = 176.0;
+  static const bottomInset = 184.0;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -278,43 +279,50 @@ class _TabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Glass(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: p.outlineSoft)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 58,
+    // Floats above the bottom edge, clear of the home indicator
+    final lift = math.max(MediaQuery.paddingOf(context).bottom - 14, 10.0);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, 0, 12, lift),
+      child: Glass(
+        borderRadius: BorderRadius.circular(34),
+        floating: true,
+        child: SizedBox(
+          height: 64,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
             child: Row(
               children: [
                 for (var i = 0; i < _items.length; i++)
                   Expanded(
-                    child: InkResponse(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => onSelect(i),
-                      radius: 40,
-                      child: TweenAnimationBuilder<Color?>(
-                        tween: ColorTween(
-                          end: i == index ? p.primary : p.textTertiary,
-                        ),
-                        duration: const Duration(milliseconds: 200),
-                        builder: (context, color, _) => Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            AnimatedScale(
-                              scale: i == index ? 1.12 : 1,
-                              duration: const Duration(milliseconds: 220),
-                              curve: Curves.easeOutBack,
-                              child: Icon(_items[i].$1, color: color, size: 26),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _items[i].$2,
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(color: color, fontSize: 10.5),
-                            ),
-                          ],
+                      child: DecoratedBox(
+                        // The chosen tab sits in a pane of its own
+                        decoration: i == index
+                            ? GlassDecoration.of(
+                                p,
+                                radius: 28,
+                                tint: p.primaryContainer,
+                              )
+                            : const BoxDecoration(),
+                        child: TweenAnimationBuilder<Color?>(
+                          tween: ColorTween(
+                            end: i == index ? p.primary : p.textTertiary,
+                          ),
+                          duration: const Duration(milliseconds: 200),
+                          builder: (context, color, _) => Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(_items[i].$1, color: color, size: 25),
+                              const SizedBox(height: 2),
+                              Text(
+                                _items[i].$2,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(color: color, fontSize: 10.5),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

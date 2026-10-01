@@ -6,6 +6,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'scope.dart';
 import 'widgets/avatars.dart';
+import 'widgets/glass.dart';
 
 /// Who is in the room, what each of them is doing, and whether this device follows the room.
 void showMembersSheet(BuildContext context) {
@@ -126,10 +127,10 @@ class _FollowCard extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: solo ? p.primaryContainer : p.surfaceRaised,
-        borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
-        border: Border.all(color: p.outlineSoft),
+      decoration: GlassDecoration.of(
+        p,
+        radius: 22,
+        tint: solo ? p.primaryContainer : null,
       ),
       child: Row(
         children: [

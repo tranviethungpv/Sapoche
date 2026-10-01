@@ -7,6 +7,7 @@ import 'player/player_message.dart';
 import 'player/track_section.dart';
 import 'home_shell.dart';
 import 'scope.dart';
+import 'widgets/glass.dart';
 import 'widgets/wash.dart';
 
 /// Opens the page of an artist in the tab that is showing, with a way back.
@@ -45,7 +46,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
     // A page on its own has no backdrop: the pink veil is part of the home screen
     return PinkWash(
       child: Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(leading: const GlassBackButton()),
         body: FutureBuilder<ArtistPage>(
           future: _page,
           builder: (context, async) {

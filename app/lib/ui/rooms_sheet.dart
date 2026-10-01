@@ -11,6 +11,7 @@ import 'members_sheet.dart';
 import 'scope.dart';
 import 'widgets/qr_code_view.dart';
 import 'widgets/text_dialog.dart';
+import 'widgets/glass.dart';
 
 /// The way into and out of a room: start one, join one, or share and manage the one this device is in.
 /// [invitedCode] is a code that arrived with an invitation link.
@@ -466,10 +467,10 @@ class _GuestControlCard extends StatelessWidget {
     final restricted = room.snapshot.guestControl == GuestControl.add;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: restricted ? p.primaryContainer : p.surfaceRaised,
-        borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
-        border: Border.all(color: p.outlineSoft),
+      decoration: GlassDecoration.of(
+        p,
+        radius: 22,
+        tint: restricted ? p.primaryContainer : null,
       ),
       child: Row(
         children: [

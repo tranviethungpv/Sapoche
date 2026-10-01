@@ -6,6 +6,7 @@ import 'player/player_message.dart';
 import 'home_shell.dart';
 import 'scope.dart';
 import 'widgets/queue_actions.dart';
+import 'widgets/glass.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
@@ -52,7 +53,10 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     // A page on its own has no backdrop: the pink veil is part of the home screen
     return PinkWash(
       child: Scaffold(
-        appBar: AppBar(title: Text(widget.title)),
+        appBar: AppBar(
+          leading: const GlassBackButton(),
+          title: Text(widget.title),
+        ),
         body: FutureBuilder<LinkResult?>(
           future: _songs,
           builder: (context, async) {

@@ -175,7 +175,7 @@ class PlayerSheetLayer extends StatelessWidget {
         0,
         screen.width - mini.left * (1 - grown),
         mini.height + (screen.height - mini.height) * open,
-        Radius.circular(22 * (1 - grown)),
+        Radius.circular(30 * (1 - grown)),
       );
       // The page is there, whole, from the first moment. What turns it into the mini player's capsule at first is a
       // picture of the capsule on top of it, which melts away as the page grows

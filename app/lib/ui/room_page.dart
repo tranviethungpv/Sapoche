@@ -15,6 +15,7 @@ import 'widgets/delete_background.dart';
 import 'widgets/equalizer.dart';
 import 'widgets/link_banner.dart';
 import 'widgets/track_tile.dart';
+import 'widgets/glass.dart';
 
 /// What is playing and what is queued: the room's shared queue while in a room, and otherwise
 /// this device's own, with the way into a room at the top.
@@ -315,25 +316,31 @@ class _RoomButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Material(
-      color: p.primaryContainer,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: () => showRoomSheet(context),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.groups_rounded, size: 18, color: p.onPrimaryContainer),
-              const SizedBox(width: 8),
-              Text(
-                S.tabRoom,
-                style: Theme.of(context).textTheme.labelLarge
-                    ?.copyWith(color: p.onPrimaryContainer),
-              ),
-            ],
+    return DecoratedBox(
+      decoration: GlassDecoration.of(p, radius: 999, tint: p.primaryContainer),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => showRoomSheet(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.groups_rounded,
+                  size: 18,
+                  color: p.onPrimaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  S.tabRoom,
+                  style: Theme.of(context).textTheme.labelLarge
+                      ?.copyWith(color: p.onPrimaryContainer),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -352,10 +359,7 @@ class _GuestsAddOnlyBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          color: p.primaryContainer,
-          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
-        ),
+        decoration: GlassDecoration.of(p, radius: 22, tint: p.primaryContainer),
         child: Row(
           children: [
             Icon(
@@ -391,10 +395,7 @@ class _FinishedBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-        decoration: BoxDecoration(
-          color: p.primaryContainer,
-          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
-        ),
+        decoration: GlassDecoration.of(p, radius: 22, tint: p.primaryContainer),
         child: Row(
           children: [
             Expanded(
@@ -434,10 +435,7 @@ class _SoloBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 4, 6, 4),
-        decoration: BoxDecoration(
-          color: p.primaryContainer,
-          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
-        ),
+        decoration: GlassDecoration.of(p, radius: 22, tint: p.primaryContainer),
         child: Row(
           children: [
             Icon(
@@ -472,34 +470,36 @@ class _CodeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Material(
-      color: p.primaryContainer,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: () {
-          Clipboard.setData(ClipboardData(text: code));
-          HapticFeedback.selectionClick();
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(content: Text(S.codeCopied)));
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                code,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: p.onPrimaryContainer,
-                  letterSpacing: 2.5,
-                  fontFeatures: const [],
+    return DecoratedBox(
+      decoration: GlassDecoration.of(p, radius: 999, tint: p.primaryContainer),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: code));
+            HapticFeedback.selectionClick();
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(SnackBar(content: Text(S.codeCopied)));
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  code,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: p.onPrimaryContainer,
+                    letterSpacing: 2.5,
+                    fontFeatures: const [],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(Icons.copy_rounded, size: 15, color: p.onPrimaryContainer),
-            ],
+                const SizedBox(width: 8),
+                Icon(Icons.copy_rounded, size: 15, color: p.onPrimaryContainer),
+              ],
+            ),
           ),
         ),
       ),
@@ -585,9 +585,11 @@ class _EmptyQueue extends StatelessWidget {
           Container(
             width: 88,
             height: 88,
-            decoration: BoxDecoration(
-              color: p.primaryContainer,
-              shape: BoxShape.circle,
+            decoration: GlassDecoration.of(
+              p,
+              radius: 88,
+              tint: p.primaryContainer,
+              floating: true,
             ),
             child: Icon(Icons.queue_music_rounded, size: 42, color: p.primary),
           ),

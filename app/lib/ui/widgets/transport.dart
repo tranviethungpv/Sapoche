@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
+import 'glass.dart';
 
 /// Play or pause glyph that morphs between the two, with a spinner while the room is starting.
 class PlayPauseButton extends StatelessWidget {
@@ -27,39 +28,50 @@ class PlayPauseButton extends StatelessWidget {
     final glyphColor = filled ? p.onPrimary : p.text;
     return SizedBox.square(
       dimension: size,
-      child: Material(
-        color: filled ? p.primary : Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onPressed,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                ),
-                child: Icon(
-                  playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  key: ValueKey(playing),
-                  size: size * 0.56,
-                  color: glyphColor,
-                ),
-              ),
-              if (starting)
-                SizedBox.square(
-                  dimension: size * 0.86,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: filled
-                        ? p.onPrimary.withValues(alpha: 0.7)
-                        : p.primary,
+      child: DecoratedBox(
+        decoration: filled
+            ? GlassDecoration.of(
+                p,
+                radius: size,
+                tint: p.primary,
+                solid: true,
+                floating: true,
+              )
+            : const BoxDecoration(),
+        child: Material(
+          type: MaterialType.transparency,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) => ScaleTransition(
+                    scale: animation,
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: Icon(
+                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    key: ValueKey(playing),
+                    size: size * 0.56,
+                    color: glyphColor,
                   ),
                 ),
-            ],
+                if (starting)
+                  SizedBox.square(
+                    dimension: size * 0.86,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: filled
+                          ? p.onPrimary.withValues(alpha: 0.7)
+                          : p.primary,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

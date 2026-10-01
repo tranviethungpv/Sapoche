@@ -16,6 +16,7 @@ import 'player_sheet.dart';
 import 'song_info_sheet.dart';
 import 'scope.dart';
 import 'sleep_sheet.dart';
+import 'widgets/glass.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/like_button.dart';
@@ -663,10 +664,14 @@ class _ModePill extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
-            decoration: BoxDecoration(
-              color: selected ? p.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(999),
-            ),
+            decoration: selected
+                ? GlassDecoration.of(
+                    p,
+                    radius: 999,
+                    tint: p.primary,
+                    solid: true,
+                  )
+                : const BoxDecoration(),
             child: Text(
               label,
               style: Theme.of(context).textTheme.labelMedium
@@ -676,10 +681,7 @@ class _ModePill extends StatelessWidget {
         );
     return Container(
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: p.primary.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      decoration: GlassDecoration.of(p, radius: 999),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
