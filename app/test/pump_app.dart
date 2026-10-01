@@ -23,6 +23,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
 
   /// The app opens on the home page; most tests are about the queue, which is on the Listen tab.
   bool listen = true,
+
+  /// What the native side knows about this phone; by default a name was already used.
+  Profile? profile,
 }) async {
   // A tall phone-shaped window; the default 800x600 one is not what the app runs on. Test text is
   // drawn with the wide Ahem font, so it is 540 dp wide instead of the usual 360 to avoid false overflows.
@@ -37,6 +40,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
   addTearDown(() => S.current = 'en');
   SharedPreferences.setMockInitialValues({'theme_mode': mode.name, ...prefs});
   final backend = FakeBackend();
+  if (profile != null) backend.profileValue = profile;
   final recents = await RecentRooms.load();
   final searches = await RecentSearches.load();
   final room = RoomController(backend, recents: recents);

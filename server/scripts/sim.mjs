@@ -239,6 +239,8 @@ async function main() {
   await queueSection();
   await swapSection();
   await unplayableSection();
+  await reconnectSection();
+  await ghostSection(Number(process.env.SIM_STALE_MS) || 0);
   if (process.env.SIM_RELEASE) await updateSection(JSON.parse(process.env.SIM_RELEASE));
   await playlistAndRepeatSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
@@ -458,6 +460,43 @@ async function updateSection({ apk, latest }) {
   check("but not for a build that is not the newest", (await fetch(url("app-8.apk"), { headers: keyHeaders })).status === 404);
   check("other names are not served from the bucket", (await fetch(`${BASE}/update/..%2Flatest.json`, { headers: keyHeaders })).status === 404);
   check("nothing can be written through it", (await fetch(url("latest.json"), { method: "PUT", headers: keyHeaders, body: "{}" })).status === 405);
+}
+
+/** A device whose connection died without a word comes back: it must be listed once, not twice. */
+async function reconnectSection() {
+  console.log("A device reconnecting");
+  const ids = (state) => state.members.map((x) => x.id).sort().join(",");
+  const [a, b] = await freshRoom(["Ra", "Rb"]);
+  const code = b.ws.url.split("/room/")[1].split("?")[0];
+  // b's first connection stays open on the server's side, as a dead one does; b comes back on a new one
+  const back = new Client(code, "Rb-id", "Rb");
+  await back.join(false);
+  const probe = new Client(code, "Rp-id", "Rp");
+  const full = await probe.join(false);
+  check("a device that came back on a new connection is listed once", full.members.filter((m) => m.id === "Rb-id").length === 1, JSON.stringify(full.members));
+  check("and nobody else was added or lost", ids(full) === "Ra-id,Rb-id,Rp-id", ids(full));
+  check("the old connection was closed by the server", (await b.closed) === 1000);
+  [a, back, probe].forEach((x) => x.close());
+}
+
+/** The same device under a new id (reinstalled): its silent old entry goes at once, a live one of the same name stays. */
+async function ghostSection(staleMs) {
+  if (!staleMs) return;
+  console.log("A device that came back under another id");
+  const [a, old] = await freshRoom(["Ga", "Gold"]);
+  const code = old.ws.url.split("/room/")[1].split("?")[0];
+  await sleep(staleMs + 400); // the old entry has been silent for longer than a live one ever is
+  a.send({ t: "ping", c0: Date.now() }); // a, unlike the ghost, is still talking
+  const fresh = new Client(code, "Gnew-id", "Gold");
+  const state = await fresh.join(false);
+  check("an old silent entry of the same name is not listed beside the new one", state.members.filter((m) => m.name === "Gold").length === 1 && state.members.some((m) => m.id === "Gnew-id"), JSON.stringify(state.members));
+  check("the ghost's connection was closed", (await old.closed) === 1001);
+  // Two live devices that happen to share a name are both kept
+  const twin = new Client(code, "Gtwin-id", "Ga");
+  a.send({ t: "ping", c0: Date.now() });
+  const twinState = await twin.join(false);
+  check("a live device of the same name is not touched", twinState.members.filter((m) => m.name === "Ga").length === 2, JSON.stringify(twinState.members));
+  [a, fresh, twin].forEach((x) => x.close());
 }
 
 /** An item nobody can load is skipped instead of playing silence. */

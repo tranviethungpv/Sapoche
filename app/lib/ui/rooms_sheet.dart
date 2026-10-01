@@ -75,14 +75,28 @@ class _StartRoomState extends State<_StartRoom> {
   bool _busy = false;
   String? _error;
 
+  /// An invitation that is waiting for a name: it is remembered, so that the person does not have to follow the link again.
+  String? _pendingCode;
+
   @override
   void initState() {
     super.initState();
     final invited = widget.invitedCode;
-    // A link that opened the app: ask for the code sheet with the code already in it
+    // A link or QR code that opened the app: go to that room, with the name this device already has
     if (invited != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _joinTyped(invited));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _joinInvited(invited),
+      );
     }
+  }
+
+  Future<void> _joinInvited(String code) async {
+    if (!_requireName()) {
+      _pendingCode = code;
+      return;
+    }
+    _pendingCode = null;
+    await _join(code);
   }
 
   @override
@@ -127,10 +141,13 @@ class _StartRoomState extends State<_StartRoom> {
   Future<void> _join(String code) =>
       _enter(() => widget.room.join(code, _name.text));
 
-  Future<void> _joinTyped([String? invited]) async {
+  Future<void> _joinTyped() async {
     if (!_requireName()) return;
-    final code = await showCodeSheet(context, initialCode: invited);
-    if (code != null && mounted) await _join(code);
+    final code = await showCodeSheet(context, initialCode: _pendingCode);
+    if (code != null && mounted) {
+      _pendingCode = null;
+      await _join(code);
+    }
   }
 
   @override
@@ -152,7 +169,14 @@ class _StartRoomState extends State<_StartRoom> {
           controller: _name,
           textCapitalization: TextCapitalization.words,
           textInputAction: TextInputAction.done,
-          onSubmitted: (_) => FocusScope.of(context).unfocus(),
+          onSubmitted: (_) {
+            FocusScope.of(context).unfocus();
+            // The name an invitation was waiting for: carry on into that room
+            final waiting = _pendingCode;
+            if (waiting != null && _name.text.trim().isNotEmpty) {
+              _joinInvited(waiting);
+            }
+          },
           maxLength: 24,
           decoration: InputDecoration(hintText: S.yourName, counterText: ''),
           onChanged: (_) {

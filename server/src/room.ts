@@ -29,6 +29,8 @@ const ADVANCE_EARLY_LIMIT_MS = 15_000;
  * A device that has been silent this long (it pings every 30 seconds) is marked away: it does not
  * count as listening and never holds the room back. Overridable for tests through STALE_MS.
  */
+/** A device of the same name coming in makes an entry quiet for this long (a ping comes every 30 s) count as its ghost. */
+const GHOST_AFTER_MS = 45_000;
 const AWAY_AFTER_MS = 75_000;
 /** A device silent this long is dropped: its connection is dead even though it never closed. Overridable for tests through DROP_MS. */
 const DROP_AFTER_MS = 150_000;
@@ -222,11 +224,15 @@ export class Room extends DurableObject<Env> {
     const name = typeof msg.name === "string" ? msg.name.trim().slice(0, 32) : "";
     if (!clientId || !name) return this.fail(ws, "bad_message", "join needs clientId and name");
 
-    // The same device reconnecting: drop its stale socket
+    // The same device reconnecting: drop its stale socket. A quiet entry of the same name under another id is
+    // taken for the same device's ghost (it came back with a new id, after a reinstall or cleared data): it goes
+    // now, instead of two of them being listed until the ghost is swept
+    const quietFor = Math.min(Number(this.env.STALE_MS) || AWAY_AFTER_MS, GHOST_AFTER_MS);
     for (const other of this.ctx.getWebSockets()) {
       if (other === ws) continue;
       const att = other.deserializeAttachment() as Attachment | null;
       if (att?.clientId === clientId) other.close(1000, "replaced by a newer connection");
+      else if (att && att.name === name && Date.now() - att.lastSeen > quietFor) other.close(1001, "replaced by a device of the same name");
     }
     if (msg.create === false && !this.created) {
       this.fail(ws, "room_not_found", "There is no room with this code");

@@ -151,6 +151,15 @@ class UnisonBridge(
         UnisonApp.setUiVisible(value)
     }
 
+    /**
+     * What the person called this phone in its settings ("Pixel 8"), or its model: the name offered in a room
+     * until they choose another, so that following an invitation does not begin with a question.
+     */
+    private fun defaultName(): String {
+        val named = runCatching { android.provider.Settings.Global.getString(activity.contentResolver, "device_name") }.getOrNull()
+        return (named?.trim()?.takeIf { it.isNotEmpty() } ?: Build.MODEL).take(MAX_NAME_CHARS)
+    }
+
     private val autoDownload get() = prefs.getBoolean(DownloadWorker.KEY_AUTO, false)
 
     /** On mobile data (or not knowing): songs are not fetched without asking. */
@@ -283,7 +292,7 @@ class UnisonBridge(
     private suspend fun handle(call: MethodCall): Any? {
         when (call.method) {
             "profile" -> return mapOf(
-                "name" to prefs.getString("room_name", null),
+                "name" to (prefs.getString("room_name", null) ?: defaultName()),
                 "device" to Build.MODEL,
                 "trimMs" to prefs.getLong("trim_ms", 0L),
                 "videoHeight" to UnisonApp.videoMaxHeight,
@@ -677,6 +686,9 @@ class UnisonBridge(
 
     private companion object {
         const val POSITION_TICK_MS = 1_000L
+
+        /** The longest name the UI lets a person type. */
+        const val MAX_NAME_CHARS = 24
         const val SERVICE_START_TIMEOUT_MS = 10_000L
         const val SEARCH_LIMIT = 20
         const val SUGGESTION_LIMIT = 6

@@ -207,21 +207,61 @@ void main() {
     expect(backend.calls.last, 'sleep off 0');
   });
 
-  testWidgets('an invitation link opens the join sheet with its code', (
-    tester,
-  ) async {
-    final (backend, _) = await pumpApp(tester);
-    backend.emit(const StateEvent(RoomSnapshot()));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'an invitation link goes into its room with the name of this phone',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
 
-    backend.emit(const InviteEvent('K2A5RF'));
-    await tester.pumpAndSettle();
-    expect(find.text('K2A5RF'), findsOneWidget);
+      backend.emit(const InviteEvent('K2A5RF'));
+      await tester.pumpAndSettle();
+      expect(backend.calls.last, 'join K2A5RF Anna');
+      expect(find.text('Enter your name first'), findsNothing);
+    },
+  );
 
-    await tester.tap(find.text('Join').last);
-    await tester.pumpAndSettle();
-    expect(backend.calls.last, 'join K2A5RF Anna');
-  });
+  testWidgets(
+    'an invitation that finds no name waits for one instead of being lost',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester, profile: const Profile());
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+
+      backend.emit(const InviteEvent('K2A5RF'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter your name first'), findsOneWidget);
+      expect(backend.calls.where((c) => c.startsWith('join')), isEmpty);
+
+      await tester.enterText(find.byType(TextField), 'Hana');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(
+        backend.calls.last,
+        'join K2A5RF Hana',
+        reason: 'the link is not followed twice',
+      );
+    },
+  );
+
+  testWidgets(
+    'the code of a waiting invitation is offered when joining by hand',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester, profile: const Profile());
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      backend.emit(const InviteEvent('K2A5RF'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'Hana');
+      await tester.tap(find.text('Join a room'));
+      await tester.pumpAndSettle();
+      expect(find.text('K2A5RF'), findsOneWidget);
+      await tester.tap(find.text('Join').last);
+      await tester.pumpAndSettle();
+      expect(backend.calls.last, 'join K2A5RF Hana');
+    },
+  );
 
   testWidgets(
     'a personal queue looks like a room queue without the room parts',
