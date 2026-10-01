@@ -366,7 +366,7 @@ class _MoreButton extends StatelessWidget {
     if (id == null) {
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text(S.musicFailed)));
+        ..showSnackBar(SnackBar(content: Text(S.musicFailed)));
       return;
     }
     if (navigator.mounted) await openArtist(navigator.context, id);
@@ -399,23 +399,21 @@ class _MoreButton extends StatelessWidget {
         _ => library.removeDownload(current.videoId),
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(value: 'info', child: Text(S.songInfo)),
-        const PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
-        const PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
+        PopupMenuItem(value: 'info', child: Text(S.songInfo)),
+        PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
+        PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
         ...switch (library.downloadState(current.videoId)) {
-          DownloadState.done => const [
+          DownloadState.done => [
             PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
           ],
-          DownloadState.queued || DownloadState.waiting => const [
+          DownloadState.queued || DownloadState.waiting => [
             PopupMenuItem(
               enabled: false,
               value: 'none',
               child: Text(S.downloading),
             ),
           ],
-          _ => const [
-            PopupMenuItem(value: 'download', child: Text(S.download)),
-          ],
+          _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
         },
       ],
     );
@@ -523,7 +521,7 @@ class _ShuffleButtonState extends State<_ShuffleButton> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(S.upNextShuffled),
           duration: Duration(milliseconds: 1400),
         ),
@@ -616,7 +614,7 @@ Future<void> _chooseMode(BuildContext context, bool video) async {
     if (video) {
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text(S.noVideoVersion)));
+        ..showSnackBar(SnackBar(content: Text(S.noVideoVersion)));
     }
     return;
   }
@@ -624,7 +622,7 @@ Future<void> _chooseMode(BuildContext context, bool video) async {
   if (snapshot.inRoom) {
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text(S.videoForEveryone)));
+      ..showSnackBar(SnackBar(content: Text(S.videoForEveryone)));
   }
 }
 

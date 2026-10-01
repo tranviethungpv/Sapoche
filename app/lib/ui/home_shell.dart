@@ -116,16 +116,16 @@ class _HomeShellState extends State<HomeShell>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(S.switchRoom),
+        title: Text(S.switchRoom),
         content: Text(S.inviteSwitch(code)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(S.join),
+            child: Text(S.join),
           ),
         ],
       ),
@@ -210,7 +210,8 @@ class _TabBar extends StatelessWidget {
   final int index;
   final ValueChanged<int> onSelect;
 
-  static const _items = [
+  /// A getter, not a constant: the names follow the language.
+  static List<(IconData, String)> get _items => [
     (Icons.home_rounded, S.tabHome),
     (Icons.search_rounded, S.tabSearch),
     (Icons.library_music_rounded, S.tabLibrary),

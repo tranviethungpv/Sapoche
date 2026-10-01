@@ -26,7 +26,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PinkWash(
     child: Scaffold(
-      appBar: AppBar(title: const Text(S.settingsTitle)),
+      appBar: AppBar(title: Text(S.settingsTitle)),
       body: const SettingsPage(),
     ),
   );
@@ -61,14 +61,26 @@ class SettingsPage extends StatelessWidget {
                     ThemeMode.light => S.themeLight,
                     ThemeMode.dark => S.themeDark,
                   },
-                  onTap: () => _open(context, S.appearance, _appearance),
+                  onTap: () => _open(context, () => S.appearance, _appearance),
+                ),
+              ),
+              ListenableBuilder(
+                listenable: model.settings,
+                builder: (context, _) => _NavRow(
+                  key: const ValueKey('settings-language'),
+                  icon: Icons.translate_rounded,
+                  label: S.languageLabel,
+                  value: model.settings.language == null
+                      ? S.languageSystem
+                      : S.languageName(model.settings.language!),
+                  onTap: () => _open(context, () => S.languageLabel, _language),
                 ),
               ),
               _NavRow(
                 key: const ValueKey('settings-playback'),
                 icon: Icons.play_circle_outline_rounded,
                 label: S.playback,
-                onTap: () => _open(context, S.playback, _playback),
+                onTap: () => _open(context, () => S.playback, _playback),
               ),
               ListenableBuilder(
                 listenable: model.room,
@@ -80,7 +92,7 @@ class SettingsPage extends StatelessWidget {
                     icon: Icons.groups_outlined,
                     label: S.room,
                     value: snapshot.room,
-                    onTap: () => _open(context, S.room, _room),
+                    onTap: () => _open(context, () => S.room, _room),
                   );
                 },
               ),
@@ -88,13 +100,13 @@ class SettingsPage extends StatelessWidget {
                 key: const ValueKey('settings-storage'),
                 icon: Icons.download_for_offline_outlined,
                 label: S.storage,
-                onTap: () => _open(context, S.storage, _storage),
+                onTap: () => _open(context, () => S.storage, _storage),
               ),
               _NavRow(
                 key: const ValueKey('settings-backup'),
                 icon: Icons.backup_outlined,
                 label: S.backup,
-                onTap: () => _open(context, S.backup, _backup),
+                onTap: () => _open(context, () => S.backup, _backup),
               ),
               ListenableBuilder(
                 listenable: model.update,
@@ -105,7 +117,7 @@ class SettingsPage extends StatelessWidget {
                     icon: Icons.system_update_outlined,
                     label: S.updates,
                     value: info.hasUpdate ? info.version : info.installed,
-                    onTap: () => _open(context, S.updates, _updates),
+                    onTap: () => _open(context, () => S.updates, _updates),
                   );
                 },
               ),
@@ -122,9 +134,8 @@ class SettingsPage extends StatelessWidget {
                     ClipboardData(text: lines.join('\n')),
                   );
                   if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(const SnackBar(content: Text(S.logCopied)));
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text(S.logCopied)));
                   }
                 },
               ),
@@ -135,15 +146,16 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  /// [title] is a function so that the page can change its words when the language does.
   void _open(
     BuildContext context,
-    String title,
+    String Function() title,
     List<Widget> Function(BuildContext context, AppModel model) children,
   ) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => _SubPage(
-          title: title,
+          title: title(),
           children: children(context, AppScope.of(context)),
         ),
       ),
@@ -165,7 +177,7 @@ class SettingsPage extends StatelessWidget {
               foregroundColor: context.palette.textSecondary,
               side: BorderSide(color: context.palette.outline),
             ),
-            segments: const [
+            segments: [
               ButtonSegment(
                 value: ThemeMode.system,
                 label: Text(S.themeSystem),
@@ -175,6 +187,33 @@ class SettingsPage extends StatelessWidget {
             ],
             selected: {model.settings.themeMode},
             onSelectionChanged: (s) => model.settings.themeMode = s.first,
+          ),
+        ),
+      ],
+    ),
+  ];
+
+  static List<Widget> _language(BuildContext context, AppModel model) => [
+    _Group(
+      footer: S.languageHelp,
+      children: [
+        ListenableBuilder(
+          listenable: model.settings,
+          builder: (context, _) => Column(
+            children: [
+              for (final code in [null, ...S.languages])
+                _Row(
+                  key: ValueKey('language-${code ?? 'system'}'),
+                  label: code == null ? S.languageSystem : S.languageName(code),
+                  trailing: model.settings.language == code
+                      ? Icon(
+                          Icons.check_rounded,
+                          color: context.palette.primary,
+                        )
+                      : null,
+                  onTap: () => model.settings.language = code,
+                ),
+            ],
           ),
         ),
       ],
@@ -191,7 +230,7 @@ class SettingsPage extends StatelessWidget {
           builder: (context, _) => Material(
             type: MaterialType.transparency,
             child: SwitchListTile(
-              title: const Text(S.autoplay),
+              title: Text(S.autoplay),
               value: model.room.autoplay,
               onChanged: model.room.setAutoplay,
             ),
@@ -265,16 +304,16 @@ class _UpdateGroup extends StatelessWidget {
     final agreed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(S.useMobileData),
-        content: const Text(S.useMobileDataBody),
+        title: Text(S.useMobileData),
+        content: Text(S.useMobileDataBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(S.updateDownload),
+            child: Text(S.updateDownload),
           ),
         ],
       ),
@@ -287,16 +326,16 @@ class _UpdateGroup extends StatelessWidget {
     final agreed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(S.updateRestartTitle),
-        content: const Text(S.updateRestartBody),
+        title: Text(S.updateRestartTitle),
+        content: Text(S.updateRestartBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(S.updateInstall),
+            child: Text(S.updateInstall),
           ),
         ],
       ),
@@ -461,7 +500,7 @@ class _RoomGroup extends StatelessWidget {
                 Clipboard.setData(ClipboardData(text: snapshot.room ?? ''));
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
-                  ..showSnackBar(const SnackBar(content: Text(S.codeCopied)));
+                  ..showSnackBar(SnackBar(content: Text(S.codeCopied)));
               },
             ),
             _Row(label: S.tabRoom, value: S.listening(snapshot.members.length)),
@@ -501,12 +540,12 @@ class _RoomGroup extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(S.leaveRoom),
-        content: const Text(S.leaveQuestion),
+        title: Text(S.leaveRoom),
+        content: Text(S.leaveQuestion),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -576,7 +615,7 @@ class _StorageGroupState extends State<_StorageGroup> {
                     await library.clearPlayCache();
                     _load();
                   },
-            child: const Text(S.clearCache),
+            child: Text(S.clearCache),
           ),
         ),
         Padding(
@@ -617,8 +656,8 @@ class _StorageGroupState extends State<_StorageGroup> {
         Material(
           type: MaterialType.transparency,
           child: SwitchListTile(
-            title: const Text(S.autoDownload),
-            subtitle: const Text(S.autoDownloadHelp),
+            title: Text(S.autoDownload),
+            subtitle: Text(S.autoDownloadHelp),
             value: _info.autoDownload,
             onChanged: (on) async {
               await library.setAutoDownload(on);
@@ -934,7 +973,7 @@ class _TrimRowState extends State<_TrimRow> {
                     onPressed: saved == 0
                         ? null
                         : () => widget.controller.setTrim(0),
-                    child: const Text(S.reset),
+                    child: Text(S.reset),
                   ),
                 ],
               ),

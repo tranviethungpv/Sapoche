@@ -10,6 +10,7 @@ import 'package:unison/data/music_controller.dart';
 import 'package:unison/data/recent_rooms.dart';
 import 'package:unison/data/recent_searches.dart';
 import 'package:unison/data/room_controller.dart';
+import 'package:unison/strings.dart';
 import 'package:unison/data/update_controller.dart';
 import 'package:unison/ui/scope.dart';
 
@@ -32,6 +33,8 @@ Future<(FakeBackend, RoomController)> pumpApp(
   tester.platformDispatcher.accessibilityFeaturesTestValue =
       const FakeAccessibilityFeatures(disableAnimations: true);
   addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  // The language is a global; a test that changed it must not leave it to the next one
+  addTearDown(() => S.current = 'en');
   SharedPreferences.setMockInitialValues({'theme_mode': mode.name, ...prefs});
   final backend = FakeBackend();
   final recents = await RecentRooms.load();
@@ -57,7 +60,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
   if (listen) {
     backend.emit(const StateEvent(RoomSnapshot()));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Listen'));
+    await tester.tap(find.text(S.tabListen));
     await tester.pumpAndSettle();
   }
   return (backend, room);
@@ -65,9 +68,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
 
 /// Opens the settings from the gear on the home page.
 Future<void> openSettingsList(WidgetTester tester) async {
-  await tester.tap(find.text('Home'));
+  await tester.tap(find.text(S.tabHome));
   await tester.pumpAndSettle();
-  await tester.tap(find.byTooltip('Settings'));
+  await tester.tap(find.byTooltip(S.settingsTitle));
   await tester.pumpAndSettle();
 }
 

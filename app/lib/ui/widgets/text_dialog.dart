@@ -66,9 +66,9 @@ class _TextDialogState extends State<_TextDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text(S.cancel),
+          child: Text(S.cancel),
         ),
-        TextButton(onPressed: _submit, child: const Text(S.save)),
+        TextButton(onPressed: _submit, child: Text(S.save)),
       ],
     );
   }

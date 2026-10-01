@@ -116,7 +116,7 @@ class _LibraryPageState extends State<LibraryPage> {
                     TextButton(
                       onPressed: () =>
                           _confirmDeleteDownloads(context, library),
-                      child: const Text(S.deleteAll),
+                      child: Text(S.deleteAll),
                     ),
                 ],
               ),
@@ -133,7 +133,7 @@ class _LibraryPageState extends State<LibraryPage> {
                   if (library.recent.isNotEmpty)
                     TextButton(
                       onPressed: () => _confirmClear(context, library),
-                      child: const Text(S.clearHistory),
+                      child: Text(S.clearHistory),
                     ),
                 ],
               ),
@@ -157,15 +157,15 @@ class _LibraryPageState extends State<LibraryPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        content: const Text(S.deleteDownloadsQuestion),
+        content: Text(S.deleteDownloadsQuestion),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(S.delete),
+            child: Text(S.delete),
           ),
         ],
       ),
@@ -180,15 +180,15 @@ class _LibraryPageState extends State<LibraryPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        content: const Text(S.clearHistoryQuestion),
+        content: Text(S.clearHistoryQuestion),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(S.clear),
+            child: Text(S.clear),
           ),
         ],
       ),
@@ -263,7 +263,7 @@ class _Overview extends StatelessWidget {
                 onSelected: (value) => value == 'new'
                     ? _create(context, library)
                     : _import(context, library),
-                itemBuilder: (context) => const [
+                itemBuilder: (context) => [
                   PopupMenuItem(value: 'new', child: Text(S.newPlaylist)),
                   PopupMenuItem(value: 'import', child: Text(S.importFromLink)),
                 ],
@@ -436,7 +436,7 @@ class _PlaylistPage extends StatelessWidget {
           onSelected: (value) => value == 'rename'
               ? _rename(context, playlist)
               : _delete(context, playlist),
-          itemBuilder: (context) => const [
+          itemBuilder: (context) => [
             PopupMenuItem(value: 'rename', child: Text(S.rename)),
             PopupMenuItem(value: 'delete', child: Text(S.deletePlaylist)),
           ],
@@ -464,11 +464,11 @@ class _PlaylistPage extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(S.delete),
+            child: Text(S.delete),
           ),
         ],
       ),
@@ -586,7 +586,7 @@ class _TrackList extends StatelessWidget {
                         Icons.arrow_back_ios_new_rounded,
                         size: 14,
                       ),
-                      label: const Text(S.backToLibrary),
+                      label: Text(S.backToLibrary),
                     ),
                     Row(
                       children: [
@@ -634,7 +634,7 @@ class _TrackList extends StatelessWidget {
                                   inRoom ? S.playlistAdded : S.addedToQueue,
                                 );
                               },
-                              child: const Text(S.shuffle),
+                              child: Text(S.shuffle),
                             ),
                           ),
                         ],

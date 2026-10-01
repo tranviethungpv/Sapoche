@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
@@ -15,10 +16,14 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.stream.StreamType
 import org.schabi.newpipe.extractor.stream.VideoStream
 
-class NewPipeResolver(downloader: OkHttpDownloader = OkHttpDownloader()) : StreamResolver {
+class NewPipeResolver(
+    downloader: OkHttpDownloader = OkHttpDownloader(),
+    /** The country whose results come first, like "VN". The language stays English: the readers expect its words. */
+    region: String = "US",
+) : StreamResolver {
 
     init {
-        NewPipe.init(downloader, Localization("en", "US"))
+        NewPipe.init(downloader, Localization("en", "US"), ContentCountry(region))
     }
 
     private val youtube get() = ServiceList.YouTube

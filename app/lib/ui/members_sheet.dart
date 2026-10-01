@@ -64,7 +64,7 @@ class _MembersSheet extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: controller.shareInvite,
                     icon: const Icon(Icons.ios_share_rounded, size: 18),
-                    label: const Text(S.invite),
+                    label: Text(S.invite),
                   ),
                 ),
               ],
@@ -79,12 +79,12 @@ class _MembersSheet extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(S.removeFromRoom),
+        title: Text(S.removeFromRoom),
         content: Text(S.removeQuestion(member.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),

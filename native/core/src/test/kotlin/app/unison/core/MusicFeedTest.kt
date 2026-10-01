@@ -35,7 +35,7 @@ class MusicFeedTest {
         override suspend fun artist(artistId: String) = ArtistPage(artistId, "N", null, null, null, emptyList(), emptyList(), emptyList(), emptyList())
         override suspend fun searchSongs(query: String) = emptyList<MusicTrack>()
         override suspend fun searchVideos(query: String) = emptyList<MusicTrack>()
-        override suspend fun trending() = emptyList<MusicShelf>()
+        override suspend fun trending(language: String) = emptyList<MusicShelf>()
     }
 
     private class FakeLrclib(var body: String?) : LyricsFetch {
@@ -122,7 +122,7 @@ class MusicFeedTest {
         var time = 0L
         var asked = 0
         val music = object : MusicSource by FakeMusic() {
-            override suspend fun trending(): List<MusicShelf> {
+            override suspend fun trending(language: String): List<MusicShelf> {
                 asked++
                 return listOf(MusicShelf("Hits", listOf(MusicTrack("a", "T", "A"))))
             }
@@ -135,6 +135,22 @@ class MusicFeedTest {
         time += 1
         feed.trending()
         assertEquals(2, asked)
+    }
+
+    @Test
+    fun `trending is asked again when the language changes, and not shown in the wrong one`() = runTest {
+        val asked = mutableListOf<String>()
+        val music = object : MusicSource by FakeMusic() {
+            override suspend fun trending(language: String): List<MusicShelf> {
+                asked += language
+                return listOf(MusicShelf("Hits in $language", listOf(MusicTrack("a", "T", "A"))))
+            }
+        }
+        val feed = MusicFeed(music, LyricsClient(FakeLrclib(null)), LyricsStore(dir)) { 0L }
+        assertEquals("Hits in en", feed.trending("en").single().title)
+        assertEquals("Hits in vi", feed.trending("vi").single().title)
+        assertEquals("Hits in vi", feed.trending("vi").single().title)
+        assertEquals(listOf("en", "vi"), asked)
     }
 
     @Test

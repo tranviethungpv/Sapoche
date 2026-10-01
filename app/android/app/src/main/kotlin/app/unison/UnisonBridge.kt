@@ -286,6 +286,10 @@ class UnisonBridge(
                 "server" to Config.SERVER,
                 "autoplay" to prefs.getBoolean("autoplay", true),
             )
+            "setLanguage" -> {
+                UnisonApp.setLanguage(call.argument<String>("code") ?: "en")
+                return null
+            }
             "updateCheck" -> {
                 UnisonApp.updater.check(force = true)
                 return null
@@ -312,7 +316,7 @@ class UnisonBridge(
             "seedLists" -> return UnisonApp.suggestions.seedLists().map { (seed, tracks) ->
                 mapOf("seed" to seed, "tracks" to tracks.map { it.toMap() })
             }
-            "musicTrending" -> return MusicJson.shelves(UnisonApp.musicFeed.trending())
+            "musicTrending" -> return MusicJson.shelves(UnisonApp.musicFeed.trending(UnisonApp.language.value))
             "musicSearch" -> return UnisonApp.musicFeed.search(
                 call.argument<String>("query").orEmpty(),
                 call.argument<Boolean>("songs") == true,

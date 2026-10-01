@@ -1,18 +1,48 @@
 const PACKAGE = "app.unison";
 
+/** The words of the page; the language follows the browser's, English when it is not one of these. */
+const TEXTS = {
+  en: {
+    title: "Join on Unison",
+    heading: "You are invited to listen together",
+    open: "Open in Unison",
+    copy: "Copy code",
+    copied: "Copied",
+    help: "Not opening? Install Unison, then choose Room and enter this code.",
+  },
+  vi: {
+    title: "Vào phòng trên Unison",
+    heading: "Bạn được mời cùng nghe nhạc",
+    open: "Mở trong Unison",
+    copy: "Sao chép mã",
+    copied: "Đã sao chép",
+    help: "Không mở được? Hãy cài Unison, rồi chọn Phòng và nhập mã này.",
+  },
+};
+
+/** The language of the page for an `Accept-Language` header: the first language it lists that the page has. */
+export function pageLanguage(header: string | null): keyof typeof TEXTS {
+  for (const part of (header ?? "").split(",")) {
+    const code = part.split(";")[0].trim().slice(0, 2).toLowerCase();
+    if (code in TEXTS) return code as keyof typeof TEXTS;
+  }
+  return "en";
+}
+
 /**
  * The page an invitation link opens. With the app installed and the link verified Android goes
  * straight to the app and never shows this; otherwise the page tries the app and, failing that, shows
  * the code so it can be typed in. Nothing here touches the room.
  */
-export function joinPage(code: string): string {
+export function joinPage(code: string, language: keyof typeof TEXTS = "en"): string {
+  const t = TEXTS[language];
   const intent = `intent://join/${code}#Intent;scheme=unison;package=${PACKAGE};end`;
   return `<!doctype html>
-<html lang="en">
+<html lang="${language}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Join on Unison</title>
+<title>${t.title}</title>
 <style>
   :root { color-scheme: light dark; --pink: #d4587a; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; font: 16px/1.5 system-ui, sans-serif; background: #fdf3f5; color: #2b1d21; }
@@ -28,16 +58,16 @@ export function joinPage(code: string): string {
 </head>
 <body>
 <main>
-  <h1>You are invited to listen together</h1>
+  <h1>${t.heading}</h1>
   <div class="code">${code}</div>
-  <a class="open" href="${intent}">Open in Unison</a>
-  <button id="copy">Copy code</button>
-  <p>Not opening? Install Unison, then choose Room and enter this code.</p>
+  <a class="open" href="${intent}">${t.open}</a>
+  <button id="copy">${t.copy}</button>
+  <p>${t.help}</p>
 </main>
 <script>
   document.getElementById("copy").onclick = function () {
     if (navigator.clipboard) navigator.clipboard.writeText("${code}");
-    this.textContent = "Copied";
+    this.textContent = ${JSON.stringify(t.copied)};
   };
   if (/Android/i.test(navigator.userAgent)) setTimeout(function () { location.href = "${intent}"; }, 300);
 </script>

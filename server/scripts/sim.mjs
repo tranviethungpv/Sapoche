@@ -633,6 +633,10 @@ async function inviteSection() {
   const page = await fetch(`${BASE}/join/abcdef`);
   const html = await page.text();
   check("the invitation page opens without the key and shows the code", page.ok && html.includes("ABCDEF") && html.includes("intent://join/ABCDEF"));
+  const vi = await fetch(`${BASE}/join/abcdef`, { headers: { "Accept-Language": "vi-VN,vi;q=0.9,en;q=0.5" } });
+  const viHtml = await vi.text();
+  check("a Vietnamese browser gets the page in Vietnamese, still with the code", viHtml.includes('lang="vi"') && viHtml.includes("Bạn được mời") && viHtml.includes("ABCDEF"));
+  check("English is the page for any other language, and the page varies by language", html.includes('lang="en"') && (await fetch(`${BASE}/join/abcdef`, { headers: { "Accept-Language": "de" } }).then((r) => r.text())).includes('lang="en"') && vi.headers.get("vary") === "Accept-Language");
   check("the invitation page only accepts a room code", (await fetch(`${BASE}/join/abc`)).status === 404);
   const links = await (await fetch(`${BASE}/.well-known/assetlinks.json`)).json();
   check(

@@ -114,13 +114,16 @@ class RoomController extends ChangeNotifier {
     }
   }
 
+  /// Lets the native side know which language is shown, for the texts it writes itself.
+  Future<void> setLanguage(String code) => _backend.setLanguage(code);
+
   String? _describe(ServerError error) {
     if (error.code == 'unplayable') {
       // The server message reads "Nobody could load: <title>"
       final title = error.message.split(': ').skip(1).join(': ');
-      return S.unplayable(title.isEmpty ? 'this song' : title);
+      return S.unplayable(title.isEmpty ? S.thisSong : title);
     }
-    return error.message;
+    return S.serverError(error.code) ?? error.message;
   }
 
   // ------------------------------------------------------------------ derived state

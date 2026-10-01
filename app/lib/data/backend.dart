@@ -219,6 +219,9 @@ abstract class Backend {
   Future<void> setTrim(int ms);
   Future<List<String>> log();
 
+  /// Tells the native side which language the app speaks, for the few texts it shows itself.
+  Future<void> setLanguage(String code);
+
   /// Asks the server for a newer version of the app; the answer comes as an [UpdateEvent].
   Future<void> updateCheck();
 
@@ -604,6 +607,10 @@ class NativeBackend implements Backend {
   @override
   Future<List<String>> log() async =>
       (await _call<List<Object?>>('log') ?? const []).cast<String>();
+
+  @override
+  Future<void> setLanguage(String code) =>
+      _call<void>('setLanguage', {'code': code});
 
   @override
   Future<void> updateCheck() => _call<void>('updateCheck');

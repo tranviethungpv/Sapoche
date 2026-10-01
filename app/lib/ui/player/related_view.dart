@@ -59,7 +59,7 @@ class _RelatedViewState extends State<RelatedView> {
         }
         final page = async.data!;
         if (page.isEmpty) {
-          return const PlayerMessage(
+          return PlayerMessage(
             icon: Icons.explore_outlined,
             text: S.nothingRelated,
           );
@@ -76,7 +76,7 @@ class _RelatedViewState extends State<RelatedView> {
               tracks: page.otherPerformances,
             ),
             if (page.artists.isNotEmpty) ...[
-              const SectionHeading(S.similarArtists),
+              SectionHeading(S.similarArtists),
               ArtistRow(
                 artists: page.artists,
                 onOpen: (id) => openArtist(context, id),
@@ -109,7 +109,7 @@ class _AboutState extends State<_About> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeading(S.aboutArtist),
+        SectionHeading(S.aboutArtist),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: GestureDetector(

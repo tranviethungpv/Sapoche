@@ -18,20 +18,25 @@ class UnisonApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         EventLog.init(filesDir)
         videoMaxHeight = getSharedPreferences("unison", MODE_PRIVATE).getInt("video_height", DEFAULT_VIDEO_HEIGHT)
-        resolver = NewPipeResolver()
+        language.value = getSharedPreferences("unison", MODE_PRIVATE).getString("language", null) ?: "en"
+        resolver = NewPipeResolver(region = phoneRegion())
         streams = StreamCache(resolver, Probe())
         library = LibraryStore(this)
         val limitMb = getSharedPreferences("unison", MODE_PRIVATE).getInt("cache_limit_mb", DEFAULT_CACHE_MB)
         caches = MediaCaches(this, limitMb * 1024L * 1024L)
         mediaData = MediaData(caches, streams, { videoMaxHeight }) { EventLog.d("cache", it) }
         downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
-        val music = MusicClient()
+        val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
         suggestions = SuggestionFeed(library, resolver, musicFeed) { EventLog.d("suggest", it) }
         updater = Updater(this, UpdateClient(Config.SERVER, Config.authHeaders))
     }
+
+    /** The country of the phone's settings, like "VN": what YouTube shows first follows it. */
+    private fun phoneRegion(): String = java.util.Locale.getDefault().country.ifBlank { "US" }
 
     companion object {
         const val DEFAULT_VIDEO_HEIGHT = 720
@@ -73,6 +78,16 @@ class UnisonApp : Application() {
         /** Checks for a newer release of this app and installs it. */
         lateinit var updater: Updater
             private set
+
+        /** Language of the few texts the native side shows itself (the notification's buttons); the UI tells it. */
+        val language = MutableStateFlow("en")
+
+        fun setLanguage(code: String) {
+            language.value = code
+            instance?.getSharedPreferences("unison", MODE_PRIVATE)?.edit()?.putString("language", code)?.apply()
+        }
+
+        private var instance: UnisonApp? = null
 
         private val groupFlow = MutableStateFlow<GroupController?>(null)
 

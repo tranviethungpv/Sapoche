@@ -13,6 +13,7 @@
         android:label="Unison"
         android:name=".UnisonApp"
         android:allowBackup="false"
+        android:localeConfig="@xml/locales_config"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

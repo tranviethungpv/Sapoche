@@ -39,6 +39,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
@@ -171,6 +172,11 @@ class PlaybackService : MediaSessionService() {
                 }
         }
 
+        // The names of those buttons follow the app's language
+        scope.launch {
+            UnisonApp.language.drop(1).collect { session?.setMediaButtonPreferences(roomButtons(repeatMode)) }
+        }
+
         // Nobody listening or looking for a long while: let go of what costs battery
         scope.launch {
             idleActions(
@@ -230,7 +236,7 @@ class PlaybackService : MediaSessionService() {
     private fun roomButtons(mode: String): List<CommandButton> {
         return listOf(
             CommandButton.Builder(CommandButton.ICON_SHUFFLE_OFF)
-                .setDisplayName("Shuffle")
+                .setDisplayName(if (UnisonApp.language.value == "vi") "Trộn bài" else "Shuffle")
                 .setSessionCommand(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
                 .build(),
             CommandButton.Builder(
@@ -240,7 +246,7 @@ class PlaybackService : MediaSessionService() {
                     else -> CommandButton.ICON_REPEAT_OFF
                 },
             )
-                .setDisplayName("Repeat")
+                .setDisplayName(if (UnisonApp.language.value == "vi") "Lặp lại" else "Repeat")
                 .setSessionCommand(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
                 .build(),
         )

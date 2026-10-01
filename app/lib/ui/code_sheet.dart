@@ -95,7 +95,7 @@ class _CodeSheetState extends State<CodeSheet> {
             onSubmitted: (_) => _submit(),
           ),
           const SizedBox(height: 16),
-          FilledButton(onPressed: _submit, child: const Text(S.join)),
+          FilledButton(onPressed: _submit, child: Text(S.join)),
         ],
       ),
     );

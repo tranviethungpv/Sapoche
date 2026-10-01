@@ -78,7 +78,7 @@ class _Picker extends StatelessWidget {
                 ),
                 child: Icon(Icons.add_rounded, color: p.primary),
               ),
-              title: const Text(S.newPlaylist),
+              title: Text(S.newPlaylist),
               onTap: () => Navigator.pop(context, 'new'),
             ),
             for (final playlist in playlists)

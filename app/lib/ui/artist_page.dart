@@ -142,12 +142,12 @@ class _ContentState extends State<_Content> {
                 Navigator.of(context).popUntil((route) => route.isFirst);
               },
               icon: const Icon(Icons.play_arrow_rounded),
-              label: const Text(S.play),
+              label: Text(S.play),
             ),
           ),
         TrackSection(title: S.topSongs, tracks: page.topSongs),
         if (page.description != null) ...[
-          const SectionHeading(S.aboutArtist),
+          SectionHeading(S.aboutArtist),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: GestureDetector(
@@ -178,7 +178,7 @@ class _ContentState extends State<_Content> {
           ),
         ],
         if (page.similar.isNotEmpty) ...[
-          const SectionHeading(S.fansAlsoLike),
+          SectionHeading(S.fansAlsoLike),
           ArtistRow(
             artists: page.similar,
             onOpen: (id) => openArtist(context, id),

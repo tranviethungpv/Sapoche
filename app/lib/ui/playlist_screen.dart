@@ -83,7 +83,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                                 .popUntil((route) => route.isFirst);
                           },
                           icon: const Icon(Icons.play_arrow_rounded),
-                          label: const Text(S.play),
+                          label: Text(S.play),
                         ),
                       ),
                     ],

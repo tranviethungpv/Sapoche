@@ -148,4 +148,33 @@ class MusicParserTest {
         assertEquals(0, MusicParser.seconds("710K views"))
         assertEquals(0, MusicParser.seconds(null))
     }
+
+    @Test
+    fun `only the home page is asked for in the language of the person, everything else in English`() = runTest {
+        val bodies = mutableListOf<String>()
+        val client = MusicClient(region = { "VN" }) { _, body ->
+            bodies += body
+            """{}"""
+        }
+        client.watchNext("x")
+        client.lyrics("x")
+        client.searchSongs("x")
+        client.trending("vi")
+        fun field(body: String, name: String) = Regex("\"$name\":\"(\\w+)\"").find(body)?.groupValues?.get(1)
+        // The readers find lyrics and related songs by the English names of their tabs, so these must not change
+        assertTrue(bodies.dropLast(1).all { field(it, "hl") == "en" }, bodies.toString())
+        assertEquals("vi", field(bodies.last(), "hl"))
+        // The country only decides what is shown first, never the words
+        assertTrue(bodies.all { field(it, "gl") == "VN" })
+    }
+
+    @Test
+    fun `a missing country falls back to the United States`() = runTest {
+        var body = ""
+        MusicClient(region = { "" }) { _, sent ->
+            body = sent
+            """{}"""
+        }.searchVideos("x")
+        assertTrue(body.contains("\"gl\":\"US\""))
+    }
 }

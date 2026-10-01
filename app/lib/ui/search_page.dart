@@ -179,7 +179,7 @@ class _SearchPageState extends State<SearchPage> {
       setState(() => _phase = _Phase.results);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text(S.playlistFailed)));
+        ..showSnackBar(SnackBar(content: Text(S.playlistFailed)));
     }
   }
 
@@ -203,7 +203,7 @@ class _SearchPageState extends State<SearchPage> {
     HapticFeedback.selectionClick();
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text(S.playlistSaved)));
+      ..showSnackBar(SnackBar(content: Text(S.playlistSaved)));
   }
 
   Future<void> _addAll({bool playNext = false}) =>
@@ -263,7 +263,7 @@ class _SearchPageState extends State<SearchPage> {
         final terms = model.searches.terms;
         final songs = model.library.forYou;
         if (terms.isEmpty && songs.isEmpty) {
-          return const _Message(
+          return _Message(
             key: ValueKey('idle'),
             icon: Icons.search_rounded,
             title: S.searchEmptyTitle,
@@ -287,7 +287,7 @@ class _SearchPageState extends State<SearchPage> {
                       ),
                       TextButton(
                         onPressed: model.searches.clear,
-                        child: const Text(S.clear),
+                        child: Text(S.clear),
                       ),
                     ],
                   ),
@@ -405,20 +405,21 @@ class _SearchPageState extends State<SearchPage> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Row(
+            // Wraps onto a second line where a language or a large text size needs more room
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                for (final (filter, label) in const [
+                for (final (filter, label) in [
                   (_Filter.videos, S.filterVideos),
                   (_Filter.songs, S.filterSongs),
                   (_Filter.playlists, S.filterPlaylists),
-                ]) ...[
+                ])
                   _FilterChip(
                     label: label,
                     selected: _filter == filter,
                     onTap: () => _setFilter(filter),
                   ),
-                  const SizedBox(width: 8),
-                ],
               ],
             ),
           ),
@@ -474,7 +475,7 @@ class _SearchPageState extends State<SearchPage> {
       child: switch (_phase) {
         _Phase.idle => _idle(context),
         _Phase.loading => const SkeletonList(key: ValueKey('loading')),
-        _Phase.failed => const _Message(
+        _Phase.failed => _Message(
           key: ValueKey('failed'),
           icon: Icons.wifi_off_rounded,
           title: S.searchFailed,
@@ -493,12 +494,11 @@ class _SearchPageState extends State<SearchPage> {
               onTap: () => _openPlaylist(_playlists[i]),
             ),
           ),
-        _Phase.results when _showingPlaylists || _results.isEmpty =>
-          const _Message(
-            key: ValueKey('empty'),
-            icon: Icons.music_off_rounded,
-            title: S.noResults,
-          ),
+        _Phase.results when _showingPlaylists || _results.isEmpty => _Message(
+          key: ValueKey('empty'),
+          icon: Icons.music_off_rounded,
+          title: S.noResults,
+        ),
         _Phase.results => ListView.builder(
           key: const ValueKey('results'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -570,7 +570,7 @@ class _PlaylistHeader extends StatelessWidget {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 14),
-              label: const Text(S.backToPlaylists),
+              label: Text(S.backToPlaylists),
             ),
           Text(
             title,
@@ -590,14 +590,14 @@ class _PlaylistHeader extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onAddAll,
                   icon: const Icon(Icons.playlist_add_rounded),
-                  label: const Text(S.addAll),
+                  label: Text(S.addAll),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton(
                   onPressed: onPlayNext,
-                  child: const Text(S.playNext),
+                  child: Text(S.playNext),
                 ),
               ),
             ],
@@ -605,7 +605,7 @@ class _PlaylistHeader extends StatelessWidget {
           TextButton.icon(
             onPressed: onSave,
             icon: const Icon(Icons.bookmark_add_outlined),
-            label: const Text(S.saveAsPlaylist),
+            label: Text(S.saveAsPlaylist),
           ),
         ],
       ),

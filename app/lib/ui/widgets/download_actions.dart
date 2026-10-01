@@ -16,16 +16,16 @@ Future<void> startDownload(BuildContext context, List<Track> tracks) async {
     final agreed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(S.useMobileData),
-        content: const Text(S.useMobileDataBody),
+        title: Text(S.useMobileData),
+        content: Text(S.useMobileDataBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(S.download),
+            child: Text(S.download),
           ),
         ],
       ),

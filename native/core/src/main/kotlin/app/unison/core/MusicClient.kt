@@ -23,7 +23,11 @@ fun interface MusicTransport {
  * related page, lyrics and artists, which NewPipeExtractor does not. It is not a documented API and can
  * change, so the readers in [MusicParser] give what they find and callers treat failure as "nothing to show".
  */
-class MusicClient(private val transport: MusicTransport = OkHttpTransport()) : MusicSource {
+class MusicClient(
+    /** The country whose music is shown first, as a code like "VN"; follows the phone. */
+    private val region: () -> String = { "US" },
+    private val transport: MusicTransport = OkHttpTransport(),
+) : MusicSource {
 
     override suspend fun watchNext(videoId: String, radio: Boolean): WatchNext = MusicParser.watchNext(
         ask("next") {
@@ -43,7 +47,10 @@ class MusicClient(private val transport: MusicTransport = OkHttpTransport()) : M
 
     override suspend fun searchVideos(query: String): List<MusicTrack> = MusicParser.search(search(query, VIDEOS))
 
-    override suspend fun trending(): List<MusicShelf> = MusicParser.shelves(browse("FEmusic_home"))
+    // Only the shelf names of this page are meant to be read by a person; everything else is found by the words
+    // YouTube Music uses in English ("Lyrics", "Related"), so those calls stay in English
+    override suspend fun trending(language: String): List<MusicShelf> =
+        MusicParser.shelves(ask("browse", language) { put("browseId", "FEmusic_home") })
 
     private suspend fun browse(id: String) = ask("browse") { put("browseId", id) }
 
@@ -52,7 +59,7 @@ class MusicClient(private val transport: MusicTransport = OkHttpTransport()) : M
         put("params", filter)
     }
 
-    private suspend fun ask(endpoint: String, fields: JsonObjectBuilder.() -> Unit): JsonElement {
+    private suspend fun ask(endpoint: String, language: String = "en", fields: JsonObjectBuilder.() -> Unit): JsonElement {
         val body = buildJsonObject {
             put(
                 "context",
@@ -62,8 +69,8 @@ class MusicClient(private val transport: MusicTransport = OkHttpTransport()) : M
                         buildJsonObject {
                             put("clientName", CLIENT_NAME)
                             put("clientVersion", CLIENT_VERSION)
-                            put("hl", "en")
-                            put("gl", "US")
+                            put("hl", language)
+                            put("gl", region().ifBlank { "US" })
                         },
                     )
                 },

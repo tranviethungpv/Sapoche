@@ -41,7 +41,7 @@ Future<void> startMix(BuildContext context, Track seed) async {
   } on Object {
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text(S.mixFailed)));
+      ..showSnackBar(SnackBar(content: Text(S.mixFailed)));
   }
   await scope.room.playTracks(songs);
 }

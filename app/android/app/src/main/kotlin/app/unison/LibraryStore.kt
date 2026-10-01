@@ -310,7 +310,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         return added
     }
 
-    private fun cleanName(name: String) = name.trim().take(MAX_NAME).ifBlank { "Untitled" }
+    private fun cleanName(name: String) = name.trim().take(MAX_NAME).ifBlank { if (UnisonApp.language.value == "vi") "Chưa đặt tên" else "Untitled" }
 
     // ------------------------------------------------------------------ backup
 

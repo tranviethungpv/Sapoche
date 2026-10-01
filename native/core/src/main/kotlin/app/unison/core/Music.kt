@@ -76,6 +76,6 @@ interface MusicSource {
     /** Videos matching [query]. */
     suspend fun searchVideos(query: String): List<MusicTrack>
 
-    /** What YouTube Music shows everybody on its home page. */
-    suspend fun trending(): List<MusicShelf>
+    /** What YouTube Music shows everybody on its home page, with the shelf names in [language] (a code like "vi"). */
+    suspend fun trending(language: String = "en"): List<MusicShelf>
 }

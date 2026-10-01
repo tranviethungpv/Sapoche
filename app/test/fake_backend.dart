@@ -431,6 +431,9 @@ class FakeBackend implements Backend {
   bool updateOnWifi = true;
 
   @override
+  Future<void> setLanguage(String code) => _record('setLanguage $code');
+
+  @override
   Future<void> updateCheck() => _record('updateCheck');
 
   @override

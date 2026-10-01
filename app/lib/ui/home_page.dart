@@ -188,7 +188,7 @@ class _QuickPicks extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeading(S.quickPicks),
+        SectionHeading(S.quickPicks),
         SizedBox(
           height: _rows * _rowHeight,
           child: PageView.builder(

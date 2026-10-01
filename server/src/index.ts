@@ -1,4 +1,4 @@
-import { ASSET_LINKS, joinPage } from "./join-page";
+import { ASSET_LINKS, joinPage, pageLanguage } from "./join-page";
 import { PROTOCOL_VERSION } from "./protocol";
 import { Room } from "./room";
 import { serveUpdate, UPDATE_ROUTE } from "./update";
@@ -51,8 +51,14 @@ export default {
     // Open too: an invitation link is followed before the app can send its key, and reveals nothing about a room
     const join = url.pathname.match(/^\/join\/([A-Za-z0-9]{6})$/);
     if (join) {
-      return new Response(joinPage(join[1].toUpperCase()), {
-        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=3600" },
+      const language = pageLanguage(request.headers.get("Accept-Language"));
+      return new Response(joinPage(join[1].toUpperCase(), language), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "public, max-age=3600",
+          // One address, two pages: a cache must not hand one language to a reader of the other
+          Vary: "Accept-Language",
+        },
       });
     }
     if (url.pathname === "/.well-known/assetlinks.json") {

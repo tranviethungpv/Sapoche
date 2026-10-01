@@ -102,7 +102,7 @@ class _RoomPageState extends State<RoomPage> {
     final upNext = snapshot.upNext;
     return [
       if (current != null) ...[
-        const _SectionTitle(S.nowPlaying),
+        _SectionTitle(S.nowPlaying),
         SliverToBoxAdapter(
           child: _swipeToRemove(
             controller,
@@ -182,7 +182,7 @@ class _RoomPageState extends State<RoomPage> {
         ),
       ],
       if (played.isNotEmpty) ...[
-        const _SectionTitle(S.played),
+        _SectionTitle(S.played),
         SliverList.builder(
           itemCount: played.length,
           itemBuilder: (context, i) {
@@ -412,7 +412,7 @@ class _FinishedBanner extends StatelessWidget {
             FilledButton(
               onPressed: controller.togglePlay,
               style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
-              child: const Text(S.playAgain),
+              child: Text(S.playAgain),
             ),
           ],
         ),
@@ -455,7 +455,7 @@ class _SoloBanner extends StatelessWidget {
             ),
             TextButton(
               onPressed: () => controller.setSolo(false),
-              child: const Text(S.rejoin),
+              child: Text(S.rejoin),
             ),
           ],
         ),
@@ -482,7 +482,7 @@ class _CodeChip extends StatelessWidget {
           HapticFeedback.selectionClick();
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
-            ..showSnackBar(const SnackBar(content: Text(S.codeCopied)));
+            ..showSnackBar(SnackBar(content: Text(S.codeCopied)));
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -543,12 +543,12 @@ class _ClearButton extends StatelessWidget {
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text(S.clearQueue),
-            content: const Text(S.clearQueueQuestion),
+            title: Text(S.clearQueue),
+            content: Text(S.clearQueueQuestion),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text(S.cancel),
+                child: Text(S.cancel),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
@@ -562,7 +562,7 @@ class _ClearButton extends StatelessWidget {
         );
         if (confirmed == true) controller.clearQueue();
       },
-      child: const Text(S.clear),
+      child: Text(S.clear),
     );
   }
 }
@@ -603,7 +603,7 @@ class _EmptyQueue extends StatelessWidget {
           FilledButton.icon(
             onPressed: onAddSongs,
             icon: const Icon(Icons.add_rounded),
-            label: const Text(S.addSongs),
+            label: Text(S.addSongs),
           ),
         ],
       ),

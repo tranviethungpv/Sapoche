@@ -17,7 +17,7 @@ class MusicFeed(
     private val related = Recent<String, Related>()
     private val artists = Recent<String, ArtistPage>()
     private val lyricsLock = Mutex()
-    private var trendingKept: Pair<Long, List<MusicShelf>>? = null
+    private var trendingKept: Triple<String, Long, List<MusicShelf>>? = null
 
     /** The radio of the song, with where its lyrics and related page are. */
     suspend fun watchNext(videoId: String): WatchNext = next.getOrPut(videoId) { music.watchNext(videoId) }
@@ -29,10 +29,10 @@ class MusicFeed(
 
     suspend fun artist(artistId: String): ArtistPage = artists.getOrPut(artistId) { music.artist(artistId) }
 
-    /** What YouTube Music shows everybody, kept for [TRENDING_MS]. */
-    suspend fun trending(): List<MusicShelf> {
-        trendingKept?.let { (at, shelves) -> if (now() - at < TRENDING_MS) return shelves }
-        return music.trending().also { trendingKept = now() to it }
+    /** What YouTube Music shows everybody, kept for [TRENDING_MS] (and not shown in another language than it was asked in). */
+    suspend fun trending(language: String = "en"): List<MusicShelf> {
+        trendingKept?.let { (kept, at, shelves) -> if (kept == language && now() - at < TRENDING_MS) return shelves }
+        return music.trending(language).also { trendingKept = Triple(language, now(), it) }
     }
 
     /** Songs matching [query], as audio releases or as videos. */

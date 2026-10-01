@@ -154,10 +154,7 @@ class _StartRoomState extends State<_StartRoom> {
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => FocusScope.of(context).unfocus(),
           maxLength: 24,
-          decoration: const InputDecoration(
-            hintText: S.yourName,
-            counterText: '',
-          ),
+          decoration: InputDecoration(hintText: S.yourName, counterText: ''),
           onChanged: (_) {
             if (_error != null) setState(() => _error = null);
           },
@@ -169,12 +166,12 @@ class _StartRoomState extends State<_StartRoom> {
         const SizedBox(height: 14),
         FilledButton(
           onPressed: _busy ? null : _create,
-          child: const Text(S.createRoom),
+          child: Text(S.createRoom),
         ),
         const SizedBox(height: 10),
         ElevatedButton(
           onPressed: _busy ? null : _joinTyped,
-          child: const Text(S.joinRoom),
+          child: Text(S.joinRoom),
         ),
         ListenableBuilder(
           listenable: widget.recents,
@@ -349,7 +346,7 @@ class _InRoom extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: room.shareInvite,
                 icon: const Icon(Icons.ios_share_rounded, size: 18),
-                label: const Text(S.invite),
+                label: Text(S.invite),
               ),
             ),
             const SizedBox(width: 10),
@@ -357,7 +354,7 @@ class _InRoom extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: () => _copy(context, link, S.linkCopied),
                 icon: const Icon(Icons.link_rounded, size: 18),
-                label: const Text(S.copyLink),
+                label: Text(S.copyLink),
               ),
             ),
           ],
@@ -370,7 +367,7 @@ class _InRoom extends StatelessWidget {
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(Icons.people_outline_rounded, color: p.textSecondary),
-          title: const Text(S.peopleInRoom),
+          title: Text(S.peopleInRoom),
           subtitle: Text(S.listening(snapshot.listeningCount)),
           trailing: Icon(Icons.chevron_right_rounded, color: p.textTertiary),
           onTap: () => showMembersSheet(context),
@@ -408,12 +405,12 @@ class _InRoom extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(S.leaveRoom),
-        content: const Text(S.leaveQuestion),
+        title: Text(S.leaveRoom),
+        content: Text(S.leaveQuestion),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(S.cancel),
+            child: Text(S.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),

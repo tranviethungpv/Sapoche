@@ -40,23 +40,21 @@ class TrackMenu extends StatelessWidget {
         _ => onAdd(),
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(value: 'next', child: Text(S.playNext)),
-        const PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
-        const PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
+        PopupMenuItem(value: 'next', child: Text(S.playNext)),
+        PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
+        PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
         ...switch (library.downloadState(track.videoId)) {
-          DownloadState.done => const [
+          DownloadState.done => [
             PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
           ],
-          DownloadState.queued || DownloadState.waiting => const [
+          DownloadState.queued || DownloadState.waiting => [
             PopupMenuItem(
               enabled: false,
               value: 'none',
               child: Text(S.downloading),
             ),
           ],
-          _ => const [
-            PopupMenuItem(value: 'download', child: Text(S.download)),
-          ],
+          _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
         },
         PopupMenuItem(
           value: 'like',

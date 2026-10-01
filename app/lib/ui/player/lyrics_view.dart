@@ -62,10 +62,7 @@ class _LyricsViewState extends State<LyricsView> {
         }
         final lyrics = snapshot.data;
         if (lyrics == null) {
-          return const PlayerMessage(
-            icon: Icons.lyrics_outlined,
-            text: S.noLyrics,
-          );
+          return PlayerMessage(icon: Icons.lyrics_outlined, text: S.noLyrics);
         }
         return lyrics.synced
             ? _SyncedLyrics(controller: widget.controller, lyrics: lyrics)
