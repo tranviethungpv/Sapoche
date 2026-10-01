@@ -1,0 +1,5 @@
+Trình phát
+- Trình phát đầy đủ giờ mở ra từ mini player và bám đúng ngón tay, thay vì trượt lên từ đáy màn hình.
+Cài đặt
+- Giá trị bên phải mỗi dòng (Giao diện, Ngôn ngữ) lại sát lề phải.
+- Mới: Cài đặt cho máy khác hiện mã QR chứa máy chủ và khoá của máy này, để cài iPhone mà không phải gõ.

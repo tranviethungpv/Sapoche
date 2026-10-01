@@ -1,0 +1,5 @@
+Player
+- The full player now grows out of the mini player and follows your finger exactly, instead of sliding up from the bottom of the screen.
+Settings
+- Values on the right of a row (Appearance, Language) sit against the edge again.
+- New: Set up another phone shows a QR code with this phone's server and key, so an iPhone can be set up without typing them.
