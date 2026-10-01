@@ -1,0 +1,3 @@
+Back to the look before 1.4.0
+- The Liquid Glass look is taken out; the app looks as it did in 1.3.6.
+- A playlist or an artist still opens inside its tab, so the tab bar and the mini player stay in reach.

@@ -1,0 +1,3 @@
+Trở về giao diện trước 1.4.0
+- Đã gỡ giao diện Liquid Glass; ứng dụng trông như ở bản 1.3.6.
+- Playlist hoặc nghệ sĩ vẫn mở ngay trong tab, nên thanh tab và mini player vẫn trong tầm tay.
