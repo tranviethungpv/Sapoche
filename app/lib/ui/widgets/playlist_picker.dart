@@ -12,6 +12,7 @@ Future<void> showAddToPlaylist(BuildContext context, List<Track> tracks) async {
   final library = AppScope.of(context).library;
   final messenger = ScaffoldMessenger.of(context);
   final choice = await showModalBottomSheet<Object>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     builder: (_) => _Picker(playlists: library.playlists),

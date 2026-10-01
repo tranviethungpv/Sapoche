@@ -33,6 +33,26 @@ class _HomeShellState extends State<HomeShell>
     with SingleTickerProviderStateMixin {
   int _tab = 0;
   late final _sheet = PlayerSheetController(this);
+
+  /// Every tab has a navigator of its own, so that a page opened from it (a playlist, an artist) opens inside the
+  /// tab, between the top of the screen and the bars, instead of on top of everything.
+  final _navigators = List.generate(4, (_) => GlobalKey<NavigatorState>());
+
+  /// Pings when a page is opened or closed in a tab, which the Back button has to know about.
+  final _stack = ValueNotifier<int>(0);
+
+  /// One for each navigator: an observer can watch only one.
+  late final _watchers = List.generate(
+    4,
+    (_) => _StackWatcher(() {
+      // Opening a page happens in the middle of building; the news waits for the frame to be done
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _stack.value++;
+      });
+    }),
+  );
+
+  NavigatorState? get _current => _navigators[_tab].currentState;
   StreamSubscription<String>? _messages;
   StreamSubscription<String>? _libraryMessages;
   StreamSubscription<Notice>? _notices;
@@ -73,6 +93,10 @@ class _HomeShellState extends State<HomeShell>
           ),
         );
     });
+    TabNavigation._active = () => _current;
+    TabNavigation._closePlayer = () {
+      if (_sheet.isOpen) _sheet.close();
+    };
     room.invite.addListener(_onInvite);
     room.setup.addListener(_onSetup);
     room.addListener(_precacheCover);
@@ -83,6 +107,9 @@ class _HomeShellState extends State<HomeShell>
 
   @override
   void dispose() {
+    TabNavigation._active = null;
+    TabNavigation._closePlayer = null;
+    _stack.dispose();
     _watched?.invite.removeListener(_onInvite);
     _watched?.setup.removeListener(_onSetup);
     _watched?.removeListener(_precacheCover);
@@ -149,7 +176,11 @@ class _HomeShellState extends State<HomeShell>
   }
 
   void _select(int tab) {
-    if (tab == _tab) return;
+    if (tab == _tab) {
+      // The tab that is open is touched again: back to its first page
+      _current?.popUntil((route) => route.isFirst);
+      return;
+    }
     HapticFeedback.selectionClick();
     setState(() => _tab = tab);
   }
@@ -169,7 +200,15 @@ class _HomeShellState extends State<HomeShell>
             const LibraryPage(),
             RoomPage(onAddSongs: () => _select(1)),
           ].indexed)
-            TickerMode(enabled: i == _tab, child: page),
+            TickerMode(
+              enabled: i == _tab,
+              child: Navigator(
+                key: _navigators[i],
+                observers: [_watchers[i]],
+                onGenerateRoute: (_) =>
+                    MaterialPageRoute<void>(builder: (_) => page),
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: Column(
@@ -183,13 +222,18 @@ class _HomeShellState extends State<HomeShell>
     );
     return PlayerSheetScope(
       controller: _sheet,
-      // Back closes an open player first; only then does it leave the screen
+      // Back closes an open player first, then goes back a page of the tab; only then does it leave the screen
       child: ListenableBuilder(
-        listenable: _sheet,
+        listenable: Listenable.merge([_sheet, _stack]),
         builder: (context, stack) => PopScope(
-          canPop: !_sheet.isOpen,
+          canPop: !_sheet.isOpen && !(_current?.canPop() ?? false),
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _sheet.close();
+            if (didPop) return;
+            if (_sheet.isOpen) {
+              _sheet.close();
+            } else {
+              _current?.maybePop();
+            }
           },
           child: stack!,
         ),
@@ -281,5 +325,40 @@ class _TabBar extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Tells when a page is opened or closed in a tab.
+class _StackWatcher extends NavigatorObserver {
+  _StackWatcher(this.changed);
+
+  final VoidCallback changed;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      changed();
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => changed();
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      changed();
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      changed();
+}
+
+/// Where a page opened from anywhere goes: into the tab that is showing, with the full player put away if it is open.
+/// Sheets and the full player sit above the tabs, so their own navigator is the one for the whole screen, which is not
+/// where such a page belongs.
+abstract final class TabNavigation {
+  static NavigatorState? Function()? _active;
+  static VoidCallback? _closePlayer;
+
+  static Future<T?> push<T>(BuildContext context, Route<T> route) {
+    _closePlayer?.call();
+    return (_active?.call() ?? Navigator.of(context)).push(route);
   }
 }

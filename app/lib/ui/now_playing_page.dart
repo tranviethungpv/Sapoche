@@ -400,6 +400,7 @@ class _MoreButton extends StatelessWidget {
         ? S.you
         : snapshot.nameOf(current.addedBy);
     return PopupMenuButton<String>(
+      useRootNavigator: true,
       icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
       color: p.brightness == Brightness.light
           ? const Color(0xFFFFF7F9)

@@ -5,14 +5,16 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'player/player_message.dart';
 import 'player/track_section.dart';
+import 'home_shell.dart';
 import 'scope.dart';
 import 'widgets/wash.dart';
 
-/// Opens the page of an artist on top of everything, with a way back.
+/// Opens the page of an artist in the tab that is showing, with a way back.
 Future<void> openArtist(BuildContext context, String artistId) {
   // A message still showing would be drawn by the new page too, and the two would fight over it
   ScaffoldMessenger.of(context).removeCurrentSnackBar();
-  return Navigator.of(context).push(
+  return TabNavigation.push(
+    context,
     MaterialPageRoute<void>(builder: (_) => ArtistScreen(artistId: artistId)),
   );
 }
@@ -90,7 +92,7 @@ class _ContentState extends State<_Content> {
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
-      padding: const EdgeInsets.only(bottom: 32),
+      padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
       children: [
         Center(
           child: ClipOval(

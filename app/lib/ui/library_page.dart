@@ -251,6 +251,7 @@ class _Overview extends StatelessWidget {
             children: [
               Expanded(child: Text(S.playlists, style: theme.titleLarge)),
               PopupMenuButton<String>(
+                useRootNavigator: true,
                 icon: Icon(Icons.add_rounded, color: p.primary),
                 tooltip: S.newPlaylist,
                 color: p.brightness == Brightness.light
@@ -429,6 +430,7 @@ class _PlaylistPage extends StatelessWidget {
             icon: Icon(Icons.download_rounded, color: context.palette.primary),
           ),
         PopupMenuButton<String>(
+          useRootNavigator: true,
           icon: Icon(
             Icons.more_horiz_rounded,
             color: context.palette.textSecondary,

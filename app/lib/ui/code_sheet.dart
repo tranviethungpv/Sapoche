@@ -7,6 +7,7 @@ import '../strings.dart';
 /// or one that came with an invitation is filled in.
 Future<String?> showCodeSheet(BuildContext context, {String? initialCode}) =>
     showModalBottomSheet<String>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       builder: (_) => CodeSheet(initialCode: initialCode),

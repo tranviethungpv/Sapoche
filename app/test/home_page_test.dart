@@ -268,6 +268,60 @@ void main() {
     expect(find.text('Calm Song'), findsOneWidget);
   });
 
+  group('a playlist opens inside the tab', () {
+    Future<void> openChillMix(WidgetTester tester) async {
+      await openHome(
+        tester,
+        prepare: (b) {
+          b.trendingResult = [
+            MusicShelf(
+              title: 'Featured',
+              playlists: [Release(id: 'PLabc', title: 'Chill Mix')],
+            ),
+          ];
+          b.lookupResult = LinkResult(
+            playlistTitle: 'Chill Mix',
+            tracks: [song('pl1aaaaaaaa', 'Calm Song', 'Zen')],
+          );
+        },
+      );
+      await tester.tap(find.text('Chill Mix'));
+      await tester.pumpAndSettle();
+      expect(find.text('Calm Song'), findsOneWidget);
+    }
+
+    testWidgets('the tab bar is still there to move on', (tester) async {
+      await openChillMix(tester);
+      // The tab bar is drawn over the page, so its labels are found, and a touch on one leaves the page
+      expect(find.text('Library'), findsOneWidget);
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      expect(find.text('Calm Song'), findsNothing);
+      // The page waits in its tab: coming back finds it where it was
+      await tester.tap(find.text('Home'));
+      await tester.pumpAndSettle();
+      expect(find.text('Calm Song'), findsOneWidget);
+    });
+
+    testWidgets('touching the tab that is open goes back to its first page', (
+      tester,
+    ) async {
+      await openChillMix(tester);
+      await tester.tap(find.text('Home'));
+      await tester.pumpAndSettle();
+      expect(find.text('Calm Song'), findsNothing);
+      expect(find.text('Chill Mix'), findsOneWidget);
+    });
+
+    testWidgets('Back closes the page and not the app', (tester) async {
+      await openChillMix(tester);
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pumpAndSettle();
+      expect(find.text('Calm Song'), findsNothing);
+      expect(find.text('Chill Mix'), findsOneWidget);
+    });
+  });
+
   testWidgets('a touch on a song of a playlist plays from that song on', (
     tester,
   ) async {

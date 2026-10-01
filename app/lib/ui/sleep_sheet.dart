@@ -21,6 +21,7 @@ String sleepLabel(BuildContext context, SleepState sleep) =>
 /// Lets the person choose when the music stops by itself.
 Future<void> showSleepSheet(BuildContext context, RoomController controller) =>
     showModalBottomSheet<void>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       builder: (_) => _SleepSheet(controller: controller),

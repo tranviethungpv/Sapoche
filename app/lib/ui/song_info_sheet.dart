@@ -13,6 +13,7 @@ import 'widgets/artwork.dart';
 void showSongInfo(BuildContext context, QueueEntry entry, {String? addedBy}) {
   final music = AppScope.of(context).music;
   showModalBottomSheet<void>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

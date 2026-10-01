@@ -16,6 +16,7 @@ import 'widgets/text_dialog.dart';
 /// [invitedCode] is a code that arrived with an invitation link.
 Future<void> showRoomSheet(BuildContext context, {String? invitedCode}) =>
     showModalBottomSheet<void>(
+      useRootNavigator: true,
       context: context,
       isScrollControlled: true,
       builder: (_) => _RoomSheet(invitedCode: invitedCode),

@@ -11,6 +11,7 @@ import 'widgets/avatars.dart';
 void showMembersSheet(BuildContext context) {
   final controller = AppScope.roomOf(context);
   showModalBottomSheet<void>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     builder: (_) => _MembersSheet(controller: controller),

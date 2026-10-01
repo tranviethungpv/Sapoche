@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../strings.dart';
 import 'player/player_message.dart';
+import 'home_shell.dart';
 import 'scope.dart';
 import 'widgets/queue_actions.dart';
 import 'widgets/play_actions.dart';
@@ -10,10 +11,11 @@ import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 import 'widgets/wash.dart';
 
-/// Opens a YouTube playlist on top of everything, with a way back.
+/// Opens a YouTube playlist in the tab that is showing, with a way back.
 Future<void> openPlaylist(BuildContext context, String id, String title) {
   ScaffoldMessenger.of(context).removeCurrentSnackBar();
-  return Navigator.of(context).push(
+  return TabNavigation.push(
+    context,
     MaterialPageRoute<void>(
       builder: (_) => PlaylistScreen(id: id, title: title),
     ),
@@ -69,7 +71,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               );
             }
             return ListView(
-              padding: const EdgeInsets.only(bottom: 32),
+              padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),

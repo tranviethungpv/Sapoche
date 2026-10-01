@@ -25,6 +25,7 @@ class TrackMenu extends StatelessWidget {
     final p = context.palette;
     final library = AppScope.of(context).library;
     return PopupMenuButton<String>(
+      useRootNavigator: true,
       icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
       color: p.brightness == Brightness.light
           ? const Color(0xFFFFF7F9)
