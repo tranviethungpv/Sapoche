@@ -1,0 +1,2 @@
+Player
+- Opening the player now looks like the mini player turning into it: it starts from the mini player's top edge, follows your finger exactly, and the mini player melts into the full screen without fading the page.

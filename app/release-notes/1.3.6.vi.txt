@@ -1,0 +1,2 @@
+Trình phát
+- Mở trình phát giờ trông như mini player biến hình thành nó: bắt đầu từ cạnh trên của mini player, bám đúng ngón tay, và mini player tan dần thành màn hình lớn mà không làm trang bị mờ.
