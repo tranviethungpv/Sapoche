@@ -137,8 +137,8 @@ extension UnisonRuntime {
 @MainActor
 @objc(UnisonNativePlugin)
 public final class UnisonNativePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
-    private static let openURL = Notification.Name("app.unison.openURL")
-    private static let pendingKey = "unison.pendingURL"
+    private nonisolated static let openURL = Notification.Name("app.unison.openURL")
+    private nonisolated static let pendingKey = "unison.pendingURL"
 
     private let runtime = UnisonRuntime.shared
     private var started = false

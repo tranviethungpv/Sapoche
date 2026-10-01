@@ -170,7 +170,11 @@ final class GroupController {
         view.set(View(local: local.snapshot.value))
 
         // After the personal queue's own listener: when the last song ends it must see the timer still set
-        engine.onSongEndPause = { [weak self] in self?.sleep.songEnded() }
+        // Behind the personal queue's own work on the same end (that is already waiting its turn): when the last song ends
+        // it must see the timer still set
+        engine.onSongEndPause = { [weak self] in
+            self?.ownScope.launch { [weak self] in self?.sleep.songEnded() }
+        }
         engine.onChange = { [weak self] in
             guard let self else { return }
             self.recorder?.changed()
@@ -180,7 +184,7 @@ final class GroupController {
         ownScope.collect(local.snapshot) { [weak self] _ in self?.publish() }
 
         // Nobody listening or looking for a long while in a room: let go of the connection, whose pings keep the radio awake
-        idle = IdleWatch(scope: ownScope, time: self.time, roomAfterMs: Self.roomIdleMs, serviceAfterMs: Int64.max / 4) { [weak self] action in
+        idle = IdleWatch(scope: ownScope, time: self.time, roomAfterMs: Self.roomIdleMs, serviceAfterMs: nil) { [weak self] action in
             if action == .suspendRoom {
                 EventLog.d("sync", "nobody is listening or looking, letting go of the connection")
                 self?.suspendRoom()

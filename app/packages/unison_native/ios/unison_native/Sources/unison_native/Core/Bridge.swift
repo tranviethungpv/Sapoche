@@ -120,6 +120,8 @@ final class Bridge {
             }
             emit(UiJson.calm(platform.calm.value))
             controller.resumeRoom()
+            // A phone that was in a pocket may have lost the connection without noticing
+            controller.networkChanged(changed: false)
             renewSuggestionsIfDue()
             if autoDownload { kickDownloads(waiting: true) }
         }

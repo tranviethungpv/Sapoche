@@ -444,3 +444,108 @@ final class BridgeTests: XCTestCase {
         XCTAssertTrue(lines.contains { $0.hasSuffix("test: something happened") })
     }
 }
+
+@MainActor
+final class GroupControllerTests: XCTestCase {
+    private var time: VirtualTime!
+    private var engine: FakePlayer!
+    private var controller: GroupController!
+    private var asked: [String] = []
+    private var dir: URL!
+
+    override func setUp() async throws {
+        time = VirtualTime()
+        engine = FakePlayer(time: time)
+        asked = []
+        dir = FileManager.default.temporaryDirectory.appendingPathComponent("gc-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let more = TrackRef(videoId: "more0000001", title: "More", artist: "A", thumb: nil, durMs: 200_000)
+        controller = GroupController(
+            engine: engine, prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("queue.json")),
+            config: { ServerConfig() }, time: time,
+            moreLike: { [unowned self] id, _, _ in
+                self.asked.append(id)
+                return [more]
+            }
+        )
+    }
+
+    override func tearDown() async throws {
+        controller.release()
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    private func song(_ n: Int) -> TrackRef {
+        TrackRef(videoId: "video00000\(n)", title: "Song \(n)", artist: "A", thumb: nil, durMs: 200_000)
+    }
+
+    func testWhenTheQueueRunsOutTheMusicCarriesOnWithSongsLikeTheLastOne() async {
+        controller.requestAddMany([song(1)], playNext: false)
+        await time.advance(100)
+        engine.onEnded?()
+        await time.advance(100)
+        XCTAssertEqual(asked, ["video000001"])
+        XCTAssertEqual(controller.local.snapshot.value.queue.map(\.videoId), ["video000001", "more0000001"])
+        XCTAssertEqual(engine.loaded?.videoId, "more0000001")
+    }
+
+    func testTurningAutoplayOffLetsTheQueueEnd() async {
+        controller.autoplayOn = false
+        controller.requestAddMany([song(1)], playNext: false)
+        await time.advance(100)
+        engine.onEnded?()
+        await time.advance(100)
+        XCTAssertEqual(asked, [])
+        XCTAssertTrue(controller.local.snapshot.value.finished)
+    }
+
+    func testTheSleepTimerAtTheEndOfTheLastSongStopsTheMusicInsteadOfCarryingOn() async {
+        controller.requestAddMany([song(1)], playNext: false)
+        await time.advance(100)
+        controller.sleep.startAtSongEnd()
+        XCTAssertTrue(engine.pauseAtSongEnd)
+        // What the player does at the end of the last song: reports it, then that it paused for the timer
+        engine.onEnded?()
+        engine.onSongEndPause?()
+        await time.advance(100)
+        XCTAssertEqual(asked, [], "the timer was still set when the queue ran out, so nothing carries on")
+        XCTAssertEqual(controller.sleep.state.value, .off)
+        XCTAssertFalse(engine.pauseAtSongEnd)
+        XCTAssertFalse(engine.playing)
+    }
+
+    func testTheSleepTimerAtTheEndOfASongPausesThisDeviceAndNothingElse() async {
+        controller.requestAddMany([song(1), song(2)], playNext: false)
+        await time.advance(100)
+        controller.sleep.startAtSongEnd()
+        engine.onSongEndPause?()
+        await time.advance(100)
+        XCTAssertFalse(engine.playing)
+        XCTAssertEqual(controller.local.snapshot.value.index, 0, "the next song waits for the person to press play")
+    }
+
+    func testTheRoomIsNotRejoinedLongAfterTheAppWasLeft() {
+        let prefs = MemoryStore()
+        prefs.set("ABC234", for: "room_code")
+        prefs.set(Int64(Date().timeIntervalSince1970 * 1000) - 11 * 60_000, for: "room_last_active")
+        let late = GroupController(engine: FakePlayer(time: time), prefs: prefs, queueFile: QueueFile(url: dir.appendingPathComponent("a.json")),
+                                   config: { ServerConfig(server: "https://x") }, time: time, sockets: FakeSockets())
+        late.recoverRoom()
+        XCTAssertNil(late.roomCode)
+        XCTAssertNil(prefs.string("room_code"), "a room left that long ago is forgotten")
+        late.release()
+    }
+
+    func testTheRoomIsRejoinedRightAfterTheAppWasEnded() {
+        let prefs = MemoryStore()
+        prefs.set("ABC234", for: "room_code")
+        prefs.set("Me", for: "room_name")
+        prefs.set(Int64(Date().timeIntervalSince1970 * 1000) - 60_000, for: "room_last_active")
+        let sockets = FakeSockets()
+        let soon = GroupController(engine: FakePlayer(time: time), prefs: prefs, queueFile: QueueFile(url: dir.appendingPathComponent("b.json")),
+                                   config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets)
+        soon.recoverRoom()
+        XCTAssertEqual(soon.roomCode, "ABC234")
+        soon.release()
+    }
+}

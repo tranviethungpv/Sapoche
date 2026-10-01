@@ -223,7 +223,7 @@ final class IdleWatch {
     private let scope: Scope
     private let time: TimeSource
     private let roomAfterMs: Int64
-    private let serviceAfterMs: Int64
+    private let serviceAfterMs: Int64?
     private let checkEveryMs: Int64
     private let act: (IdleAction) -> Void
 
@@ -232,7 +232,7 @@ final class IdleWatch {
     private var visible = false
     private var job: Job?
 
-    init(scope: Scope, time: TimeSource? = nil, roomAfterMs: Int64, serviceAfterMs: Int64,
+    init(scope: Scope, time: TimeSource? = nil, roomAfterMs: Int64, serviceAfterMs: Int64?,
          checkEveryMs: Int64 = 30_000, act: @escaping (IdleAction) -> Void) {
         self.scope = scope
         self.time = time ?? SystemTime.shared
@@ -256,7 +256,7 @@ final class IdleWatch {
         job = nil
         if playing || visible { return }
         let room = inRoom
-        let wait = room ? roomAfterMs : serviceAfterMs
+        guard let wait = room ? roomAfterMs : serviceAfterMs else { return }
         job = scope.launch { [weak self] in
             guard let self else { return }
             let quietSince = self.time.nowMs()
