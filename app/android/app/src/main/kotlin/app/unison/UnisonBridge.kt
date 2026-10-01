@@ -300,10 +300,8 @@ class UnisonBridge(
             }
             // Mobile data is asked about first: the file is some 30 MB
             "updateDownload" -> return if (UnisonApp.updater.download(call.argument<Boolean>("allowMetered") == true)) null else "metered"
-            "updateInstall" -> {
-                UnisonApp.updater.install()
-                return null
-            }
+            // "permission": Android has to be asked to let this app install first, and the UI says so
+            "updateInstall" -> return if (UnisonApp.updater.install()) null else "permission"
             "updateAllowInstalls" -> {
                 UnisonApp.updater.openInstallSettings()
                 return null

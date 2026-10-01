@@ -435,23 +435,27 @@ async function updateSection({ apk, latest }) {
   const bytes = Buffer.from(apk, "base64");
   const url = (name) => `${BASE}/update/${name}`;
   if (KEY) check("the update info is refused without the key", (await fetch(url("latest.json"))).status === 401);
-  if (KEY) check("the apk is refused without the key", (await fetch(url("app-9.apk"))).status === 401);
+  if (KEY) check("the apk is refused without the key", (await fetch(url("unison-9.9.9.apk"))).status === 401);
   const info = await fetch(url("latest.json"), { headers: keyHeaders });
   const body = await info.json();
   check("latest.json says which version is newest", info.ok && body.versionCode === latest.versionCode && body.sha256 === latest.sha256 && body.size === bytes.length);
   check("and is never cached", info.headers.get("cache-control") === "no-cache");
-  const whole = await fetch(url("app-9.apk"), { headers: keyHeaders });
+  const whole = await fetch(url("unison-9.9.9.apk"), { headers: keyHeaders });
   const got = Buffer.from(await whole.arrayBuffer());
   check("the apk comes whole, as an apk", whole.status === 200 && got.equals(bytes) && whole.headers.get("content-type") === "application/vnd.android.package-archive");
   check("it says its length and that ranges work", whole.headers.get("content-length") === String(bytes.length) && whole.headers.get("accept-ranges") === "bytes");
-  const rest = await fetch(url("app-9.apk"), { headers: { ...keyHeaders, Range: "bytes=1000-" } });
+  const rest = await fetch(url("unison-9.9.9.apk"), { headers: { ...keyHeaders, Range: "bytes=1000-" } });
   const tail = Buffer.from(await rest.arrayBuffer());
   check("a download that broke off goes on from where it was", rest.status === 206 && tail.equals(bytes.subarray(1000)) && rest.headers.get("content-range") === `bytes 1000-${bytes.length - 1}/${bytes.length}`, `${rest.status} ${rest.headers.get("content-range")}`);
-  const middle = await fetch(url("app-9.apk"), { headers: { ...keyHeaders, Range: "bytes=10-19" } });
+  const middle = await fetch(url("unison-9.9.9.apk"), { headers: { ...keyHeaders, Range: "bytes=10-19" } });
   check("a slice of the middle comes as asked", middle.status === 206 && Buffer.from(await middle.arrayBuffer()).equals(bytes.subarray(10, 20)));
-  const head = await fetch(url("app-9.apk"), { method: "HEAD", headers: keyHeaders });
+  const head = await fetch(url("unison-9.9.9.apk"), { method: "HEAD", headers: keyHeaders });
   check("HEAD gives the size without the file", head.status === 200 && head.headers.get("content-length") === String(bytes.length));
-  check("a release that was never published is not found", (await fetch(url("app-10.apk"), { headers: keyHeaders })).status === 404);
+  check("a release that was never published is not found", (await fetch(url("unison-10.0.0.apk"), { headers: keyHeaders })).status === 404);
+  // Apps up to 1.3.1 ask for app-<versionCode>.apk
+  const old = await fetch(url("app-9.apk"), { headers: keyHeaders });
+  check("an older app asking for app-<build number> gets the newest release", old.status === 200 && Buffer.from(await old.arrayBuffer()).equals(bytes));
+  check("but not for a build that is not the newest", (await fetch(url("app-8.apk"), { headers: keyHeaders })).status === 404);
   check("other names are not served from the bucket", (await fetch(`${BASE}/update/..%2Flatest.json`, { headers: keyHeaders })).status === 404);
   check("nothing can be written through it", (await fetch(url("latest.json"), { method: "PUT", headers: keyHeaders, body: "{}" })).status === 405);
 }

@@ -5,7 +5,7 @@
 // connections and empty rooms are seconds long, so "gone after a week" can be watched.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -45,12 +45,14 @@ function simulate(port, env) {
 
 /** Puts a release in the local bucket the first server reads, so the update routes have something to serve. */
 function seedRelease(persistTo) {
+  // What an earlier run left in the bucket must not be there: a stale file under another name would pass for the new one
+  rmSync(join(persistTo, "v3", "r2"), { recursive: true, force: true });
   const dir = mkdtempSync(join(tmpdir(), "unison-release-"));
   const apk = randomBytes(5000);
-  const latest = { versionCode: 9, versionName: "9.9.9", sha256: createHash("sha256").update(apk).digest("hex"), size: apk.length, notes: "test" };
-  writeFileSync(join(dir, "app-9.apk"), apk);
+  const latest = { versionCode: 9, versionName: "9.9.9", sha256: createHash("sha256").update(apk).digest("hex"), size: apk.length, file: "unison-9.9.9.apk", notes: "test" };
+  writeFileSync(join(dir, "unison-9.9.9.apk"), apk);
   writeFileSync(join(dir, "latest.json"), JSON.stringify(latest));
-  for (const [key, file] of [["app-9.apk", "app-9.apk"], ["latest.json", "latest.json"]]) {
+  for (const [key, file] of [["unison-9.9.9.apk", "unison-9.9.9.apk"], ["latest.json", "latest.json"]]) {
     execFileSync("npx", ["wrangler", "r2", "object", "put", `unison-releases/${key}`, "--local", "--persist-to", persistTo, "--file", join(dir, file)], { stdio: "ignore" });
   }
   return { apk, latest };

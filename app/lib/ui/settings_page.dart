@@ -340,7 +340,28 @@ class _UpdateGroup extends StatelessWidget {
         ],
       ),
     );
-    if (agreed == true) await update.install();
+    if (agreed != true) return;
+    if (await update.install() || !context.mounted) return;
+    // Android has not yet allowed this app to install: say so, and take the person to the page for it
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(S.updatePermissionTitle),
+        content: Text(S.updatePermissionBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(S.cancel),
+          ),
+          TextButton(
+            key: const ValueKey('update-open-settings'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(S.updateOpenSettings),
+          ),
+        ],
+      ),
+    );
+    if (open == true) await update.allowInstalls();
   }
 
   @override

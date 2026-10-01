@@ -599,6 +599,12 @@ abstract final class S {
     'Android asks you to allow Unison to install updates, once. Allow it on the page that opens, then come back and press Install.',
     'Android yêu cầu bạn cho phép Unison cài cập nhật, chỉ một lần. Hãy bật ở trang sắp mở, rồi quay lại và bấm Cài đặt.',
   );
+  static String get updatePermissionTitle =>
+      _t('Allow installing updates', 'Cho phép cài bản cập nhật');
+  static String get updatePermissionBody => _t(
+    'To install an update, Android needs you to allow Unison to install apps. It asks once: turn on “Allow from this source” on the next page, then come back and press Install again.',
+    'Để cài bản cập nhật, Android cần bạn cho phép Unison cài ứng dụng. Chỉ hỏi một lần: hãy bật “Cho phép từ nguồn này” ở trang sắp mở, rồi quay lại và bấm Cài đặt lần nữa.',
+  );
   static String get updateOpenSettings => _t('Open settings', 'Mở cài đặt');
   static String get updateWhatsNew => _t('What’s new', 'Có gì mới');
   static String get updateTryAgain => _t('Try again', 'Thử lại');

@@ -28,7 +28,8 @@ class UpdateController extends ChangeNotifier {
   Future<bool> download({bool allowMetered = false}) =>
       _backend.updateDownload(allowMetered: allowMetered);
 
-  Future<void> install() => _backend.updateInstall();
+  /// False when Android has to be told to allow this app to install first.
+  Future<bool> install() => _backend.updateInstall();
 
   Future<void> allowInstalls() => _backend.updateAllowInstalls();
 

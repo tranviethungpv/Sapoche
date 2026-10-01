@@ -3,8 +3,8 @@
  * handed to callers that present that key (see `authorized` in index.ts). Nothing here can write to the
  * bucket: releases are put there from a computer with `app/tool/release.sh`.
  *
- * The bucket holds `latest.json` and one `app-<versionCode>.apk` per release; old ones stay, so going back
- * is a matter of publishing an older `latest.json`.
+ * The bucket holds `latest.json` and one `unison-<version>.apk` per release (named in the `file` of
+ * `latest.json`); old ones stay, so going back is a matter of publishing an older `latest.json`.
  */
 
 /** What `latest.json` must say; the app checks it again before installing. */
@@ -13,10 +13,14 @@ export interface LatestRelease {
   versionName: string;
   sha256: string;
   size: number;
+  /** Name of the apk in the bucket; left out by the first versions, whose files are `app-<versionCode>.apk`. */
+  file?: string;
   notes?: string;
 }
 
-export const UPDATE_ROUTE = /^\/update\/(latest\.json|app-\d{1,9}\.apk)$/;
+/** A release file by its name, or the legacy `app-<versionCode>.apk` that apps up to 1.3.1 ask for. */
+export const UPDATE_ROUTE = /^\/update\/(latest\.json|unison-[0-9A-Za-z.-]{1,40}\.apk|app-\d{1,9}\.apk)$/;
+const LEGACY = /^app-(\d+)\.apk$/;
 
 /** Serves one of the two kinds of file, with `Range` so that an interrupted download can go on. */
 export async function serveUpdate(request: Request, env: Env, name: string): Promise<Response> {
@@ -25,7 +29,17 @@ export async function serveUpdate(request: Request, env: Env, name: string): Pro
   }
   if (!env.RELEASES) return new Response("Updates are not set up", { status: 404 });
 
-  const object = await env.RELEASES.get(name, {
+  // Apps up to 1.3.1 ask for app-<versionCode>.apk, which is the newest release when that code is the latest's
+  let key = name;
+  const legacy = name.match(LEGACY);
+  if (legacy && !(await env.RELEASES.head(name))) {
+    const latest = await env.RELEASES.get("latest.json");
+    const info = latest ? ((await latest.json()) as LatestRelease) : undefined;
+    if (!info?.file || String(info.versionCode) !== legacy[1]) return new Response("Not found", { status: 404 });
+    key = info.file;
+  }
+
+  const object = await env.RELEASES.get(key, {
     range: request.headers,
     onlyIf: request.headers,
   });

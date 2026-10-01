@@ -4,7 +4,8 @@
 # usage: app/tool/release.sh [--publish] ["what changed"]
 #   without --publish: builds into ~/unison-release-arm64-<version>.apk and writes the update files next to it
 #   with --publish:    also puts them in the private R2 bucket (needs `wrangler login`; the APK first, then
-#                      latest.json, so a phone never reads news of a file that is not there yet)
+#                      latest.json, so a phone never reads news of a file that is not there yet; the file is
+#                      named unison-<version>.apk, and latest.json says so)
 #
 # Bump `version:` in pubspec.yaml first: a phone only offers an update whose build number is higher.
 set -euo pipefail
@@ -45,13 +46,13 @@ LATEST=$(dirname "$OUT")/unison-latest-$NAME.json
 python3 - "$LATEST" "$CODE" "$NAME" "$SHA" "$SIZE" "$NOTES" <<'PY'
 import json, sys
 path, code, name, sha, size, notes = sys.argv[1:]
-json.dump({"versionCode": int(code), "versionName": name, "sha256": sha, "size": int(size), "notes": notes}, open(path, "w"))
+json.dump({"versionCode": int(code), "versionName": name, "sha256": sha, "size": int(size), "file": f"unison-{name}.apk", "notes": notes}, open(path, "w"))
 PY
 echo "built $OUT ($SIZE bytes, sha256 $SHA)"
 
 if [ "$PUBLISH" = 1 ]; then
   cd "$SERVER"
-  npx wrangler r2 object put "unison-releases/app-$CODE.apk" --remote --file "$OUT" --content-type application/vnd.android.package-archive
+  npx wrangler r2 object put "unison-releases/unison-$NAME.apk" --remote --file "$OUT" --content-type application/vnd.android.package-archive
   npx wrangler r2 object put "unison-releases/latest.json" --remote --file "$LATEST" --content-type application/json
   echo "published $NAME ($CODE)"
 else

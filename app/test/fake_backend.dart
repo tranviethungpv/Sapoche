@@ -442,8 +442,14 @@ class FakeBackend implements Backend {
     return updateOnWifi || allowMetered;
   }
 
+  /// What [updateInstall] answers: false is "Android has to allow installs first".
+  bool mayInstall = true;
+
   @override
-  Future<void> updateInstall() => _record('updateInstall');
+  Future<bool> updateInstall() async {
+    await _record('updateInstall');
+    return mayInstall;
+  }
 
   @override
   Future<void> updateAllowInstalls() => _record('updateAllowInstalls');

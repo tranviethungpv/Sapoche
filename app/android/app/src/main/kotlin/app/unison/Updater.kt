@@ -151,22 +151,25 @@ class Updater(
         )
     }
 
-    /** Hands the downloaded file to the system installer. The app is stopped and started again by the system when it succeeds. */
-    fun install() {
+    /**
+     * Hands the downloaded file to the system installer. The app is stopped and started again by the system when
+     * it succeeds. False when Android first has to be told to allow this app to install: the UI explains that.
+     */
+    fun install(): Boolean {
         val state = flow.value
-        val release = state.release ?: return
+        val release = state.release ?: return true
         val file = part(release)
         EventLog.d("update", "install asked: ${release.versionName}, may install: ${context.packageManager.canRequestPackageInstalls()}")
         if (!context.packageManager.canRequestPackageInstalls()) {
             flow.value = state.copy(phase = UpdateState.Phase.NEEDS_PERMISSION)
-            return
+            return false
         }
         val problem = problemWith(file, release)
         if (problem != null) {
             EventLog.d("update", "file refused: $problem")
             file.delete()
             flow.value = state.copy(phase = UpdateState.Phase.FAILED, error = problem)
-            return
+            return true
         }
         EventLog.d("update", "handing ${file.length()} bytes to the system installer")
         flow.value = state.copy(phase = UpdateState.Phase.INSTALLING, error = null)
@@ -178,6 +181,7 @@ class Updater(
                 flow.value = flow.value.copy(phase = UpdateState.Phase.FAILED, error = "install")
             }
         }
+        return true
     }
 
     /** Why the file must not be installed, or null. The system would refuse a foreign file too, but later and less clearly. */
@@ -244,6 +248,7 @@ class Updater(
             .putString("update_sha", release.sha256)
             .putLong("update_size", release.size)
             .putString("update_notes", release.notes)
+            .putString("update_file", release.file)
             .apply()
     }
 
@@ -256,6 +261,7 @@ class Updater(
             prefs.getString("update_sha", "").orEmpty(),
             prefs.getLong("update_size", 0),
             prefs.getString("update_notes", "").orEmpty(),
+            prefs.getString("update_file", null) ?: "app-$code.apk",
         )
     }
 

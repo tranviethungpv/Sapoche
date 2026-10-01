@@ -233,7 +233,9 @@ abstract class Backend {
 
   /// Fetches the version on offer; false when it is waiting for a yes to mobile data.
   Future<bool> updateDownload({bool allowMetered = false});
-  Future<void> updateInstall();
+
+  /// Hands the fetched version to Android to install; false when Android first has to be told to allow it.
+  Future<bool> updateInstall();
 
   /// Opens the system page where the person lets this app install updates.
   Future<void> updateAllowInstalls();
@@ -628,7 +630,8 @@ class NativeBackend implements Backend {
       'metered';
 
   @override
-  Future<void> updateInstall() => _call<void>('updateInstall');
+  Future<bool> updateInstall() async =>
+      await _call<String>('updateInstall') != 'permission';
 
   @override
   Future<void> updateAllowInstalls() => _call<void>('updateAllowInstalls');

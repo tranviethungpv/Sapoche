@@ -184,6 +184,50 @@ void main() {
       expect(backend.calls, contains('updateInstall'));
     });
 
+    testWidgets(
+      'explains and opens Android’s page when installing is not yet allowed',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.mayInstall = false;
+        backend.emit(news(UpdatePhase.ready));
+        await openTopic(tester, 'updates');
+        await tester.tap(find.byKey(const ValueKey('update-action')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Install').last);
+        await tester.pumpAndSettle();
+        expect(find.text('Allow installing updates'), findsOneWidget);
+        expect(backend.calls, isNot(contains('updateAllowInstalls')));
+        await tester.tap(find.byKey(const ValueKey('update-open-settings')));
+        await tester.pumpAndSettle();
+        expect(backend.calls, contains('updateAllowInstalls'));
+      },
+    );
+
+    testWidgets('lets the person decline to open that page', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.mayInstall = false;
+      backend.emit(news(UpdatePhase.ready));
+      await openTopic(tester, 'updates');
+      await tester.tap(find.byKey(const ValueKey('update-action')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Install').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, isNot(contains('updateAllowInstalls')));
+    });
+
+    testWidgets('does not ask when installing goes ahead', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(news(UpdatePhase.ready));
+      await openTopic(tester, 'updates');
+      await tester.tap(find.byKey(const ValueKey('update-action')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Install').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Allow installing updates'), findsNothing);
+    });
+
     testWidgets('leaves the install alone after a no', (tester) async {
       final (backend, _) = await pumpApp(tester);
       backend.emit(news(UpdatePhase.ready));

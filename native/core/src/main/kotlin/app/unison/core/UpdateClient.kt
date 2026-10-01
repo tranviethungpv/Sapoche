@@ -24,6 +24,8 @@ data class Release(
     val sha256: String,
     val size: Long,
     val notes: String,
+    /** Name of the apk on the server; the first versions of the server only had `app-<versionCode>.apk`. */
+    val file: String = "app-$versionCode.apk",
 ) {
     fun isNewerThan(installedCode: Long) = versionCode > installedCode
 }
@@ -64,7 +66,7 @@ class UpdateClient(
 
     private suspend fun fetch(release: Release, file: File, onProgress: (Long) -> Unit) {
         val have = file.length()
-        val call = request("app-${release.versionCode}.apk") { if (have > 0) header("Range", "bytes=$have-") }
+        val call = request(release.file) { if (have > 0) header("Range", "bytes=$have-") }
         client.newCall(call).execute().use { response ->
             // 200 to a Range request: the server started over, so the old part is of no use
             val resumed = response.code == 206 && have > 0
@@ -111,6 +113,7 @@ class UpdateClient(
                 sha256 = text("sha256").lowercase(),
                 size = json["size"]?.jsonPrimitive?.long ?: throw IOException("update info has no size"),
                 notes = json["notes"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                file = json["file"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: "app-${json["versionCode"]?.jsonPrimitive?.long}.apk",
             )
         }
 

@@ -29,8 +29,8 @@ class UpdateClientTest {
     private var latestBody: String? = null
     private val seen = mutableListOf<RecordedRequest>()
 
-    private fun release(sha: String = UpdateClient.sha256(file(apk)), size: Long = apk.size.toLong()) =
-        Release(versionCode = 7, versionName = "1.3.0", sha256 = sha, size = size, notes = "")
+    private fun release(sha: String = UpdateClient.sha256(file(apk)), size: Long = apk.size.toLong(), name: String = "unison-1.3.0.apk") =
+        Release(versionCode = 7, versionName = "1.3.0", sha256 = sha, size = size, notes = "", file = name)
 
     private fun file(bytes: ByteArray) = File(dir, "src.bin").also { it.writeBytes(bytes) }
 
@@ -53,7 +53,7 @@ class UpdateClientTest {
                     seen += request
                     return when (request.url.encodedPath) {
                         "/update/latest.json" -> latestBody?.let { MockResponse.Builder().body(it).build() } ?: MockResponse.Builder().code(404).build()
-                        "/update/app-7.apk" -> serveApk(request)
+                        "/update/unison-1.3.0.apk", "/update/app-7.apk" -> serveApk(request)
                         else -> MockResponse.Builder().code(404).build()
                     }
                 }
@@ -74,8 +74,24 @@ class UpdateClientTest {
     fun `the newest release is read and the key is sent`() = runTest {
         latestBody = """{"versionCode":7,"versionName":"1.3.0","sha256":"ABC","size":12,"notes":"faster"}"""
         val found = client().latest()
-        assertEquals(Release(7, "1.3.0", "abc", 12, "faster"), found)
+        assertEquals(Release(7, "1.3.0", "abc", 12, "faster", "app-7.apk"), found)
         assertEquals("k", seen.single().headers["X-Unison-Key"])
+    }
+
+    @Test
+    fun `the name of the file comes from the info, and the first versions have none`() = runTest {
+        latestBody = """{"versionCode":7,"versionName":"1.3.0","sha256":"abc","size":12,"file":"unison-1.3.0.apk"}"""
+        assertEquals("unison-1.3.0.apk", client().latest()?.file)
+        latestBody = """{"versionCode":7,"versionName":"1.3.0","sha256":"abc","size":12}"""
+        assertEquals("app-7.apk", client().latest()?.file)
+    }
+
+    @Test
+    fun `the file is fetched under the name the release gives`() = runTest {
+        client().download(release(), File(dir, "a.part"))
+        assertEquals("/update/unison-1.3.0.apk", seen.last().url.encodedPath)
+        client().download(release(name = "app-7.apk"), File(dir, "b.part"))
+        assertEquals("/update/app-7.apk", seen.last().url.encodedPath)
     }
 
     @Test
