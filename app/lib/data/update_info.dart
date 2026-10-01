@@ -7,7 +7,17 @@ enum UpdatePhase {
   ready,
   needsPermission,
   installing,
-  failed,
+  failed;
+
+  /// The phase for a name from the native side; spelled with or without underscores, in any case.
+  /// An unknown name is [idle]: showing "nothing going on" is better than an error page.
+  static UpdatePhase parse(String? name) {
+    final wanted = name?.replaceAll('_', '').toLowerCase();
+    return values.firstWhere(
+      (phase) => phase.name.toLowerCase() == wanted,
+      orElse: () => idle,
+    );
+  }
 }
 
 /// Where an update of the app stands, as the native side reports it.

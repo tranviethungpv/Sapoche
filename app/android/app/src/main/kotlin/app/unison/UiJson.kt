@@ -63,7 +63,21 @@ object UiJson {
         val release = state.release
         return JSONObject()
             .put("type", "update")
-            .put("phase", state.phase.name.lowercase())
+            // The names are the ones lib/data/update_info.dart knows (camelCase), not the enum's own
+            .put(
+                "phase",
+                when (state.phase) {
+                    UpdateState.Phase.IDLE -> "idle"
+                    UpdateState.Phase.CHECKING -> "checking"
+                    UpdateState.Phase.UP_TO_DATE -> "upToDate"
+                    UpdateState.Phase.AVAILABLE -> "available"
+                    UpdateState.Phase.DOWNLOADING -> "downloading"
+                    UpdateState.Phase.READY -> "ready"
+                    UpdateState.Phase.NEEDS_PERMISSION -> "needsPermission"
+                    UpdateState.Phase.INSTALLING -> "installing"
+                    UpdateState.Phase.FAILED -> "failed"
+                },
+            )
             .put("installed", state.installed)
             .put("version", release?.versionName ?: JSONObject.NULL)
             .put("notes", release?.notes ?: JSONObject.NULL)

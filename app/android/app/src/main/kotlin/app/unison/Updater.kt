@@ -156,16 +156,19 @@ class Updater(
         val state = flow.value
         val release = state.release ?: return
         val file = part(release)
+        EventLog.d("update", "install asked: ${release.versionName}, may install: ${context.packageManager.canRequestPackageInstalls()}")
         if (!context.packageManager.canRequestPackageInstalls()) {
             flow.value = state.copy(phase = UpdateState.Phase.NEEDS_PERMISSION)
             return
         }
         val problem = problemWith(file, release)
         if (problem != null) {
+            EventLog.d("update", "file refused: $problem")
             file.delete()
             flow.value = state.copy(phase = UpdateState.Phase.FAILED, error = problem)
             return
         }
+        EventLog.d("update", "handing ${file.length()} bytes to the system installer")
         flow.value = state.copy(phase = UpdateState.Phase.INSTALLING, error = null)
         job = scope.launch {
             try {

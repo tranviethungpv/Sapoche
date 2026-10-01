@@ -42,6 +42,28 @@ void main() {
     expect(UpdateInfo.fromJson({'phase': 'nonsense'}).phase, UpdatePhase.idle);
   });
 
+  test('every phase the native side can send is understood', () {
+    // Kotlin's UiJson.update writes these names; one of them once came out as needs_permission and read as idle
+    const sent = {
+      'idle': UpdatePhase.idle,
+      'checking': UpdatePhase.checking,
+      'upToDate': UpdatePhase.upToDate,
+      'available': UpdatePhase.available,
+      'downloading': UpdatePhase.downloading,
+      'ready': UpdatePhase.ready,
+      'needsPermission': UpdatePhase.needsPermission,
+      'installing': UpdatePhase.installing,
+      'failed': UpdatePhase.failed,
+    };
+    sent.forEach((name, phase) {
+      expect(UpdateInfo.fromJson({'phase': name}).phase, phase, reason: name);
+    });
+    expect(UpdatePhase.parse('needs_permission'), UpdatePhase.needsPermission);
+    expect(UpdatePhase.parse('UP_TO_DATE'), UpdatePhase.upToDate);
+    expect(UpdatePhase.parse(null), UpdatePhase.idle);
+    expect(sent.length, UpdatePhase.values.length);
+  });
+
   testWidgets('a dot on the gear tells that a newer version waits', (
     tester,
   ) async {
