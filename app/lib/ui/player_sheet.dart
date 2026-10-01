@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'now_playing_page.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
+import 'widgets/mini_player.dart';
 
 /// The full player as a sheet inside the home screen rather than a route: a pushed route would
 /// cancel the finger that is dragging it open. One animation value, 0 closed to 1 open, is the
@@ -150,8 +151,11 @@ class PlayerSheetLayer extends StatelessWidget {
 
   final PlayerSheetController controller;
 
-  /// The sheet is fully opaque, and has the whole width, once this much of the way is open.
+  /// The sheet has taken the whole width once this much of the way is open.
   static const _settled = 0.5;
+
+  /// The picture of the mini player's capsule on top of the page is gone once this much of the way is open.
+  static const _melted = 0.3;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -173,8 +177,9 @@ class PlayerSheetLayer extends StatelessWidget {
         mini.height + (screen.height - mini.height) * open,
         Radius.circular(22 * (1 - grown)),
       );
-      // The mini player's own words and buttons are under it, and give way as the page comes in
-      final seen = Curves.easeIn.transform((open / 0.25).clamp(0.0, 1.0));
+      // The page is there, whole, from the first moment. What turns it into the mini player's capsule at first is a
+      // picture of the capsule on top of it, which melts away as the page grows
+      final capsule = 1 - (open / _melted).clamp(0.0, 1.0);
       // The flying cover is part of the sheet, so it moves with it and can never lag behind or
       // stick out past its edge
       return Transform.translate(
@@ -185,7 +190,27 @@ class PlayerSheetLayer extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Opacity(opacity: seen, child: page),
+              page!,
+              if (capsule > 0)
+                Positioned(
+                  left: mini.left,
+                  top: 0,
+                  width: mini.width,
+                  height: mini.height,
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: capsule,
+                      // The sheet is not on a sheet of material, which the capsule's buttons need
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: MiniPlayerCapsule(
+                          controller: AppScope.roomOf(context),
+                          ghost: true,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (controller.inMotion) _CoverFlight(controller: controller),
             ],
           ),

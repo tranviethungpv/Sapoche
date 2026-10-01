@@ -400,12 +400,21 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     /// Waits until the item can start at once; throws when it cannot be played or takes too long.
     private func waitUntilReady(_ item: AVPlayerItem) async throws {
-        try await withTimeout(ms: 20_000) {
-            for await status in item.publisher(for: \.status, options: [.initial, .new]).values {
-                if status == .readyToPlay { return }
-                if status == .failed { throw item.error ?? URLError(.cannotDecodeContentData) }
+        do {
+            try await withTimeout(ms: 20_000) {
+                // The status is looked at, not observed: a change that comes between two looks cannot be missed, which
+                // a file that opens at once could do to an observer
+                while true {
+                    switch item.status {
+                    case .readyToPlay: return
+                    case .failed: throw item.error ?? URLError(.cannotDecodeContentData)
+                    default: try await Task.sleep(nanoseconds: 40_000_000)
+                    }
+                }
             }
-            try Task.checkCancellation()
+        } catch is TimedOut {
+            let waiting = player.reasonForWaitingToPlay?.rawValue ?? "nothing"
+            throw PlayerNotReady(message: "The player did not get ready (item status \(item.status.rawValue), playable \(item.asset.isPlayable), waiting for \(waiting))")
         }
     }
 
@@ -534,6 +543,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             log("could not take the audio session: \(error.localizedDescription)")
         }
     }
+}
+
+/// The player took too long to get ready; the message says what state it was in.
+struct PlayerNotReady: Error, LocalizedError {
+    let message: String
+
+    var errorDescription: String? { message }
 }
 
 /// The picture of the playing song, as Flutter asks for it: the newest frame the player made.

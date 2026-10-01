@@ -787,6 +787,14 @@ void main() {
       tester.getTopLeft(find.byType(NowPlayingPage)).dy,
       closeTo(miniTop - 240, 1),
     );
+    // The page is whole from the start; a picture of the capsule on top of it melts away as it grows
+    expect(find.byType(MiniPlayerCapsule), findsNWidgets(2));
+    await gesture.moveBy(const Offset(0, -2000));
+    await tester.pump(const Duration(milliseconds: 20));
+    // Fully open, the home screen is hidden and so is its capsule; the picture is gone
+    expect(find.byType(MiniPlayerCapsule), findsNothing);
+    expect(find.byType(MiniPlayerCapsule, skipOffstage: false), findsOneWidget);
+    await gesture.moveBy(const Offset(0, 2000));
     // Let go below the half way: it goes back into the mini player
     await gesture.up();
     for (var i = 0; i < 8; i++) {
