@@ -134,6 +134,42 @@ void main() {
       expect(backend.calls, contains('updateDownload false'));
     });
 
+    testWidgets(
+      'shows the notes with their headings and bullets, line by line',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.emit(
+          news(
+            UpdatePhase.available,
+            notes: 'Smoother\n- 120 Hz everywhere\n- Calmer player\nRooms\n- Names offered',
+          ),
+        );
+        await openTopic(tester, 'updates');
+        final notes = find.byKey(const ValueKey('release-notes'));
+        expect(
+          find.descendant(of: notes, matching: find.text('Smoother')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: notes, matching: find.text('Rooms')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: notes, matching: find.text('120 Hz everywhere')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: notes, matching: find.text('Names offered')),
+          findsOneWidget,
+        );
+        // One bullet for each of the three lines that start with "- "
+        expect(
+          find.descendant(of: notes, matching: find.text('•')),
+          findsNWidgets(3),
+        );
+      },
+    );
+
     testWidgets('asks before using mobile data', (tester) async {
       final (backend, _) = await pumpApp(tester);
       backend.updateOnWifi = false;

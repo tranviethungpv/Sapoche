@@ -1,0 +1,10 @@
+Mượt hơn, đẹp hơn
+- 120 Hz: hiệu ứng và cuộn trang chạy hết tốc độ làm tươi của màn hình, và việc vẽ theo kịp.
+- Nền trình phát lấy màu từ ảnh bìa, mờ nhẹ, theo phong cách Apple Music.
+- Thanh tab và mini player đặc thay vì làm mờ: chính lớp làm mờ đã khiến màn hình bị giật.
+Phòng nghe chung
+- Tên điện thoại được gợi ý làm tên của bạn, nên bấm link mời là vào phòng ngay.
+- Lời mời đang chờ nhập tên được giữ lại, không bị mất.
+- Thiết bị vào lại phòng không còn hiện hai lần.
+Cập nhật
+- Cài bản cập nhật giờ hỏi quyền cần thiết ngay trong một hộp thoại.

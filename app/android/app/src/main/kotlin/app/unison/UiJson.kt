@@ -80,7 +80,8 @@ object UiJson {
             )
             .put("installed", state.installed)
             .put("version", release?.versionName ?: JSONObject.NULL)
-            .put("notes", release?.notes ?: JSONObject.NULL)
+            // In the language the app speaks, when the release has its notes in it
+            .put("notes", release?.let { if (UnisonApp.language.value == "vi" && it.notesVi.isNotBlank()) it.notesVi else it.notes } ?: JSONObject.NULL)
             .put("size", release?.size ?: 0L)
             .put("done", state.doneBytes)
             .put("error", state.error ?: JSONObject.NULL)

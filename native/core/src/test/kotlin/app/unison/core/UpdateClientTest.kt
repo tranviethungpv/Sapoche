@@ -87,6 +87,16 @@ class UpdateClientTest {
     }
 
     @Test
+    fun `notes with several lines and in Vietnamese come through whole`() = runTest {
+        latestBody = """{"versionCode":7,"versionName":"1.3.0","sha256":"abc","size":12,"notes":"Smoother\n- 120 Hz","notesVi":"Mượt hơn\n- 120 Hz"}"""
+        val release = client().latest()!!
+        assertEquals("Smoother\n- 120 Hz", release.notes)
+        assertEquals("Mượt hơn\n- 120 Hz", release.notesVi)
+        latestBody = """{"versionCode":7,"versionName":"1.3.0","sha256":"abc","size":12,"notes":"x"}"""
+        assertEquals("", client().latest()!!.notesVi)
+    }
+
+    @Test
     fun `the file is fetched under the name the release gives`() = runTest {
         client().download(release(), File(dir, "a.part"))
         assertEquals("/update/unison-1.3.0.apk", seen.last().url.encodedPath)

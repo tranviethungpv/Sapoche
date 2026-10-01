@@ -1,0 +1,10 @@
+Smoother and prettier
+- 120 Hz: animations and scrolling now use your display's full refresh rate, and drawing keeps up with it.
+- The player's background takes its colours from the cover, softly blurred, like Apple Music.
+- The tab bar and the mini player are solid instead of blurred: the blur was what made the screen stutter.
+Rooms
+- Your phone's name is offered as your name, so following an invitation takes you straight in.
+- An invitation that is waiting for a name is kept instead of lost.
+- A device that comes back no longer shows up twice in the room.
+Updates
+- Installing an update now asks for the permission it needs in a dialog.

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Builds the release APK, checks it, and makes it ready for the app's own updates (Settings > Updates).
 #
-# usage: app/tool/release.sh [--publish] ["what changed"]
+# usage: app/tool/release.sh [--publish] ["a line of what changed" ...]
+#   The notes people read under Settings > Updates come from app/release-notes/<version>.txt (English) and
+#   <version>.vi.txt (Vietnamese; shown when the app speaks Vietnamese). A line starting with "- " is a bullet, any
+#   other line is a heading. Lines given on the command line replace the English file.
 #   without --publish: builds into ~/unison-release-arm64-<version>.apk and writes the update files next to it
 #   with --publish:    also puts them in the private R2 bucket (needs `wrangler login`; the APK first, then
 #                      latest.json, so a phone never reads news of a file that is not there yet; the file is
@@ -12,7 +15,6 @@ set -euo pipefail
 
 PUBLISH=0
 if [ "${1:-}" = "--publish" ]; then PUBLISH=1; shift; fi
-NOTES=${1:-}
 
 APP=$(cd "$(dirname "$0")/.." && pwd)
 SERVER=$(cd "$APP/../server" && pwd)
@@ -21,6 +23,7 @@ BUILD_TOOLS=$(ls -d "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/* | sort -V
 export PATH=$HOME/.local/share/node/bin:$PATH
 
 VERSION=$(sed -n 's/^version: *//p' "$APP/pubspec.yaml")
+NOTES_ARGS=("$@")
 NAME=${VERSION%+*}
 CODE=${VERSION#*+}
 [ "$NAME" != "$VERSION" ] || { echo "pubspec.yaml version needs a build number (1.2.3+4)"; exit 1; }
@@ -43,10 +46,22 @@ echo "$BADGING" | grep -q "application-debuggable" && { echo "the APK is debugga
 SHA=$(sha256sum "$OUT" | cut -d' ' -f1)
 SIZE=$(stat -c %s "$OUT")
 LATEST=$(dirname "$OUT")/unison-latest-$NAME.json
-python3 - "$LATEST" "$CODE" "$NAME" "$SHA" "$SIZE" "$NOTES" <<'PY'
-import json, sys
-path, code, name, sha, size, notes = sys.argv[1:]
-json.dump({"versionCode": int(code), "versionName": name, "sha256": sha, "size": int(size), "file": f"unison-{name}.apk", "notes": notes}, open(path, "w"))
+python3 - "$LATEST" "$CODE" "$NAME" "$SHA" "$SIZE" "$APP/release-notes" "${NOTES_ARGS[@]+"${NOTES_ARGS[@]}"}" <<'PY'
+import json, os, sys
+path, code, name, sha, size, folder, *lines = sys.argv[1:]
+
+def read(file):
+    full = os.path.join(folder, file)
+    return open(full, encoding="utf-8").read().strip() if os.path.exists(full) else ""
+
+notes = "\n".join(lines).strip() or read(f"{name}.txt")
+notes_vi = read(f"{name}.vi.txt")
+latest = {"versionCode": int(code), "versionName": name, "sha256": sha, "size": int(size), "file": f"unison-{name}.apk", "notes": notes}
+if notes_vi:
+    latest["notesVi"] = notes_vi
+if not notes:
+    print(f"warning: no release notes for {name} (app/release-notes/{name}.txt)", file=sys.stderr)
+json.dump(latest, open(path, "w"), ensure_ascii=False)
 PY
 echo "built $OUT ($SIZE bytes, sha256 $SHA)"
 

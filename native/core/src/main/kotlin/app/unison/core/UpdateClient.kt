@@ -26,6 +26,8 @@ data class Release(
     val notes: String,
     /** Name of the apk on the server; the first versions of the server only had `app-<versionCode>.apk`. */
     val file: String = "app-$versionCode.apk",
+    /** The notes in Vietnamese, when there are any. */
+    val notesVi: String = "",
 ) {
     fun isNewerThan(installedCode: Long) = versionCode > installedCode
 }
@@ -113,6 +115,7 @@ class UpdateClient(
                 sha256 = text("sha256").lowercase(),
                 size = json["size"]?.jsonPrimitive?.long ?: throw IOException("update info has no size"),
                 notes = json["notes"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                notesVi = json["notesVi"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 file = json["file"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: "app-${json["versionCode"]?.jsonPrimitive?.long}.apk",
             )
         }

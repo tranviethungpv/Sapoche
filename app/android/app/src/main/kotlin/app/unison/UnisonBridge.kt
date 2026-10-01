@@ -308,6 +308,8 @@ class UnisonBridge(
             }
             "setLanguage" -> {
                 UnisonApp.setLanguage(call.argument<String>("code") ?: "en")
+                // The notes of an update come in the language that was just chosen
+                if (visible) emit(UiJson.update(UnisonApp.updater.state.value))
                 return null
             }
             "updateCheck" -> {

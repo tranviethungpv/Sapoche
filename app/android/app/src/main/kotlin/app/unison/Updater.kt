@@ -248,6 +248,7 @@ class Updater(
             .putString("update_sha", release.sha256)
             .putLong("update_size", release.size)
             .putString("update_notes", release.notes)
+            .putString("update_notes_vi", release.notesVi)
             .putString("update_file", release.file)
             .apply()
     }
@@ -262,6 +263,7 @@ class Updater(
             prefs.getLong("update_size", 0),
             prefs.getString("update_notes", "").orEmpty(),
             prefs.getString("update_file", null) ?: "app-$code.apk",
+            prefs.getString("update_notes_vi", "").orEmpty(),
         )
     }
 
