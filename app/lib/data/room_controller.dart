@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../strings.dart';
 import 'backend.dart';
+import 'calm.dart';
 import 'models.dart';
 import 'recent_rooms.dart';
 
@@ -108,6 +109,8 @@ class RoomController extends ChangeNotifier {
         break; // LibraryController listens for this itself
       case UpdateEvent():
         break; // and UpdateController for this
+      case CalmEvent(:final on):
+        Calm.on.value = on;
       case ErrorEvent(:final error):
         final text = _describe(error);
         if (text != null) _messages.add(text);

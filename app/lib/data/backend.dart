@@ -46,6 +46,12 @@ class SleepEvent extends BackendEvent {
   final SleepState sleep;
 }
 
+/// The phone became warm or went into battery saver ([on]), or stopped being so.
+class CalmEvent extends BackendEvent {
+  const CalmEvent(this.on);
+  final bool on;
+}
+
 /// How far an update of the app has come.
 class UpdateEvent extends BackendEvent {
   const UpdateEvent(this.info);
@@ -249,6 +255,7 @@ class NativeBackend implements Backend {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
       'library' => const LibraryEvent(),
       'update' => UpdateEvent(UpdateInfo.fromJson(json)),
+      'calm' => CalmEvent(json['on'] as bool),
       'sleep' => SleepEvent(SleepState.fromJson(json)),
       'invite' => InviteEvent(json['code'] as String),
       'notice' => NoticeEvent(

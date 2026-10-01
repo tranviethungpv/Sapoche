@@ -32,6 +32,7 @@ class UnisonApp : Application() {
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
         suggestions = SuggestionFeed(library, resolver, musicFeed) { EventLog.d("suggest", it) }
+        heat = Heat(this)
         updater = Updater(this, UpdateClient(Config.SERVER, Config.authHeaders))
     }
 
@@ -73,6 +74,10 @@ class UnisonApp : Application() {
 
         /** Songs to offer and to carry on with. */
         lateinit var suggestions: SuggestionFeed
+            private set
+
+        /** Whether the phone is warm or saving power; work nobody waits for is put off meanwhile. */
+        lateinit var heat: Heat
             private set
 
         /** Checks for a newer release of this app and installs it. */

@@ -89,6 +89,8 @@ class UnisonBridge(
                 if (visible) emit(UiJson.library()) else libraryDirty = true
             }
         }
+        // The screen slows its small moving parts down while the phone is warm
+        scope.launch { UnisonApp.heat.calm.collect { if (visible) emit(UiJson.calm(it)) } }
         // Progress of an update is only sent while somebody looks; the UI is brought up to date when it returns
         scope.launch { UnisonApp.updater.state.collect { if (visible) emit(UiJson.update(it)) } }
     }
@@ -137,6 +139,7 @@ class UnisonBridge(
                 emit(UiJson.library())
             }
             ensureService()
+            emit(UiJson.calm(UnisonApp.heat.calm.value))
             UnisonApp.updater.refreshPermission()
             UnisonApp.updater.check(force = false)
             emit(UiJson.update(UnisonApp.updater.state.value))
@@ -160,7 +163,7 @@ class UnisonBridge(
     private fun renewSuggestionsIfDue() {
         val now = SystemClock.elapsedRealtime()
         if (lastRenew != 0L && now - lastRenew < RENEW_EVERY_MS) return
-        if (isMetered()) return
+        if (isMetered() || UnisonApp.heat.calm.value) return
         lastRenew = now
         scope.launch { UnisonApp.suggestions.renew(force = false) }
     }
@@ -189,6 +192,7 @@ class UnisonBridge(
             emit(UiJson.invite(it))
         }
         emit(UiJson.update(UnisonApp.updater.state.value))
+        emit(UiJson.calm(UnisonApp.heat.calm.value))
         observing?.cancel()
         observing = scope.launch {
             UnisonApp.group.collectLatest { group ->

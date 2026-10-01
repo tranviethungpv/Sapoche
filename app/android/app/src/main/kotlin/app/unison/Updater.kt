@@ -95,7 +95,7 @@ class Updater(
                 }
                 saveRelease(release)
                 flow.value = flow.value.copy(phase = UpdateState.Phase.AVAILABLE, release = release, doneBytes = 0)
-                if (!isMetered()) fetch(release)
+                if (!isMetered() && !UnisonApp.heat.calm.value) fetch(release)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

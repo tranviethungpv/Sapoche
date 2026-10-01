@@ -14,6 +14,8 @@ import 'ui/scope.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Flutter keeps up to 100 MB of decoded pictures; covers are small and a phone has better uses for the memory
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 48 << 20;
   watchFrames();
   final settings = await AppSettings.load();
   final recents = await RecentRooms.load();

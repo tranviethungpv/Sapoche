@@ -22,6 +22,11 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
     override suspend fun doWork(): Result {
         val waiting = inputData.getBoolean(KEY_WAITING, false)
         if (waiting) {
+            // Liked songs saved by themselves: not while the phone is warm, they can wait for it to cool
+            if (UnisonApp.heat.calm.value) {
+                EventLog.d("download", "put off: the phone is warm or saving power")
+                return Result.retry()
+            }
             if (!applicationContext.getSharedPreferences("unison", Context.MODE_PRIVATE).getBoolean(KEY_AUTO, false)) {
                 return Result.success()
             }

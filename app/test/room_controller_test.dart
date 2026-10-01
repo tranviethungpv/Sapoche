@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unison/data/backend.dart';
+import 'package:unison/data/calm.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/data/recent_rooms.dart';
@@ -26,6 +27,20 @@ void main() {
     () {
       expect(controller.profile.name, 'Anna');
       expect(controller.ready, isFalse);
+    },
+  );
+
+  test(
+    'slows the screen down while the native side says the phone is warm',
+    () async {
+      addTearDown(() => Calm.on.value = false);
+      backend.emit(const CalmEvent(true));
+      await settle();
+      expect(Calm.on.value, isTrue);
+      expect(Calm.slowdown, 2);
+      backend.emit(const CalmEvent(false));
+      await settle();
+      expect(Calm.slowdown, 1);
     },
   );
 

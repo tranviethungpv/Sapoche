@@ -55,6 +55,9 @@ object UiJson {
             .toString()
     }
 
+    /** The phone is warm or saving power ([on]): the screen should move less. */
+    fun calm(on: Boolean): String = JSONObject().put("type", "calm").put("on", on).toString()
+
     /** Where an update of the app stands; see [Updater]. */
     fun update(state: UpdateState): String {
         val release = state.release
