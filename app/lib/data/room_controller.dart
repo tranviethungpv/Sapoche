@@ -167,6 +167,10 @@ class RoomController extends ChangeNotifier {
     try {
       await _backend.createRoom(name.trim());
       return null;
+    } on BackendException catch (e) {
+      return e.code == 'not_configured'
+          ? S.serverNotSet
+          : '${S.createFailed}: $e';
     } on Object catch (e) {
       return '${S.createFailed}: $e';
     }
@@ -176,9 +180,20 @@ class RoomController extends ChangeNotifier {
     try {
       await _backend.join(code.trim().toUpperCase(), name.trim());
       return null;
+    } on BackendException catch (e) {
+      return e.code == 'not_configured'
+          ? S.serverNotSet
+          : '${S.joinFailed}: $e';
     } on Object catch (e) {
       return '${S.joinFailed}: $e';
     }
+  }
+
+  /// Where the room server is and its key; what is left out stays as it was.
+  Future<void> configure({String? server, String? key}) async {
+    await _backend.configure(server: server, key: key);
+    _profile = await _backend.profile();
+    notifyListeners();
   }
 
   Future<void> leave() => _run(_backend.leave);

@@ -509,6 +509,8 @@ class Profile {
     this.trimMs = 0,
     this.server = '',
     this.autoplay = true,
+    this.configured = true,
+    this.hasKey = true,
   });
 
   /// Name used in the last room, to prefill the field asking for it.
@@ -522,12 +524,20 @@ class Profile {
   /// The music carries on with similar songs when the queue runs out.
   final bool autoplay;
 
+  /// The address of the room server is known. On Android it is built into the app; on iOS the person enters it.
+  final bool configured;
+
+  /// The key the server asks for is known.
+  final bool hasKey;
+
   Profile withAutoplay(bool value) => Profile(
     name: name,
     device: device,
     trimMs: trimMs,
     server: server,
     autoplay: value,
+    configured: configured,
+    hasKey: hasKey,
   );
 
   factory Profile.fromMap(Map<Object?, Object?> map) => Profile(
@@ -536,6 +546,8 @@ class Profile {
     trimMs: (map['trimMs'] as num?)?.toInt() ?? 0,
     server: map['server'] as String? ?? '',
     autoplay: map['autoplay'] as bool? ?? true,
+    configured: map['configured'] as bool? ?? true,
+    hasKey: map['key'] as bool? ?? true,
   );
 }
 

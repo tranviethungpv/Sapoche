@@ -30,6 +30,10 @@ class FakeBackend implements Backend {
   Future<Profile> profile() async => profileValue;
 
   @override
+  Future<void> configure({String? server, String? key}) =>
+      _record('configure $server $key');
+
+  @override
   Future<String> createRoom(String name) async {
     await _record('createRoom $name');
     return 'ABC234';

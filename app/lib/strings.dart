@@ -574,6 +574,19 @@ abstract final class S {
 
   // Updates of the app
   static String get updates => _t('Updates', 'Cập nhật');
+  static String get serverSection => _t('Server', 'Máy chủ');
+  static String get serverAddress => _t('Address', 'Địa chỉ');
+  static String get serverKey => _t('Room key', 'Khoá phòng');
+  static String get serverKeySet => _t('Set', 'Đã đặt');
+  static String get serverKeyNotSet => _t('Not set', 'Chưa đặt');
+  static String get serverHelp => _t(
+    'Where your Unison server is and the key it asks for. They stay on this phone and are not part of the app.',
+    'Địa chỉ máy chủ Unison của bạn và khoá nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng.',
+  );
+  static String get serverNotSet => _t(
+    'Enter the server address and key first (Settings > Server).',
+    'Hãy nhập địa chỉ máy chủ và khoá trước (Cài đặt > Máy chủ).',
+  );
   static String get updateVersion => _t('Version', 'Phiên bản');
   static String get updateUpToDate =>
       _t('Unison is up to date', 'Unison đã là bản mới nhất');

@@ -11,6 +11,20 @@ on:
       - '.github/workflows/ios.yml'
 
 jobs:
+  # The native side of iOS is Swift; its portable part (everything but the player and the system's own services) is
+  # compiled and tested here on Linux, where it is quick, before the macOS job builds the whole app.
+  swift:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container: swift:6.3-noble
+    defaults:
+      run:
+        working-directory: app/packages/unison_native
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y libsqlite3-dev
+      - run: swift test
+
   ipa:
     runs-on: macos-26
     timeout-minutes: 30

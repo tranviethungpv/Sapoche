@@ -1,0 +1,387 @@
+import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+/// Brings the file at an address onto the disk.
+protocol FileFetcher: Sendable {
+    /// Writes the body of [url] to [file] and gives back its size; throws when the answer is not all there. Stops
+    /// when the calling task is cancelled.
+    func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64
+}
+
+struct URLSessionFetcher: FileFetcher {
+    private let session: URLSession
+
+    init(timeout: TimeInterval = 20) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = timeout
+        session = URLSession(configuration: configuration)
+    }
+
+    func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
+        var request = URLRequest(url: url)
+        // YouTube's servers throttle a plain GET to about real-time speed; asking for a range, even all of it, does not
+        request.setValue("bytes=0-", forHTTPHeaderField: "Range")
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        let box = TaskBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int64, Error>) in
+                let task = session.downloadTask(with: request) { temporary, response, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    guard let temporary, let response = response as? HTTPURLResponse else {
+                        continuation.resume(throwing: URLError(.badServerResponse))
+                        return
+                    }
+                    guard response.statusCode == 200 || response.statusCode == 206 else {
+                        continuation.resume(throwing: HTTPFailure(status: response.statusCode, service: "YouTube"))
+                        return
+                    }
+                    do {
+                        let manager = FileManager.default
+                        try? manager.removeItem(at: file)
+                        try manager.moveItem(at: temporary, to: file)
+                        let size = (try manager.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.int64Value ?? 0
+                        // A range answer says how long the whole file is; what arrived must be all of it
+                        if let total = Self.total(response), total != size {
+                            try? manager.removeItem(at: file)
+                            continuation.resume(throwing: URLError(.networkConnectionLost))
+                            return
+                        }
+                        continuation.resume(returning: size)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+                box.set(task)
+                task.resume()
+            }
+        } onCancel: {
+            box.cancel()
+        }
+    }
+
+    /// The length of the whole file, from "Content-Range: bytes 0-3449446/3449447".
+    private static func total(_ response: HTTPURLResponse) -> Int64? {
+        guard let range = response.value(forHTTPHeaderField: "Content-Range"), let slash = range.lastIndex(of: "/") else { return nil }
+        return Int64(range[range.index(after: slash)...])
+    }
+}
+
+/// Holds the task of a transfer so that cancelling the caller can reach it.
+final class TaskBox: @unchecked Sendable {
+    private var task: URLSessionTask?
+    private var cancelled = false
+    private let lock = NSLock()
+
+    func set(_ new: URLSessionTask) {
+        lock.lock()
+        defer { lock.unlock() }
+        task = new
+        if cancelled { new.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        cancelled = true
+        task?.cancel()
+    }
+}
+
+/// The songs kept on disk, in two places under the same name, the video id:
+/// - downloads: songs the person chose to keep. Nothing ever removes them but the person.
+/// - play: what was played, so hearing it again costs no data. The oldest goes first once it is full.
+/// A song is one whole file; a file is only given a name once all of it is there.
+final class MediaFiles: @unchecked Sendable {
+    private let downloadsDir: URL
+    private let playDir: URL
+    private let lock = NSLock()
+    private var playLimitBytes: Int64
+
+    init(downloadsDir: URL, playDir: URL, playLimitBytes: Int64) {
+        self.downloadsDir = downloadsDir
+        self.playDir = playDir
+        self.playLimitBytes = playLimitBytes
+        try? FileManager.default.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: playDir, withIntermediateDirectories: true)
+        // Half-written files from a run that was cut short are of no use
+        for dir in [downloadsDir, playDir] {
+            for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where file.pathExtension == "part" {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
+    }
+
+    func setPlayLimit(_ bytes: Int64) {
+        lock.lock()
+        playLimitBytes = bytes
+        lock.unlock()
+        trimPlay()
+    }
+
+    /// The file of [videoId], from the downloads if it is there, else from what was played; nil when neither has it.
+    func file(_ videoId: String) -> URL? {
+        let download = downloaded(videoId)
+        if FileManager.default.fileExists(atPath: download.path) { return download }
+        let played = played(videoId)
+        guard FileManager.default.fileExists(atPath: played.path) else { return nil }
+        // Used just now, so it is the last to go
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: played.path)
+        return played
+    }
+
+    func isDownloaded(_ videoId: String) -> Bool { FileManager.default.fileExists(atPath: downloaded(videoId).path) }
+
+    func downloaded(_ videoId: String) -> URL { downloadsDir.appendingPathComponent(Self.name(videoId) + ".m4a") }
+
+    func played(_ videoId: String) -> URL { playDir.appendingPathComponent(Self.name(videoId) + ".m4a") }
+
+    /// Where a file is written while it is not all there yet.
+    func part(_ videoId: String, download: Bool) -> URL {
+        (download ? downloadsDir : playDir).appendingPathComponent(Self.name(videoId) + ".part")
+    }
+
+    /// Gives the finished [part] its name; for the downloads, what was played of it is thrown away.
+    func finish(_ videoId: String, download: Bool) throws {
+        let part = part(videoId, download: download)
+        let target = download ? downloaded(videoId) : played(videoId)
+        try? FileManager.default.removeItem(at: target)
+        try FileManager.default.moveItem(at: part, to: target)
+        if download {
+            try? FileManager.default.removeItem(at: played(videoId))
+        } else {
+            trimPlay()
+        }
+    }
+
+    /// Moves what was played into the downloads, so that it need not be fetched again.
+    @discardableResult
+    func keepPlayed(_ videoId: String) -> Bool {
+        let played = played(videoId)
+        guard FileManager.default.fileExists(atPath: played.path) else { return false }
+        let target = downloaded(videoId)
+        try? FileManager.default.removeItem(at: target)
+        return (try? FileManager.default.moveItem(at: played, to: target)) != nil
+    }
+
+    func removeDownload(_ videoId: String) {
+        try? FileManager.default.removeItem(at: downloaded(videoId))
+    }
+
+    func clearDownloads() { empty(downloadsDir) }
+
+    func clearPlay() { empty(playDir) }
+
+    func downloadBytes() -> Int64 { size(of: downloadsDir) }
+
+    func playBytes() -> Int64 { size(of: playDir) }
+
+    func size(ofDownload videoId: String) -> Int64 {
+        ((try? FileManager.default.attributesOfItem(atPath: downloaded(videoId).path))?[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    /// Lets the oldest played songs go until what is left fits the limit.
+    func trimPlay() {
+        lock.lock()
+        let limit = playLimitBytes
+        lock.unlock()
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(at: playDir, includingPropertiesForKeys: keys) else { return }
+        var entries = files.filter { $0.pathExtension == "m4a" }.map { file -> (URL, Date, Int64) in
+            let values = try? file.resourceValues(forKeys: Set(keys))
+            return (file, values?.contentModificationDate ?? .distantPast, Int64(values?.fileSize ?? 0))
+        }.sorted { $0.1 < $1.1 }
+        var total = entries.reduce(0) { $0 + $1.2 }
+        while total > limit, !entries.isEmpty {
+            let oldest = entries.removeFirst()
+            try? FileManager.default.removeItem(at: oldest.0)
+            total -= oldest.2
+        }
+    }
+
+    private func size(of dir: URL) -> Int64 {
+        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        return files.filter { $0.pathExtension == "m4a" }.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+    }
+
+    private func empty(_ dir: URL) {
+        for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    // A video id has only letters, digits, - and _, but nothing is written with a name that came from outside unchecked
+    private static func name(_ videoId: String) -> String {
+        String(videoId.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })
+    }
+}
+
+/// Resolves video ids to stream addresses and keeps them for a while. A stream address expires after about six hours.
+actor StreamCache {
+    struct Pick: Equatable {
+        let url: String
+        let itag: Int
+        let contentLength: Int64
+        let userAgent: String
+        let track: TrackInfo
+    }
+
+    private struct Entry {
+        let resolved: Resolved
+        let at: Date
+    }
+
+    private static let maxAge: TimeInterval = 4 * 60 * 60
+
+    private let resolver: StreamResolver
+    private var entries: [String: Entry] = [:]
+    private var pending: [String: Task<Resolved, Error>] = [:]
+
+    init(resolver: StreamResolver) {
+        self.resolver = resolver
+    }
+
+    /// The best audio stream of [videoId], resolving if needed. One resolve per video at a time, so a preload and a play
+    /// do not race.
+    func audio(_ videoId: String) async throws -> Pick {
+        let resolved = try await resolved(videoId)
+        let best = resolved.best
+        return Pick(url: best.url, itag: best.itag, contentLength: best.contentLength, userAgent: resolved.userAgent, track: resolved.track)
+    }
+
+    /// The picture-only stream of [videoId] that fits [maxHeight], or nil when the video has none that an iPhone plays.
+    func video(_ videoId: String, maxHeight: Int) async throws -> (url: String, height: Int, userAgent: String)? {
+        let resolved = try await resolved(videoId)
+        guard let pick = VideoPicker.pick(resolved.videos, maxHeight: maxHeight) else { return nil }
+        return (pick.url, pick.height, resolved.userAgent)
+    }
+
+    /// What is known about the song: its title, artist, picture and length, from the same resolve as its stream.
+    func track(_ videoId: String) async throws -> TrackInfo {
+        try await resolved(videoId).track
+    }
+
+    /// Drops the kept address so the next [audio] resolves again.
+    func invalidate(_ videoId: String) {
+        entries[videoId] = nil
+    }
+
+    private func resolved(_ videoId: String) async throws -> Resolved {
+        if let entry = entries[videoId], Date().timeIntervalSince(entry.at) < Self.maxAge { return entry.resolved }
+        if let running = pending[videoId] { return try await running.value }
+        let task = Task { try await resolver.resolve(videoId) }
+        pending[videoId] = task
+        defer { pending[videoId] = nil }
+        let found = try await task.value
+        entries[videoId] = Entry(resolved: found, at: Date())
+        return found
+    }
+}
+
+/// Where a song comes from when it is played or kept: a file on the disk, or the stream itself for the rare song too
+/// long to fetch whole.
+struct Playable: Equatable {
+    let url: URL
+    let isFile: Bool
+    let headers: [String: String]
+}
+
+/// Brings songs onto the disk, as whole files, and tells where a song can be played from. A song that was played or
+/// downloaded before is there already, and then nothing is fetched.
+actor MediaLibrary {
+    /// A song longer than this is played from the stream, not fetched whole first.
+    static let wholeLimitBytes: Int64 = 40 * 1024 * 1024
+    private static let attempts = 3
+
+    private let files: MediaFiles
+    private let streams: StreamCache
+    private let fetcher: FileFetcher
+    private let log: @Sendable (String) -> Void
+    private var running: [String: Task<Int64, Error>] = [:]
+
+    init(files: MediaFiles, streams: StreamCache, fetcher: FileFetcher, log: @escaping @Sendable (String) -> Void = { _ in }) {
+        self.files = files
+        self.streams = streams
+        self.fetcher = fetcher
+        self.log = log
+    }
+
+    /// Where to play [videoId] from, fetching it first when it is not on the disk.
+    func playable(_ videoId: String) async throws -> Playable {
+        if let file = files.file(videoId) { return Playable(url: file, isFile: true, headers: [:]) }
+        var problem: Error = ResolveFailure(message: "No stream for \(videoId)")
+        for attempt in 1...Self.attempts {
+            do {
+                let pick = try await streams.audio(videoId)
+                guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
+                if pick.contentLength > Self.wholeLimitBytes {
+                    log("\(videoId) is \(pick.contentLength / 1_048_576) MB, played from the stream")
+                    return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
+                }
+                _ = try await fetch(videoId, pick, download: false)
+                if let file = files.file(videoId) { return Playable(url: file, isFile: true, headers: [:]) }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                problem = error
+                log("\(videoId) attempt \(attempt) failed: \(error.localizedDescription)")
+                // Often a stream address that stopped working: resolve again
+                await streams.invalidate(videoId)
+            }
+        }
+        throw problem
+    }
+
+    /// Where the picture of [videoId] is streamed from, at most [maxHeight] tall; nil when it has none that plays.
+    func video(_ videoId: String, maxHeight: Int) async throws -> Playable? {
+        guard let pick = try await streams.video(videoId, maxHeight: maxHeight), let url = URL(string: pick.url) else { return nil }
+        return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
+    }
+
+    /// Brings the whole of [videoId] into the downloads and gives back its size; throws when that does not work. What
+    /// was only played is moved there instead of being fetched again.
+    func download(_ videoId: String) async throws -> Int64 {
+        if files.isDownloaded(videoId) { return files.size(ofDownload: videoId) }
+        if files.keepPlayed(videoId) { return files.size(ofDownload: videoId) }
+        var problem: Error = ResolveFailure(message: "No stream for \(videoId)")
+        for _ in 1...Self.attempts {
+            do {
+                let pick = try await streams.audio(videoId)
+                return try await fetch(videoId, pick, download: true)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                problem = error
+                await streams.invalidate(videoId)
+            }
+        }
+        throw problem
+    }
+
+    private func fetch(_ videoId: String, _ pick: StreamCache.Pick, download: Bool) async throws -> Int64 {
+        // Playing and downloading the same song at once share one transfer
+        let key = videoId + (download ? "#d" : "#p")
+        if let other = running[videoId + (download ? "#p" : "#d")] { _ = try? await other.value }
+        if let shared = running[key] { return try await shared.value }
+        let files = files
+        let fetcher = fetcher
+        let task = Task { () -> Int64 in
+            guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
+            let part = files.part(videoId, download: download)
+            let size = try await fetcher.fetch(url, headers: ["User-Agent": pick.userAgent], to: part)
+            if pick.contentLength > 0 && size != pick.contentLength {
+                try? FileManager.default.removeItem(at: part)
+                throw URLError(.networkConnectionLost)
+            }
+            try files.finish(videoId, download: download)
+            return size
+        }
+        running[key] = task
+        defer { running[key] = nil }
+        return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+    }
+}

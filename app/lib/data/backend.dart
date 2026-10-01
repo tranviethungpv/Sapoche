@@ -69,6 +69,11 @@ abstract class Backend {
   Stream<BackendEvent> get events;
 
   Future<Profile> profile();
+
+  /// Sets where the room server is and the key it asks for (iOS; on Android both are built into the app). What is
+  /// left out stays as it was.
+  Future<void> configure({String? server, String? key});
+
   Future<String> createRoom(String name);
   Future<void> join(String code, String name);
   Future<void> leave();
@@ -286,6 +291,10 @@ class NativeBackend implements Backend {
   @override
   Future<Profile> profile() async =>
       Profile.fromMap((await _call<Map<Object?, Object?>>('profile'))!);
+
+  @override
+  Future<void> configure({String? server, String? key}) =>
+      _call('configure', {'server': ?server, 'key': ?key});
 
   @override
   Future<String> createRoom(String name) async =>

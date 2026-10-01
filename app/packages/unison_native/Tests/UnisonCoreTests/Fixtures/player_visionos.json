@@ -1,0 +1,222 @@
+{
+ "playabilityStatus": {
+  "status": "OK",
+  "playableInEmbed": true
+ },
+ "videoDetails": {
+  "videoId": "dQw4w9WgXcQ",
+  "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+  "lengthSeconds": "213",
+  "author": "Rick Astley",
+  "thumbnail": {
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
+     "width": 320,
+     "height": 180
+    },
+    {
+     "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg",
+     "width": 1280,
+     "height": 720
+    }
+   ]
+  },
+  "isLiveContent": false
+ },
+ "streamingData": {
+  "expiresInSeconds": "21540",
+  "adaptiveFormats": [
+   {
+    "itag": 313,
+    "url": "https://example.invalid/videoplayback?itag=313",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 18076636,
+    "width": 3840,
+    "height": 2160,
+    "contentLength": "358608461",
+    "qualityOrdinal": "QUALITY_ORDINAL_2160P"
+   },
+   {
+    "itag": 271,
+    "url": "https://example.invalid/videoplayback?itag=271",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 8978328,
+    "width": 2560,
+    "height": 1440,
+    "contentLength": "151103346",
+    "qualityOrdinal": "QUALITY_ORDINAL_1440P"
+   },
+   {
+    "itag": 137,
+    "url": "https://example.invalid/videoplayback?itag=137",
+    "mimeType": "video/mp4; codecs=\"avc1.640028\"",
+    "bitrate": 4334157,
+    "width": 1920,
+    "height": 1080,
+    "contentLength": "80911999",
+    "qualityOrdinal": "QUALITY_ORDINAL_1080P"
+   },
+   {
+    "itag": 248,
+    "url": "https://example.invalid/videoplayback?itag=248",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 1549172,
+    "width": 1920,
+    "height": 1080,
+    "contentLength": "30846580",
+    "qualityOrdinal": "QUALITY_ORDINAL_1080P"
+   },
+   {
+    "itag": 136,
+    "url": "https://example.invalid/videoplayback?itag=136",
+    "mimeType": "video/mp4; codecs=\"avc1.4d401f\"",
+    "bitrate": 1058310,
+    "width": 1280,
+    "height": 720,
+    "contentLength": "26455880",
+    "qualityOrdinal": "QUALITY_ORDINAL_720P"
+   },
+   {
+    "itag": 247,
+    "url": "https://example.invalid/videoplayback?itag=247",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 867871,
+    "width": 1280,
+    "height": 720,
+    "contentLength": "17686717",
+    "qualityOrdinal": "QUALITY_ORDINAL_720P"
+   },
+   {
+    "itag": 135,
+    "url": "https://example.invalid/videoplayback?itag=135",
+    "mimeType": "video/mp4; codecs=\"avc1.4d401e\"",
+    "bitrate": 690764,
+    "width": 854,
+    "height": 480,
+    "contentLength": "14103519",
+    "qualityOrdinal": "QUALITY_ORDINAL_480P"
+   },
+   {
+    "itag": 244,
+    "url": "https://example.invalid/videoplayback?itag=244",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 466632,
+    "width": 854,
+    "height": 480,
+    "contentLength": "9381481",
+    "qualityOrdinal": "QUALITY_ORDINAL_480P"
+   },
+   {
+    "itag": 134,
+    "url": "https://example.invalid/videoplayback?itag=134",
+    "mimeType": "video/mp4; codecs=\"avc1.4d401e\"",
+    "bitrate": 450863,
+    "width": 640,
+    "height": 360,
+    "contentLength": "8390921",
+    "qualityOrdinal": "QUALITY_ORDINAL_360P"
+   },
+   {
+    "itag": 243,
+    "url": "https://example.invalid/videoplayback?itag=243",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 288453,
+    "width": 640,
+    "height": 360,
+    "contentLength": "6014765",
+    "qualityOrdinal": "QUALITY_ORDINAL_360P"
+   },
+   {
+    "itag": 133,
+    "url": "https://example.invalid/videoplayback?itag=133",
+    "mimeType": "video/mp4; codecs=\"avc1.4d4015\"",
+    "bitrate": 236224,
+    "width": 426,
+    "height": 240,
+    "contentLength": "4310122",
+    "qualityOrdinal": "QUALITY_ORDINAL_240P"
+   },
+   {
+    "itag": 242,
+    "url": "https://example.invalid/videoplayback?itag=242",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 131647,
+    "width": 426,
+    "height": 240,
+    "contentLength": "2706929",
+    "qualityOrdinal": "QUALITY_ORDINAL_240P"
+   },
+   {
+    "itag": 160,
+    "url": "https://example.invalid/videoplayback?itag=160",
+    "mimeType": "video/mp4; codecs=\"avc1.4d400c\"",
+    "bitrate": 109973,
+    "width": 256,
+    "height": 144,
+    "contentLength": "2058142",
+    "qualityOrdinal": "QUALITY_ORDINAL_144P"
+   },
+   {
+    "itag": 278,
+    "url": "https://example.invalid/videoplayback?itag=278",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 68500,
+    "width": 256,
+    "height": 144,
+    "contentLength": "1540844",
+    "qualityOrdinal": "QUALITY_ORDINAL_144P"
+   },
+   {
+    "itag": 139,
+    "url": "https://example.invalid/videoplayback?itag=139",
+    "mimeType": "audio/mp4; codecs=\"mp4a.40.5\"",
+    "bitrate": 50152,
+    "contentLength": "1300631",
+    "audioQuality": "AUDIO_QUALITY_LOW",
+    "trackAbsoluteLoudnessLkfs": -13.01,
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   },
+   {
+    "itag": 140,
+    "url": "https://example.invalid/videoplayback?itag=140",
+    "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+    "bitrate": 130677,
+    "contentLength": "3449447",
+    "audioQuality": "AUDIO_QUALITY_MEDIUM",
+    "trackAbsoluteLoudnessLkfs": -13.01,
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   },
+   {
+    "itag": 249,
+    "url": "https://example.invalid/videoplayback?itag=249",
+    "mimeType": "audio/webm; codecs=\"opus\"",
+    "bitrate": 49496,
+    "contentLength": "1231355",
+    "audioQuality": "AUDIO_QUALITY_LOW",
+    "trackAbsoluteLoudnessLkfs": -13.02,
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   },
+   {
+    "itag": 250,
+    "url": "https://example.invalid/videoplayback?itag=250",
+    "mimeType": "audio/webm; codecs=\"opus\"",
+    "bitrate": 65508,
+    "contentLength": "1628559",
+    "audioQuality": "AUDIO_QUALITY_LOW",
+    "trackAbsoluteLoudnessLkfs": -13.02,
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   },
+   {
+    "itag": 251,
+    "url": "https://example.invalid/videoplayback?itag=251",
+    "mimeType": "audio/webm; codecs=\"opus\"",
+    "bitrate": 136544,
+    "contentLength": "3433755",
+    "audioQuality": "AUDIO_QUALITY_MEDIUM",
+    "trackAbsoluteLoudnessLkfs": -13.02,
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   }
+  ]
+ }
+}

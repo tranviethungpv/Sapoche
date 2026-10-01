@@ -36,6 +36,18 @@ cd android && ./gradlew :core:test :sync:test   # phân tích link, engine đồ
 
 `tool/soak.sh` chạy một buổi nghe với màn hình tắt trên các máy đã vào cùng phòng (âm lượng phải để 0 từ trước) và in số lần chuyển bài, tua lại, lỗi, độ lệch. `tool/battery.sh` đo thời gian CPU, khung hình và số lần nối lại của app trong một khoảng, để so hai bản trên cùng một máy. Cả hai tắt màn hình bằng phím nguồn: máy có khoá màn hình sẽ bị khoá lại và chỉ mở được bằng tay.
 
+## iOS
+
+Phần native của iOS là plugin Flutter [packages/unison_native](packages/unison_native/) (Swift, không có phần Android). Nó nói qua cùng hai kênh `app.unison/control` và `app.unison/state` như `UnisonBridge.kt`, nên giao diện Dart không đổi.
+
+```
+packages/unison_native/ios/unison_native/Sources/unison_native/
+  Core/    phần thuần Foundation: đồng bộ phòng, hàng đợi, YouTube, thư viện SQLite, Bridge.swift (các lệnh của giao diện)
+  Apple/   phần chỉ chạy trên iPhone: AVPlayerEngine, màn hình khóa, chọn tệp, mạng, plugin
+```
+
+`Core/` biên dịch và chạy test được trên Linux (không cần Mac): `cd packages/unison_native && swift test`. Phần `Apple/` chỉ biên dịch được trên macOS, nên CI (`.github/workflows/ios.yml`) dựng cả app. Cài vào máy: tải IPA chưa ký từ CI rồi ký bằng SideStore. Địa chỉ server và khóa phòng nhập trong app (Cài đặt > Máy chủ), không build vào IPA.
+
 ## Mời bạn bè
 
 Tờ "Room" trong phòng có mã 6 ký tự, mã QR và liên kết `https://<server>/join/MÃ`; nút chia sẻ gửi mã kèm liên kết đó (bấm được trong Zalo, Messenger). Với app đã cài, Android xác minh địa chỉ server qua `/.well-known/assetlinks.json` (dấu vân tay khoá ký nằm ở `server/src/join-page.ts`; đổi khoá ký thì sửa ở đó) và mở thẳng app; chưa xác minh thì trang trên server thử mở app rồi hiện mã để gõ. Liên kết `unison://join/MÃ` cũ vẫn dùng được. Mở liên kết khi đang ngoài phòng sẽ mở tờ Room với mã điền sẵn, đang trong phòng khác thì hỏi có đổi phòng không.

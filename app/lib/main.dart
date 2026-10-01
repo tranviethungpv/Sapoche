@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 
 import 'app.dart';
@@ -7,7 +5,6 @@ import 'data/app_settings.dart';
 import 'data/backend.dart';
 import 'data/library_controller.dart';
 import 'data/music_controller.dart';
-import 'data/preview_backend.dart';
 import 'data/recent_rooms.dart';
 import 'data/recent_searches.dart';
 import 'data/room_controller.dart';
@@ -24,8 +21,7 @@ Future<void> main() async {
   final settings = await AppSettings.load();
   final recents = await RecentRooms.load();
   final searches = await RecentSearches.load();
-  // iOS has no native side yet; it opens the screens on a stand-in
-  final Backend backend = Platform.isIOS ? PreviewBackend() : NativeBackend();
+  final Backend backend = NativeBackend();
   // The display runs at its fastest only while something moves
   FrameBoost((on) => backend.setSmooth(on)).start();
   final room = RoomController(backend, recents: recents)..start();

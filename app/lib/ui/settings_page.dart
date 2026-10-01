@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -108,19 +110,29 @@ class SettingsPage extends StatelessWidget {
                 label: S.backup,
                 onTap: () => _open(context, () => S.backup, _backup),
               ),
-              ListenableBuilder(
-                listenable: model.update,
-                builder: (context, _) {
-                  final info = model.update.info;
-                  return _NavRow(
-                    key: const ValueKey('settings-updates'),
-                    icon: Icons.system_update_outlined,
-                    label: S.updates,
-                    value: info.hasUpdate ? info.version : info.installed,
-                    onTap: () => _open(context, () => S.updates, _updates),
-                  );
-                },
-              ),
+              // The server is set by the person on iOS; on Android it is built into the app
+              if (Platform.isIOS)
+                _NavRow(
+                  key: const ValueKey('settings-server'),
+                  icon: Icons.dns_outlined,
+                  label: S.serverSection,
+                  onTap: () => _open(context, () => S.serverSection, _server),
+                ),
+              // iOS installs updates by itself: they come from SideStore, not from the app
+              if (!Platform.isIOS)
+                ListenableBuilder(
+                  listenable: model.update,
+                  builder: (context, _) {
+                    final info = model.update.info;
+                    return _NavRow(
+                      key: const ValueKey('settings-updates'),
+                      icon: Icons.system_update_outlined,
+                      label: S.updates,
+                      value: info.hasUpdate ? info.version : info.installed,
+                      onTap: () => _open(context, () => S.updates, _updates),
+                    );
+                  },
+                ),
             ],
           ),
           _Group(
@@ -282,6 +294,10 @@ class SettingsPage extends StatelessWidget {
     _BackupGroup(library: model.library),
   ];
 
+  static List<Widget> _server(BuildContext context, AppModel model) => [
+    _ServerGroup(room: model.room),
+  ];
+
   static List<Widget> _updates(BuildContext context, AppModel model) => [
     _UpdateGroup(update: model.update),
   ];
@@ -289,6 +305,60 @@ class SettingsPage extends StatelessWidget {
   static List<Widget> _room(BuildContext context, AppModel model) => [
     _RoomGroup(room: model.room),
   ];
+}
+
+/// Where the room server is and the key it asks for, for the phones that are not built with them.
+class _ServerGroup extends StatelessWidget {
+  const _ServerGroup({required this.room});
+
+  final RoomController room;
+
+  Future<void> _edit(BuildContext context, {required bool key}) async {
+    final value = await showTextDialog(
+      context,
+      title: key ? S.serverKey : S.serverAddress,
+      hint: key ? S.serverKey : 'https://…',
+      initial: key ? '' : room.profile.server,
+      maxLength: 200,
+      capitalization: TextCapitalization.none,
+    );
+    if (value == null || (key && value.isEmpty)) return;
+    await (key ? room.configure(key: value) : room.configure(server: value));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: room,
+      builder: (context, _) => _Group(
+        footer: S.serverHelp,
+        children: [
+          _Row(
+            key: const ValueKey('server-address'),
+            label: S.serverAddress,
+            value: room.profile.server,
+            trailing: Icon(
+              Icons.edit_outlined,
+              size: 18,
+              color: context.palette.textSecondary,
+            ),
+            onTap: () => _edit(context, key: false),
+          ),
+          _Row(
+            key: const ValueKey('server-key'),
+            label: S.serverKey,
+            value: room.profile.hasKey ? S.serverKeySet : S.serverKeyNotSet,
+            trailing: Icon(
+              Icons.edit_outlined,
+              size: 18,
+              color: context.palette.textSecondary,
+            ),
+            onTap: () => _edit(context, key: true),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The version in use and, when there is a newer one, getting it and installing it.
@@ -996,9 +1066,13 @@ class _Row extends StatelessWidget {
               ),
             ),
             if (value != null)
-              Text(
-                value!,
-                style: theme.bodyLarge?.copyWith(color: p.textSecondary),
+              Flexible(
+                child: Text(
+                  value!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.bodyLarge?.copyWith(color: p.textSecondary),
+                ),
               ),
             if (trailing != null) ...[const SizedBox(width: 10), trailing!],
           ],

@@ -40,6 +40,9 @@ dependencies:
   shared_preferences: ^2.5.3
   # Draws the invitation code; pure Dart, no camera
   qr: ^3.0.2
+  # The iOS native side: player, room connection, YouTube access, library. It has no Dart code and no Android part.
+  unison_native:
+    path: packages/unison_native
 
 dev_dependencies:
   flutter_test:
