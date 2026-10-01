@@ -110,7 +110,9 @@ final class RoomClient: SocketEvents {
         var base = baseUrl
         while base.hasSuffix("/") { base.removeLast() }
         if base.hasPrefix("http") { base = "ws" + base.dropFirst(4) }
-        url = URL(string: base + "/room/" + roomCode.uppercased())!
+        // Only what a room code is made of goes into the address, whatever was typed
+        let code = String(roomCode.uppercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) })
+        url = URL(string: base + "/room/" + code) ?? URL(string: "wss://invalid.invalid/")!
         self.clientId = clientId
         self.name = name
         self.scope = scope

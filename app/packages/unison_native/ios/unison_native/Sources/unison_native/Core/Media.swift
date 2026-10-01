@@ -301,7 +301,14 @@ actor MediaLibrary {
     private let streams: StreamCache
     private let fetcher: FileFetcher
     private let log: @Sendable (String) -> Void
-    private var running: [String: Task<Int64, Error>] = [:]
+
+    /// A transfer that is going on, and how many are waiting for it.
+    private struct Transfer {
+        let task: Task<Int64, Error>
+        var waiters: Int
+    }
+
+    private var running: [String: Transfer] = [:]
 
     init(files: MediaFiles, streams: StreamCache, fetcher: FileFetcher, log: @escaping @Sendable (String) -> Void = { _ in }) {
         self.files = files
@@ -327,6 +334,8 @@ actor MediaLibrary {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                // A transfer that was stopped because nobody wants the song any more is not a failure to try again
+                if Task.isCancelled { throw CancellationError() }
                 problem = error
                 log("\(videoId) attempt \(attempt) failed: \(error.localizedDescription)")
                 // Often a stream address that stopped working: resolve again
@@ -355,6 +364,7 @@ actor MediaLibrary {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                if Task.isCancelled { throw CancellationError() }
                 problem = error
                 await streams.invalidate(videoId)
             }
@@ -363,25 +373,40 @@ actor MediaLibrary {
     }
 
     private func fetch(_ videoId: String, _ pick: StreamCache.Pick, download: Bool) async throws -> Int64 {
-        // Playing and downloading the same song at once share one transfer
+        // Playing and downloading the same song at once share one transfer, and it stops when nobody waits for it any more
         let key = videoId + (download ? "#d" : "#p")
-        if let other = running[videoId + (download ? "#p" : "#d")] { _ = try? await other.value }
-        if let shared = running[key] { return try await shared.value }
-        let files = files
-        let fetcher = fetcher
-        let task = Task { () -> Int64 in
-            guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
-            let part = files.part(videoId, download: download)
-            let size = try await fetcher.fetch(url, headers: ["User-Agent": pick.userAgent], to: part)
-            if pick.contentLength > 0 && size != pick.contentLength {
-                try? FileManager.default.removeItem(at: part)
-                throw URLError(.networkConnectionLost)
+        if let other = running[videoId + (download ? "#p" : "#d")] { _ = try? await other.task.value }
+        let task: Task<Int64, Error>
+        if let shared = running[key] {
+            running[key]?.waiters += 1
+            task = shared.task
+        } else {
+            let files = files
+            let fetcher = fetcher
+            task = Task { () -> Int64 in
+                defer { self.running[key] = nil }
+                guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
+                let part = files.part(videoId, download: download)
+                let size = try await fetcher.fetch(url, headers: ["User-Agent": pick.userAgent], to: part)
+                if pick.contentLength > 0 && size != pick.contentLength {
+                    try? FileManager.default.removeItem(at: part)
+                    throw URLError(.networkConnectionLost)
+                }
+                try files.finish(videoId, download: download)
+                return size
             }
-            try files.finish(videoId, download: download)
-            return size
+            running[key] = Transfer(task: task, waiters: 1)
         }
-        running[key] = task
-        defer { running[key] = nil }
-        return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+        return try await withTaskCancellationHandler { try await task.value } onCancel: {
+            Task { await self.waiterLeft(key, task) }
+        }
+    }
+
+    /// One of those waiting for a transfer gave up; with nobody left the transfer is stopped.
+    private func waiterLeft(_ key: String, _ task: Task<Int64, Error>) {
+        guard var transfer = running[key], transfer.task == task else { return }
+        transfer.waiters -= 1
+        running[key] = transfer
+        if transfer.waiters <= 0 { task.cancel() }
     }
 }

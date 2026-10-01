@@ -568,6 +568,26 @@ final class SmallPartsTests: XCTestCase {
         XCTAssertEqual(VideoPicker.pick(resolved.videos, maxHeight: 720)?.height, 720)
     }
 
+    func testAnAddressThatCannotBeUsedCountsAsNone() {
+        XCTAssertFalse(ServerConfig(server: "").isSet)
+        XCTAssertFalse(ServerConfig(server: "https://bad host").isSet)
+        XCTAssertTrue(ServerConfig(server: "https://unison.example.dev").isSet)
+    }
+
+    @MainActor
+    func testARoomCodeWithOddCharactersDoesNotBreakTheAddress() async {
+        let sockets = FakeSockets()
+        let scope = Scope()
+        let client = RoomClient(baseUrl: "https://unison.example.dev", roomCode: " ab c/2é34 ", clientId: "me", name: "Me", scope: scope,
+                                clock: ClockSync(), time: VirtualTime(), sockets: sockets)
+        client.start()
+        await Task.yield()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(sockets.opened.first?.url.absoluteString, "wss://unison.example.dev/room/ABC234")
+        client.close()
+        scope.cancel()
+    }
+
     func testServerAddressesAreCleaned() {
         XCTAssertEqual(ServerConfig.clean(" unison.example.dev/ "), "https://unison.example.dev")
         XCTAssertEqual(ServerConfig.clean("http://10.0.0.2:8787//"), "http://10.0.0.2:8787")
@@ -741,6 +761,62 @@ final class MediaTests: XCTestCase {
         } catch {
             XCTAssertEqual(broken.calls, 3)
         }
+    }
+
+    func testASharedTransferGoesOnWhenOnlyOneOfTheTwoWaitingGivesUp() async throws {
+        final class Slow: FileFetcher, @unchecked Sendable {
+            let lock = NSLock()
+            var calls = 0
+
+            func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
+                lock.lock()
+                calls += 1
+                lock.unlock()
+                try await Task.sleep(nanoseconds: 150_000_000)
+                try Data(repeating: 7, count: 10).write(to: file)
+                return 10
+            }
+        }
+        let slow = Slow()
+        let (media, files) = library(FakeResolver(), slow)
+        let preload = Task { try await media.playable("vid00000001") }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let play = Task { try await media.playable("vid00000001") }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        preload.cancel() // the next song was changed while it was being fetched
+        let playable = try await play.value
+        XCTAssertTrue(playable.isFile)
+        XCTAssertEqual(slow.calls, 1, "one transfer served both")
+        XCTAssertNotNil(files.file("vid00000001"))
+    }
+
+    func testATransferNobodyWaitsForAnyMoreIsStopped() async throws {
+        final class Slow: FileFetcher, @unchecked Sendable {
+            let lock = NSLock()
+            var finished = false
+
+            func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
+                try await Task.sleep(nanoseconds: 300_000_000)
+                lock.lock()
+                finished = true
+                lock.unlock()
+                return 10
+            }
+        }
+        let slow = Slow()
+        let (media, files) = library(FakeResolver(), slow)
+        let only = Task { try await media.playable("vid00000001") }
+        try await Task.sleep(nanoseconds: 30_000_000)
+        only.cancel()
+        do {
+            _ = try await only.value
+            XCTFail("expected the cancel to reach the caller")
+        } catch is CancellationError {
+            // as it should
+        }
+        try await Task.sleep(nanoseconds: 450_000_000)
+        XCTAssertFalse(slow.finished, "the transfer was stopped with its only waiter")
+        XCTAssertNil(files.file("vid00000001"))
     }
 
     func testAShortTransferIsNotKept() async throws {

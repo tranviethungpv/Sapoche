@@ -62,7 +62,8 @@ struct ServerConfig: Equatable {
     var server: String = ""
     var key: String = ""
 
-    var isSet: Bool { !server.isEmpty }
+    /// There is an address to talk to.
+    var isSet: Bool { URL(string: server)?.host != nil }
 
     /// Headers that every call to the room server must carry.
     var authHeaders: [String: String] { key.isEmpty ? [:] : ["X-Unison-Key": key] }

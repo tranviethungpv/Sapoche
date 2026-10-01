@@ -283,6 +283,11 @@ final class GroupController {
 
     /// [create] says whether the code was just made (true) or given to this device (false): a mistyped code must not open a room.
     func join(code: String, name: String, create: Bool) {
+        // Without an address there is nothing to connect to, and the system refuses an address without a scheme
+        guard config().isSet else {
+            errors.emit(ControllerError(code: "not_configured", message: "The server is not set"))
+            return
+        }
         stopFollowing()
         local.detach()
         let id = deviceId()

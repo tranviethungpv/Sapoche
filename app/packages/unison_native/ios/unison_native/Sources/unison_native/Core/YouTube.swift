@@ -206,6 +206,7 @@ actor YouTubeResolver: StreamResolver {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                if Task.isCancelled { throw CancellationError() }
                 lastProblem = error.localizedDescription
             }
         }
