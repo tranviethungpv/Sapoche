@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../data/library_controller.dart';
 import '../data/models.dart';
 import '../data/room_controller.dart';
+import '../data/update_controller.dart';
+import '../data/update_info.dart';
 import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
@@ -93,6 +95,19 @@ class SettingsPage extends StatelessWidget {
                 icon: Icons.backup_outlined,
                 label: S.backup,
                 onTap: () => _open(context, S.backup, _backup),
+              ),
+              ListenableBuilder(
+                listenable: model.update,
+                builder: (context, _) {
+                  final info = model.update.info;
+                  return _NavRow(
+                    key: const ValueKey('settings-updates'),
+                    icon: Icons.system_update_outlined,
+                    label: S.updates,
+                    value: info.hasUpdate ? info.version : info.installed,
+                    onTap: () => _open(context, S.updates, _updates),
+                  );
+                },
               ),
             ],
           ),
@@ -228,9 +243,189 @@ class SettingsPage extends StatelessWidget {
     _BackupGroup(library: model.library),
   ];
 
+  static List<Widget> _updates(BuildContext context, AppModel model) => [
+    _UpdateGroup(update: model.update),
+  ];
+
   static List<Widget> _room(BuildContext context, AppModel model) => [
     _RoomGroup(room: model.room),
   ];
+}
+
+/// The version in use and, when there is a newer one, getting it and installing it.
+class _UpdateGroup extends StatelessWidget {
+  const _UpdateGroup({required this.update});
+
+  final UpdateController update;
+
+  /// Fetches the version on offer, asking first when it would use mobile data.
+  Future<void> _download(BuildContext context) async {
+    if (await update.download()) return;
+    if (!context.mounted) return;
+    final agreed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(S.useMobileData),
+        content: const Text(S.useMobileDataBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(S.updateDownload),
+          ),
+        ],
+      ),
+    );
+    if (agreed == true) await update.download(allowMetered: true);
+  }
+
+  /// Installing closes the app, so the person is told before it happens.
+  Future<void> _install(BuildContext context) async {
+    final agreed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(S.updateRestartTitle),
+        content: const Text(S.updateRestartBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(S.updateInstall),
+          ),
+        ],
+      ),
+    );
+    if (agreed == true) await update.install();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return ListenableBuilder(
+      listenable: update,
+      builder: (context, _) {
+        final info = update.info;
+        final version = info.version ?? '';
+        final busy =
+            info.phase == UpdatePhase.checking ||
+            info.phase == UpdatePhase.installing;
+        final (
+          String message,
+          String? action,
+          VoidCallback? onAction,
+        ) = switch (info.phase) {
+          UpdatePhase.available => (
+            S.updateAvailable(version),
+            S.updateDownload,
+            () => _download(context),
+          ),
+          UpdatePhase.downloading => (S.updateDownloading, null, null),
+          UpdatePhase.ready => (
+            S.updateReady(version),
+            S.updateInstall,
+            () => _install(context),
+          ),
+          UpdatePhase.needsPermission => (
+            S.updatePermission,
+            S.updateOpenSettings,
+            update.allowInstalls,
+          ),
+          UpdatePhase.checking => (S.updateChecking, null, null),
+          UpdatePhase.installing => (S.updateInstalling, null, null),
+          UpdatePhase.failed => (
+            S.updateError(info.error),
+            info.version == null ? S.updateCheck : S.updateTryAgain,
+            info.version == null ? update.check : () => _download(context),
+          ),
+          UpdatePhase.upToDate => (
+            S.updateUpToDate,
+            S.updateCheck,
+            update.check,
+          ),
+          UpdatePhase.idle => (S.updateCheck, S.updateCheck, update.check),
+        };
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Group(
+              children: [
+                _Row(label: S.updateVersion, value: info.installed),
+                if (info.phase != UpdatePhase.idle)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (busy) ...[
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            Expanded(
+                              child: Text(message, style: theme.bodyLarge),
+                            ),
+                          ],
+                        ),
+                        if (info.phase == UpdatePhase.downloading) ...[
+                          const SizedBox(height: 12),
+                          LinearProgressIndicator(
+                            key: const ValueKey('update-progress'),
+                            value: info.progress,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${formatBytes(info.done)} / ${formatBytes(info.size)}',
+                            style: theme.bodySmall,
+                          ),
+                        ] else if (info.size > 0 && info.hasUpdate)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              formatBytes(info.size),
+                              style: theme.bodySmall,
+                            ),
+                          ),
+                        if (info.notes != null && info.hasUpdate) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            S.updateWhatsNew,
+                            style: theme.labelLarge?.copyWith(
+                              color: p.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(info.notes!, style: theme.bodyMedium),
+                        ],
+                      ],
+                    ),
+                  ),
+                if (action != null && !busy)
+                  _Row(
+                    key: ValueKey('update-action'),
+                    label: action,
+                    onTap: onAction,
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 /// The room this device is in: its code, who is there, the name shown, inviting and leaving.
@@ -654,6 +849,7 @@ class _Group extends StatelessWidget {
 
 class _Row extends StatelessWidget {
   const _Row({
+    super.key,
     required this.label,
     this.value,
     this.leading,

@@ -55,6 +55,21 @@ object UiJson {
             .toString()
     }
 
+    /** Where an update of the app stands; see [Updater]. */
+    fun update(state: UpdateState): String {
+        val release = state.release
+        return JSONObject()
+            .put("type", "update")
+            .put("phase", state.phase.name.lowercase())
+            .put("installed", state.installed)
+            .put("version", release?.versionName ?: JSONObject.NULL)
+            .put("notes", release?.notes ?: JSONObject.NULL)
+            .put("size", release?.size ?: 0L)
+            .put("done", state.doneBytes)
+            .put("error", state.error ?: JSONObject.NULL)
+            .toString()
+    }
+
     /** Fast changing values: sent about once a second while the UI is visible. */
     fun position(view: GroupController.View, player: GroupController.PlayerInfo): String =
         JSONObject()

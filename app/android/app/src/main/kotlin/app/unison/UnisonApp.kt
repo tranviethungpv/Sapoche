@@ -7,6 +7,7 @@ import app.unison.core.MusicClient
 import app.unison.core.MusicFeed
 import app.unison.core.NewPipeResolver
 import app.unison.core.Probe
+import app.unison.core.UpdateClient
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -29,6 +30,7 @@ class UnisonApp : Application() {
         val music = MusicClient()
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
         suggestions = SuggestionFeed(library, resolver, musicFeed) { EventLog.d("suggest", it) }
+        updater = Updater(this, UpdateClient(Config.SERVER, Config.authHeaders))
     }
 
     companion object {
@@ -66,6 +68,10 @@ class UnisonApp : Application() {
 
         /** Songs to offer and to carry on with. */
         lateinit var suggestions: SuggestionFeed
+            private set
+
+        /** Checks for a newer release of this app and installs it. */
+        lateinit var updater: Updater
             private set
 
         private val groupFlow = MutableStateFlow<GroupController?>(null)

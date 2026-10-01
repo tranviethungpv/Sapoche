@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'models.dart';
 import 'music_models.dart';
+import 'update_info.dart';
 
 sealed class BackendEvent {
   const BackendEvent();
@@ -43,6 +44,12 @@ class LibraryEvent extends BackendEvent {
 class SleepEvent extends BackendEvent {
   const SleepEvent(this.sleep);
   final SleepState sleep;
+}
+
+/// How far an update of the app has come.
+class UpdateEvent extends BackendEvent {
+  const UpdateEvent(this.info);
+  final UpdateInfo info;
 }
 
 class ErrorEvent extends BackendEvent {
@@ -211,6 +218,16 @@ abstract class Backend {
 
   Future<void> setTrim(int ms);
   Future<List<String>> log();
+
+  /// Asks the server for a newer version of the app; the answer comes as an [UpdateEvent].
+  Future<void> updateCheck();
+
+  /// Fetches the version on offer; false when it is waiting for a yes to mobile data.
+  Future<bool> updateDownload({bool allowMetered = false});
+  Future<void> updateInstall();
+
+  /// Opens the system page where the person lets this app install updates.
+  Future<void> updateAllowInstalls();
 }
 
 /// [Backend] over Flutter platform channels, see UnisonBridge.kt.
@@ -228,6 +245,7 @@ class NativeBackend implements Backend {
     return switch (json['type']) {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
       'library' => const LibraryEvent(),
+      'update' => UpdateEvent(UpdateInfo.fromJson(json)),
       'sleep' => SleepEvent(SleepState.fromJson(json)),
       'invite' => InviteEvent(json['code'] as String),
       'notice' => NoticeEvent(
@@ -586,6 +604,20 @@ class NativeBackend implements Backend {
   @override
   Future<List<String>> log() async =>
       (await _call<List<Object?>>('log') ?? const []).cast<String>();
+
+  @override
+  Future<void> updateCheck() => _call<void>('updateCheck');
+
+  @override
+  Future<bool> updateDownload({bool allowMetered = false}) async =>
+      await _call<String>('updateDownload', {'allowMetered': allowMetered}) !=
+      'metered';
+
+  @override
+  Future<void> updateInstall() => _call<void>('updateInstall');
+
+  @override
+  Future<void> updateAllowInstalls() => _call<void>('updateAllowInstalls');
 }
 
 class BackendException implements Exception {

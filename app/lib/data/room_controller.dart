@@ -106,6 +106,8 @@ class RoomController extends ChangeNotifier {
         notifyListeners();
       case LibraryEvent():
         break; // LibraryController listens for this itself
+      case UpdateEvent():
+        break; // and UpdateController for this
       case ErrorEvent(:final error):
         final text = _describe(error);
         if (text != null) _messages.add(text);

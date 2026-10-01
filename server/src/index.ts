@@ -1,6 +1,7 @@
 import { ASSET_LINKS, joinPage } from "./join-page";
 import { PROTOCOL_VERSION } from "./protocol";
 import { Room } from "./room";
+import { serveUpdate, UPDATE_ROUTE } from "./update";
 
 export { Room };
 
@@ -58,10 +59,13 @@ export default {
       return Response.json(ASSET_LINKS, { headers: { "Cache-Control": "public, max-age=3600" } });
     }
 
+    const update = url.pathname.match(UPDATE_ROUTE);
     const isRoomRoute = url.pathname === "/rooms" || ROOM_ROUTE.test(url.pathname);
-    if (isRoomRoute && !(await authorized(request, url, env))) {
+    if ((isRoomRoute || update) && !(await authorized(request, url, env))) {
       return new Response("Unauthorized", { status: 401 });
     }
+
+    if (update) return serveUpdate(request, env, update[1]);
 
     // Room codes are only a namespace: the Durable Object is created lazily on first connection
     if (request.method === "POST" && url.pathname === "/rooms") {

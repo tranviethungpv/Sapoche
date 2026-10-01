@@ -10,6 +10,7 @@ import 'package:unison/data/music_controller.dart';
 import 'package:unison/data/recent_rooms.dart';
 import 'package:unison/data/recent_searches.dart';
 import 'package:unison/data/room_controller.dart';
+import 'package:unison/data/update_controller.dart';
 import 'package:unison/ui/scope.dart';
 
 import 'fake_backend.dart';
@@ -47,6 +48,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
         library: library,
         searches: searches,
         music: MusicController(backend),
+        update: UpdateController(backend),
       ),
     ),
   );

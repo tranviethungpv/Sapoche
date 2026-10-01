@@ -89,6 +89,8 @@ class UnisonBridge(
                 if (visible) emit(UiJson.library()) else libraryDirty = true
             }
         }
+        // Progress of an update is only sent while somebody looks; the UI is brought up to date when it returns
+        scope.launch { UnisonApp.updater.state.collect { if (visible) emit(UiJson.update(it)) } }
     }
 
     /** Connecting a controller is what starts the playback service and keeps it bound to the UI. */
@@ -135,6 +137,9 @@ class UnisonBridge(
                 emit(UiJson.library())
             }
             ensureService()
+            UnisonApp.updater.refreshPermission()
+            UnisonApp.updater.check(force = false)
+            emit(UiJson.update(UnisonApp.updater.state.value))
             UnisonApp.group.value?.resumeRoom()
             renewSuggestionsIfDue()
             if (autoDownload) DownloadWorker.enqueue(activity, waiting = true)
@@ -183,6 +188,7 @@ class UnisonBridge(
             pendingInvite = null
             emit(UiJson.invite(it))
         }
+        emit(UiJson.update(UnisonApp.updater.state.value))
         observing?.cancel()
         observing = scope.launch {
             UnisonApp.group.collectLatest { group ->
@@ -280,6 +286,20 @@ class UnisonBridge(
                 "server" to Config.SERVER,
                 "autoplay" to prefs.getBoolean("autoplay", true),
             )
+            "updateCheck" -> {
+                UnisonApp.updater.check(force = true)
+                return null
+            }
+            // Mobile data is asked about first: the file is some 30 MB
+            "updateDownload" -> return if (UnisonApp.updater.download(call.argument<Boolean>("allowMetered") == true)) null else "metered"
+            "updateInstall" -> {
+                UnisonApp.updater.install()
+                return null
+            }
+            "updateAllowInstalls" -> {
+                UnisonApp.updater.openInstallSettings()
+                return null
+            }
             "setAutoplay" -> {
                 prefs.edit().putBoolean("autoplay", call.argument<Boolean>("on") == true).apply()
                 return null

@@ -1,5 +1,7 @@
 interface Env {
   ROOMS: DurableObjectNamespace<import("./room").Room>;
+  /** Private bucket with the app's releases; see update.ts. Not set where no bucket is bound. */
+  RELEASES?: R2Bucket;
   /**
    * Shared secret every client must present, set with `wrangler secret put ROOM_KEY`. When it is not
    * set (local development) the server is open.

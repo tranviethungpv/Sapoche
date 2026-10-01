@@ -427,6 +427,24 @@ class FakeBackend implements Backend {
   @override
   Future<void> setTrim(int ms) => _record('setTrim $ms');
 
+  /// What [updateDownload] answers: false is "waiting for a yes to mobile data".
+  bool updateOnWifi = true;
+
+  @override
+  Future<void> updateCheck() => _record('updateCheck');
+
+  @override
+  Future<bool> updateDownload({bool allowMetered = false}) async {
+    await _record('updateDownload $allowMetered');
+    return updateOnWifi || allowMetered;
+  }
+
+  @override
+  Future<void> updateInstall() => _record('updateInstall');
+
+  @override
+  Future<void> updateAllowInstalls() => _record('updateAllowInstalls');
+
   @override
   Future<List<String>> log() async => ['line one', 'line two'];
 }

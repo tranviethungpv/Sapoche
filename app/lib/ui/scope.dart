@@ -6,6 +6,7 @@ import '../data/music_controller.dart';
 import '../data/recent_rooms.dart';
 import '../data/recent_searches.dart';
 import '../data/room_controller.dart';
+import '../data/update_controller.dart';
 
 /// The long-lived objects every screen may need.
 class AppModel {
@@ -16,6 +17,7 @@ class AppModel {
     required this.library,
     required this.searches,
     required this.music,
+    required this.update,
   });
 
   final RoomController room;
@@ -32,6 +34,9 @@ class AppModel {
 
   /// What the full player shows about a song: lyrics, related songs, the artist.
   final MusicController music;
+
+  /// Newer versions of this app.
+  final UpdateController update;
 }
 
 class AppScope extends InheritedWidget {

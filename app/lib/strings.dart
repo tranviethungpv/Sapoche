@@ -343,4 +343,38 @@ abstract final class S {
   static const homeEmptyBody =
       'Play some songs and this page fills with what you like: quick picks, mixes and more.';
   static const mixFailed = 'Couldn’t start the mix';
+
+  // Updates of the app
+  static const updates = 'Updates';
+  static const updateVersion = 'Version';
+  static const updateUpToDate = 'Unison is up to date';
+  static const updateCheck = 'Check for updates';
+  static const updateChecking = 'Checking…';
+  static String updateAvailable(String version) =>
+      'Version $version is available';
+  static String updateReady(String version) =>
+      'Version $version is ready to install';
+  static const updateDownload = 'Download';
+  static const updateDownloading = 'Downloading…';
+  static const updateInstall = 'Install';
+  static const updateInstalling = 'Installing…';
+  static const updateRestartTitle = 'Install the update?';
+  static const updateRestartBody =
+      'Unison closes to install it and opens again afterwards. Music stops, and a room is joined again when the app is back.';
+  static const updatePermission =
+      'Android asks you to allow Unison to install updates, once. Allow it on the page that opens, then come back and press Install.';
+  static const updateOpenSettings = 'Open settings';
+  static const updateWhatsNew = 'What’s new';
+  static const updateTryAgain = 'Try again';
+  static String updateError(String? code) => switch (code) {
+    'unreachable' => 'Couldn’t reach the server to look for updates.',
+    'download' => 'The download didn’t work. Try again.',
+    'signature' => 'This update is signed with a different key, so Android won’t install it over this app.',
+    'old' => 'That version is not newer than the one installed.',
+    'package' => 'That file is not an update of Unison.',
+    'aborted' => 'The installation was cancelled.',
+    'blocked' => 'Android blocked the installation.',
+    'storage' => 'There is not enough room on the phone to install it.',
+    _ => 'The update couldn’t be installed.',
+  };
 }

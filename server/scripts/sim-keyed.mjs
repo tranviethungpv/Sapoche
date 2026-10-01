@@ -3,7 +3,11 @@
 //
 // Two servers: one with the real timers for the whole protocol, and one whose timers for dead
 // connections and empty rooms are seconds long, so "gone after a week" can be watched.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const KEY = "simulation-key";
 
@@ -39,6 +43,20 @@ function simulate(port, env) {
   });
 }
 
+/** Puts a release in the local bucket the first server reads, so the update routes have something to serve. */
+function seedRelease(persistTo) {
+  const dir = mkdtempSync(join(tmpdir(), "unison-release-"));
+  const apk = randomBytes(5000);
+  const latest = { versionCode: 9, versionName: "9.9.9", sha256: createHash("sha256").update(apk).digest("hex"), size: apk.length, notes: "test" };
+  writeFileSync(join(dir, "app-9.apk"), apk);
+  writeFileSync(join(dir, "latest.json"), JSON.stringify(latest));
+  for (const [key, file] of [["app-9.apk", "app-9.apk"], ["latest.json", "latest.json"]]) {
+    execFileSync("npx", ["wrangler", "r2", "object", "put", `unison-releases/${key}`, "--local", "--persist-to", persistTo, "--file", join(dir, file)], { stdio: "ignore" });
+  }
+  return { apk, latest };
+}
+
+const release = seedRelease(".wrangler/state");
 const main = startServer(8798, { STALE_MS: 2000 }, ".wrangler/state");
 const quick = startServer(
   8799,
@@ -49,7 +67,7 @@ const quick = startServer(
 let code = 1;
 try {
   await Promise.all([waitUntilUp(8798), waitUntilUp(8799)]);
-  code = (await simulate(8798, { SIM_STALE_MS: "2000" })) ?? 1;
+  code = (await simulate(8798, { SIM_STALE_MS: "2000", SIM_RELEASE: JSON.stringify({ apk: release.apk.toString("base64"), latest: release.latest }) })) ?? 1;
   if (code === 0) code = (await simulate(8799, { SIM_ONLY: "lifetime" })) ?? 1;
 } finally {
   for (const server of [main, quick]) {

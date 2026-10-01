@@ -8,6 +8,7 @@ import 'data/music_controller.dart';
 import 'data/recent_rooms.dart';
 import 'data/recent_searches.dart';
 import 'data/room_controller.dart';
+import 'data/update_controller.dart';
 import 'frame_stats.dart';
 import 'ui/scope.dart';
 
@@ -29,6 +30,7 @@ Future<void> main() async {
         library: library,
         searches: searches,
         music: MusicController(backend),
+        update: UpdateController(backend),
       ),
     ),
   );

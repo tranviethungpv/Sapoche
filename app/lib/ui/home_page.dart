@@ -114,7 +114,17 @@ class _Header extends StatelessWidget {
           IconButton(
             onPressed: () => openSettings(context),
             tooltip: S.settingsTitle,
-            icon: Icon(Icons.settings_outlined, color: p.textSecondary),
+            // A dot while a newer version of the app is waiting
+            icon: ListenableBuilder(
+              listenable: AppScope.of(context).update,
+              builder: (context, _) => Badge(
+                key: const ValueKey('update-dot'),
+                smallSize: 9,
+                backgroundColor: p.primary,
+                isLabelVisible: AppScope.of(context).update.info.hasUpdate,
+                child: Icon(Icons.settings_outlined, color: p.textSecondary),
+              ),
+            ),
           ),
         ],
       ),

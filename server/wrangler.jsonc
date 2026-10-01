@@ -7,6 +7,8 @@
   "durable_objects": {
     "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
   },
+  // Releases of the app, for updates from inside it. Create it first: wrangler r2 bucket create unison-releases
+  "r2_buckets": [{ "binding": "RELEASES", "bucket_name": "unison-releases" }],
   // Free plan only supports SQLite-backed Durable Objects
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }]
 }
