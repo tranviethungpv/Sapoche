@@ -3,7 +3,7 @@
 Cloudflare Worker + một Durable Object cho mỗi phòng. Chỉ giữ siêu dữ liệu (queue, trạng thái phát, thành viên), không có audio.
 
 - `src/index.ts`: định tuyến (`GET /health`, `POST /rooms`, `WS /room/<CODE>`, `GET /room/<CODE>/info`, `GET /join/<CODE>`, `GET /.well-known/assetlinks.json`, `GET /update/latest.json`, `GET /update/app-<mã bản>.apk`) và kiểm tra khóa dùng chung.
-- `src/update.ts`: cập nhật cho chính app, đọc từ bucket R2 `unison-releases` (riêng tư, chỉ đọc qua Worker, cần khóa). Cách tạo và phát hành: [../docs/FINISH.md](../docs/FINISH.md).
+- `src/update.ts`: cập nhật cho chính app, đọc từ bucket R2 `unison-releases` (riêng tư, chỉ đọc qua Worker, cần khóa). Phát hành bản mới bằng `app/tool/release.sh` (có `--publish` để tải lên R2).
 - `src/room.ts`: logic phòng (barrier chuẩn bị, phát, tạm dừng, tua, queue, chủ phòng và quyền, dọn phòng trống và socket chết).
 - `src/join-page.ts`: trang HTML của link mời và danh sách khóa ký cho `assetlinks.json` (thêm khóa mới ở đây khi đổi khóa ký).
 - `src/protocol.ts`: kiểu tin nhắn, khớp với [../docs/PROTOCOL.md](../docs/PROTOCOL.md).
@@ -28,13 +28,13 @@ npm test             # tự dựng server có khóa rồi kiểm thử; kỳ v�
 
 ## Triển khai
 
-Đã triển khai tại `https://your-worker.example.workers.dev` (WebSocket: `wss://.../room/<CODE>`).
+Đã triển khai tại `https://<tên-worker>.<tài-khoản>.workers.dev` (WebSocket: `wss://.../room/<CODE>`).
 
 ```bash
 npx wrangler login        # một lần, mở trình duyệt
 npx wrangler r2 bucket create unison-releases   # một lần; bucket phải có trước khi deploy
 npm run deploy
-node scripts/sim.mjs https://your-worker.example.workers.dev   # kiểm thử trên server thật
+node scripts/sim.mjs https://<tên-worker>.<tài-khoản>.workers.dev   # kiểm thử trên server thật
 ```
 
 Thử WebSocket bằng curl phải thêm `--http1.1` (HTTP/2 không có header Upgrade).
@@ -48,12 +48,12 @@ Nếu không có khóa, ai biết URL đều có thể tạo phòng và tiêu h�
 openssl rand -hex 16 | tr -d '\n' | npx wrangler secret put ROOM_KEY
 ```
 
-App Android đọc khóa lúc build từ `spikes/p1-resolver-player/local.properties` (đã nằm trong `.gitignore`):
+App Android đọc khóa lúc build từ `app/android/unison.properties` (đã nằm trong `.gitignore`):
 
 ```properties
 unison.roomKey=<khóa>
 # tùy chọn, mặc định là server hiện tại
-unison.serverUrl=https://your-worker.example.workers.dev
+unison.serverUrl=https://<tên-worker>.<tài-khoản>.workers.dev
 ```
 
 Đổi khóa nghĩa là phải build và cài lại app cho cả nhóm. Khóa nằm trong APK nên chỉ chống người lạ, không chống người trong nhóm.

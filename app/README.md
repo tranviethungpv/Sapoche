@@ -1,6 +1,6 @@
 # Unison (app Flutter)
 
-Giao diện Flutter, còn phát nhạc và đồng bộ phòng nằm ở phần Kotlin trong `android/` (xem [docs/PLAN.md](../docs/PLAN.md)).
+Giao diện Flutter, còn phát nhạc và đồng bộ phòng nằm ở phần Kotlin trong `android/` (giao thức đồng bộ: [docs/PROTOCOL.md](../docs/PROTOCOL.md)).
 
 ```
 lib/
@@ -42,4 +42,4 @@ Tờ "Room" trong phòng có mã 6 ký tự, mã QR và liên kết `https://<se
 
 ## Nghe ngoài phòng
 
-Mở app là vào hàng đợi cá nhân (lưu trong `files/local_queue.json`, trở lại sau khi khởi động lại ở trạng thái tạm dừng). Nút "Room" ở đầu trang dẫn tới tờ để tạo, vào bằng mã, hoặc vào lại một phòng gần đây. Kế hoạch cho playlist, yêu thích, lịch sử, gợi ý và tải về: [docs/LIBRARY.md](../docs/LIBRARY.md).
+Mở app là vào hàng đợi cá nhân (lưu trong `files/local_queue.json`, trở lại sau khi khởi động lại ở trạng thái tạm dừng). Nút "Room" ở đầu trang dẫn tới tờ để tạo, vào bằng mã, hoặc vào lại một phòng gần đây.

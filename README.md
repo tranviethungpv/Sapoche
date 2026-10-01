@@ -2,16 +2,27 @@
 
 Nghe nhạc YouTube cùng nhau, cùng một nhịp, ở mọi nơi.
 
-App Android cho nhóm nhỏ. Mỗi điện thoại tự lấy luồng nhạc, còn server miễn phí chỉ giữ phòng và giữ nhịp đồng bộ.
+App Android cho nhóm nhỏ bạn bè. Mỗi điện thoại tự lấy luồng nhạc ngay trên máy, còn server miễn phí (Cloudflare Workers) chỉ giữ phòng và giữ nhịp đồng bộ, không chứa nhạc.
 
-- Kế hoạch triển khai: [docs/PLAN.md](docs/PLAN.md)
-- Giao thức đồng bộ: [docs/PROTOCOL.md](docs/PROTOCOL.md)
-- Nghe nhạc như app bình thường (playlist, yêu thích, lịch sử, gợi ý, tải về): [docs/LIBRARY.md](docs/LIBRARY.md)
+## Có gì
 
-## Trạng thái
+- Nghe nhạc như một app thường: tìm kiếm, hàng đợi cá nhân, phát nền, điều khiển ở màn hình khóa.
+- Room: tạo phòng hoặc vào bằng mã, mọi người nghe cùng một bài, cùng một nhịp, ai cũng thêm bài và điều khiển được.
+- Cập nhật app qua mạng (OTA), giao diện tiếng Anh và tiếng Việt, chế độ tiết kiệm pin và nhiệt.
 
-App Flutter chạy được trên máy thật: nghe nhạc như app thường (hàng đợi cá nhân), và vào Room để nghe cùng nhau, cùng nhịp; xem [app/](app/README.md) để chạy thử, [server/](server/README.md) cho server phòng. Tiến độ chi tiết ở [docs/PLAN.md](docs/PLAN.md). Các prototype cũ nằm ở [spikes/](spikes/).
+## Cấu trúc
+
+| Thư mục | Nội dung |
+|---|---|
+| [app/](app/README.md) | App Flutter (giao diện) và dịch vụ phát nhạc Kotlin (Media3) |
+| [native/](native/) | Thư viện Kotlin thuần: lấy luồng YouTube, đồng bộ phòng; có test JVM |
+| [server/](server/README.md) | Server phòng trên Cloudflare Workers và Durable Objects |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | Giao thức đồng bộ giữa app và server |
+
+## Tự chạy thử
+
+Cần Flutter, JDK 17, Android SDK và một tài khoản Cloudflare miễn phí. Khóa phòng và khóa ký app là của riêng bạn, không nằm trong Git. Cách dựng server, đặt khóa và build app: xem [server/README.md](server/README.md) và [app/README.md](app/README.md).
 
 ## Lưu ý
 
-Dự án dùng cho mục đích cá nhân, nhóm riêng tư. Việc lấy luồng từ YouTube bằng client bên thứ ba vi phạm điều khoản dịch vụ của YouTube. Đừng phát hành công khai.
+Đây là dự án cá nhân, viết để nghe nhạc cùng bạn bè trong nhóm nhỏ, không có mục đích thương mại. Việc lấy luồng từ YouTube bằng client bên thứ ba không nằm trong điều khoản dịch vụ của YouTube, nên hãy tự cân nhắc trước khi dùng, và không dùng để lưu hay phân phối lại nhạc.
