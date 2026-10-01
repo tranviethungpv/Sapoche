@@ -1,0 +1,46 @@
+# Builds the Flutter app for iOS on a macOS runner and publishes an unsigned IPA as a build artifact.
+# The IPA is signed on the phone by SideStore with the owner's own Apple ID; nothing secret lives here.
+name: iOS build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/ios.yml'
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.5
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter test
+
+      - run: flutter build ios --release --no-codesign
+
+      - name: Package the unsigned IPA
+        run: |
+          rm -rf Payload unison-unsigned.ipa
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry unison-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unison-ios-unsigned
+          path: app/unison-unsigned.ipa
+          retention-days: 14
