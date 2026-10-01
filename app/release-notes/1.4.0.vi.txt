@@ -1,0 +1,5 @@
+Diện mạo mới
+- Liquid Glass: các tấm kính có viền sáng và bóng mềm, từ thanh tab nổi và mini player đến thẻ trong Cài đặt, ô tìm kiếm, chip và nút phát.
+- Nút kính tròn ở đầu trang, hộp thoại, tờ dưới và nút bo tròn hơn.
+Điều hướng
+- Playlist hoặc nghệ sĩ giờ mở ngay trong tab, nên thanh tab và mini player vẫn trong tầm tay. Nút Back lùi một trang trước.

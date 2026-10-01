@@ -1,0 +1,5 @@
+A new look
+- Liquid Glass: panes of glass with a bright edge and soft shadows, from the floating tab bar and the mini player to the cards in Settings, the search field, the chips and the play button.
+- Round glass buttons at the top of pages, and rounder dialogs, sheets and buttons.
+Navigation
+- A playlist or an artist now opens inside its tab, so the tab bar and the mini player stay in reach. Back goes back one page first.
