@@ -62,6 +62,7 @@ final class Bridge {
 
     /// An invitation that arrived before the UI was listening.
     private var pendingInvite: String?
+    private var pendingSetup: String?
 
     /// Last structure of the room sent, so an unchanged room is not sent again.
     private var lastState: String?
@@ -130,8 +131,15 @@ final class Bridge {
         if value { emitState() }
     }
 
-    /// Handles an invitation, `unison://join/CODE` or the https link of the server's invitation page; anything else is ignored.
+    /// Handles an invitation, `unison://join/CODE` or the https link of the server's invitation page, and a setup link,
+    /// `unison://setup?server=…&key=…`, which another phone shows as a QR code; anything else is ignored. The screen
+    /// checks a setup link and asks before using it.
     func onLink(_ url: URL) {
+        if url.scheme == "unison" && url.host == "setup" {
+            let link = url.absoluteString
+            if sink != nil { emit(UiJson.setup(link)) } else { pendingSetup = link }
+            return
+        }
         let own = url.scheme == "unison" && url.host == "join"
         let host = URL(string: settings.server)?.host
         let web = url.scheme == "https" && host != nil && url.host == host && url.pathComponents.dropFirst().first == "join"
@@ -161,6 +169,10 @@ final class Bridge {
         if let code = pendingInvite {
             pendingInvite = nil
             emit(UiJson.invite(code))
+        }
+        if let link = pendingSetup {
+            pendingSetup = nil
+            emit(UiJson.setup(link))
         }
         emit(UiJson.calm(platform.calm.value))
         observing?.cancel()
@@ -364,6 +376,9 @@ final class Bridge {
             return nil
         case "log":
             return EventLog.shared.snapshot()
+        case "note":
+            EventLog.d("ui", string("line"))
+            return nil
         default:
             break
         }

@@ -6,12 +6,14 @@ import 'package:flutter/services.dart';
 import '../data/library_controller.dart';
 import '../data/models.dart';
 import '../data/room_controller.dart';
+import '../data/setup_link.dart';
 import '../data/update_controller.dart';
 import '../data/update_info.dart';
 import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'scope.dart';
+import 'setup_dialog.dart';
 import 'widgets/avatars.dart';
 import 'widgets/text_dialog.dart';
 import 'widgets/wash.dart';
@@ -117,6 +119,14 @@ class SettingsPage extends StatelessWidget {
                   icon: Icons.dns_outlined,
                   label: S.serverSection,
                   onTap: () => _open(context, () => S.serverSection, _server),
+                ),
+              // The phone that has the server built in can set another one up
+              if (Platform.isAndroid)
+                _NavRow(
+                  key: const ValueKey('settings-setup-another'),
+                  icon: Icons.qr_code_2_rounded,
+                  label: S.setupAnother,
+                  onTap: () => showSetupLinkDialog(context, model.room),
                 ),
               // iOS installs updates by itself: they come from SideStore, not from the app
               if (!Platform.isIOS)
@@ -355,9 +365,28 @@ class _ServerGroup extends StatelessWidget {
             ),
             onTap: () => _edit(context, key: true),
           ),
+          _Row(
+            key: const ValueKey('server-paste'),
+            label: S.setupPaste,
+            onTap: () => _paste(context),
+          ),
         ],
       ),
     );
+  }
+
+  /// Takes the server and key from a setup link that was copied, e.g. one sent from the other phone.
+  Future<void> _paste(BuildContext context) async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+    final link = SetupLink.parse(text);
+    if (!context.mounted) return;
+    if (link == null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(S.setupBad)));
+      return;
+    }
+    await askToUseSetup(context, room, link);
   }
 }
 
@@ -1066,10 +1095,15 @@ class _Row extends StatelessWidget {
               ),
             ),
             if (value != null)
-              Flexible(
+              // As wide as the words need, up to half the row: a long address must not push the label out
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.5,
+                ),
                 child: Text(
                   value!,
                   maxLines: 1,
+                  textAlign: TextAlign.end,
                   overflow: TextOverflow.ellipsis,
                   style: theme.bodyLarge?.copyWith(color: p.textSecondary),
                 ),

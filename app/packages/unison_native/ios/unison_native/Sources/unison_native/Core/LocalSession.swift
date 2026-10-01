@@ -389,9 +389,15 @@ final class LocalSession {
             } catch {
                 self.log("could not load '\(item.title)': \(error.localizedDescription)")
                 self.pendingPositionMs = positionMs
-                self.problem("Could not load: \(item.title)")
+                self.problem("Could not load: \(item.title)\n\(Self.cause(error))")
             }
         }
+    }
+
+    /// What went wrong, short enough for a message; the person can tell it to whoever fixes the app.
+    private static func cause(_ error: Error) -> String {
+        let ns = error as NSError
+        return String("\(error.localizedDescription) (\(ns.domain) \(ns.code))".prefix(200))
     }
 
     /// Keeps the gapless successor equal to the song after the one loaded.
@@ -424,7 +430,7 @@ final class LocalSession {
         recoveries += 1
         if recoveries > Self.maxRecoveries {
             log("player error, giving up on '\(item.title)' after \(Self.maxRecoveries) tries: \(error.localizedDescription)")
-            problem("Could not play: \(item.title)")
+            problem("Could not play: \(item.title)\n\(Self.cause(error))")
             recoveries = 0
             return step(+1, auto: true)
         }

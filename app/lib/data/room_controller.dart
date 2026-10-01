@@ -7,6 +7,7 @@ import 'backend.dart';
 import 'calm.dart';
 import 'models.dart';
 import 'recent_rooms.dart';
+import 'setup_link.dart';
 
 /// Something another member did that moved this device: worth a snackbar, sometimes with a way out.
 class Notice {
@@ -46,6 +47,9 @@ class RoomController extends ChangeNotifier {
 
   /// A room code from an invitation link that the UI has not dealt with yet.
   final ValueNotifier<String?> invite = ValueNotifier(null);
+
+  /// A setup link that was opened, for the screen to check and ask about.
+  final ValueNotifier<SetupLink?> setup = ValueNotifier(null);
 
   final _messages = StreamController<String>.broadcast();
   final _notices = StreamController<Notice>.broadcast();
@@ -102,6 +106,10 @@ class RoomController extends ChangeNotifier {
         player.value = position;
       case InviteEvent(:final code):
         invite.value = code;
+      case SetupEvent(:final link):
+        // A link that is not one is ignored, as is any other thing that is opened
+        final parsed = SetupLink.parse(link);
+        if (parsed != null) setup.value = parsed;
       case SleepEvent(:final sleep):
         _sleep = sleep;
         notifyListeners();
@@ -122,9 +130,12 @@ class RoomController extends ChangeNotifier {
 
   String? _describe(ServerError error) {
     if (error.code == 'unplayable') {
-      // The server message reads "Nobody could load: <title>"
-      final title = error.message.split(': ').skip(1).join(': ');
-      return S.unplayable(title.isEmpty ? S.thisSong : title);
+      // The message reads "Nobody could load: <title>", and from the iPhone a second line says what went wrong
+      final lines = error.message.split('\n');
+      final title = lines.first.split(': ').skip(1).join(': ');
+      final text = S.unplayable(title.isEmpty ? S.thisSong : title);
+      final cause = lines.skip(1).join(' ').trim();
+      return cause.isEmpty ? text : '$text\n$cause';
     }
     return S.serverError(error.code) ?? error.message;
   }
@@ -195,6 +206,9 @@ class RoomController extends ChangeNotifier {
     _profile = await _backend.profile();
     notifyListeners();
   }
+
+  /// The link that sets up another phone like this one; null when this one has no server.
+  Future<String?> setupLink() => _backend.setupLink();
 
   Future<void> leave() => _run(_backend.leave);
 
@@ -366,6 +380,7 @@ class RoomController extends ChangeNotifier {
     _notices.close();
     player.dispose();
     invite.dispose();
+    setup.dispose();
     super.dispose();
   }
 }

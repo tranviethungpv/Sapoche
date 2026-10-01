@@ -17,11 +17,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Flutter keeps up to 100 MB of decoded pictures; covers are small and a phone has better uses for the memory
   PaintingBinding.instance.imageCache.maximumSizeBytes = 48 << 20;
-  watchFrames();
+  final Backend backend = NativeBackend();
+  // Where there is no cable to read the frame statistics from, they go into the log of the app
+  watchFrames(report: backend.note);
   final settings = await AppSettings.load();
   final recents = await RecentRooms.load();
   final searches = await RecentSearches.load();
-  final Backend backend = NativeBackend();
   // The display runs at its fastest only while something moves
   FrameBoost((on) => backend.setSmooth(on)).start();
   final room = RoomController(backend, recents: recents)..start();

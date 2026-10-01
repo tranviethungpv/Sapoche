@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import 'now_playing_page.dart';
@@ -8,6 +9,11 @@ import 'widgets/artwork.dart';
 /// cancel the finger that is dragging it open. One animation value, 0 closed to 1 open, is the
 /// sheet's position, and taps, drags and the Back button all move that same value. Listeners hear
 /// when the sheet starts or stops being open.
+///
+/// The sheet grows out of the mini player: closed, its top edge is the mini player's top edge and
+/// its shape is the mini player's capsule; open, it is the whole screen. The top edge therefore
+/// travels from the mini player to the top of the screen, and a finger that holds the sheet stays
+/// level with it all the way.
 class PlayerSheetController extends ChangeNotifier {
   PlayerSheetController(TickerProvider vsync)
     : position = AnimationController(vsync: vsync);
@@ -16,6 +22,9 @@ class PlayerSheetController extends ChangeNotifier {
 
   /// Keys the cover flight measures: the mini player's cover, the full player's cover and page.
   final miniCover = GlobalKey();
+
+  /// The mini player's capsule, which the sheet grows out of.
+  final miniBar = GlobalKey();
   final pageCover = GlobalKey();
   final pageRoot = GlobalKey();
 
@@ -30,6 +39,15 @@ class PlayerSheetController extends ChangeNotifier {
   static const _closeMs = 380;
   static const _fingerMs = 380;
   static const _flingVelocity = 800.0;
+
+  /// Where the mini player's capsule is on the screen; a guess while it is not on it.
+  Rect miniRect(Size screen) {
+    final box = miniBar.currentContext?.findRenderObject();
+    if (box is RenderBox && box.attached && box.hasSize) {
+      return box.localToGlobal(Offset.zero) & box.size;
+    }
+    return Rect.fromLTWH(12, screen.height * 0.85, screen.width - 24, 64);
+  }
 
   /// Being opened, or open.
   bool get isOpen => _open;
@@ -64,9 +82,11 @@ class PlayerSheetController extends ChangeNotifier {
     _setOpen(true);
   }
 
-  /// [dy] is the finger's vertical movement in pixels, positive downwards.
-  void dragBy(double dy, double height) {
-    position.value = (position.value - dy / height).clamp(0.0, 1.0);
+  /// [dy] is the finger's vertical movement in pixels, positive downwards. The sheet's top edge moves by
+  /// the same amount: it has the distance between the mini player and the top of the screen to go.
+  void dragBy(double dy, Size screen) {
+    final travel = miniRect(screen).top.clamp(1.0, screen.height);
+    position.value = (position.value - dy / travel).clamp(0.0, 1.0);
   }
 
   /// [velocity] is in pixels per second, positive downwards.
@@ -130,33 +150,44 @@ class PlayerSheetLayer extends StatelessWidget {
 
   final PlayerSheetController controller;
 
+  /// The sheet is fully opaque, and has the whole width, once this much of the way is open.
+  static const _settled = 0.5;
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller.position,
     child: const NowPlayingPage(),
     builder: (context, page) {
       if (controller.position.value == 0) return const SizedBox.shrink();
-      final closed = 1 - controller.eased;
-      final linear = controller.linear;
-      // Only a sheet held by a finger shrinks and rounds off; plain opening stays a pure slide
-      final scale = linear ? 1 - closed * 0.08 : 1.0;
-      final radius = linear ? 28 * (closed * 8).clamp(0.0, 1.0) : 0.0;
+      final screen = MediaQuery.sizeOf(context);
+      final open = controller.eased;
+      final mini = controller.miniRect(screen);
+      // The sheet's top edge, on the screen: the mini player's at first, then the screen's
+      final top = (1 - open) * mini.top;
+      // What shows of it, in the sheet's own space: the mini player's capsule grows into the whole page
+      final grown = Curves.easeOut.transform((open / _settled).clamp(0.0, 1.0));
+      final shape = RRect.fromLTRBR(
+        mini.left * (1 - grown),
+        0,
+        screen.width - mini.left * (1 - grown),
+        mini.height + (screen.height - mini.height) * open,
+        Radius.circular(22 * (1 - grown)),
+      );
+      // The mini player's own words and buttons are under it, and give way as the page comes in
+      final seen = Curves.easeIn.transform((open / 0.25).clamp(0.0, 1.0));
       // The flying cover is part of the sheet, so it moves with it and can never lag behind or
       // stick out past its edge
-      return FractionalTranslation(
-        translation: Offset(0, closed),
-        child: Transform.scale(
-          scale: scale,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(radius),
-            clipBehavior: radius == 0 ? Clip.none : Clip.antiAlias,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                page!,
-                if (controller.inMotion) _CoverFlight(controller: controller),
-              ],
-            ),
+      return Transform.translate(
+        offset: Offset(0, top),
+        child: ClipRRect(
+          clipper: _ShapeClipper(shape),
+          clipBehavior: grown < 1 ? Clip.antiAlias : Clip.none,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Opacity(opacity: seen, child: page),
+              if (controller.inMotion) _CoverFlight(controller: controller),
+            ],
           ),
         ),
       );
@@ -164,9 +195,21 @@ class PlayerSheetLayer extends StatelessWidget {
   );
 }
 
+class _ShapeClipper extends CustomClipper<RRect> {
+  _ShapeClipper(this.shape);
+
+  final RRect shape;
+
+  @override
+  RRect getClip(Size size) => shape;
+
+  @override
+  bool shouldReclip(_ShapeClipper old) => old.shape != shape;
+}
+
 /// The cover on its way between the mini player and its place in the full player, drawn inside
-/// the sheet. It appears where the sheet's top edge meets the mini player's cover, the same spot
-/// and size, then grows into place as the sheet rises; closing plays the same in reverse.
+/// the sheet. It starts where the mini player's cover is and grows into place as the sheet rises;
+/// closing plays the same in reverse.
 class _CoverFlight extends StatelessWidget {
   const _CoverFlight({required this.controller});
 
@@ -193,15 +236,18 @@ class _CoverFlight extends StatelessWidget {
       pageBox.getTransformTo(root),
       Offset.zero & pageBox.size,
     );
-    // How open the sheet is when its top edge is level with the mini player's cover
-    final meets = 1 - mini.top / root.size.height;
+    final screen = MediaQuery.sizeOf(context);
     final open = controller.eased;
-    if (open <= meets) return const SizedBox.shrink();
-    final t = Curves.easeInOut.transform(
-      ((open - meets) / (1 - meets)).clamp(0.0, 1.0),
+    // Where the sheet's top edge is, so that the start can be named in the sheet's own space and stay
+    // where the mini player's cover is on the screen
+    final top = (1 - open) * controller.miniRect(screen).top;
+    final t = Curves.easeInOut.transform(open);
+    final start = Rect.fromLTWH(
+      mini.left,
+      mini.top - top,
+      mini.width,
+      mini.height,
     );
-    // In the sheet's own space its top edge is 0, which is where the cover starts
-    final start = Rect.fromLTWH(mini.left, 0, mini.width, mini.height);
     final rect = Rect.lerp(start, page, t)!;
     // Drawn at the full player's size and scaled down, so it is the very picture already
     // decoded there; a size that changed every frame would decode a new one each time
@@ -248,10 +294,12 @@ class PlayerPull extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sheet = PlayerSheetScope.of(context);
-    final height = MediaQuery.sizeOf(context).height;
+    final screen = MediaQuery.sizeOf(context);
     return GestureDetector(
+      // The sheet follows from the touch, not from where the finger had moved far enough to count as a drag
+      dragStartBehavior: DragStartBehavior.down,
       onVerticalDragStart: (_) => sheet.beginDrag(),
-      onVerticalDragUpdate: (d) => sheet.dragBy(d.delta.dy, height),
+      onVerticalDragUpdate: (d) => sheet.dragBy(d.delta.dy, screen),
       onVerticalDragEnd: (d) =>
           sheet.endDrag(d.primaryVelocity ?? 0, startedClosed: false),
       onVerticalDragCancel: () => sheet.endDrag(0, startedClosed: false),
@@ -269,10 +317,11 @@ class PlayerOpenDrag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sheet = PlayerSheetScope.of(context);
-    final height = MediaQuery.sizeOf(context).height;
+    final screen = MediaQuery.sizeOf(context);
     return GestureDetector(
+      dragStartBehavior: DragStartBehavior.down,
       onVerticalDragStart: (_) => sheet.beginDrag(),
-      onVerticalDragUpdate: (d) => sheet.dragBy(d.delta.dy, height),
+      onVerticalDragUpdate: (d) => sheet.dragBy(d.delta.dy, screen),
       onVerticalDragEnd: (d) =>
           sheet.endDrag(d.primaryVelocity ?? 0, startedClosed: true),
       onVerticalDragCancel: () => sheet.endDrag(0, startedClosed: true),

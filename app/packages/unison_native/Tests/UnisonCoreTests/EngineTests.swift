@@ -730,7 +730,7 @@ final class MediaTests: XCTestCase {
         XCTAssertEqual(playable.headers["User-Agent"], "ua")
     }
 
-    func testAFailedTransferIsTriedAgainWithAFreshAddressAndThenGivenUp() async throws {
+    func testAFailedTransferIsTriedAgainWithAFreshAddressAndThenTheStreamIsOffered() async throws {
         final class Flaky: FileFetcher, @unchecked Sendable {
             var failures: Int
             var calls = 0
@@ -755,11 +755,29 @@ final class MediaTests: XCTestCase {
 
         let broken = Flaky(failures: 100)
         let (other, _) = library(FakeResolver(), broken)
+        // Three tries to fetch it, and then the player is left to read the stream
+        let stream = try await other.playable("vid00000002")
+        XCTAssertEqual(broken.calls, 3)
+        XCTAssertFalse(stream.isFile)
+        XCTAssertEqual(stream.headers["User-Agent"], "test-agent")
+    }
+
+    func testWithNothingToResolveTheFailureIsThatOfTheTransfer() async throws {
+        struct Nothing: StreamResolver {
+            func search(_ query: String, limit: Int, songsOnly: Bool) async throws -> [TrackInfo] { [] }
+            func resolve(_ videoId: String) async throws -> Resolved { throw ResolveFailure(message: "offline") }
+            func searchPlaylists(_ query: String, limit: Int) async throws -> [PlaylistRef] { [] }
+            func playlist(_ playlistId: String, limit: Int) async throws -> Playlist { Playlist(title: "", tracks: []) }
+            func related(_ videoId: String, limit: Int) async throws -> [TrackInfo] { [] }
+            func suggest(_ query: String) async throws -> [String] { [] }
+        }
+        let files = files()
+        let media = MediaLibrary(files: files, streams: StreamCache(resolver: Nothing()), fetcher: FakeFetcher())
         do {
-            _ = try await other.playable("vid00000002")
+            _ = try await media.playable("vid00000001")
             XCTFail("expected a failure")
         } catch {
-            XCTAssertEqual(broken.calls, 3)
+            XCTAssertEqual(error.localizedDescription, "offline")
         }
     }
 
@@ -819,7 +837,7 @@ final class MediaTests: XCTestCase {
         XCTAssertNil(files.file("vid00000001"))
     }
 
-    func testAShortTransferIsNotKept() async throws {
+    func testAShortTransferIsNotKeptAndTheStreamIsOffered() async throws {
         struct Short: FileFetcher {
             func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
                 try Data(repeating: 7, count: 4).write(to: file)
@@ -827,12 +845,10 @@ final class MediaTests: XCTestCase {
             }
         }
         let (media, files) = library(FakeResolver(), Short())
-        do {
-            _ = try await media.playable("vid00000001")
-            XCTFail("expected a failure")
-        } catch {
-            XCTAssertNil(files.file("vid00000001"))
-        }
+        // Not kept as a file; the player is left to read the stream
+        let playable = try await media.playable("vid00000001")
+        XCTAssertFalse(playable.isFile)
+        XCTAssertNil(files.file("vid00000001"))
     }
 
     func testDownloadingKeepsTheSongForGoodAndReusesWhatWasPlayed() async throws {

@@ -41,64 +41,68 @@ class MiniPlayer extends StatelessWidget {
                   key: const ValueKey('player'),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: PlayerOpenDrag(
-                    child: Glass(
-                      borderRadius: BorderRadius.circular(22),
-                      border: true,
-                      child: InkWell(
-                        onTap: sheet.open,
-                        child: SizedBox(
-                          height: height,
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 10),
-                              Artwork(
-                                key: sheet.miniCover,
-                                url: current.thumb,
-                                size: 44,
-                                radius: 8,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      current.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.titleSmall,
-                                    ),
-                                    Text(
-                                      controller.snapshot.solo
-                                          ? '${current.artist} · ${S.onYourOwn}'
-                                          : current.artist,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.bodySmall?.copyWith(
-                                        color: p.textSecondary,
+                    child: KeyedSubtree(
+                      key: sheet.miniBar,
+                      child: Glass(
+                        borderRadius: BorderRadius.circular(22),
+                        border: true,
+                        child: InkWell(
+                          onTap: sheet.open,
+                          child: SizedBox(
+                            height: height,
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 10),
+                                Artwork(
+                                  key: sheet.miniCover,
+                                  url: current.thumb,
+                                  size: 44,
+                                  radius: 8,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        current.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.titleSmall,
                                       ),
-                                    ),
-                                  ],
+                                      Text(
+                                        controller.snapshot.solo
+                                            ? '${current.artist} · ${S.onYourOwn}'
+                                            : current.artist,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.bodySmall?.copyWith(
+                                          color: p.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              ListenableBuilder(
-                                listenable: controller.player,
-                                builder: (context, _) => PlayPauseButton(
-                                  playing: controller.isPlaying,
-                                  starting: controller.isStarting,
-                                  onPressed: controller.togglePlay,
-                                  size: 48,
-                                  filled: false,
+                                ListenableBuilder(
+                                  listenable: controller.player,
+                                  builder: (context, _) => PlayPauseButton(
+                                    playing: controller.isPlaying,
+                                    starting: controller.isStarting,
+                                    onPressed: controller.togglePlay,
+                                    size: 48,
+                                    filled: false,
+                                  ),
                                 ),
-                              ),
-                              SkipButton(
-                                forward: true,
-                                onPressed: controller.next,
-                                size: 34,
-                              ),
-                              const SizedBox(width: 4),
-                            ],
+                                SkipButton(
+                                  forward: true,
+                                  onPressed: controller.next,
+                                  size: 34,
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                            ),
                           ),
                         ),
                       ),

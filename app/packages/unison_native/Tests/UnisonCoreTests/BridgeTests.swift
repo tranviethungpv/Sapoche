@@ -429,6 +429,22 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(codes, ["ABC234", "XYZ789"])
     }
 
+    func testASetupLinkReachesTheScreenWhoeverIsListening() async throws {
+        let link = "unison://setup?server=https%3A%2F%2Funison.example.dev&key=k3y"
+        // Opened before the screen listens: it is held, and given when it does
+        bridge.stop()
+        bridge.onLink(URL(string: link)!)
+        events.removeAll()
+        bridge.start { [weak self] text in
+            if let json = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] { self?.events.append(json) }
+        }
+        XCTAssertEqual(events.filter { $0["type"] as? String == "setup" }.compactMap { $0["link"] as? String }, [link])
+        // Opened while it listens: it is given at once
+        bridge.onLink(URL(string: link)!)
+        XCTAssertEqual(events.filter { $0["type"] as? String == "setup" }.count, 2)
+        XCTAssertNil(prefs.string("server_key"), "nothing is kept until the person agrees")
+    }
+
     func testUnknownCommandsAreRefusedWithAMessage() async throws {
         do {
             _ = try await call("dance")
@@ -436,6 +452,12 @@ final class BridgeTests: XCTestCase {
         } catch let error as BridgeError {
             XCTAssertEqual(error.code, "failed")
         }
+    }
+
+    func testTheScreenCanWriteInTheLog() async throws {
+        _ = try await call("note", ["line": "frames=120 display=120Hz"])
+        let lines = try await result("log", as: [String].self)
+        XCTAssertTrue(lines.contains { $0.hasSuffix("ui: frames=120 display=120Hz") })
     }
 
     func testTheLogHoldsWhatWasDone() async throws {

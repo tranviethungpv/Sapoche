@@ -155,6 +155,42 @@ void main() {
     expect(messages, ['Nobody could play “Blinding Lights”. Skipped.']);
   });
 
+  test(
+    'an unplayable song tells what went wrong when the phone says',
+    () async {
+      final messages = <String>[];
+      controller.messages.listen(messages.add);
+      backend.emit(
+        const ErrorEvent(
+          ServerError(
+            'unplayable',
+            'Could not load: Blinding Lights\nThe file is damaged (AVFoundationErrorDomain -11829)',
+          ),
+        ),
+      );
+      await settle();
+      expect(messages, [
+        'Nobody could play “Blinding Lights”. Skipped.\nThe file is damaged (AVFoundationErrorDomain -11829)',
+      ]);
+    },
+  );
+
+  test(
+    'a setup link that was opened is kept for the screen to ask about',
+    () async {
+      backend.emit(
+        const SetupEvent('unison://setup?server=https://a.example&key=k'),
+      );
+      await settle();
+      expect(controller.setup.value?.server, 'https://a.example');
+      expect(controller.setup.value?.key, 'k');
+      controller.setup.value = null;
+      backend.emit(const SetupEvent('unison://setup?server=http://a.example'));
+      await settle();
+      expect(controller.setup.value, isNull, reason: 'not an https server');
+    },
+  );
+
   test('a failing command becomes a message instead of an exception', () async {
     final messages = <String>[];
     controller.messages.listen(messages.add);

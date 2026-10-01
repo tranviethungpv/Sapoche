@@ -220,6 +220,29 @@ void main() {
     expect(find.text('Your music starts here'), findsOneWidget);
   });
 
+  testWidgets('the value of a setting sits against the right edge of its row', (
+    tester,
+  ) async {
+    await openHome(tester);
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('settings-appearance'));
+    final value = find.descendant(of: row, matching: find.text('Light'));
+    final chevron = find.descendant(
+      of: row,
+      matching: find.byIcon(Icons.chevron_right_rounded),
+    );
+    // The arrow is against the edge of the row (16 points of padding), the words next to it
+    expect(
+      tester.getTopRight(chevron).dx,
+      closeTo(tester.getTopRight(row).dx - 16, 1),
+    );
+    expect(
+      tester.getTopRight(value).dx,
+      closeTo(tester.getTopLeft(chevron).dx - 10, 1),
+    );
+  });
+
   testWidgets('a trending playlist opens with its songs', (tester) async {
     final backend = await openHome(
       tester,

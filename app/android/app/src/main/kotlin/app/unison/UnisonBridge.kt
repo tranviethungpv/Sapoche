@@ -302,6 +302,7 @@ class UnisonBridge(
                 "server" to Config.SERVER,
                 "autoplay" to prefs.getBoolean("autoplay", true),
             )
+            "setupLink" -> return Config.setupLink()
             "smooth" -> {
                 display.smooth(call.argument<Boolean>("on") == true)
                 return null
@@ -455,6 +456,10 @@ class UnisonBridge(
                 return null
             }
             "log" -> return EventLog.snapshot()
+            "note" -> {
+                EventLog.d("ui", call.argument<String>("line").orEmpty())
+                return null
+            }
         }
 
         val group = withTimeout(SERVICE_START_TIMEOUT_MS) { UnisonApp.group.first { it != null } }!!

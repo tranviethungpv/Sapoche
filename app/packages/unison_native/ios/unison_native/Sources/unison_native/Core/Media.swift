@@ -110,7 +110,7 @@ final class MediaFiles: @unchecked Sendable {
         try? FileManager.default.createDirectory(at: playDir, withIntermediateDirectories: true)
         // Half-written files from a run that was cut short are of no use
         for dir in [downloadsDir, playDir] {
-            for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where file.pathExtension == "part" {
+            for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where file.pathExtension == "part" || file.pathExtension == "remux" {
                 try? FileManager.default.removeItem(at: file)
             }
         }
@@ -317,9 +317,9 @@ actor MediaLibrary {
         self.log = log
     }
 
-    /// Where to play [videoId] from, fetching it first when it is not on the disk.
+    /// Where to play [videoId] from, fetching it first when it is not on the disk; the stream when it cannot be fetched.
     func playable(_ videoId: String) async throws -> Playable {
-        if let file = files.file(videoId) { return Playable(url: file, isFile: true, headers: [:]) }
+        if let file = files.file(videoId) { return Playable(url: ordinary(file), isFile: true, headers: [:]) }
         var problem: Error = ResolveFailure(message: "No stream for \(videoId)")
         for attempt in 1...Self.attempts {
             do {
@@ -342,7 +342,25 @@ actor MediaLibrary {
                 await streams.invalidate(videoId)
             }
         }
+        // Nothing could be brought onto the disk: the player may still manage to read the stream itself
+        if let stream = try? await streamed(videoId) {
+            log("\(videoId) could not be fetched (\(problem.localizedDescription)), played from the stream")
+            return stream
+        }
         throw problem
+    }
+
+    /// Where [videoId] is streamed from, without a file; the way out when a file will not play.
+    func streamed(_ videoId: String) async throws -> Playable {
+        let pick = try await streams.audio(videoId)
+        guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
+        return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
+    }
+
+    /// Throws away the file of [videoId] that was played, so that the next play fetches it again. A downloaded file stays.
+    func forget(_ videoId: String) async {
+        try? FileManager.default.removeItem(at: files.played(videoId))
+        await streams.invalidate(videoId)
     }
 
     /// Where the picture of [videoId] is streamed from, at most [maxHeight] tall; nil when it has none that plays.
@@ -392,6 +410,7 @@ actor MediaLibrary {
                     try? FileManager.default.removeItem(at: part)
                     throw URLError(.networkConnectionLost)
                 }
+                Self.makeOrdinary(part, log: self.log)
                 try files.finish(videoId, download: download)
                 return size
             }
@@ -399,6 +418,22 @@ actor MediaLibrary {
         }
         return try await withTaskCancellationHandler { try await task.value } onCancel: {
             Task { await self.waiterLeft(key, task) }
+        }
+    }
+
+    /// Songs that were kept by an earlier version are in fragments, as YouTube sends them.
+    private func ordinary(_ file: URL) -> URL {
+        Self.makeOrdinary(file, log: log)
+        return file
+    }
+
+    /// YouTube sends a song in fragments, which Apple's player is not reliable with; the file is written again as an
+    /// ordinary MP4. A file that cannot be converted is kept as it is, and left to the player.
+    private static func makeOrdinary(_ file: URL, log: @Sendable (String) -> Void) {
+        do {
+            if try Mp4Remux.makeProgressive(file) { log("\(file.lastPathComponent) rewritten as an ordinary MP4") }
+        } catch {
+            log("\(file.lastPathComponent) could not be rewritten: \(error.localizedDescription)")
         }
     }
 

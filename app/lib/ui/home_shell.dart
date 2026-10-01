@@ -12,6 +12,7 @@ import 'player_sheet.dart';
 import 'room_page.dart';
 import 'rooms_sheet.dart';
 import 'scope.dart';
+import 'setup_dialog.dart';
 import 'search_page.dart';
 import 'widgets/artwork.dart';
 import 'widgets/glass.dart';
@@ -73,14 +74,17 @@ class _HomeShellState extends State<HomeShell>
         );
     });
     room.invite.addListener(_onInvite);
+    room.setup.addListener(_onSetup);
     room.addListener(_precacheCover);
     WidgetsBinding.instance.addPostFrameCallback((_) => _precacheCover());
     WidgetsBinding.instance.addPostFrameCallback((_) => _onInvite());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onSetup());
   }
 
   @override
   void dispose() {
     _watched?.invite.removeListener(_onInvite);
+    _watched?.setup.removeListener(_onSetup);
     _watched?.removeListener(_precacheCover);
     _messages?.cancel();
     _libraryMessages?.cancel();
@@ -102,6 +106,15 @@ class _HomeShellState extends State<HomeShell>
       onError: (_, _) =>
           precacheImage(NetworkImage(url), context, onError: (_, _) {}),
     );
+  }
+
+  /// A setup link arrived, from the camera of this phone or from a message: the server and key of another phone.
+  Future<void> _onSetup() async {
+    final room = AppScope.roomOf(context);
+    final link = room.setup.value;
+    if (link == null || !mounted) return;
+    room.setup.value = null;
+    await askToUseSetup(context, room, link);
   }
 
   /// An invitation link arrived. Outside a room it opens the sheet with the code filled in; in a room

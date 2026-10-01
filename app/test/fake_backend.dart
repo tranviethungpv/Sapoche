@@ -33,6 +33,12 @@ class FakeBackend implements Backend {
   Future<void> configure({String? server, String? key}) =>
       _record('configure $server $key');
 
+  /// What the setup link of this phone is, when it has one.
+  String? setupLinkValue;
+
+  @override
+  Future<String?> setupLink() async => setupLinkValue;
+
   @override
   Future<String> createRoom(String name) async {
     await _record('createRoom $name');
@@ -463,6 +469,9 @@ class FakeBackend implements Backend {
 
   @override
   Future<List<String>> log() async => ['line one', 'line two'];
+
+  @override
+  Future<void> note(String line) async {}
 }
 
 RoomSnapshot sampleRoom({

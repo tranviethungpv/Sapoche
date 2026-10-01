@@ -46,7 +46,9 @@ packages/unison_native/ios/unison_native/Sources/unison_native/
   Apple/   phần chỉ chạy trên iPhone: AVPlayerEngine, màn hình khóa, chọn tệp, mạng, plugin
 ```
 
-`Core/` biên dịch và chạy test được trên Linux (không cần Mac): `cd packages/unison_native && swift test`. Phần `Apple/` chỉ biên dịch được trên macOS, nên CI (`.github/workflows/ios.yml`) dựng cả app. Cài vào máy: tải IPA chưa ký từ CI rồi ký bằng SideStore. Địa chỉ server và khóa phòng nhập trong app (Cài đặt > Máy chủ), không build vào IPA.
+`Core/` biên dịch và chạy test được trên Linux (không cần Mac): `cd packages/unison_native && swift test`. Phần `Apple/` chỉ biên dịch được trên macOS, nên CI (`.github/workflows/ios.yml`) dựng cả app. Cài vào máy: tải IPA chưa ký từ CI rồi ký bằng SideStore. Địa chỉ server và khóa phòng không build vào IPA: Android hiện chúng thành mã QR (Cài đặt > Cài đặt cho máy khác, liên kết `unison://setup?server=…&key=…`), iPhone quét bằng Camera hoặc dán liên kết ở Cài đặt > Máy chủ; nhập tay cũng được. Bản IPA do CI dựng đang bật `--dart-define=FRAME_STATS=true` để ghi số khung hình vào nhật ký (Cài đặt > Sao chép nhật ký); bỏ cờ này ở `.github/workflows/ios.yml` khi đã đo xong.
+
+Bài hát YouTube gửi về dưới dạng MP4 phân mảnh (DASH); `Core/Mp4.swift` ghi lại thành MP4 thường ngay sau khi tải (không mã hoá lại), vì AVPlayer không đáng tin với tệp phân mảnh nằm trên đĩa.
 
 ## Mời bạn bè
 

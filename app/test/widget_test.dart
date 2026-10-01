@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/ui/now_playing_page.dart';
+import 'package:unison/ui/setup_dialog.dart';
+import 'package:unison/ui/widgets/qr_code_view.dart';
 import 'package:unison/ui/widgets/shimmer.dart';
 import 'package:unison/ui/widgets/mini_player.dart';
 import 'package:unison/ui/widgets/track_menu.dart';
@@ -707,6 +709,90 @@ void main() {
     }
     expect(find.byType(NowPlayingPage), findsOneWidget);
     expect(tester.getTopLeft(find.byType(NowPlayingPage)).dy, 0);
+  });
+
+  testWidgets('a setup link that is opened asks before it sets the server', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(
+      const SetupEvent(
+        'unison://setup?server=https%3A%2F%2Funison.example.dev&key=k3y',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Use this server?'), findsOneWidget);
+    expect(find.textContaining('unison.example.dev'), findsOneWidget);
+    expect(backend.calls.where((c) => c.startsWith('configure')), isEmpty);
+
+    await tester.tap(find.text('Use'));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('configure https://unison.example.dev k3y'));
+    expect(find.text('Server set'), findsOneWidget);
+  });
+
+  testWidgets('saying no to a setup link sets nothing', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(
+      const SetupEvent('unison://setup?server=https://evil.example&key=k'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.where((c) => c.startsWith('configure')), isEmpty);
+  });
+
+  testWidgets('the phone with the server shows it as a code for another', (
+    tester,
+  ) async {
+    final (backend, room) = await pumpApp(tester);
+    backend.setupLinkValue =
+        'unison://setup?server=https%3A%2F%2Fa.example&key=k';
+    showSetupLinkDialog(tester.element(find.byType(Scaffold).first), room);
+    await tester.pumpAndSettle();
+    expect(find.byType(QrCodeView), findsOneWidget);
+    expect(find.text('Copy link'), findsOneWidget);
+  });
+
+  testWidgets('a phone with no server has nothing to show', (tester) async {
+    final (_, room) = await pumpApp(tester);
+    showSetupLinkDialog(tester.element(find.byType(Scaffold).first), room);
+    await tester.pumpAndSettle();
+    expect(find.byType(QrCodeView), findsNothing);
+    expect(find.text('This phone has no server to share'), findsOneWidget);
+  });
+
+  testWidgets('the player grows out of the mini player under the finger', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final miniTop = tester.getTopLeft(find.byType(MiniPlayer)).dy;
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(MiniPlayer)),
+    );
+    // Every pixel the finger has moved, the sheet's top edge has moved with it: it began at the mini player
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(
+      tester.getTopLeft(find.byType(NowPlayingPage)).dy,
+      closeTo(miniTop - 40, 1),
+    );
+    await gesture.moveBy(const Offset(0, -200));
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(
+      tester.getTopLeft(find.byType(NowPlayingPage)).dy,
+      closeTo(miniTop - 240, 1),
+    );
+    // Let go below the half way: it goes back into the mini player
+    await gesture.up();
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(NowPlayingPage), findsNothing);
   });
 
   testWidgets(

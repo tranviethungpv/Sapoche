@@ -70,6 +70,9 @@ enum UiJson {
     /// An invitation link was opened: the UI offers to join that room.
     static func invite(_ code: String) -> String { JSONText.encode(["type": "invite", "code": code]) }
 
+    /// A setup link was opened: the address and key of the server, to be used if the person agrees.
+    static func setup(_ link: String) -> String { JSONText.encode(["type": "setup", "link": link]) }
+
     /// Another member paused the room or skipped a song; [by] is their name.
     static func notice(_ notice: GroupController.Notice) -> String {
         JSONText.encode(["type": "notice", "kind": notice.kind, "by": notice.by, "title": notice.title ?? NSNull()] as [String: Any])

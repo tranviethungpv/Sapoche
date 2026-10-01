@@ -27,6 +27,12 @@ class InviteEvent extends BackendEvent {
   final String code;
 }
 
+/// Someone opened a `unison://setup?server=…&key=…` link, which another phone shows to set this one up.
+class SetupEvent extends BackendEvent {
+  const SetupEvent(this.link);
+  final String link;
+}
+
 /// Another member paused the room ([kind] `paused`) or switched the song (`skipped`).
 class NoticeEvent extends BackendEvent {
   const NoticeEvent({required this.kind, required this.by, this.title});
@@ -73,6 +79,10 @@ abstract class Backend {
   /// Sets where the room server is and the key it asks for (iOS; on Android both are built into the app). What is
   /// left out stays as it was.
   Future<void> configure({String? server, String? key});
+
+  /// A link that sets up another phone with this one's server and key (Android, which has them built in); null when
+  /// there is no server. It holds the secret, so it is only for the person to see.
+  Future<String?> setupLink();
 
   Future<String> createRoom(String name);
   Future<void> join(String code, String name);
@@ -230,6 +240,9 @@ abstract class Backend {
   Future<void> setTrim(int ms);
   Future<List<String>> log();
 
+  /// Writes a line in the diary the log shows, for what only the screen can tell (how fast it was drawn).
+  Future<void> note(String line);
+
   /// Asks the display for its fastest refresh rate while the screen is moving, and gives it back when it is still.
   Future<void> setSmooth(bool on);
 
@@ -268,6 +281,7 @@ class NativeBackend implements Backend {
       'calm' => CalmEvent(json['on'] as bool),
       'sleep' => SleepEvent(SleepState.fromJson(json)),
       'invite' => InviteEvent(json['code'] as String),
+      'setup' => SetupEvent(json['link'] as String),
       'notice' => NoticeEvent(
         kind: json['kind'] as String,
         by: json['by'] as String? ?? '',
@@ -295,6 +309,9 @@ class NativeBackend implements Backend {
   @override
   Future<void> configure({String? server, String? key}) =>
       _call('configure', {'server': ?server, 'key': ?key});
+
+  @override
+  Future<String?> setupLink() => _call<String>('setupLink');
 
   @override
   Future<String> createRoom(String name) async =>
@@ -628,6 +645,15 @@ class NativeBackend implements Backend {
   @override
   Future<List<String>> log() async =>
       (await _call<List<Object?>>('log') ?? const []).cast<String>();
+
+  @override
+  Future<void> note(String line) async {
+    try {
+      await _call<void>('note', {'line': line});
+    } on Object {
+      // A diary that cannot be written to must not break what is being measured
+    }
+  }
 
   @override
   Future<void> setSmooth(bool on) => _call<void>('smooth', {'on': on});

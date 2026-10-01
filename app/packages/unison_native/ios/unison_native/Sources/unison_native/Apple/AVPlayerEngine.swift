@@ -68,22 +68,34 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func prepare(_ item: QueueItem, seekToMs: Int64) async throws {
         cancelNext()
         rebuildTask?.cancel()
-        let playable = try await library.playable(item.videoId)
-        try Task.checkCancellation()
-        let built = await build(item, playable)
-        try Task.checkCancellation()
-        activateSession()
+        var playable = try await library.playable(item.videoId)
+        while true {
+            try Task.checkCancellation()
+            let built = await build(item, playable)
+            try Task.checkCancellation()
+            activateSession()
 
-        player.pause()
-        player.removeAllItems()
-        forgetItems(keeping: built.item)
-        pausedAtEnd = false
-        current = item
-        queuedNext = nil
-        adopt(built.item, hasVideo: built.video)
-        player.insert(built.item, after: nil)
-        watch(built.item)
-        try await waitUntilReady(built.item)
+            player.pause()
+            player.removeAllItems()
+            forgetItems(keeping: built.item)
+            pausedAtEnd = false
+            current = item
+            queuedNext = nil
+            adopt(built.item, hasVideo: built.video)
+            player.insert(built.item, after: nil)
+            watch(built.item)
+            do {
+                try await waitUntilReady(built.item)
+                break
+            } catch {
+                if Task.isCancelled { throw CancellationError() }
+                // A file the player will not open: forget it, and play the song from the stream instead
+                guard playable.isFile else { throw error }
+                log("the player could not open the file of '\(item.title)' (\(error.localizedDescription)), using the stream")
+                await library.forget(item.videoId)
+                playable = try await library.streamed(item.videoId)
+            }
+        }
         if seekToMs > 0 { _ = await seek(to: seekToMs) }
         onChange?()
     }

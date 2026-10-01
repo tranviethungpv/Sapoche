@@ -78,6 +78,7 @@ abstract final class S {
       _t('Remove every song from the queue?', 'Xóa mọi bài khỏi hàng đợi?');
   static String get clear => _t('Clear', 'Xóa');
   static String get cancel => _t('Cancel', 'Hủy');
+  static String get close => _t('Close', 'Đóng');
   static String addedBy(String name) => _t('Added by $name', '$name đã thêm');
   static String get you => _t('You', 'Bạn');
   static String get copyCode => _t('Copy code', 'Sao chép mã');
@@ -580,9 +581,35 @@ abstract final class S {
   static String get serverKeySet => _t('Set', 'Đã đặt');
   static String get serverKeyNotSet => _t('Not set', 'Chưa đặt');
   static String get serverHelp => _t(
-    'Where your Unison server is and the key it asks for. They stay on this phone and are not part of the app.',
-    'Địa chỉ máy chủ Unison của bạn và khoá nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng.',
+    'Where your Unison server is and the key it asks for. They stay on this phone and are not part of the app. Easiest: on a phone that already works, open Settings > Set up another phone, and point this phone’s camera at the code.',
+    'Địa chỉ máy chủ Unison của bạn và khoá nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng. Dễ nhất: trên máy đã dùng được, mở Cài đặt > Cài đặt cho máy khác, rồi đưa camera của máy này vào mã.',
   );
+  static String get setupAnother =>
+      _t('Set up another phone', 'Cài đặt cho máy khác');
+  static String get setupAnotherHelp => _t(
+    'Open the camera on the other phone and point it at this code, or copy the link and send it to yourself. It holds the server address and the room key: show it to nobody else.',
+    'Mở camera trên máy kia và đưa vào mã này, hoặc sao chép liên kết rồi gửi cho chính bạn. Mã chứa địa chỉ máy chủ và khoá phòng: đừng cho ai khác xem.',
+  );
+  static String get setupCopy => _t('Copy link', 'Sao chép liên kết');
+  static String get setupCopied => _t('Link copied', 'Đã sao chép liên kết');
+  static String get setupNone => _t(
+    'This phone has no server to share',
+    'Máy này chưa có máy chủ để chia sẻ',
+  );
+  static String get setupPaste =>
+      _t('Paste setup link', 'Dán liên kết cài đặt');
+  static String get setupUseTitle =>
+      _t('Use this server?', 'Dùng máy chủ này?');
+  static String setupUseBody(String host) => _t(
+    'Rooms will be made on $host, with the key from the link.',
+    'Phòng sẽ được tạo trên $host, với khoá trong liên kết.',
+  );
+  static String get setupUse => _t('Use', 'Dùng');
+  static String get setupBad => _t(
+    'That is not a Unison setup link.',
+    'Đó không phải liên kết cài đặt của Unison.',
+  );
+  static String get setupDone => _t('Server set', 'Đã đặt máy chủ');
   static String get serverNotSet => _t(
     'Enter the server address and key first (Settings > Server).',
     'Hãy nhập địa chỉ máy chủ và khoá trước (Cài đặt > Máy chủ).',

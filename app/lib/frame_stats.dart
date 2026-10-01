@@ -10,8 +10,9 @@ const _wanted = bool.fromEnvironment('FRAME_STATS');
 
 /// Prints, every few seconds while frames are being drawn, how many missed the time the display gives them
 /// (build or raster longer than one refresh) and how far apart the frames really were, which tells the refresh
-/// rate the app got: 8 ms between frames is 120 Hz, 16 ms is 60. Read it with `adb logcat -s flutter`.
-void watchFrames() {
+/// rate the app got: 8 ms between frames is 120 Hz, 16 ms is 60. Read it with `adb logcat -s flutter`, or, where
+/// there is no cable, in the log of the app: [report] is given each line to put there.
+void watchFrames({void Function(String line)? report}) {
   if (!kProfileMode && !_wanted) return;
   var frames = 0, slow = 0;
   var worst = Duration.zero;
@@ -61,12 +62,13 @@ void watchFrames() {
     final gap = gaps.isEmpty
         ? 'n/a'
         : '${(gaps[gaps.length ~/ 2] / 1000).toStringAsFixed(1)}ms';
-    debugPrint(
-      'frames=$frames slow(build or raster over one refresh of ${(budget / 1000).toStringAsFixed(1)}ms)=$slow '
-      'p50=${total[total.length ~/ 2]}ms p95=${total[(total.length * .95).floor()]}ms worst=${worst.inMilliseconds}ms '
-      'build p50/p95=${ms(builds, .5)}/${ms(builds, .95)}ms raster p50/p95=${ms(rasters, .5)}/${ms(rasters, .95)}ms '
-      'gap between frames p50=$gap display=${rate.round()}Hz',
-    );
+    final line =
+        'frames=$frames slow(build or raster over one refresh of ${(budget / 1000).toStringAsFixed(1)}ms)=$slow '
+        'p50=${total[total.length ~/ 2]}ms p95=${total[(total.length * .95).floor()]}ms worst=${worst.inMilliseconds}ms '
+        'build p50/p95=${ms(builds, .5)}/${ms(builds, .95)}ms raster p50/p95=${ms(rasters, .5)}/${ms(rasters, .95)}ms '
+        'gap between frames p50=$gap display=${rate.round()}Hz';
+    debugPrint(line);
+    report?.call(line);
     frames = 0;
     slow = 0;
     worst = Duration.zero;
