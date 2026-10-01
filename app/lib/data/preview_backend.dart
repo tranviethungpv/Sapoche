@@ -15,9 +15,12 @@ class PreviewBackend implements Backend {
   @override
   Stream<BackendEvent> get events => _events.stream;
 
+  // The app stays on its splash until the first state arrives, so send an empty one once the controller listens
   @override
-  Future<Profile> profile() async =>
-      const Profile(name: 'iPhone', device: 'iPhone');
+  Future<Profile> profile() async {
+    scheduleMicrotask(() => _events.add(const StateEvent(RoomSnapshot())));
+    return const Profile(name: 'iPhone', device: 'iPhone');
+  }
   @override
   Future<String> createRoom(String name) async => throw _unavailable();
   @override
