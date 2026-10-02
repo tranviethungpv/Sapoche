@@ -1,3 +1,5 @@
+import AVFoundation
+import AVKit
 import Foundation
 import Network
 import UIKit
@@ -7,6 +9,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate {
     let calm = StateFlow<Bool>(false)
+    let output = StateFlow<AudioOutput>(AudioOutput(kind: "speaker", name: ""))
 
     /// The network changed or came back; [Bool] says whether it is another one than before.
     var onNetwork: ((Bool) -> Void)?
@@ -17,6 +20,14 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
     private var interfaces: Set<NWInterface.InterfaceType> = []
     private var picking: CheckedContinuation<URL?, Never>?
 
+    /// The system's own button for choosing where to play to, kept out of sight: it is pressed by [pickOutput], for the
+    /// system draws the list of places and nothing else can.
+    private lazy var routePicker: AVRoutePickerView = {
+        let view = AVRoutePickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+        view.alpha = 0.01
+        return view
+    }()
+
     override init() {
         super.init()
         calm.set(readCalm())
@@ -26,6 +37,13 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
         }
         center.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.updateCalm() }
+        }
+        output.set(readOutput())
+        center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.output.set(self.readOutput())
+            }
         }
         monitor.pathUpdateHandler = { [weak self] path in
             let expensive = path.isExpensive || path.isConstrained
@@ -77,6 +95,33 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
         }
         await work()
         if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
+    }
+
+    // ------------------------------------------------------------------ where the sound goes
+
+    func pickOutput() {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow }) else { return }
+        if routePicker.superview !== window { window.addSubview(routePicker) }
+        routePicker.subviews.compactMap { $0 as? UIButton }.first?.sendActions(for: .touchUpInside)
+    }
+
+    private func readOutput() -> AudioOutput {
+        guard let port = AVAudioSession.sharedInstance().currentRoute.outputs.first else {
+            return AudioOutput(kind: "speaker", name: "")
+        }
+        let kind: String
+        switch port.portType {
+        case .headphones: kind = "headphones"
+        case .bluetoothA2DP, .bluetoothLE, .bluetoothHFP: kind = "bluetooth"
+        case .airPlay: kind = "airplay"
+        case .carAudio: kind = "car"
+        case .builtInSpeaker, .builtInReceiver: kind = "speaker"
+        default: kind = "other"
+        }
+        return AudioOutput(kind: kind, name: kind == "speaker" ? "" : port.portName)
     }
 
     // ------------------------------------------------------------------ warm or saving power

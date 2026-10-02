@@ -579,6 +579,20 @@ class SleepState {
   }
 }
 
+/// Where the sound goes: [kind] is `speaker`, `headphones`, `bluetooth`, `airplay`, `car` or `other`, and [name] is
+/// what the device calls itself (empty for the phone's own speaker).
+class AudioOutput {
+  const AudioOutput({this.kind = 'speaker', this.name = ''});
+
+  final String kind;
+  final String name;
+
+  factory AudioOutput.fromJson(Map<String, dynamic> json) => AudioOutput(
+    kind: json['kind'] as String? ?? 'speaker',
+    name: json['name'] as String? ?? '',
+  );
+}
+
 /// How many songs, playlists and listens a backup file holds, or how many of them a restore added.
 class BackupCounts {
   const BackupCounts({this.liked = 0, this.playlists = 0, this.listens = 0});

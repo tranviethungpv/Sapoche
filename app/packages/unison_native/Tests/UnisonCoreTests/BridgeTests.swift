@@ -10,9 +10,13 @@ final class FakePlatform: PlatformServices {
     var deviceModel = "iPhone"
     var isMetered = false
     let calm = StateFlow<Bool>(false)
+    let output = StateFlow<AudioOutput>(AudioOutput(kind: "speaker", name: ""))
+    var outputPicked = 0
     var shared: [String] = []
     var exported: [(String, String)] = []
     var toImport: String?
+
+    func pickOutput() { outputPicked += 1 }
 
     func share(_ text: String) { shared.append(text) }
 
@@ -343,6 +347,16 @@ final class BridgeTests: XCTestCase {
         XCTAssertNotNil(sleeps.last?["endsAt"] as? Int64)
         _ = try await call("sleep", ["mode": "off"])
         XCTAssertEqual(events.filter { $0["type"] as? String == "sleep" }.last?["mode"] as? String, "off")
+    }
+
+    func testTheScreenIsToldWhereTheSoundGoesAndCanOpenTheList() async throws {
+        let outputs = { self.events.filter { $0["type"] as? String == "output" } }
+        XCTAssertEqual(outputs().last?["kind"] as? String, "speaker")
+        platform.output.set(AudioOutput(kind: "bluetooth", name: "AirPods Pro"))
+        XCTAssertEqual(outputs().last?["kind"] as? String, "bluetooth")
+        XCTAssertEqual(outputs().last?["name"] as? String, "AirPods Pro")
+        _ = try await call("pickOutput")
+        XCTAssertEqual(platform.outputPicked, 1)
     }
 
     func testARoomCannotBeEnteredBeforeTheServerIsSet() async throws {

@@ -690,14 +690,66 @@ class _Toolbar extends StatelessWidget {
       );
     }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
-        button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
-        button(Icons.explore_outlined, S.related, _Panel.related),
-        Flexible(child: _SleepButton(controller: controller)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
+            button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
+            button(Icons.explore_outlined, S.related, _Panel.related),
+            Flexible(child: _SleepButton(controller: controller)),
+          ],
+        ),
+        _OutputButton(controller: controller),
       ],
+    );
+  }
+}
+
+/// Says where the sound goes, the phone or headphones or a speaker, and opens the system's list to play somewhere
+/// else. Lit up while the sound is not on the phone itself.
+class _OutputButton extends StatelessWidget {
+  const _OutputButton({required this.controller});
+
+  final RoomController controller;
+
+  static IconData _icon(String kind) => switch (kind) {
+    'headphones' => Icons.headphones_rounded,
+    'bluetooth' => Icons.bluetooth_audio_rounded,
+    'airplay' => Icons.airplay_rounded,
+    'car' => Icons.directions_car_rounded,
+    'other' => Icons.speaker_group_rounded,
+    _ => Icons.smartphone_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final output = controller.output;
+    final away = output.kind != 'speaker';
+    return Tooltip(
+      message: S.playOn,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 280),
+        child: TextButton.icon(
+          onPressed: controller.pickOutput,
+          icon: Icon(_icon(output.kind), size: 20),
+          label: Text(
+            output.name.isEmpty ? S.thisPhone : output.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          style: TextButton.styleFrom(
+            foregroundColor: away ? p.primary : p.textTertiary,
+            backgroundColor: away ? p.primaryContainer : Colors.transparent,
+            shape: const StadiumBorder(),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
+      ),
     );
   }
 }

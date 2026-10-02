@@ -468,6 +468,9 @@ class FakeBackend implements Backend {
   Future<void> updateAllowInstalls() => _record('updateAllowInstalls');
 
   @override
+  Future<void> pickOutput() => _record('pickOutput');
+
+  @override
   Future<List<String>> log() async => ['line one', 'line two'];
 
   @override

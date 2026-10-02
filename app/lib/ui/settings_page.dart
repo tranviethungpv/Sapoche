@@ -191,26 +191,25 @@ class SettingsPage extends StatelessWidget {
       children: [
         ListenableBuilder(
           listenable: model.settings,
-          builder: (context, _) => SegmentedButton<ThemeMode>(
-            showSelectedIcon: false,
-            expandedInsets: EdgeInsets.zero,
-            style: SegmentedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              selectedBackgroundColor: context.palette.primaryContainer,
-              selectedForegroundColor: context.palette.onPrimaryContainer,
-              foregroundColor: context.palette.textSecondary,
-              side: BorderSide(color: context.palette.outline),
-            ),
-            segments: [
-              ButtonSegment(
-                value: ThemeMode.system,
-                label: Text(S.themeSystem),
-              ),
-              ButtonSegment(value: ThemeMode.light, label: Text(S.themeLight)),
-              ButtonSegment(value: ThemeMode.dark, label: Text(S.themeDark)),
+          builder: (context, _) => Column(
+            children: [
+              for (final (mode, label) in [
+                (ThemeMode.system, S.themeSystem),
+                (ThemeMode.light, S.themeLight),
+                (ThemeMode.dark, S.themeDark),
+              ])
+                _Row(
+                  key: ValueKey('theme-${mode.name}'),
+                  label: label,
+                  trailing: model.settings.themeMode == mode
+                      ? Icon(
+                          Icons.check_rounded,
+                          color: context.palette.primary,
+                        )
+                      : null,
+                  onTap: () => model.settings.themeMode = mode,
+                ),
             ],
-            selected: {model.settings.themeMode},
-            onSelectionChanged: (s) => model.settings.themeMode = s.first,
           ),
         ),
       ],

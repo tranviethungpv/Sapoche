@@ -56,6 +56,22 @@ const _mv = MusicTrack(
 );
 
 void main() {
+  testWidgets('the player says where the sound goes and opens the list', (
+    tester,
+  ) async {
+    final backend = await openPlayer(tester);
+    expect(find.text('This phone'), findsOneWidget);
+    backend.emit(
+      const OutputEvent(AudioOutput(kind: 'bluetooth', name: 'AirPods Pro')),
+    );
+    await tester.pump();
+    expect(find.text('AirPods Pro'), findsOneWidget);
+    expect(find.text('This phone'), findsNothing);
+    await tester.tap(find.byTooltip('Play on'));
+    await tester.pump();
+    expect(backend.calls, contains('pickOutput'));
+  });
+
   testWidgets('the full player is dark, whatever the rest of the app wears', (
     tester,
   ) async {

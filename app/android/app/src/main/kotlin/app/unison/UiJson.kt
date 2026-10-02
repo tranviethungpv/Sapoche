@@ -58,6 +58,10 @@ object UiJson {
     /** The phone is warm or saving power ([on]): the screen should move less. */
     fun calm(on: Boolean): String = JSONObject().put("type", "calm").put("on", on).toString()
 
+    /** Where the sound goes now; see [AudioOutput]. */
+    fun output(output: AudioOutput): String =
+        JSONObject().put("type", "output").put("kind", output.kind).put("name", output.name).toString()
+
     /** Where an update of the app stands; see [Updater]. */
     fun update(state: UpdateState): String {
         val release = state.release

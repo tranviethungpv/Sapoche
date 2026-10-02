@@ -16,6 +16,12 @@ protocol PlatformServices: AnyObject {
     /// The phone is warm or saving power: the screen should move less and work nobody waits for is put off.
     var calm: StateFlow<Bool> { get }
 
+    /// Where the sound goes now: the phone's speaker, headphones, a Bluetooth device, AirPlay.
+    var output: StateFlow<AudioOutput> { get }
+
+    /// Opens the system's list of places to play to.
+    func pickOutput()
+
     /// Opens the share sheet with [text].
     func share(_ text: String)
 
@@ -27,6 +33,13 @@ protocol PlatformServices: AnyObject {
 
     /// Runs [work] and asks the system to let it finish if the app goes to the background meanwhile.
     func whileInBackground(_ work: @escaping () async -> Void) async
+}
+
+/// Where the sound goes. [kind] is `speaker`, `headphones`, `bluetooth`, `airplay`, `car` or `other`; [name] is what the
+/// device calls itself, and is empty for the phone's own speaker.
+struct AudioOutput: Equatable {
+    var kind: String
+    var name: String
 }
 
 /// What went wrong with a command, as the UI is told: [code] is stable, [message] is for a person.
@@ -75,6 +88,7 @@ final class Bridge {
     private var draining: [Bool: Job] = [:]
     private var drainAgain: Set<Bool> = []
     private var calmSubscription: Subscription?
+    private var outputSubscription: Subscription?
 
     init(controller: GroupController, prefs: KeyValueStore, platform: PlatformServices, store: LibraryStore, resolver: StreamResolver,
          streams: StreamCache, music: MusicFeed, suggestions: SuggestionFeed, media: MediaLibrary, files: MediaFiles,
@@ -96,6 +110,10 @@ final class Bridge {
         calmSubscription = platform.calm.observe { [weak self] calm in
             guard let self, self.visible else { return }
             self.emit(UiJson.calm(calm))
+        }
+        outputSubscription = platform.output.observe { [weak self] output in
+            guard let self, self.visible else { return }
+            self.emit(UiJson.output(output))
         }
     }
 
@@ -120,6 +138,7 @@ final class Bridge {
                 emit(UiJson.library())
             }
             emit(UiJson.calm(platform.calm.value))
+            emit(UiJson.output(platform.output.value))
             controller.resumeRoom()
             // A phone that was in a pocket may have lost the connection without noticing
             controller.networkChanged(changed: false)
@@ -175,6 +194,7 @@ final class Bridge {
             emit(UiJson.setup(link))
         }
         emit(UiJson.calm(platform.calm.value))
+        emit(UiJson.output(platform.output.value))
         observing?.cancel()
         let observing = Scope()
         self.observing = observing
@@ -261,6 +281,9 @@ final class Bridge {
         case "smooth", "updateCheck", "updateAllowInstalls":
             return nil // the display and updates are the system's business on iOS
         case "updateDownload", "updateInstall":
+            return nil
+        case "pickOutput":
+            platform.pickOutput()
             return nil
         case "setLanguage":
             prefs.set(string("code").isEmpty ? "en" : string("code"), for: "language")

@@ -6,6 +6,7 @@ import 'package:unison/ui/home_shell.dart';
 import 'package:unison/ui/player/lyrics_view.dart';
 import 'package:unison/ui/player/up_next_view.dart';
 import 'package:unison/ui/player_sheet.dart';
+import 'package:unison/ui/widgets/marquee_text.dart';
 import 'package:unison/ui/widgets/mini_player.dart';
 import 'package:unison/ui/widgets/playback_bar.dart';
 
@@ -137,6 +138,26 @@ void main() {
     });
   });
 
+  group('the mini player', () {
+    testWidgets('scrolls a long title and artist instead of cutting them', (
+      tester,
+    ) async {
+      await openPlayer(tester, snapshot: sampleRoom());
+      // The close arrow is only in the layout on its side
+      await resize(tester, 844, 390);
+      await tester.tap(find.byTooltip(S.close));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(
+        find.descendant(
+          of: find.byType(MiniPlayer),
+          matching: find.byType(MarqueeText),
+        ),
+        findsNWidgets(2),
+      );
+    });
+  });
+
   group('the bars on their side', () {
     testWidgets('are lower, and lists clear them', (tester) async {
       await openPlayer(tester, snapshot: sampleRoom());
@@ -152,7 +173,7 @@ void main() {
       expect(tester.getRect(find.byType(MiniPlayer)).bottom, lessThan(390));
       // And upright they are what they were
       await resize(tester, 390, 844);
-      expect(tester.getSize(find.byType(MiniPlayer)).height, 64);
+      expect(tester.getSize(find.byType(MiniPlayer)).height, 58);
     });
   });
 

@@ -7,6 +7,7 @@ import '../home_shell.dart';
 import '../player_sheet.dart';
 import 'artwork.dart';
 import 'glass.dart';
+import 'marquee_text.dart';
 import 'transport.dart';
 
 /// Floating capsule above the tab bar. Tap it, or drag it up, to open the full player.
@@ -17,7 +18,7 @@ class MiniPlayer extends StatelessWidget {
 
   /// Lower on a screen that is wider than it is tall, where height is what is short.
   static double heightOf(BuildContext context) =>
-      HomeShell.isWide(context) ? 52 : 64;
+      HomeShell.isWide(context) ? 52 : 58;
 
   @override
   Widget build(BuildContext context) {
@@ -103,18 +104,11 @@ class MiniPlayerCapsule extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      current.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.titleSmall,
-                    ),
-                    Text(
+                    MarqueeText(current.title, style: theme.titleSmall),
+                    MarqueeText(
                       controller.snapshot.solo
                           ? '${current.artist} · ${S.onYourOwn}'
                           : current.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.bodySmall?.copyWith(color: p.textSecondary),
                     ),
                   ],

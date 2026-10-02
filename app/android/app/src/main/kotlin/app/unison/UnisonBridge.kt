@@ -78,6 +78,8 @@ class UnisonBridge(
 
     private val display = SmoothDisplay(activity)
 
+    private val outputs = AudioOutputs(activity)
+
     /** Where the player's picture is drawn for Flutter's Texture widget; made when first asked for. */
     private var picture: TextureRegistry.SurfaceProducer? = null
 
@@ -93,6 +95,7 @@ class UnisonBridge(
         }
         // The screen slows its small moving parts down while the phone is warm
         scope.launch { UnisonApp.heat.calm.collect { if (visible) emit(UiJson.calm(it)) } }
+        scope.launch { outputs.current.collect { if (visible) emit(UiJson.output(it)) } }
         // Progress of an update is only sent while somebody looks; the UI is brought up to date when it returns
         scope.launch { UnisonApp.updater.state.collect { if (visible) emit(UiJson.update(it)) } }
     }
@@ -143,6 +146,8 @@ class UnisonBridge(
             ensureService()
             display.reapply()
             emit(UiJson.calm(UnisonApp.heat.calm.value))
+            outputs.refresh()
+            emit(UiJson.output(outputs.current.value))
             UnisonApp.updater.refreshPermission()
             UnisonApp.updater.check(force = false)
             emit(UiJson.update(UnisonApp.updater.state.value))
@@ -190,6 +195,7 @@ class UnisonBridge(
         }
         picture = null
         observing?.cancel()
+        outputs.release()
         releaseService()
         scope.cancel()
     }
@@ -205,6 +211,7 @@ class UnisonBridge(
         }
         emit(UiJson.update(UnisonApp.updater.state.value))
         emit(UiJson.calm(UnisonApp.heat.calm.value))
+        emit(UiJson.output(outputs.current.value))
         observing?.cancel()
         observing = scope.launch {
             UnisonApp.group.collectLatest { group ->
@@ -305,6 +312,10 @@ class UnisonBridge(
             "setupLink" -> return Config.setupLink()
             "smooth" -> {
                 display.smooth(call.argument<Boolean>("on") == true)
+                return null
+            }
+            "pickOutput" -> {
+                outputs.pick()
                 return null
             }
             "setLanguage" -> {

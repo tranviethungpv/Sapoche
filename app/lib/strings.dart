@@ -385,6 +385,10 @@ abstract final class S {
     'Đã lưu, nhưng thư viện của bạn chưa có gì',
   );
 
+  // Where the sound goes
+  static String get playOn => _t('Play on', 'Phát trên');
+  static String get thisPhone => _t('This phone', 'Điện thoại này');
+
   // Sleep timer
   static String get sleepTimer => _t('Sleep timer', 'Hẹn giờ tắt');
   static String sleepMinutes(int minutes) => _t(

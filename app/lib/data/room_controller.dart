@@ -32,6 +32,7 @@ class RoomController extends ChangeNotifier {
 
   RoomSnapshot _snapshot = const RoomSnapshot();
   SleepState _sleep = const SleepState();
+  AudioOutput _output = const AudioOutput();
   Profile _profile = const Profile();
   bool _ready = false;
 
@@ -67,6 +68,9 @@ class RoomController extends ChangeNotifier {
 
   /// When the music is set to stop by itself.
   SleepState get sleep => _sleep;
+
+  /// Where the sound goes now.
+  AudioOutput get output => _output;
   Profile get profile => _profile;
 
   /// False until the first state arrived from the native side.
@@ -112,6 +116,9 @@ class RoomController extends ChangeNotifier {
         if (parsed != null) setup.value = parsed;
       case SleepEvent(:final sleep):
         _sleep = sleep;
+        notifyListeners();
+      case OutputEvent(:final output):
+        _output = output;
         notifyListeners();
       case LibraryEvent():
         break; // LibraryController listens for this itself
@@ -253,6 +260,9 @@ class RoomController extends ChangeNotifier {
 
   /// Listen on this device alone ([on]) or follow the room again.
   Future<void> setSolo(bool on) => _run(() => _backend.setSolo(on));
+
+  /// Opens the system's list of places to play to.
+  Future<void> pickOutput() => _run(_backend.pickOutput);
 
   /// Carry on playing by myself after the room paused.
   Future<void> keepPlaying() => _run(_backend.keepPlaying);

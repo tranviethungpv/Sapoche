@@ -58,6 +58,12 @@ class CalmEvent extends BackendEvent {
   final bool on;
 }
 
+/// The sound is now played to another place: headphones, a Bluetooth speaker, the phone itself.
+class OutputEvent extends BackendEvent {
+  const OutputEvent(this.output);
+  final AudioOutput output;
+}
+
 /// How far an update of the app has come.
 class UpdateEvent extends BackendEvent {
   const UpdateEvent(this.info);
@@ -97,6 +103,9 @@ abstract class Backend {
 
   /// Listen on this device alone ([on]) or follow the room again.
   Future<void> setSolo(bool on);
+
+  /// Opens the system's list of places to play to.
+  Future<void> pickOutput();
 
   /// The room stopped but this device carries on by itself.
   Future<void> keepPlaying();
@@ -279,6 +288,7 @@ class NativeBackend implements Backend {
       'library' => const LibraryEvent(),
       'update' => UpdateEvent(UpdateInfo.fromJson(json)),
       'calm' => CalmEvent(json['on'] as bool),
+      'output' => OutputEvent(AudioOutput.fromJson(json)),
       'sleep' => SleepEvent(SleepState.fromJson(json)),
       'invite' => InviteEvent(json['code'] as String),
       'setup' => SetupEvent(json['link'] as String),
@@ -344,6 +354,9 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> setSolo(bool on) => _call('solo', {'on': on});
+
+  @override
+  Future<void> pickOutput() => _call<void>('pickOutput');
 
   @override
   Future<void> keepPlaying() => _call('keepPlaying');

@@ -136,6 +136,29 @@ void main() {
       );
     });
 
+    testWidgets('lists the looks, marks the one in use and switches at once', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await openSettingsList(tester);
+      await tester.tap(find.byKey(const ValueKey('settings-appearance')));
+      await tester.pumpAndSettle();
+      Finder check(String mode) => find.descendant(
+        of: find.byKey(ValueKey('theme-$mode')),
+        matching: find.byIcon(Icons.check_rounded),
+      );
+      expect(check('light'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('theme-dark')));
+      await tester.pumpAndSettle();
+      expect(check('dark'), findsOneWidget);
+      expect(check('light'), findsNothing);
+      expect(
+        Theme.of(tester.element(find.byKey(const ValueKey('theme-dark'))))
+            .brightness,
+        Brightness.dark,
+      );
+    });
+
     testWidgets('the main pages fit in Vietnamese with large text', (
       tester,
     ) async {

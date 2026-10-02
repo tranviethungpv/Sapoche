@@ -40,6 +40,11 @@ enum UiJson {
     /// The phone is warm or saving power ([on]): the screen should move less.
     static func calm(_ on: Bool) -> String { JSONText.encode(["type": "calm", "on": on]) }
 
+    /// Where the sound goes now; see [AudioOutput].
+    static func output(_ output: AudioOutput) -> String {
+        JSONText.encode(["type": "output", "kind": output.kind, "name": output.name])
+    }
+
     /// Fast changing values: sent about once a second while the UI is visible.
     static func position(_ view: GroupController.View, _ player: PlayerInfo) -> String {
         JSONText.encode([
