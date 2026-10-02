@@ -113,89 +113,291 @@ class _BodyState extends State<_Body> {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
-    final current = widget.current;
-
     return Stack(
       fit: StackFit.expand,
       children: [
-        PlayerBackdrop(coverUrl: current.thumb),
+        PlayerBackdrop(coverUrl: widget.current.thumb),
+        // On its side the phone has no height for one column: the cover goes beside the controls instead. The
+        // safe area also keeps both clear of a notch at the side.
         SafeArea(
+          child: LayoutBuilder(
+            builder: (context, box) =>
+                box.maxWidth > box.maxHeight ? _wide(box) : _tall(context),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tall(BuildContext context) {
+    final p = context.palette;
+    final current = widget.current;
+    return Column(
+      children: [
+        const SizedBox(height: 6),
+        _Grabber(color: p.textTertiary.withValues(alpha: 0.5)),
+        const SizedBox(height: 10),
+        _ModePill(controller: _c),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            layoutBuilder: (current, previous) =>
+                Stack(fit: StackFit.expand, children: [...previous, ?current]),
+            child: switch (_panel) {
+              _Panel.cover => _CoverStage(
+                key: const ValueKey('cover'),
+                controller: _c,
+                current: current,
+              ),
+              _ => _PanelStage(
+                key: ValueKey(_panel),
+                controller: _c,
+                current: current,
+                panel: _panel,
+                onCover: () => setState(() => _panel = _Panel.cover),
+              ),
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
           child: Column(
             children: [
-              const SizedBox(height: 6),
-              _Grabber(color: p.textTertiary.withValues(alpha: 0.5)),
+              const SizedBox(height: 14),
+              PlaybackBar(controller: _c),
               const SizedBox(height: 10),
-              _ModePill(controller: _c),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 240),
-                  layoutBuilder: (current, previous) => Stack(
-                    fit: StackFit.expand,
-                    children: [...previous, ?current],
-                  ),
-                  child: switch (_panel) {
-                    _Panel.cover => _CoverStage(
-                      key: const ValueKey('cover'),
-                      controller: _c,
-                      current: current,
-                    ),
-                    _ => _PanelStage(
-                      key: ValueKey(_panel),
-                      controller: _c,
-                      current: current,
-                      panel: _panel,
-                      onCover: () => setState(() => _panel = _Panel.cover),
-                    ),
-                  },
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 14),
-                    PlaybackBar(controller: _c),
-                    const SizedBox(height: 10),
-                    ListenableBuilder(
-                      listenable: _c.player,
-                      builder: (context, _) => Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _ShuffleButton(controller: _c),
-                          SkipButton(
-                            forward: false,
-                            onPressed: _c.prev,
-                            size: 52,
-                          ),
-                          PlayPauseButton(
-                            playing: _c.isPlaying,
-                            starting: _c.isStarting,
-                            onPressed: _c.togglePlay,
-                          ),
-                          SkipButton(
-                            forward: true,
-                            onPressed: _c.next,
-                            size: 52,
-                          ),
-                          _RepeatButton(controller: _c),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _Toolbar(controller: _c, panel: _panel, onPanel: _show),
-                    if (_c.snapshot.inRoom) ...[
-                      const SizedBox(height: 6),
-                      _RoomStrip(controller: _c),
-                    ],
-                    const SizedBox(height: 14),
-                  ],
-                ),
-              ),
+              _TransportRow(controller: _c),
+              const SizedBox(height: 6),
+              _Toolbar(controller: _c, panel: _panel, onPanel: _show),
+              if (_c.snapshot.inRoom) ...[
+                const SizedBox(height: 6),
+                _RoomStrip(controller: _c),
+              ],
+              const SizedBox(height: 14),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  /// The cover on the left, as tall as the screen allows; the controls, or a panel in their place, on the right.
+  Widget _wide(BoxConstraints box) {
+    const margin = 16.0;
+    final side = (box.maxHeight - 2 * margin).clamp(100.0, box.maxWidth * 0.46);
+    // A picture keeps its own proportions, so it gets a wider place than a square cover
+    final left = _c.snapshot.video
+        ? (side * 16 / 9).clamp(0.0, box.maxWidth * 0.52)
+        : side;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: margin),
+      child: Row(
+        children: [
+          SizedBox(
+            width: left,
+            height: box.maxHeight - 2 * margin,
+            child: Center(
+              child: _CoverArt(
+                controller: _c,
+                current: widget.current,
+                size: side,
+              ),
+            ),
+          ),
+          const SizedBox(width: 28),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 240),
+              layoutBuilder: (current, previous) => Stack(
+                fit: StackFit.expand,
+                children: [...previous, ?current],
+              ),
+              child: _panel == _Panel.cover
+                  ? _WideControls(
+                      key: const ValueKey('controls'),
+                      controller: _c,
+                      current: widget.current,
+                      panel: _panel,
+                      onPanel: _show,
+                    )
+                  : _WidePanel(
+                      key: ValueKey(_panel),
+                      controller: _c,
+                      current: widget.current,
+                      panel: _panel,
+                      onPanel: _show,
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shuffle, previous, play, next and repeat.
+class _TransportRow extends StatelessWidget {
+  const _TransportRow({required this.controller, this.playSize = 72});
+
+  final RoomController controller;
+  final double playSize;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller.player,
+    builder: (context, _) => Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _ShuffleButton(controller: controller),
+        SkipButton(forward: false, onPressed: controller.prev, size: 52),
+        PlayPauseButton(
+          playing: controller.isPlaying,
+          starting: controller.isStarting,
+          onPressed: controller.togglePlay,
+          size: playSize,
+        ),
+        SkipButton(forward: true, onPressed: controller.next, size: 52),
+        _RepeatButton(controller: controller),
+      ],
+    ),
+  );
+}
+
+/// Closes the player. The grabber of the upright player is too small a mark when the phone is on its side.
+class _CloseButton extends StatelessWidget {
+  const _CloseButton();
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    onPressed: PlayerSheetScope.of(context).close,
+    tooltip: S.close,
+    icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 32),
+    color: context.palette.textSecondary,
+  );
+}
+
+/// The right side of the player on its side: what the upright player has under its cover.
+class _WideControls extends StatelessWidget {
+  const _WideControls({
+    super.key,
+    required this.controller,
+    required this.current,
+    required this.panel,
+    required this.onPanel,
+  });
+
+  final RoomController controller;
+  final QueueEntry current;
+  final _Panel panel;
+  final ValueChanged<_Panel> onPanel;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => Center(
+      // Phones that are short on their side shrink the whole column a little rather than overflow
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: SizedBox(
+          // Never narrower than the row of buttons needs, so that a narrow place scales it down instead
+          width: box.maxWidth.clamp(320.0, 440.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const _CloseButton(),
+                  Expanded(
+                    child: Center(child: _ModePill(controller: controller)),
+                  ),
+                  const SizedBox(width: 48),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _TitleRow(controller: controller, current: current),
+              const SizedBox(height: 4),
+              PlaybackBar(controller: controller),
+              const SizedBox(height: 6),
+              _TransportRow(controller: controller, playSize: 64),
+              const SizedBox(height: 4),
+              _Toolbar(controller: controller, panel: panel, onPanel: onPanel),
+              if (controller.snapshot.inRoom) ...[
+                const SizedBox(height: 4),
+                _RoomStrip(controller: controller),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// A panel in place of the controls, with the song and the means to play or skip it above, so that music stays in
+/// hand while its lyrics or queue are read.
+class _WidePanel extends StatelessWidget {
+  const _WidePanel({
+    super.key,
+    required this.controller,
+    required this.current,
+    required this.panel,
+    required this.onPanel,
+  });
+
+  final RoomController controller;
+  final QueueEntry current;
+  final _Panel panel;
+  final ValueChanged<_Panel> onPanel;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const _CloseButton(),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MarqueeText(current.title, style: theme.titleMedium),
+                      MarqueeText(
+                        current.artist,
+                        style: theme.bodyMedium?.copyWith(color: p.primary),
+                      ),
+                    ],
+                  ),
+                ),
+                ListenableBuilder(
+                  listenable: controller.player,
+                  builder: (context, _) => PlayPauseButton(
+                    playing: controller.isPlaying,
+                    starting: controller.isStarting,
+                    onPressed: controller.togglePlay,
+                    size: 44,
+                  ),
+                ),
+                SkipButton(forward: true, onPressed: controller.next, size: 34),
+              ],
+            ),
+            Expanded(
+              child: switch (panel) {
+                _Panel.lyrics => LyricsView(
+                  controller: controller,
+                  track: current,
+                ),
+                _Panel.upNext => UpNextView(controller: controller),
+                _ => RelatedView(track: current),
+              },
+            ),
+            _Toolbar(controller: controller, panel: panel, onPanel: onPanel),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -213,56 +415,74 @@ class _CoverStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sheet = PlayerSheetScope.of(context);
     final artSize = coverSize(MediaQuery.of(context));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
         children: [
           const Spacer(flex: 2),
-          if (controller.snapshot.video)
-            VideoView(
-              key: const ValueKey('video'),
-              controller: controller,
-              cover: current,
-            )
-          else
-            ListenableBuilder(
-              listenable: controller.player,
-              builder: (context, _) => AnimatedScale(
-                // Paused covers shrink, like in Apple Music
-                scale: controller.isPlaying ? 1 : 0.86,
-                duration: const Duration(milliseconds: 420),
-                curve: Curves.easeOutBack,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: controller.isPlaying ? 0.28 : 0.14,
-                        ),
-                        blurRadius: controller.isPlaying ? 36 : 18,
-                        offset: Offset(0, controller.isPlaying ? 18 : 8),
-                      ),
-                    ],
-                  ),
-                  child: CoverSlot(
-                    controller: sheet,
-                    child: Artwork(
-                      key: sheet.pageCover,
-                      url: current.thumb,
-                      size: artSize,
-                      radius: 16,
-                      sharp: true,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          _CoverArt(controller: controller, current: current, size: artSize),
           const Spacer(flex: 2),
           _TitleRow(controller: controller, current: current),
         ],
+      ),
+    );
+  }
+}
+
+/// The cover, or the picture when the song is shown as a video. It is the same in the upright player and on its side.
+class _CoverArt extends StatelessWidget {
+  const _CoverArt({
+    required this.controller,
+    required this.current,
+    required this.size,
+  });
+
+  final RoomController controller;
+  final QueueEntry current;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final sheet = PlayerSheetScope.of(context);
+    if (controller.snapshot.video) {
+      return VideoView(
+        key: const ValueKey('video'),
+        controller: controller,
+        cover: current,
+      );
+    }
+    return ListenableBuilder(
+      listenable: controller.player,
+      builder: (context, _) => AnimatedScale(
+        // Paused covers shrink, like in Apple Music
+        scale: controller.isPlaying ? 1 : 0.86,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutBack,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: controller.isPlaying ? 0.28 : 0.14,
+                ),
+                blurRadius: controller.isPlaying ? 36 : 18,
+                offset: Offset(0, controller.isPlaying ? 18 : 8),
+              ),
+            ],
+          ),
+          child: CoverSlot(
+            controller: sheet,
+            child: Artwork(
+              key: sheet.pageCover,
+              url: current.thumb,
+              size: size,
+              radius: 16,
+              sharp: true,
+            ),
+          ),
+        ),
       ),
     );
   }

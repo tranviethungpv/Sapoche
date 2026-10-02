@@ -71,7 +71,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               );
             }
             return ListView(
-              padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
+              padding: EdgeInsets.only(
+                bottom: HomeShell.bottomInsetOf(context),
+              ),
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),

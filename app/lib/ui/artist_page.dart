@@ -92,7 +92,7 @@ class _ContentState extends State<_Content> {
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
-      padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
+      padding: EdgeInsets.only(bottom: HomeShell.bottomInsetOf(context)),
       children: [
         Center(
           child: ClipOval(

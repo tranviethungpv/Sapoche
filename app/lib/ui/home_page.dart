@@ -39,7 +39,9 @@ class HomePage extends StatelessWidget {
             onRefresh: library.refreshForYou,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
+              padding: EdgeInsets.only(
+                bottom: HomeShell.bottomInsetOf(context),
+              ),
               children: [
                 const _Header(),
                 if (home.isEmpty) const _Welcome(),

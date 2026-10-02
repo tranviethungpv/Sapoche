@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/library_controller.dart';
 import '../data/models.dart';
@@ -163,6 +164,7 @@ class SettingsPage extends StatelessWidget {
               ),
             ],
           ),
+          const _VersionLabel(),
         ],
       ),
     );
@@ -315,6 +317,37 @@ class SettingsPage extends StatelessWidget {
   static List<Widget> _room(BuildContext context, AppModel model) => [
     _RoomGroup(room: model.room),
   ];
+}
+
+/// The version of the app in small print at the foot of the list, the same on both platforms.
+class _VersionLabel extends StatefulWidget {
+  const _VersionLabel();
+
+  @override
+  State<_VersionLabel> createState() => _VersionLabelState();
+}
+
+class _VersionLabelState extends State<_VersionLabel> {
+  late final Future<PackageInfo> _info = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<PackageInfo>(
+    future: _info,
+    builder: (context, async) {
+      final info = async.data;
+      if (info == null) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          'Unison ${info.version} (${info.buildNumber})',
+          key: const ValueKey('settings-version'),
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: context.palette.textTertiary),
+        ),
+      );
+    },
+  );
 }
 
 /// Where the room server is and the key it asks for, for the phones that are not built with them.

@@ -208,7 +208,7 @@ class _Overview extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     final p = context.palette;
     return ListView(
-      padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
+      padding: EdgeInsets.only(bottom: HomeShell.bottomInsetOf(context)),
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 18, 8, 12),
@@ -697,8 +697,8 @@ class _TrackList extends StatelessWidget {
                 itemCount: tracks.length,
                 itemBuilder: (context, i) => row(i),
               ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: HomeShell.bottomInset),
+            SliverToBoxAdapter(
+              child: SizedBox(height: HomeShell.bottomInsetOf(context)),
             ),
           ],
         );

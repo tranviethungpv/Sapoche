@@ -275,7 +275,7 @@ class _SearchPageState extends State<SearchPage> {
           onRefresh: model.library.refreshForYou,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: HomeShell.bottomInset),
+            padding: EdgeInsets.only(bottom: HomeShell.bottomInsetOf(context)),
             children: [
               if (terms.isNotEmpty) ...[
                 Padding(
@@ -484,9 +484,9 @@ class _SearchPageState extends State<SearchPage> {
           ListView.builder(
             key: const ValueKey('playlists'),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.only(
+            padding: EdgeInsets.only(
               top: 4,
-              bottom: HomeShell.bottomInset,
+              bottom: HomeShell.bottomInsetOf(context),
             ),
             itemCount: _playlists.length,
             itemBuilder: (context, i) => _PlaylistRow(
@@ -502,7 +502,10 @@ class _SearchPageState extends State<SearchPage> {
         _Phase.results => ListView.builder(
           key: const ValueKey('results'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.only(top: 4, bottom: HomeShell.bottomInset),
+          padding: EdgeInsets.only(
+            top: 4,
+            bottom: HomeShell.bottomInsetOf(context),
+          ),
           itemCount: _results.length + (_playlistTitle == null ? 0 : 1),
           itemBuilder: (context, index) {
             if (_playlistTitle != null && index == 0) {
@@ -678,7 +681,12 @@ class _Message extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(40, 0, 40, HomeShell.bottomInset),
+        padding: EdgeInsets.fromLTRB(
+          40,
+          0,
+          40,
+          HomeShell.bottomInsetOf(context),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

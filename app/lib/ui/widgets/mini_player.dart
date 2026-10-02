@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
+import '../home_shell.dart';
 import '../player_sheet.dart';
 import 'artwork.dart';
 import 'glass.dart';
@@ -14,7 +15,9 @@ class MiniPlayer extends StatelessWidget {
 
   final RoomController controller;
 
-  static const height = 64.0;
+  /// Lower on a screen that is wider than it is tall, where height is what is short.
+  static double heightOf(BuildContext context) =>
+      HomeShell.isWide(context) ? 52 : 64;
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +84,7 @@ class MiniPlayerCapsule extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: SizedBox(
-          height: MiniPlayer.height,
+          height: MiniPlayer.heightOf(context),
           child: Row(
             children: [
               const SizedBox(width: 10),

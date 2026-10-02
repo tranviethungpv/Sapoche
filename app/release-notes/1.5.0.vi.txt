@@ -1,0 +1,5 @@
+Trình phát màn hình ngang, hiển thị số phiên bản trong Cài đặt
+- Xoay ngang điện thoại, trình phát chia như Apple Music: bìa bên trái, điều khiển bên phải, có mũi tên để đóng.
+- Lời bài hát, hàng đợi và bài liên quan mở ngay cạnh bìa, bài đang phát vẫn điều khiển được ở chỗ đó.
+- Mini player và thanh tab thấp hơn ở màn hình ngang nên danh sách có thêm chỗ, và không bị tai thỏ che.
+- Số phiên bản của ứng dụng hiện ở cuối Cài đặt, trên cả Android và iPhone.

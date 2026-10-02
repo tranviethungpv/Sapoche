@@ -22,8 +22,15 @@ import 'widgets/mini_player.dart';
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
+  /// Whether the screen is wider than it is tall, where the bars are lower to leave room for the page.
+  static bool isWide(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return size.width > size.height;
+  }
+
   /// Bottom padding lists need so their last row can scroll clear of the bars.
-  static const bottomInset = 176.0;
+  static double bottomInsetOf(BuildContext context) =>
+      isWide(context) ? 128 : 176;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -190,32 +197,41 @@ class _HomeShellState extends State<HomeShell>
     final controller = AppScope.roomOf(context);
     final home = Scaffold(
       extendBody: true,
-      body: IndexedStack(
-        index: _tab,
-        // A tab that is not showing keeps its state but not its animations
-        children: [
-          for (final (i, page) in [
-            const HomePage(),
-            const SearchPage(),
-            const LibraryPage(),
-            RoomPage(onAddSongs: () => _select(1)),
-          ].indexed)
-            TickerMode(
-              enabled: i == _tab,
-              child: Navigator(
-                key: _navigators[i],
-                observers: [_watchers[i]],
-                onGenerateRoute: (_) =>
-                    MaterialPageRoute<void>(builder: (_) => page),
+      // Beside a notch, when the phone is on its side
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: IndexedStack(
+          index: _tab,
+          // A tab that is not showing keeps its state but not its animations
+          children: [
+            for (final (i, page) in [
+              const HomePage(),
+              const SearchPage(),
+              const LibraryPage(),
+              RoomPage(onAddSongs: () => _select(1)),
+            ].indexed)
+              TickerMode(
+                enabled: i == _tab,
+                child: Navigator(
+                  key: _navigators[i],
+                  observers: [_watchers[i]],
+                  onGenerateRoute: (_) =>
+                      MaterialPageRoute<void>(builder: (_) => page),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          MiniPlayer(controller: controller),
-          const SizedBox(height: 8),
+          SafeArea(
+            top: false,
+            bottom: false,
+            child: MiniPlayer(controller: controller),
+          ),
+          SizedBox(height: HomeShell.isWide(context) ? 4 : 8),
           _TabBar(index: _tab, onSelect: _select),
         ],
       ),
@@ -278,6 +294,7 @@ class _TabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final wide = HomeShell.isWide(context);
     return Glass(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -286,7 +303,7 @@ class _TabBar extends StatelessWidget {
         child: SafeArea(
           top: false,
           child: SizedBox(
-            height: 58,
+            height: wide ? 40 : 58,
             child: Row(
               children: [
                 for (var i = 0; i < _items.length; i++)
@@ -299,23 +316,41 @@ class _TabBar extends StatelessWidget {
                           end: i == index ? p.primary : p.textTertiary,
                         ),
                         duration: const Duration(milliseconds: 200),
-                        builder: (context, color, _) => Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            AnimatedScale(
-                              scale: i == index ? 1.12 : 1,
-                              duration: const Duration(milliseconds: 220),
-                              curve: Curves.easeOutBack,
-                              child: Icon(_items[i].$1, color: color, size: 26),
+                        builder: (context, color, _) {
+                          final icon = AnimatedScale(
+                            scale: i == index ? 1.12 : 1,
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutBack,
+                            child: Icon(
+                              _items[i].$1,
+                              color: color,
+                              size: wide ? 22 : 26,
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _items[i].$2,
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(color: color, fontSize: 10.5),
-                            ),
-                          ],
-                        ),
+                          );
+                          final label = Text(
+                            _items[i].$2,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: color, fontSize: 10.5),
+                          );
+                          // On its side the label goes beside the icon: there is no height to stack them
+                          return wide
+                              ? Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    icon,
+                                    const SizedBox(width: 6),
+                                    label,
+                                  ],
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    icon,
+                                    const SizedBox(height: 2),
+                                    label,
+                                  ],
+                                );
+                        },
                       ),
                     ),
                   ),

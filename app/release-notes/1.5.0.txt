@@ -1,0 +1,5 @@
+Landscape player, version number in Settings
+- Turn the phone on its side and the player lays out as in Apple Music: the cover on the left, the controls on the right, with an arrow to close it.
+- Lyrics, the queue and related songs open beside the cover, and the song stays playable from the same place.
+- The mini player and the tab bar are lower on a sideways screen, so lists keep more room, and nothing hides under a notch.
+- The version of the app is shown at the bottom of Settings, on Android and on iPhone.

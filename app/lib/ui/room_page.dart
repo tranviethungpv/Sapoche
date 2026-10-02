@@ -82,8 +82,8 @@ class _RoomPageState extends State<RoomPage> {
                 )
               else
                 ..._queueSlivers(context, controller, snapshot),
-              const SliverToBoxAdapter(
-                child: SizedBox(height: HomeShell.bottomInset),
+              SliverToBoxAdapter(
+                child: SizedBox(height: HomeShell.bottomInsetOf(context)),
               ),
             ],
           ),
@@ -578,7 +578,7 @@ class _EmptyQueue extends StatelessWidget {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(36, 0, 36, HomeShell.bottomInset),
+      padding: EdgeInsets.fromLTRB(36, 0, 36, HomeShell.bottomInsetOf(context)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
