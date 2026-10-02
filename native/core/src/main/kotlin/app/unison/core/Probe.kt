@@ -1,6 +1,7 @@
 package app.unison.core
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -30,12 +31,13 @@ class Probe(private val client: OkHttpClient = OkHttpDownloader.defaultClient())
     suspend fun check(url: String, contentLength: Long, userAgent: String = OkHttpDownloader.USER_AGENT): ProbeResult =
         withContext(Dispatchers.IO) {
             val t0 = System.nanoTime()
-            val (headStatus, total) = range(url, 0, 65_535, userAgent)
-            val firstByteMs = (System.nanoTime() - t0) / 1_000_000
-            val size = if (total > 0) total else contentLength
-            val mid = if (size > 0) range(url, size / 2, size / 2 + 65_535, userAgent).first else -1
-            val tail = if (size > 0) range(url, size - 65_536, size - 1, userAgent).first else -1
-            ProbeResult(headStatus, mid, tail, size, firstByteMs)
+            val head = async { range(url, 0, 65_535, userAgent) to (System.nanoTime() - t0) / 1_000_000 }
+            // The size is nearly always known from the resolve, and then the three parts are asked for at once
+            val size = if (contentLength > 0) contentLength else head.await().first.second
+            val mid = async { if (size > 0) range(url, size / 2, size / 2 + 65_535, userAgent).first else -1 }
+            val tail = async { if (size > 0) range(url, size - 65_536, size - 1, userAgent).first else -1 }
+            val (headAnswer, firstByteMs) = head.await()
+            ProbeResult(headAnswer.first, mid.await(), tail.await(), size, firstByteMs)
         }
 
     /** Returns (HTTP status, total file size if the server reports it). */

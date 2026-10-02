@@ -67,9 +67,11 @@ class PlaybackService : MediaSessionService() {
         // is read from the downloads or what was played before if it is there
         val dataSourceFactory = UnisonApp.mediaData.playerFactory(http)
 
-        // Large max buffer so a whole track is buffered early and the next one starts loading sooner
+        // Large max buffer so a whole track is buffered early and the next one starts loading sooner. In bytes it is
+        // capped: with the picture the default allows about 144 MB, held in the app's own memory
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(30_000, 300_000, 2_500, 5_000)
+            .setTargetBufferBytes(48 * 1024 * 1024)
             .build()
 
         player = ExoPlayer.Builder(this)

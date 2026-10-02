@@ -70,6 +70,22 @@ final class FetcherTests: XCTestCase {
         XCTAssertEqual(Server.ranges, ["bytes=0-\(chunk - 1)", "bytes=\(chunk)-\(chunk * 2 - 1)", "bytes=\(chunk * 2)-\(chunk * 3 - 1)"])
     }
 
+    func testAFewBytesAreAskedForAsOneRange() async throws {
+        Server.body = bytes(5000)
+        let data = try await fetcher().bytes(URL(string: "https://example.invalid/d")!, range: 723...1078, headers: ["User-Agent": "ua"])
+        XCTAssertEqual(data, Server.body.subdata(in: 723..<1079))
+        XCTAssertEqual(Server.ranges, ["bytes=723-1078"])
+    }
+
+    func testAFewBytesFromAServerThatIgnoresRangesAreAFailure() async throws {
+        Server.body = bytes(5000)
+        Server.ignoreRanges = true
+        do {
+            _ = try await fetcher().bytes(URL(string: "https://example.invalid/e")!, range: 10...20, headers: [:])
+            XCTFail("expected a failure")
+        } catch {}
+    }
+
     func testAServerThatSendsTheWholeFileForARangeIsTakenAtItsWord() async throws {
         Server.body = bytes(5000)
         Server.ignoreRanges = true

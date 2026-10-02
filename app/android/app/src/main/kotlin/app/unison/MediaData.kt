@@ -33,9 +33,9 @@ class MediaData(
 
     /**
      * Turns "unison:ID" into the real address when the loader opens it. [writeTo] is the cache that will keep
-     * the bytes, which is told which stream they are from.
+     * the bytes, which is told which stream they are from. The real address is read in short ranges.
      */
-    private fun resolving(http: DataSource.Factory, writeTo: Cache) = ResolvingDataSource.Factory(http) { spec ->
+    private fun resolving(http: DataSource.Factory, writeTo: Cache) = ResolvingDataSource.Factory(ChunkedDataSource.Factory(http)) { spec ->
         val videoId = spec.uri.schemeSpecificPart
         when (spec.uri.scheme) {
             UnisonMediaSourceFactory.AUDIO_SCHEME -> {

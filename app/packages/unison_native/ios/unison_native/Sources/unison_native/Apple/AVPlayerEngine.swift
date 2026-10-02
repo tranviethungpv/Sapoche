@@ -5,9 +5,11 @@ import Foundation
 import UIKit
 
 /// Plays the queue's songs with AVQueuePlayer: the song that plays and, behind it, the one after it, so that the next
-/// song follows with no gap. A song is a whole file on the disk by the time it is played, see [MediaLibrary], so
-/// seeking is exact and nothing stalls for the network in the middle of a song. With the picture on, the picture
-/// stream is played beside the file in one composition, and drawn into a texture for Flutter.
+/// song follows with no gap. A song that is on the disk plays from its file. One that is not starts at once from its
+/// stream, piece by piece through an HLS playlist (see [MediaLibrary.playableAtOnce]), while its file is fetched for
+/// next time; the next song is fetched whole before it is put behind the current one, unless it is too long to keep.
+/// With the picture on, the picture and the sound are played from their streams through one HLS playlist, and drawn
+/// into a texture for Flutter.
 @MainActor
 final class AVPlayerEngine: NSObject, PlayerEngine {
     var onEnded: (() -> Void)?
@@ -21,20 +23,25 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     private let player = AVQueuePlayer()
     private let library: MediaLibrary
+    private let loader: PlaylistLoader
     private let maxVideoHeight: () -> Int
     private let log: (String) -> Void
 
-    /// The song the player is on, and the item that holds it.
+    /// The song the player is on, and the item that holds it; streamed when any of it comes from the network.
     private var current: QueueItem?
     private var currentPlayerItem: AVPlayerItem?
     private var currentHasVideo = false
+    private var currentStreamed = false
 
     /// The song wanted after it, and the item that was made for it once its file was there.
     private var queuedNext: QueueItem?
     private var queuedPlayerItem: AVPlayerItem?
     private var queuedHasVideo = false
+    private var queuedStreamed = false
     private var nextTask: Task<Void, Never>?
     private var rebuildTask: Task<Void, Never>?
+    /// Fetches the file of the song that plays from its stream, for next time.
+    private var keepTask: Task<Void, Never>?
 
     private var speed: Float = 1
     private var pauseAtEnd = false
@@ -53,10 +60,11 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     init(library: MediaLibrary, maxVideoHeight: @escaping () -> Int, log: @escaping (String) -> Void = { _ in }) {
         self.library = library
+        self.loader = PlaylistLoader(playlists: library.playlists, log: log)
         self.maxVideoHeight = maxVideoHeight
         self.log = log
         super.init()
-        // The next song is only inserted once its file is there, so there is nothing to gain from waiting for the network
+        // A file has nothing to wait for; a song that streams changes this, see adopt
         player.automaticallyWaitsToMinimizeStalling = false
         player.actionAtItemEnd = .advance
         watchPlayer()
@@ -68,10 +76,12 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func prepare(_ item: QueueItem, seekToMs: Int64) async throws {
         cancelNext()
         rebuildTask?.cancel()
-        var playable = try await library.playable(item.videoId)
+        keepTask?.cancel()
+        var playable = try await library.playableAtOnce(item.videoId)
+        var pictureInPieces = true
         while true {
             try Task.checkCancellation()
-            let built = await build(item, playable)
+            let built = await build(item, playable, pictureInPieces: pictureInPieces)
             try Task.checkCancellation()
             activateSession()
 
@@ -81,7 +91,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             pausedAtEnd = false
             current = item
             queuedNext = nil
-            adopt(built.item, hasVideo: built.video)
+            adopt(built)
             player.insert(built.item, after: nil)
             watch(built.item)
             do {
@@ -89,13 +99,25 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                 break
             } catch {
                 if Task.isCancelled { throw CancellationError() }
-                // A file the player will not open: forget it, and play the song from the stream instead
-                guard playable.isFile else { throw error }
-                log("the player could not open the file of '\(item.title)' (\(error.localizedDescription)), using the stream")
-                await library.forget(item.videoId)
-                playable = try await library.streamed(item.videoId)
+                if built.inPieces && built.video {
+                    // The picture and the sound in pieces would not play: the picture is added the way it was before
+                    log("'\(item.title)' would not play with its picture in pieces (\(error.localizedDescription)), trying it another way")
+                    pictureInPieces = false
+                } else if playable.isPlaylist {
+                    // The stream in pieces would not play: the song is fetched whole, as it was before
+                    log("'\(item.title)' would not play in pieces (\(error.localizedDescription)), fetching it whole")
+                    playable = try await library.playable(item.videoId, piecesWhenLong: false)
+                } else if playable.isFile {
+                    // A file the player will not open: forget it, and play the song from the stream instead
+                    log("the player could not open the file of '\(item.title)' (\(error.localizedDescription)), using the stream")
+                    await library.forget(item.videoId)
+                    playable = try await library.streamed(item.videoId)
+                } else {
+                    throw error
+                }
             }
         }
+        if playable.isPlaylist { keepForLater(item) }
         if seekToMs > 0 { _ = await seek(to: seekToMs) }
         onChange?()
     }
@@ -116,8 +138,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             player.actionAtItemEnd = pauseAtEnd ? .pause : .advance
             if queuedPlayerItem != nil { player.advanceToNextItem() }
         }
-        player.play()
-        if speed != 1 { player.rate = speed }
+        if currentStreamed {
+            // At once, with what is there: the room counts on the start, and the player still waits out a stall later
+            player.playImmediately(atRate: speed)
+        } else {
+            player.play()
+            if speed != 1 { player.rate = speed }
+        }
         onChange?()
     }
 
@@ -129,12 +156,14 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func stop() {
         cancelNext()
         rebuildTask?.cancel()
+        keepTask?.cancel()
         player.pause()
         player.removeAllItems()
         forgetItems()
         current = nil
         currentPlayerItem = nil
         currentHasVideo = false
+        currentStreamed = false
         queuedNext = nil
         queuedPlayerItem = nil
         pausedAtEnd = false
@@ -159,9 +188,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             do {
                 let playable = try await self.library.playable(item.videoId)
                 try Task.checkCancellation()
-                let built = await self.build(item, playable)
+                let built = await self.build(item, playable, pictureInPieces: true)
                 try Task.checkCancellation()
-                self.insertNext(item, built.item, hasVideo: built.video)
+                self.insertNext(item, built)
             } catch is CancellationError {
                 // Replaced by a newer choice
             } catch {
@@ -257,15 +286,15 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let position = positionMs()
         let next = queuedNext
         do {
-            let playable = try await library.playable(item.videoId)
-            let built = await build(item, playable)
+            let playable = try await library.playableAtOnce(item.videoId)
+            let built = await build(item, playable, pictureInPieces: true)
             try Task.checkCancellation()
             guard current?.id == item.id, currentPlayerItem === old else { return }
             cancelNext()
             player.pause()
             player.removeAllItems()
             forgetItems(keeping: built.item)
-            adopt(built.item, hasVideo: built.video)
+            adopt(built)
             player.insert(built.item, after: nil)
             watch(built.item)
             try await waitUntilReady(built.item)
@@ -280,25 +309,50 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         }
     }
 
-    /// Makes the item for a song: its file, and its picture beside it when that is wanted and the video has one.
-    private func build(_ queued: QueueItem, _ playable: Playable) async -> (item: AVPlayerItem, video: Bool) {
+    /// An item made for a song: whether it shows the picture, whether the picture and the sound come in pieces from
+    /// one playlist, and whether any of it comes from the network.
+    private struct Built {
+        let item: AVPlayerItem
+        let video: Bool
+        let inPieces: Bool
+        let streamed: Bool
+    }
+
+    /// Makes the item for a song: its sound, and its picture with it when that is wanted and the video has one. The two
+    /// come in pieces from one playlist, unless [pictureInPieces] is off or that cannot be laid out; then the picture
+    /// stream is put beside the sound in a composition.
+    private func build(_ queued: QueueItem, _ playable: Playable, pictureInPieces: Bool) async -> Built {
+        if wantsVideo && pictureInPieces {
+            do {
+                if let both = try await library.pictured(queued.videoId, maxHeight: maxVideoHeight()) {
+                    return Built(item: withPicture(plain(asset(both))), video: true, inPieces: true, streamed: true)
+                }
+            } catch {
+                log("could not lay out the picture of '\(queued.title)' in pieces: \(error.localizedDescription)")
+            }
+        }
         let audio = asset(playable)
         if wantsVideo {
             do {
                 if let picture = try await library.video(queued.videoId, maxHeight: maxVideoHeight()) {
                     let item = try await withTimeout(ms: 20_000) { try await Self.compose(audio: audio, picture: self.asset(picture)) }
                     item.audioTimePitchAlgorithm = .timeDomain
-                    let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)])
-                    item.add(output)
-                    outputs[ObjectIdentifier(item)] = output
-                    return (item, true)
+                    return Built(item: withPicture(item), video: true, inPieces: false, streamed: true)
                 }
                 log("'\(queued.title)' has no picture an iPhone plays")
             } catch {
                 log("could not add the picture of '\(queued.title)': \(error.localizedDescription)")
             }
         }
-        return (plain(audio), false)
+        return Built(item: plain(audio), video: false, inPieces: false, streamed: !playable.isFile)
+    }
+
+    /// Lets the picture of [item] be drawn into the texture.
+    private func withPicture(_ item: AVPlayerItem) -> AVPlayerItem {
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)])
+        item.add(output)
+        outputs[ObjectIdentifier(item)] = output
+        return item
     }
 
     /// The song's sound and the video's picture as one thing to play, so that they stay in step.
@@ -350,6 +404,12 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     private func asset(_ playable: Playable) -> AVURLAsset {
         if playable.isFile { return AVURLAsset(url: playable.url) }
+        if playable.isPlaylist {
+            // The playlist is read through the loader; its pieces are fetched by the player, and need no particular agent
+            let asset = AVURLAsset(url: playable.url)
+            asset.resourceLoader.setDelegate(loader, queue: loader.queue)
+            return asset
+        }
         return AVURLAsset(url: playable.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playable.headers])
     }
 
@@ -361,20 +421,35 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     /// What the player is on now.
-    private func adopt(_ item: AVPlayerItem, hasVideo: Bool) {
+    private func adopt(_ built: Built) {
+        adopt(built.item, hasVideo: built.video, streamed: built.streamed)
+    }
+
+    private func adopt(_ item: AVPlayerItem, hasVideo: Bool, streamed: Bool) {
         currentPlayerItem = item
         currentHasVideo = hasVideo
+        currentStreamed = streamed
+        // A song from the network waits out a stall and goes on by itself; a file never stalls
+        player.automaticallyWaitsToMinimizeStalling = streamed
         updateTicker()
     }
 
+    /// Fetches the file of [item], which plays from its stream, so that the next time it plays from the disk.
+    private func keepForLater(_ item: QueueItem) {
+        keepTask?.cancel()
+        let library = library
+        keepTask = Task { await library.keep(item.videoId) }
+    }
+
     /// Puts the next song behind the one that plays, if that is still the song wanted.
-    private func insertNext(_ item: QueueItem, _ playerItem: AVPlayerItem, hasVideo: Bool) {
+    private func insertNext(_ item: QueueItem, _ built: Built) {
         guard current != nil, queuedNext?.id == item.id, queuedNext?.videoId == item.videoId, queuedPlayerItem == nil,
               let last = player.items().last else { return }
-        queuedPlayerItem = playerItem
-        queuedHasVideo = hasVideo
-        player.insert(playerItem, after: last)
-        watch(playerItem)
+        queuedPlayerItem = built.item
+        queuedHasVideo = built.video
+        queuedStreamed = built.streamed
+        player.insert(built.item, after: last)
+        watch(built.item)
     }
 
     private func cancelNext() {
@@ -387,6 +462,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         }
         queuedPlayerItem = nil
         queuedHasVideo = false
+        queuedStreamed = false
         queuedNext = nil
     }
 
@@ -453,10 +529,11 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         guard let item, item === queuedPlayerItem, let next = queuedNext else { return }
         // Only a natural move to the queued successor; our own loads put other items in
         current = next
-        adopt(item, hasVideo: queuedHasVideo)
+        adopt(item, hasVideo: queuedHasVideo, streamed: queuedStreamed)
         queuedNext = nil
         queuedPlayerItem = nil
         queuedHasVideo = false
+        queuedStreamed = false
         onAdvanced?()
         onChange?()
     }

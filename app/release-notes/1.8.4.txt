@@ -1,0 +1,3 @@
+Songs and videos start sooner and never crawl
+- YouTube slows a long download to a crawl; songs and videos are now fetched in short pieces it serves at full speed. Long mixes start in a moment, skipping ahead is quick, and videos no longer stall.
+- On iPhone, a song that is not on the phone yet starts as soon as its first seconds arrive instead of after the whole file, and long songs keep their full quality. Short ones are still kept for next time.

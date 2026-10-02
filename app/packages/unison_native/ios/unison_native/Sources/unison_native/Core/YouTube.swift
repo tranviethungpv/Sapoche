@@ -31,6 +31,22 @@ struct Playlist: Equatable {
     let tracks: [TrackInfo]
 }
 
+/// Where the parts of a DASH file are: the header ends at [initEnd], and the index of its pieces (a `sidx` box) is
+/// at [indexStart]...[indexEnd]. YouTube gives these with each stream.
+struct DashRanges: Equatable {
+    let initEnd: Int64
+    let indexStart: Int64
+    let indexEnd: Int64
+
+    /// The ranges of a stream in a `player` answer, or nil when it has none that make sense.
+    static func of(_ format: JSON) -> DashRanges? {
+        guard let initStart = format.at("initRange", "start").int64, let initEnd = format.at("initRange", "end").int64,
+              let indexStart = format.at("indexRange", "start").int64, let indexEnd = format.at("indexRange", "end").int64,
+              initStart == 0, initEnd > 0, indexStart > initEnd, indexEnd > indexStart else { return nil }
+        return DashRanges(initEnd: initEnd, indexStart: indexStart, indexEnd: indexEnd)
+    }
+}
+
 /// A resolved audio stream, with details used to judge quality.
 struct AudioSource: Equatable {
     let url: String
@@ -38,6 +54,7 @@ struct AudioSource: Equatable {
     let bitrateKbps: Int
     let contentLength: Int64
     let itag: Int
+    var index: DashRanges? = nil
 }
 
 /// A picture-only stream, played together with an audio stream when the picture is wanted.
@@ -48,6 +65,8 @@ struct VideoSource: Equatable {
     let codec: String
     let bitrateKbps: Int
     let itag: Int
+    var contentLength: Int64 = -1
+    var index: DashRanges? = nil
 }
 
 /// Chooses which video-only stream to play beside the audio.
@@ -240,7 +259,7 @@ actor YouTubeResolver: StreamResolver {
             guard let mime = format.at("mimeType").string, mime.hasPrefix("audio/mp4"), let url = format.at("url").string else { return nil }
             let bitrate = format.at("averageBitrate").int ?? format.at("bitrate").int ?? 0
             return AudioSource(url: url, mimeType: mime, bitrateKbps: bitrate / 1000, contentLength: format.at("contentLength").int64 ?? -1,
-                               itag: format.at("itag").int ?? -1)
+                               itag: format.at("itag").int ?? -1, index: DashRanges.of(format))
         }.sorted { $0.bitrateKbps > $1.bitrateKbps }
         guard let best = sources.first else { throw ResolveFailure(message: "No audio stream available for \(videoId)") }
 
@@ -257,7 +276,8 @@ actor YouTubeResolver: StreamResolver {
             guard let mime = format.at("mimeType").string, mime.hasPrefix("video/mp4"), let url = format.at("url").string,
                   let height = format.at("height").int, height > 0 else { return nil }
             let codec = mime.components(separatedBy: "codecs=\"").last?.components(separatedBy: "\"").first ?? ""
-            return VideoSource(url: url, height: height, codec: codec, bitrateKbps: (format.at("bitrate").int ?? 0) / 1000, itag: format.at("itag").int ?? -1)
+            return VideoSource(url: url, height: height, codec: codec, bitrateKbps: (format.at("bitrate").int ?? 0) / 1000, itag: format.at("itag").int ?? -1,
+                               contentLength: format.at("contentLength").int64 ?? -1, index: DashRanges.of(format))
         }
         return Resolved(track: track, best: best, all: sources, videos: videos)
     }

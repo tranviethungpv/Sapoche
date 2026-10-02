@@ -8,6 +8,16 @@ protocol FileFetcher: Sendable {
     /// Writes the body of [url] to [file] and gives back its size; throws when the answer is not all there. Stops
     /// when the calling task is cancelled.
     func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64
+
+    /// The bytes [range] of [url]; throws when the answer is not a success or not all of them.
+    func bytes(_ url: URL, range: ClosedRange<Int64>, headers: [String: String]) async throws -> Data
+}
+
+extension FileFetcher {
+    /// A fetcher that only brings whole files: a song is then never streamed in pieces, but fetched whole.
+    func bytes(_ url: URL, range: ClosedRange<Int64>, headers: [String: String]) async throws -> Data {
+        throw URLError(.unsupportedURL)
+    }
 }
 
 struct URLSessionFetcher: FileFetcher {
@@ -48,6 +58,15 @@ struct URLSessionFetcher: FileFetcher {
             try? manager.removeItem(at: file)
             throw error
         }
+    }
+
+    func bytes(_ url: URL, range: ClosedRange<Int64>, headers: [String: String]) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.setValue("bytes=\(range.lowerBound)-\(range.upperBound)", forHTTPHeaderField: "Range")
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        let (data, response) = try await load(request)
+        guard response.statusCode == 206, data.count == range.count else { throw URLError(.networkConnectionLost) }
+        return data
     }
 
     /// One answer; throws when it is not a success. Stops when the calling task is cancelled.
@@ -242,6 +261,9 @@ actor StreamCache {
         let contentLength: Int64
         let userAgent: String
         let track: TrackInfo
+        let mimeType: String
+        let bitrateKbps: Int
+        let index: DashRanges?
     }
 
     private struct Entry {
@@ -265,14 +287,15 @@ actor StreamCache {
         let resolved = try await resolved(videoId)
         let best = resolved.best.contentLength <= limit ? resolved.best
             : resolved.all.first { $0.contentLength <= limit } ?? resolved.all.last ?? resolved.best
-        return Pick(url: best.url, itag: best.itag, contentLength: best.contentLength, userAgent: resolved.userAgent, track: resolved.track)
+        return Pick(url: best.url, itag: best.itag, contentLength: best.contentLength, userAgent: resolved.userAgent, track: resolved.track,
+                    mimeType: best.mimeType, bitrateKbps: best.bitrateKbps, index: best.index)
     }
 
     /// The picture-only stream of [videoId] that fits [maxHeight], or nil when the video has none that an iPhone plays.
-    func video(_ videoId: String, maxHeight: Int) async throws -> (url: String, height: Int, userAgent: String)? {
+    func video(_ videoId: String, maxHeight: Int) async throws -> (source: VideoSource, userAgent: String)? {
         let resolved = try await resolved(videoId)
         guard let pick = VideoPicker.pick(resolved.videos, maxHeight: maxHeight) else { return nil }
-        return (pick.url, pick.height, resolved.userAgent)
+        return (pick, resolved.userAgent)
     }
 
     /// What is known about the song: its title, artist, picture and length, from the same resolve as its stream.
@@ -297,22 +320,33 @@ actor StreamCache {
     }
 }
 
-/// Where a song comes from when it is played or kept: a file on the disk, or the stream itself for the rare song too
-/// long to fetch whole.
+/// Where a song comes from when it is played or kept: a file on the disk, a playlist of the stream's pieces (see
+/// [HlsPlaylist]), or the stream itself when neither works out.
 struct Playable: Equatable {
     let url: URL
     let isFile: Bool
     let headers: [String: String]
+
+    /// Whether this is a playlist kept in [HlsPlaylists], which the player reads through a resource loader.
+    var isPlaylist: Bool { url.scheme == HlsPlaylists.scheme }
 }
 
 /// Brings songs onto the disk, as whole files, and tells where a song can be played from. A song that was played or
-/// downloaded before is there already, and then nothing is fetched.
+/// downloaded before is there already, and then nothing is fetched. A song that is not there can be played at once
+/// from its stream, piece by piece, and a song too long to be worth keeping is only ever played that way.
 actor MediaLibrary {
-    /// A song longer than this is fetched in a lower quality when it has one, so that it starts sooner.
+    /// A song longer than this is played from its stream in pieces, and not kept on the disk.
+    static let keepLimitBytes: Int64 = 20 * 1024 * 1024
+    /// When a song cannot be played in pieces: a song longer than this is fetched in a lower quality when it has one,
+    /// so that it starts sooner.
     static let wholeLimitBytes: Int64 = 40 * 1024 * 1024
-    /// A song longer than this, in its lowest quality, is played from the stream, not fetched whole first.
+    /// When a song cannot be played in pieces: a song longer than this, in its lowest quality, is played from the
+    /// stream, not fetched whole first.
     static let streamAboveBytes: Int64 = 256 * 1024 * 1024
     private static let attempts = 3
+
+    /// The playlists of songs played in pieces, for the player to read.
+    nonisolated let playlists = HlsPlaylists()
 
     private let files: MediaFiles
     private let streams: StreamCache
@@ -334,9 +368,22 @@ actor MediaLibrary {
         self.log = log
     }
 
-    /// Where to play [videoId] from, fetching it first when it is not on the disk; the stream when it cannot be fetched.
-    func playable(_ videoId: String) async throws -> Playable {
+    /// Where to play [videoId] from with the least wait: its file when it is on the disk, else its stream in pieces, so
+    /// that it starts once the first piece is there. When the stream cannot be laid out in pieces, as [playable].
+    func playableAtOnce(_ videoId: String) async throws -> Playable {
         if let file = files.file(videoId) { return Playable(url: ordinary(file), isFile: true, headers: [:]) }
+        if let pieces = try await inPieces(videoId) { return pieces }
+        return try await playable(videoId, piecesWhenLong: false)
+    }
+
+    /// Where to play [videoId] from, fetching it first when it is not on the disk; the stream when it cannot be fetched.
+    /// A song too long to keep is played from its stream in pieces instead, when [piecesWhenLong] and that works out.
+    func playable(_ videoId: String, piecesWhenLong: Bool = true) async throws -> Playable {
+        if let file = files.file(videoId) { return Playable(url: ordinary(file), isFile: true, headers: [:]) }
+        if piecesWhenLong, let pick = try? await streams.audio(videoId), pick.contentLength > Self.keepLimitBytes,
+           let pieces = try await inPieces(videoId) {
+            return pieces
+        }
         var problem: Error = ResolveFailure(message: "No stream for \(videoId)")
         for attempt in 1...Self.attempts {
             do {
@@ -382,8 +429,79 @@ actor MediaLibrary {
 
     /// Where the picture of [videoId] is streamed from, at most [maxHeight] tall; nil when it has none that plays.
     func video(_ videoId: String, maxHeight: Int) async throws -> Playable? {
-        guard let pick = try await streams.video(videoId, maxHeight: maxHeight), let url = URL(string: pick.url) else { return nil }
+        guard let pick = try await streams.video(videoId, maxHeight: maxHeight), let url = URL(string: pick.source.url) else { return nil }
         return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
+    }
+
+    /// The sound of [videoId] with its picture, at most [maxHeight] tall, both played from their streams in pieces: one
+    /// playlist of the two. Nil when the video has no picture an iPhone plays or the picture has no index; throws
+    /// when the pieces cannot be laid out.
+    func pictured(_ videoId: String, maxHeight: Int) async throws -> Playable? {
+        guard let picture = try await streams.video(videoId, maxHeight: maxHeight), let index = picture.source.index,
+              let pictureURL = URL(string: picture.source.url) else { return nil }
+        let sound = try await soundInPieces(videoId)
+        let segments = try await pieces(pictureURL, index, contentLength: picture.source.contentLength, userAgent: picture.userAgent)
+        let pictureList = playlists.add(HlsPlaylist.media(url: picture.source.url, initEnd: index.initEnd, segments: segments), name: videoId + "-picture")
+        let master = HlsPlaylist.master(
+            video: pictureList, videoCodec: picture.source.codec, audio: sound.url,
+            audioCodec: HlsPlaylist.codec(ofType: sound.pick.mimeType), bandwidth: (picture.source.bitrateKbps + sound.pick.bitrateKbps) * 1000
+        )
+        return Playable(url: playlists.add(master, name: videoId + "-both"), isFile: false, headers: ["User-Agent": picture.userAgent])
+    }
+
+    /// Brings [videoId] onto the disk for next time while it plays from its stream, when it is short enough to keep.
+    /// Stops when the calling task is cancelled.
+    func keep(_ videoId: String) async {
+        guard files.file(videoId) == nil else { return }
+        do {
+            let pick = try await streams.audio(videoId)
+            guard pick.contentLength > 0, pick.contentLength <= Self.keepLimitBytes else { return }
+            _ = try await fetch(videoId, pick, download: false)
+        } catch {
+            if !Task.isCancelled { log("\(videoId) could not be kept: \(error.localizedDescription)") }
+        }
+    }
+
+    /// The stream of [videoId] as a playlist of its pieces, or nil when it cannot be laid out that way: no index, an
+    /// index that does not add up, or one that could not be read twice, the second time with a fresh address.
+    private func inPieces(_ videoId: String) async throws -> Playable? {
+        for attempt in 1...2 {
+            do {
+                let sound = try await soundInPieces(videoId)
+                return Playable(url: sound.url, isFile: false, headers: ["User-Agent": sound.pick.userAgent])
+            } catch is NoIndex {
+                return nil
+            } catch {
+                if error is CancellationError || Task.isCancelled { throw CancellationError() }
+                log("\(videoId) could not be laid out in pieces (attempt \(attempt)): \(error.localizedDescription)")
+                await streams.invalidate(videoId)
+            }
+        }
+        return nil
+    }
+
+    /// The stream does not say where its pieces are.
+    private struct NoIndex: Error {}
+
+    /// The playlist of the best sound of [videoId], and the stream it was made from.
+    private func soundInPieces(_ videoId: String) async throws -> (url: URL, pick: StreamCache.Pick) {
+        let pick = try await streams.audio(videoId)
+        guard let index = pick.index, let url = URL(string: pick.url) else { throw NoIndex() }
+        let segments = try await pieces(url, index, contentLength: pick.contentLength, userAgent: pick.userAgent)
+        let list = playlists.add(HlsPlaylist.media(url: pick.url, initEnd: index.initEnd, segments: segments), name: videoId + "-sound")
+        return (list, pick)
+    }
+
+    /// The pieces of the file at [url], read from its index. They must follow the index without a gap and end where
+    /// the file ends, or the index is not what it seems.
+    private func pieces(_ url: URL, _ index: DashRanges, contentLength: Int64, userAgent: String) async throws -> [DashSegment] {
+        let data = try await fetcher.bytes(url, range: index.indexStart...index.indexEnd, headers: ["User-Agent": userAgent])
+        let segments = try DashIndex.segments(data, at: index.indexStart)
+        guard let first = segments.first, let last = segments.last, first.offset == index.indexEnd + 1,
+              contentLength <= 0 || last.offset + last.size == contentLength else {
+            throw DashIndex.Failure(message: "The index does not match the file")
+        }
+        return segments
     }
 
     /// Brings the whole of [videoId] into the downloads and gives back its size; throws when that does not work. What
