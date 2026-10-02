@@ -36,6 +36,10 @@ cd android && ./gradlew :core:test :sync:test   # link parsing, the sync engine
 
 `tool/soak.sh` runs a listening session with the screen off on devices that joined the same room (the volume must be 0 beforehand) and prints the number of song changes, rewinds, errors and the drift. `tool/battery.sh` measures the app's CPU time, frames and reconnects over a period, to compare two builds on the same device. Both switch the screen off with the power key: a device with a screen lock gets locked and can only be unlocked by hand.
 
+## Releasing
+
+`tool/release.sh` builds, signs and checks the release APK; with `--publish` it also uploads it for the app's own updates (see the notes at the top of the script). Wrangler needs Node 22 or newer: if that is not the Node on the PATH, give the folder of one in `NODE_BIN`.
+
 ## iOS
 
 The iOS native side is the Flutter plugin [packages/unison_native](packages/unison_native/) (Swift, no Android part). It speaks over the same two channels, `app.unison/control` and `app.unison/state`, as `UnisonBridge.kt`, so the Dart UI is the same on both.
