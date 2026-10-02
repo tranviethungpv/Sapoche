@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/data/photo_picker.dart';
+import 'package:unison/ui/scope.dart';
 import 'package:unison/ui/widgets/avatars.dart';
 
 import 'fake_backend.dart';
@@ -83,7 +84,7 @@ void main() {
   testWidgets('a photo can be chosen, is kept, and can be removed', (
     tester,
   ) async {
-    await settings(tester, photoPicker: () async => _png);
+    final backend = await settings(tester, photoPicker: () async => _png);
     expect(
       tester.widget<Avatar>(find.byType(Avatar).first).image,
       isNull,
@@ -97,9 +98,21 @@ void main() {
     expect(find.byKey(const ValueKey('profile-remove')), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('avatar'), isNotNull);
+    expect(
+      backend.calls.where(
+        (c) => c.startsWith('setAvatar ') && c != 'setAvatar null',
+      ),
+      hasLength(1),
+      reason: 'the room is given the picture',
+    );
     await tester.tap(find.byKey(const ValueKey('profile-remove')));
     await tester.pumpAndSettle();
     expect(prefs.getString('avatar'), isNull);
+    expect(
+      backend.calls.last,
+      'setAvatar null',
+      reason: 'and told when it goes',
+    );
   });
 
   testWidgets('a picture already chosen is there when the app opens', (
@@ -121,5 +134,36 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('profile-choose')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-remove')), findsNothing);
+  });
+
+  testWidgets('others in the room are shown with their pictures', (
+    tester,
+  ) async {
+    final backend = await settings(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pumpAndSettle();
+    final room = AppScope.roomOf(tester.element(find.byType(Scaffold).first));
+    final other = room.snapshot.members.firstWhere(
+      (m) => m.id != room.snapshot.you,
+    );
+    expect(room.avatarOf(other.id), isNull);
+    backend.emit(AvatarEvent(other.id, _png));
+    await tester.pump();
+    expect(room.avatarOf(other.id), _png);
+    backend.emit(AvatarEvent(other.id, null));
+    await tester.pump();
+    expect(room.avatarOf(other.id), isNull);
+    backend.emit(AvatarEvent(other.id, _png));
+    await tester.pump();
+    // Someone who has left takes the picture with them
+    backend.emit(
+      StateEvent(
+        sampleRoom(
+          members: const [Member(id: 'me', name: 'Anna', ready: true)],
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(room.avatarOf(other.id), isNull);
   });
 }

@@ -191,7 +191,9 @@ class _MemberRow extends StatelessWidget {
             child: Avatar(
               name: member.name,
               size: 40,
-              image: isYou ? AppScope.of(context).settings.avatar : null,
+              image: isYou
+                  ? AppScope.of(context).settings.avatar
+                  : AppScope.roomOf(context).avatarOf(member.id),
             ),
           ),
           const SizedBox(width: 14),

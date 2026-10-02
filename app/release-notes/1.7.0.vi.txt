@@ -1,0 +1,3 @@
+Ảnh của bạn trong phòng
+- Ảnh bạn chọn trong Cài đặt giờ hiện cho mọi người trong phòng: ở danh sách người nghe, trang phòng và trình phát.
+- Ảnh chỉ gửi một lần, ở kích thước nhỏ, và chỉ tới server hỗ trợ; phòng chạy server cũ vẫn hiện chữ cái đầu như trước.

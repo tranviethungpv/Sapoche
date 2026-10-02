@@ -52,6 +52,13 @@ class SleepEvent extends BackendEvent {
   final SleepState sleep;
 }
 
+/// A member's picture arrived, or ([bytes] null) they took it away.
+class AvatarEvent extends BackendEvent {
+  const AvatarEvent(this.id, this.bytes);
+  final String id;
+  final Uint8List? bytes;
+}
+
 /// The phone became warm or went into battery saver ([on]), or stopped being so.
 class CalmEvent extends BackendEvent {
   const CalmEvent(this.on);
@@ -106,6 +113,9 @@ abstract class Backend {
 
   /// Opens the system's list of places to play to.
   Future<void> pickOutput();
+
+  /// The picture the room sees of this device, as base64 of a small JPEG; null for none.
+  Future<void> setAvatar(String? base64);
 
   /// The room stopped but this device carries on by itself.
   Future<void> keepPlaying();
@@ -304,6 +314,10 @@ class NativeBackend implements Backend {
       'update' => UpdateEvent(UpdateInfo.fromJson(json)),
       'calm' => CalmEvent(json['on'] as bool),
       'output' => OutputEvent(AudioOutput.fromJson(json)),
+      'avatar' => AvatarEvent(
+        json['id'] as String,
+        json['data'] == null ? null : base64Decode(json['data'] as String),
+      ),
       'sleep' => SleepEvent(SleepState.fromJson(json)),
       'invite' => InviteEvent(json['code'] as String),
       'setup' => SetupEvent(json['link'] as String),
@@ -372,6 +386,10 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> pickOutput() => _call<void>('pickOutput');
+
+  @override
+  Future<void> setAvatar(String? base64) =>
+      _call<void>('setAvatar', {'data': base64});
 
   @override
   Future<void> keepPlaying() => _call('keepPlaying');

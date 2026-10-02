@@ -111,6 +111,27 @@ final class GroupController {
     let errors = SharedFlow<ControllerError>()
     let notices = SharedFlow<Notice>()
 
+    /// A member's picture, as base64; [data] is nil when they have none (any more).
+    struct Avatar: Equatable {
+        let id: String
+        let data: String?
+    }
+
+    let avatars = SharedFlow<Avatar>()
+
+    /// The latest picture of each member, for a screen that comes back after pictures arrived.
+    private var pictures: [String: String] = [:]
+
+    func picturesSeen() -> [Avatar] {
+        pictures.map { Avatar(id: $0.key, data: $0.value) }
+    }
+
+    /// The picture this device shows the room as its own, as base64 of a small JPEG; nil for none. Kept across restarts.
+    func setAvatar(_ data: String?) {
+        prefs.set(data, for: Self.keyAvatar)
+        client?.setAvatar(data)
+    }
+
     /// The player did something the screen should show at once.
     let playerChanged = SharedFlow<Void>()
 
@@ -306,6 +327,12 @@ final class GroupController {
             if case let .error(code, text) = message { self?.errors.emit(ControllerError(code: code, message: text)) }
             newSession.onMessage(message)
         }
+        newClient.onAvatar = { [weak self] memberId, _, data in
+            guard let self else { return }
+            self.pictures[memberId] = data
+            self.avatars.emit(Avatar(id: memberId, data: data))
+        }
+        newClient.setAvatar(prefs.string(Self.keyAvatar))
         newClient.onConnected = { [weak self, weak newClient] in
             newSession.onReconnected()
             self?.scope.launch { [weak self] in
@@ -407,6 +434,7 @@ final class GroupController {
         roomCode = nil
         suspended = false
         pending.removeAll()
+        pictures.removeAll()
         scope.cancel()
         scope = Scope()
         local.attach() // the personal queue gets the player back, paused where it was
@@ -572,6 +600,7 @@ final class GroupController {
     private static let keyDeviceId = "device_id"
     private static let keyRoomCode = "room_code"
     private static let keyRoomName = "room_name"
+    private static let keyAvatar = "avatar"
     private static let keyRoomSolo = "room_solo"
     private static let keyRoomSoloItem = "room_solo_item"
     private static let keyLastActive = "room_last_active"

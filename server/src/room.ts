@@ -45,6 +45,9 @@ const MAX_MEMBERS = 12;
 const MAX_ROOM_NAME = 32;
 const MAX_QUEUE = 200;
 const MAX_MESSAGE_CHARS = 32_768;
+/** A picture is sent as base64 of a small JPEG (about 160 px); anything bigger is refused. */
+const MAX_AVATAR_CHARS = 24_000;
+const AVATAR_PREFIX = "avatar:";
 /** Songs accepted from one queue.addMany message. */
 const MAX_ADD_MANY = 100;
 const MAX_MESSAGES_PER_SECOND = 20;
@@ -59,6 +62,8 @@ interface Attachment {
   solo: boolean;
   /** When this device joined; the longest present member takes over when the owner leaves. */
   joinedAt?: number;
+  /** Fingerprint of this member's picture; the picture is in storage, since an attachment holds only 2 KiB. */
+  av?: string;
 }
 
 /** What only the owner may do once the owner has restricted guests to adding songs. */
@@ -195,6 +200,8 @@ export class Room extends DurableObject<Env> {
       case "prev": return this.onPrev(me.clientId);
       case "repeat": return this.onRepeat(msg.mode);
       case "solo": return this.onSolo(me, msg.on === true);
+      case "avatar.set": return this.onAvatarSet(me, msg.data);
+      case "avatar.get": return this.onAvatarGet(ws, msg.id);
       case "bye": return this.onBye(ws, me);
       case "kick": return this.onKick(ws, me, msg.id);
       case "room.name": return this.onRoomName(msg.name);
@@ -248,8 +255,11 @@ export class Room extends DurableObject<Env> {
     // A second join on the same socket is a rename: keep the listening mode and the place in line
     const before = ws.deserializeAttachment() as Attachment | null;
     const now = Date.now();
+    // A device that comes back keeps the picture it had, so it does not vanish from the others' screens meanwhile
+    const kept = await this.ctx.storage.get<string>(AVATAR_PREFIX + clientId);
+    const av = kept === undefined ? undefined : await fingerprint(kept);
     ws.serializeAttachment(
-      { clientId, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now } satisfies Attachment,
+      { clientId, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av } satisfies Attachment,
     );
 
     // The first to arrive owns a room that has no owner; the room now exists and someone is in it
@@ -289,8 +299,42 @@ export class Room extends DurableObject<Env> {
       await this.armAlarm();
       return;
     }
+    await this.dropPicturesOfAbsentMembers(members);
     this.broadcastMembers();
     await this.maybeStart(); // the device we were waiting for may be the one that left
+  }
+
+  /** A picture is kept only while its owner is here: a device that comes back sends it again. */
+  private async dropPicturesOfAbsentMembers(members: Member[]): Promise<void> {
+    const present = new Set(members.map((m) => AVATAR_PREFIX + m.id));
+    const kept = await this.ctx.storage.list({ prefix: AVATAR_PREFIX });
+    const gone = [...kept.keys()].filter((key) => !present.has(key));
+    if (gone.length) await this.ctx.storage.delete(gone);
+  }
+
+  /** Sets, or with null takes away, the picture of the device that sent it. */
+  private async onAvatarSet(me: Attachment, data: unknown): Promise<void> {
+    if (data !== null && (typeof data !== "string" || data.length > MAX_AVATAR_CHARS || !/^[A-Za-z0-9+/=]+$/.test(data))) return;
+    let av: string | undefined;
+    if (data === null) {
+      await this.ctx.storage.delete(AVATAR_PREFIX + me.clientId);
+    } else {
+      await this.ctx.storage.put(AVATAR_PREFIX + me.clientId, data);
+      av = await fingerprint(data);
+    }
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = ws.deserializeAttachment() as Attachment | null;
+      if (att?.clientId === me.clientId) ws.serializeAttachment({ ...att, av } satisfies Attachment);
+    }
+    this.broadcastMembers();
+  }
+
+  private async onAvatarGet(ws: WebSocket, id: unknown): Promise<void> {
+    if (typeof id !== "string") return;
+    const data = await this.ctx.storage.get<string>(AVATAR_PREFIX + id);
+    const owner = this.members().find((m) => m.id === id);
+    if (data === undefined || !owner?.av) return this.send(ws, { t: "avatar", id });
+    this.send(ws, { t: "avatar", id, av: owner.av, data });
   }
 
   private async onSolo(me: Attachment, on: boolean): Promise<void> {
@@ -397,7 +441,7 @@ export class Room extends DurableObject<Env> {
   /** Broadcasts the member list when who is here, away or solo changed since the last time. */
   private broadcastMembers(): void {
     const members = this.members();
-    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}:${m.owner}`).join("|");
+    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}:${m.owner}:${m.av ?? ""}`).join("|");
     if (key === this.membersKey) return;
     this.membersKey = key;
     this.broadcast({ t: "members", members });
@@ -761,6 +805,7 @@ export class Room extends DurableObject<Env> {
         solo: att.solo === true,
         away: now - att.lastSeen > limit,
         owner: att.clientId === this.s.ownerId,
+        ...(att.av ? { av: att.av } : {}),
       });
     }
     return out;
@@ -852,6 +897,12 @@ export class Room extends DurableObject<Env> {
     bucket.tokens -= 1;
     return true;
   }
+}
+
+/** A short fingerprint of a picture, so that clients know whether the one they hold is the current one. */
+async function fingerprint(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest).slice(0, 4)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function clamp(value: number, min: number, max: number): number {

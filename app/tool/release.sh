@@ -20,7 +20,8 @@ APP=$(cd "$(dirname "$0")/.." && pwd)
 SERVER=$(cd "$APP/../server" && pwd)
 FLUTTER=${FLUTTER:-$HOME/.local/share/flutter/bin/flutter}
 BUILD_TOOLS=$(ls -d "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/* | sort -V | tail -1)
-export PATH=$HOME/.local/share/node/bin:$PATH
+# wrangler needs Node 22 or newer; NODE_BIN is the folder of a Node that is not the one on the PATH, if there is one
+export PATH=${NODE_BIN:+$NODE_BIN:}$PATH
 
 VERSION=$(sed -n 's/^version: *//p' "$APP/pubspec.yaml")
 NOTES_ARGS=("$@")

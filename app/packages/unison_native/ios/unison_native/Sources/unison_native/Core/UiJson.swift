@@ -45,6 +45,11 @@ enum UiJson {
         JSONText.encode(["type": "output", "kind": output.kind, "name": output.name])
     }
 
+    /// A member's picture as base64, or none; the screen keeps it by the member's id.
+    static func avatar(_ avatar: GroupController.Avatar) -> String {
+        JSONText.encode(["type": "avatar", "id": avatar.id, "data": avatar.data ?? NSNull()] as [String: Any])
+    }
+
     /// Fast changing values: sent about once a second while the UI is visible.
     static func position(_ view: GroupController.View, _ player: PlayerInfo) -> String {
         JSONText.encode([

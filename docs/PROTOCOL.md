@@ -16,11 +16,11 @@ Connection: a WebSocket to `wss://<worker>/room/<CODE>`. Every room is a Durable
   "name": "Family",
   "ownerId": "u1",
   "guestControl": "all | add",
-  "members": [{ "id": "u1", "name": "Ann", "ready": true, "solo": false, "away": false, "owner": true }]
+  "members": [{ "id": "u1", "name": "Ann", "ready": true, "solo": false, "away": false, "owner": true, "av": "3fa9c01e" }]
 }
 ```
 
-`name` and `ownerId` may be absent. See section 5c for the owner and the room name.
+`name` and `ownerId` may be absent. See section 5c for the owner and the room name. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d.
 
 - `phase=playing`: the current position is `serverNow - startedAt`.
 - `phase=paused`: the position is `positionMs`.
@@ -36,7 +36,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 ## 2b. Authentication
 
-`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Unison-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":6}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
+`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Unison-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":8}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
 
 `GET /room/<CODE>/info` is read-only and creates nothing: `{"exists":true,"name":"Family","members":2,"playing":true,"title":"..."}`; `exists:false` when the room never existed or has expired. The app uses it for the list of recent rooms.
 
@@ -50,6 +50,8 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 | `room.name` | `name` | Rename the room, at most 32 characters, empty removes the name |
 | `room.settings` | `guestControl` | Owner only: `all` (everybody steers, the default) or `add` (guests can only add songs) |
 | `ping` | `c0` | Clock measurement |
+| `avatar.set` | `data` | The device's own picture: base64 of a small JPEG or PNG (about 160 px), at most 24,000 characters; `null` takes it away. Anything else is ignored. Only servers of protocol 8 or newer know it, and an older one answers with `unknown_type`, so a client sends it only after a `state` that says `protocol` 8 or more |
+| `avatar.get` | `id` | Asks for the picture of the member `id`; answered with `avatar` to this socket only |
 | `queue.add` | `videoId`, metadata, `next?` | Add a song; `next: true` inserts it right after the current one (if the room is `idle` the new song is only appended and played) |
 | `queue.addMany` | `tracks[]`, `next?` | Add several songs at once (a playlist), at most 100 per message, songs with a bad `videoId` are dropped; the same `next` rule as `queue.add`. One message and one `state` broadcast, so it does not run into the limit of 20 messages per second |
 | `queue.remove` | `id` | Remove a song |
@@ -74,12 +76,13 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 | `t` | Fields | Meaning |
 |---|---|---|
-| `state` | the whole state, `protocol` | Sent on joining and on big changes; `protocol` is the server's protocol version (currently 6) |
+| `state` | the whole state, `protocol` | Sent on joining and on big changes; `protocol` is the server's protocol version (currently 8) |
 | `prepare` | `epoch`, song, `seekToMs`, `by?` | Prepare the song: resolve, buffer, then send `ready`. `by` is the `clientId` of whoever just changed the song; absent when the room moves on by itself |
 | `start` | `epoch`, `startAt` (server time), `by?` | Start playing at this moment |
 | `pause` | `epoch`, `positionMs`, `by?` | Stop at the position |
 | `advance` | `epoch`, `index`, `startedAt` | The whole room moves to the next song without the barrier, position 0 heard at `startedAt` |
 | `pong` | `c0`, `s1` | Answer to a ping |
+| `avatar` | `id`, `av?`, `data?` | The picture of `id` and its fingerprint; both absent when that member has none |
 | `members` | `members[]` | The member list, sent when someone joins, leaves, renames, changes solo mode, the owner changes, or someone switches between present and `away` |
 | `error` | `code`, `message` | Codes today: `not_joined`, `bad_message`, `bad_json`, `rate_limited`, `unknown_type`, `bad_video`, `queue_full`, `unplayable`, `room_not_found` (with close 4004), `room_full` (with close 1008), `forbidden` (a command only the owner may give), `removed` (with close 4001) |
 
@@ -120,6 +123,12 @@ Who did what: `pause`, `start` and `prepare` carry `by` so that other devices ca
 **Owner.** Whoever opens the room (`create:true`), or the first to join when the room has no owner, is the owner. `guestControl` defaults to `all`: everybody has equal rights, as before. When the owner switches to `add`, guests can only add songs (`queue.add`, `queue.addMany`) and listen alone; `play`, `pause`, `seek`, `next`, `prev`, `jump`, `queue.remove`, `queue.swap`, `queue.move`, `queue.clear`, `queue.shuffle`, `repeat` and `room.name` get `forbidden`. The limit only holds while the owner is present (socket open and not `away`); if the owner loses the connection everybody can steer, and when the owner is back the limit is back, with no handover timer. `kick` and `room.settings` are always owner-only. A room with nobody left loses its owner and `guestControl` goes back to `all`; the first to join afterwards becomes the new owner.
 
 **Lifecycle.** A code is only a name: a room is born when someone joins with `create` not equal to `false`, and does not exist before that. An empty room is kept for 7 days if there are songs left in its queue, for 1 hour if there are none, and then deleted entirely (`deleteAll`). The server has only one Durable Object alarm but keeps the due time of each job (`barrier`, `end`, `gc`, `sweep`) and sets the alarm at the nearest one. `sweep` runs every 5 minutes while the room has people: it closes sockets that have been silent for more than 150 seconds (even when nobody sends anything), so a room of dead devices still becomes empty and is cleaned up. A socket that has not joined (or was refused) creates no data. The server also understands the state stored in the old form (a single alarm).
+
+## 5d. Pictures
+
+A member's picture is not part of the member list: that list is sent whenever somebody is ready, away or solo, and a picture in it would be sent many times a song. Instead the list carries `av`, a fingerprint of 8 hexadecimal digits (the start of the SHA-256 of the picture's text). A client keeps the fingerprint it last fetched for each member and sends `avatar.get` only for a member whose `av` is new or changed, and drops what it holds for a member who has no `av` any more or who is gone.
+
+The server keeps the pictures in storage, one per client id (a socket attachment holds only 2 KiB), and drops those of members who are no longer here. A device sends `avatar.set` once per connection, right after the first `state`; a device that comes back within the lifetime of the room keeps the picture it had, so it does not disappear from the others' screens for the moment of a reconnect. Setting the same picture again changes nothing for the others.
 
 ## 6. Correcting drift while playing
 

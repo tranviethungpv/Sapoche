@@ -467,6 +467,46 @@ final class RoomClientTests: XCTestCase {
         XCTAssertEqual(sockets.opened.count, 2, "a connection that may be dead is replaced at once")
     }
 
+    private func stateOf(protocolVersion: Int, members: String) -> String {
+        #"{"t":"state","serverNow":0,"you":"me","protocol":\#(protocolVersion),"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":\#(members)}"#
+    }
+
+    func testAnOlderServerIsSentNoPicturesWhichItWouldAnswerWithAnError() async {
+        let client = client(create: false)
+        client.setAvatar("TUlORQ==")
+        client.start()
+        await time.settle()
+        let socket = sockets.opened[0]
+        socket.open()
+        socket.receive(state)
+        XCTAssertTrue(socket.sent.filter { $0.contains("avatar") }.isEmpty)
+    }
+
+    func testPicturesAreSharedAndFetchedOnceTheServerSpeaksProtocolEight() async {
+        let client = client(create: false)
+        var heard: [String] = []
+        client.onAvatar = { id, av, data in heard.append("\(id) \(av ?? "-") \(data ?? "-")") }
+        client.setAvatar("TUlORQ==")
+        client.start()
+        await time.settle()
+        let socket = sockets.opened[0]
+        socket.open()
+        let members = #"[{"id":"me","name":"Me","ready":false},{"id":"you","name":"You","ready":false,"av":"abcd1234"}]"#
+        socket.receive(stateOf(protocolVersion: 8, members: members))
+        XCTAssertEqual(socket.sent.filter { $0.contains("avatar.set") && $0.contains("TUlORQ==") }.count, 1)
+        XCTAssertEqual(socket.sent.filter { $0.contains("avatar.get") && $0.contains("you") }.count, 1)
+        XCTAssertTrue(socket.sent.filter { $0.contains("avatar.get") && $0.contains("\"me\"") }.isEmpty, "its own picture is not asked for")
+        socket.receive(#"{"t":"avatar","id":"you","av":"abcd1234","data":"UElDVA=="}"#)
+        XCTAssertEqual(heard, ["you abcd1234 UElDVA=="])
+        // The same list again asks for nothing more; a changed fingerprint asks again; a member who dropped theirs is told
+        socket.receive(#"{"t":"members","members":\#(members)}"#)
+        XCTAssertEqual(socket.sent.filter { $0.contains("avatar.get") }.count, 1)
+        socket.receive(#"{"t":"members","members":[{"id":"you","name":"You","ready":false,"av":"ffff0000"}]}"#)
+        XCTAssertEqual(socket.sent.filter { $0.contains("avatar.get") }.count, 2)
+        socket.receive(#"{"t":"members","members":[{"id":"you","name":"You","ready":false}]}"#)
+        XCTAssertEqual(heard.last, "you - -")
+    }
+
     func testRenamingSendsAJoinWithoutDroppingTheConnection() async {
         let client = client(create: false)
         client.start()
@@ -481,6 +521,18 @@ final class RoomClientTests: XCTestCase {
 }
 
 final class WireTests: XCTestCase {
+    func testAPictureAndItsFingerprintAreRead() {
+        guard case let .avatar(id, av, data)? = Wire.parse(#"{"t":"avatar","id":"u","av":"abcd1234","data":"UElDVA=="}"#) else { return XCTFail("not a picture") }
+        XCTAssertEqual([id, av, data], ["u", "abcd1234", "UElDVA=="])
+        guard case let .avatar(_, none, noData)? = Wire.parse(#"{"t":"avatar","id":"u"}"#) else { return XCTFail("not a picture") }
+        XCTAssertNil(none)
+        XCTAssertNil(noData)
+        guard case let .members(members)? = Wire.parse(#"{"t":"members","members":[{"id":"u","name":"U","ready":true,"av":"abcd1234"},{"id":"v","name":"V","ready":true}]}"#) else { return XCTFail("not members") }
+        XCTAssertEqual(members.map(\.av), ["abcd1234", nil])
+        XCTAssertTrue(Wire.avatarSet(nil).contains("null"))
+        XCTAssertTrue(Wire.avatarSet("TUlORQ==").contains("TUlORQ=="))
+    }
+
     func testTheServersMessagesAreRead() throws {
         guard case let .state(serverNow, you, state, members, version)? = Wire.parse(
             #"{"t":"state","serverNow":5,"you":"me","protocol":6,"state":{"queue":[{"id":"q","videoId":"v","title":"T","artist":"A","durMs":9,"addedBy":"x"}],"index":0,"phase":"playing","startedAt":10,"positionMs":0,"epoch":3,"repeat":"all","name":"Room","ownerId":"me","guestControl":"add"},"members":[{"id":"me","name":"Me","ready":true,"owner":true}]}"#

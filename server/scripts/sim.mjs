@@ -249,6 +249,7 @@ async function main() {
   await fullRoomSection();
   await ownerSection();
   await inviteSection();
+  await avatarSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
@@ -686,6 +687,58 @@ async function inviteSection() {
     "asset links name the app and its signing keys",
     links[0].target.package_name === "app.unison" && links[0].target.sha256_cert_fingerprints.length === 2,
   );
+}
+
+/** Pictures: kept by the server, announced by a fingerprint in the member list, fetched one at a time. */
+async function avatarSection() {
+  console.log("Pictures");
+  const code = await newCode();
+  const ann = new Client(code, "an-id", "Ann");
+  await ann.join(true);
+  const bob = new Client(code, "bo-id", "Bob");
+  await bob.join(false);
+  const picture = Buffer.from("a small picture, as far as the server can tell").toString("base64");
+  const members = (client) => client.waitFor((m) => m.t === "members" && m.members.some((x) => x.id === "an-id" && x.av));
+
+  ann.send({ t: "avatar.set", data: picture });
+  const announced = await members(bob);
+  const av = announced.members.find((x) => x.id === "an-id").av;
+  check("a picture is announced by a short fingerprint, not sent along", /^[0-9a-f]{8}$/.test(av) && !JSON.stringify(announced).includes(picture));
+  bob.send({ t: "avatar.get", id: "an-id" });
+  const got = await bob.waitFor((m) => m.t === "avatar");
+  check("asking for it brings the picture and its fingerprint to the one who asked", got.id === "an-id" && got.av === av && got.data === picture);
+  check("the others are not sent it", await ann.stays((m) => m.t === "avatar", 300));
+
+  bob.send({ t: "avatar.get", id: "bo-id" });
+  const none = await bob.waitFor((m) => m.t === "avatar");
+  check("a member without a picture answers with none", none.id === "bo-id" && none.data === undefined && none.av === undefined);
+
+  await sleep(100);
+  bob.inbox.length = 0; // what was announced so far
+  ann.send({ t: "avatar.set", data: "not base64 \u0000" });
+  ann.send({ t: "avatar.set", data: "A".repeat(24_001) });
+  check("a picture that is not base64, or too big, is ignored", await bob.stays((m) => m.t === "members", 300));
+
+  const same = new Client(code, "an-id", "Ann");
+  await same.join(false);
+  await sleep(100);
+  bob.inbox.length = 0; // the old socket of Ann closing
+  same.send({ t: "avatar.set", data: picture });
+  check("the same picture again changes nothing for the others", await bob.stays((m) => m.t === "members" && m.members.some((x) => x.id === "an-id" && x.av !== av), 300));
+  same.send({ t: "avatar.set", data: null });
+  const removed = await bob.waitFor((m) => m.t === "members" && m.members.some((x) => x.id === "an-id" && !x.av));
+  check("taking the picture away is announced", removed.members.every((x) => !x.av));
+  bob.send({ t: "avatar.get", id: "an-id" });
+  check("and it cannot be fetched any more", (await bob.waitFor((m) => m.t === "avatar")).data === undefined);
+
+  // A device that leaves takes its picture with it
+  same.send({ t: "avatar.set", data: picture });
+  await members(bob);
+  same.close();
+  await bob.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === "an-id"));
+  bob.send({ t: "avatar.get", id: "an-id" });
+  check("a picture does not outlive its member", (await bob.waitFor((m) => m.t === "avatar")).data === undefined);
+  [ann, bob].forEach((x) => x.close());
 }
 
 /** How long empty rooms live and whether dead connections are noticed. Needs the short timers of `npm test`. */

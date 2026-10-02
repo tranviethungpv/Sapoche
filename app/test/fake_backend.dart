@@ -521,6 +521,9 @@ class FakeBackend implements Backend {
   Future<void> pickOutput() => _record('pickOutput');
 
   @override
+  Future<void> setAvatar(String? base64) => _record('setAvatar $base64');
+
+  @override
   Future<List<String>> log() async => ['line one', 'line two'];
 
   @override

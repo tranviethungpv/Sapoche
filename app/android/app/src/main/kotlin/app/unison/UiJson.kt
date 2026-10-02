@@ -117,6 +117,10 @@ object UiJson {
     fun library(): String = JSONObject().put("type", "library").toString()
 
     /** An invitation link was opened: the UI offers to join that room. */
+    /** A member's picture as base64, or none; the screen keeps it by the member's id. */
+    fun avatar(avatar: GroupController.Avatar): String =
+        JSONObject().put("type", "avatar").put("id", avatar.id).put("data", avatar.data ?: JSONObject.NULL).toString()
+
     fun invite(code: String): String = JSONObject().put("type", "invite").put("code", code).toString()
 
     /** Another member paused the room or skipped a song; [by] is their name. */

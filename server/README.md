@@ -20,7 +20,7 @@ npm install
 npm run typecheck
 npm run dev          # http://127.0.0.1:8787
 npm run sim          # in another terminal, against the server without a key; expect 39 passed
-npm test             # starts a server with a key and tests it; expect 128 passed, then 6 passed, 0 failed
+npm test             # starts a server with a key and tests it; expect 147 passed, then 6 passed, 0 failed
 ```
 
 For a phone on the same Wi-Fi to connect, run `npx wrangler dev --ip 0.0.0.0 --port 8787` and use `ws://<dev-machine-ip>:8787`.
@@ -62,4 +62,4 @@ Changing the key means building and reinstalling the app for the whole group. Th
 - An empty room that still has songs is deleted after 7 days, an empty room without songs after 1 hour; a room holds at most 12 people and 200 songs, and each connection at most 20 messages per second. A room takes less than 50 KB (the free plan gives 5 GB in total), so an orphaned room costs nothing; the cleanup is there to keep the "recent rooms" list honest.
 - Environment variables meant for tests only (`STALE_MS`, `DROP_MS`, `SWEEP_MS`, `EMPTY_MS`, `EMPTY_BARE_MS`) shorten the timers above; do not set them on a real server.
 - Load estimate: a device sends about 2 pings a minute (to measure the clock) and a few messages per song, and writes to storage about 10 times per song, so a group of 5 listening all day stays far below the limit of 100,000 requests and 100,000 writes per day (WebSocket messages count 20 to 1 request).
-- Current deployment: protocol version 6 (`GET /health` reports `protocol`, and the `state` message carries it too). The change from 5 to 6 only added things, so an app on version 5 still works.
+- Current deployment: protocol version 8 (`GET /health` reports `protocol`, and the `state` message carries it too). Every change so far only added things, so an older app still works; a client sends pictures only to a server that says it is on 8 or newer.

@@ -1,0 +1,3 @@
+Your photo in the room
+- The photo you choose in Settings is now shown to everyone in the room: in the list of people, in the room page and in the player.
+- It is sent once, in a small size, and only to a server that supports it; a room on an older server shows your initial as before.

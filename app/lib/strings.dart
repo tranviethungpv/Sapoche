@@ -390,8 +390,8 @@ abstract final class S {
   static String get choosePhoto => _t('Choose photo', 'Chọn ảnh');
   static String get removePhoto => _t('Remove photo', 'Bỏ ảnh');
   static String get photoOnlyHere => _t(
-    'Your photo is shown on this phone only; others in a room see your initial.',
-    'Ảnh chỉ hiện trên máy này; người khác trong phòng thấy chữ cái đầu của bạn.',
+    'Others in a room see your photo too. A room that runs an older server only shows your initial.',
+    'Người trong phòng cũng thấy ảnh của bạn. Phòng chạy server cũ thì chỉ thấy chữ cái đầu.',
   );
 
   // Suggestions: what the person does not want, and the mixes made from what they listen to

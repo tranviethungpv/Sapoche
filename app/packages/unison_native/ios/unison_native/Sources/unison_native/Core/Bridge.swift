@@ -139,6 +139,7 @@ final class Bridge {
             }
             emit(UiJson.calm(platform.calm.value))
             emit(UiJson.output(platform.output.value))
+            for avatar in controller.picturesSeen() { emit(UiJson.avatar(avatar)) }
             controller.resumeRoom()
             // A phone that was in a pocket may have lost the connection without noticing
             controller.networkChanged(changed: false)
@@ -201,6 +202,12 @@ final class Bridge {
         observing.collect(controller.view) { [weak self] _ in self?.emitStateIfChanged() }
         observing.collect(controller.errors) { [weak self] error in self?.emit(UiJson.error(code: error.code, message: error.message)) }
         observing.collect(controller.notices) { [weak self] notice in self?.emit(UiJson.notice(notice)) }
+        // A screen that starts listening is told the pictures that came while nobody looked
+        for avatar in controller.picturesSeen() { emit(UiJson.avatar(avatar)) }
+        observing.collect(controller.avatars) { [weak self] avatar in
+            guard let self, self.visible else { return }
+            self.emit(UiJson.avatar(avatar))
+        }
         observing.collect(controller.sleep.state) { [weak self] state in self?.emit(UiJson.sleep(state)) }
         // Play, pause and seek should show at once instead of at the next tick
         observing.collect(controller.playerChanged) { [weak self] _ in self?.emitPosition() }
@@ -440,6 +447,8 @@ final class Bridge {
             case "song": controller.sleep.startAtSongEnd()
             default: controller.sleep.cancel()
             }
+        case "setAvatar":
+            controller.setAvatar(args["data"] as? String)
         case "rename":
             controller.rename(string("name").trimmingCharacters(in: .whitespacesAndNewlines))
         case "setTrim":

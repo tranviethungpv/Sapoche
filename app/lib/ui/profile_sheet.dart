@@ -43,7 +43,9 @@ class _ProfileSheetState extends State<_ProfileSheet> {
   Future<void> _choose() async {
     final model = AppScope.of(context);
     final bytes = await model.photoPicker();
-    if (bytes != null) model.settings.avatar = bytes;
+    if (bytes == null) return;
+    model.settings.avatar = bytes;
+    model.room.shareAvatar(bytes);
   }
 
   void _save() {
@@ -99,7 +101,10 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                         if (model.settings.avatar != null)
                           TextButton(
                             key: const ValueKey('profile-remove'),
-                            onPressed: () => model.settings.avatar = null,
+                            onPressed: () {
+                              model.settings.avatar = null;
+                              model.room.shareAvatar(null);
+                            },
                             child: Text(S.removePhoto),
                           ),
                       ],

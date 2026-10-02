@@ -86,13 +86,22 @@ class AvatarStack extends StatelessWidget {
   Widget build(BuildContext context) {
     final model = AppScope.of(context);
     return ListenableBuilder(
-      listenable: model.settings,
-      builder: (context, _) =>
-          _stack(context, model.settings.avatar, model.room.snapshot.you),
+      listenable: Listenable.merge([model.settings, model.room]),
+      builder: (context, _) => _stack(
+        context,
+        model.settings.avatar,
+        model.room.snapshot.you,
+        model.room.avatarOf,
+      ),
     );
   }
 
-  Widget _stack(BuildContext context, Uint8List? mine, String? you) {
+  Widget _stack(
+    BuildContext context,
+    Uint8List? mine,
+    String? you,
+    Uint8List? Function(String) theirs,
+  ) {
     final shown = members.take(max).toList();
     final extra = members.length - shown.length;
     final step = size * 0.68;
@@ -110,7 +119,7 @@ class AvatarStack extends StatelessWidget {
                   name: shown[i].name,
                   size: size,
                   ring: true,
-                  image: shown[i].id == you ? mine : null,
+                  image: shown[i].id == you ? mine : theirs(shown[i].id),
                 ),
               ),
             ),

@@ -26,6 +26,8 @@ Future<void> main() async {
   // The display runs at its fastest only while something moves
   FrameBoost((on) => backend.setSmooth(on)).start();
   final room = RoomController(backend, recents: recents)..start();
+  // The native side keeps the picture too, but it is the person's choice that counts when the app opens
+  room.shareAvatar(settings.avatar);
   final library = LibraryController(backend)..start();
   runApp(
     UnisonApp(

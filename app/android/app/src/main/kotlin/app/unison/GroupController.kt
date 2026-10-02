@@ -114,6 +114,23 @@ class GroupController(
     private val _notices = MutableSharedFlow<Notice>(extraBufferCapacity = 8)
     val notices: SharedFlow<Notice> = _notices.asSharedFlow()
 
+    /** A member's picture, as base64; [data] is null when they have none (any more). */
+    data class Avatar(val id: String, val data: String?)
+
+    private val _avatars = MutableSharedFlow<Avatar>(extraBufferCapacity = 64)
+    val avatars: SharedFlow<Avatar> = _avatars.asSharedFlow()
+
+    /** The latest picture of each member, for a screen that comes back after pictures arrived. */
+    private val pictures = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun picturesSeen(): List<Avatar> = pictures.map { Avatar(it.key, it.value) }
+
+    /** The picture this device shows the room as its own, as base64 of a small JPEG; null for none. Kept across restarts. */
+    fun setAvatar(data: String?) {
+        prefs.edit().apply { if (data == null) remove(KEY_AVATAR) else putString(KEY_AVATAR, data) }.apply()
+        client?.setAvatar(data)
+    }
+
     var roomCode: String? = null
         private set
 
@@ -243,6 +260,11 @@ class GroupController(
             if (it is ServerMessage.Error) _errors.tryEmit(it)
             newSession.onMessage(it)
         }
+        newClient.onAvatar = { memberId, _, data ->
+            if (data == null) pictures.remove(memberId) else pictures[memberId] = data
+            _avatars.tryEmit(Avatar(memberId, data))
+        }
+        newClient.setAvatar(prefs.getString(KEY_AVATAR, null))
         newClient.onConnected = {
             newSession.onReconnected()
             scope.launch { flushPending(newClient) }
@@ -369,6 +391,7 @@ class GroupController(
         roomCode = null
         suspended = false
         pending.clear()
+        pictures.clear()
         scope.cancel()
         scope = newScope()
         local.attach() // the personal queue gets the player back, paused where it was
@@ -580,6 +603,7 @@ class GroupController(
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_ROOM_CODE = "room_code"
         const val KEY_ROOM_NAME = "room_name"
+        const val KEY_AVATAR = "avatar"
         const val KEY_ROOM_SOLO = "room_solo"
         const val KEY_ROOM_SOLO_ITEM = "room_solo_item"
         const val KEY_LAST_ACTIVE = "room_last_active"

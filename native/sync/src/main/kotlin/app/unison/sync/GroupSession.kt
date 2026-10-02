@@ -166,6 +166,7 @@ class GroupSession(
                 is ServerMessage.Pause -> onPause(message)
                 is ServerMessage.Advance -> onAdvance(message)
                 is ServerMessage.Pong -> Unit // consumed by the connection layer
+                is ServerMessage.Avatar -> Unit // consumed by the connection layer too
                 is ServerMessage.Error -> log("server error ${message.code}: ${message.message}")
             }
         }

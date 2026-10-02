@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -33,6 +34,9 @@ class RoomController extends ChangeNotifier {
   RoomSnapshot _snapshot = const RoomSnapshot();
   SleepState _sleep = const SleepState();
   AudioOutput _output = const AudioOutput();
+
+  /// The pictures the other members chose, by member id.
+  final _avatars = <String, Uint8List>{};
   Profile _profile = const Profile();
   bool _ready = false;
 
@@ -71,6 +75,9 @@ class RoomController extends ChangeNotifier {
 
   /// Where the sound goes now.
   AudioOutput get output => _output;
+
+  /// The picture a member chose, or null when they have none.
+  Uint8List? avatarOf(String memberId) => _avatars[memberId];
   Profile get profile => _profile;
 
   /// False until the first state arrived from the native side.
@@ -93,6 +100,10 @@ class RoomController extends ChangeNotifier {
         final code = snapshot.room;
         if (code != null) _recents?.touch(code, name: snapshot.name);
         _snapshot = snapshot;
+        // A picture is kept while its owner is in the room
+        _avatars.removeWhere(
+          (id, _) => !snapshot.members.any((m) => m.id == id),
+        );
         _ready = true;
         notifyListeners();
       case NoticeEvent(:final kind, :final by, :final title):
@@ -116,6 +127,13 @@ class RoomController extends ChangeNotifier {
         if (parsed != null) setup.value = parsed;
       case SleepEvent(:final sleep):
         _sleep = sleep;
+        notifyListeners();
+      case AvatarEvent(:final id, :final bytes):
+        if (bytes == null) {
+          _avatars.remove(id);
+        } else {
+          _avatars[id] = bytes;
+        }
         notifyListeners();
       case OutputEvent(:final output):
         _output = output;
@@ -272,6 +290,20 @@ class RoomController extends ChangeNotifier {
 
   /// Opens the system's list of places to play to.
   Future<void> pickOutput() => _run(_backend.pickOutput);
+
+  /// Shows [picture] to the room as this device's own, or with null takes it away. A picture too big to send stays
+  /// on this phone.
+  Future<void> shareAvatar(Uint8List? picture) {
+    final text = picture == null ? null : base64Encode(picture);
+    return _run(
+      () => _backend.setAvatar(
+        text != null && text.length <= maxAvatarChars ? text : null,
+      ),
+    );
+  }
+
+  /// The longest base64 text of a picture the room accepts.
+  static const maxAvatarChars = 24000;
 
   /// Carry on playing by myself after the room paused.
   Future<void> keepPlaying() => _run(_backend.keepPlaying);

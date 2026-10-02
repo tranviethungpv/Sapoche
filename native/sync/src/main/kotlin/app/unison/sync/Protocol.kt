@@ -62,6 +62,8 @@ data class Member(
     val away: Boolean = false,
     /** Can change the room's settings and remove people. */
     val owner: Boolean = false,
+    /** Fingerprint of the member's picture; null when they have none. The picture itself comes with [ServerMessage.Avatar]. */
+    val av: String? = null,
 )
 
 sealed interface ServerMessage {
@@ -96,6 +98,10 @@ sealed interface ServerMessage {
     @Serializable
     data class Pong(val c0: Long, val s1: Long) : ServerMessage
 
+    /** The picture of member [id] as base64, with its fingerprint [av]; both are null when the member has none. */
+    @Serializable
+    data class Avatar(val id: String, val av: String? = null, val data: String? = null) : ServerMessage
+
     @Serializable
     data class Error(val code: String, val message: String) : ServerMessage
 }
@@ -115,6 +121,7 @@ object Protocol {
                 "pause" -> json.decodeFromJsonElement<ServerMessage.Pause>(obj)
                 "advance" -> json.decodeFromJsonElement<ServerMessage.Advance>(obj)
                 "pong" -> json.decodeFromJsonElement<ServerMessage.Pong>(obj)
+                "avatar" -> json.decodeFromJsonElement<ServerMessage.Avatar>(obj)
                 "error" -> json.decodeFromJsonElement<ServerMessage.Error>(obj)
                 else -> null
             }
@@ -149,6 +156,12 @@ object Protocol {
     fun roomSettings(guestControl: String) = msg("room.settings") { put("guestControl", guestControl) }
 
     fun ping(c0: Long) = msg("ping") { put("c0", c0) }
+
+    /** The device's own picture as base64 of a small JPEG; null takes it away. Only servers of protocol 8 or newer know it. */
+    fun avatarSet(data: String?) = msg("avatar.set") { put("data", data) }
+
+    /** Asks for the picture of the member [id]. */
+    fun avatarGet(id: String) = msg("avatar.get") { put("id", id) }
 
     /** With [playNext] the track goes right after the current one instead of at the end. */
     fun queueAdd(videoId: String, title: String, artist: String, thumb: String?, durMs: Long, playNext: Boolean = false) =

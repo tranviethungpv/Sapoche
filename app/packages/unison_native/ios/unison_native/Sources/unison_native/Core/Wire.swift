@@ -130,14 +130,17 @@ struct Member: Equatable {
     var away: Bool = false
     /// Can change the room's settings and remove people.
     var owner: Bool = false
+    /// Fingerprint of the member's picture; nil when they have none. The picture itself comes with [ServerMessage.avatar].
+    var av: String?
 
-    init(id: String, name: String, ready: Bool, solo: Bool = false, away: Bool = false, owner: Bool = false) {
+    init(id: String, name: String, ready: Bool, solo: Bool = false, away: Bool = false, owner: Bool = false, av: String? = nil) {
         self.id = id
         self.name = name
         self.ready = ready
         self.solo = solo
         self.away = away
         self.owner = owner
+        self.av = av
     }
 
     init?(_ json: JSON) {
@@ -148,7 +151,8 @@ struct Member: Equatable {
             ready: json["ready"].bool ?? false,
             solo: json["solo"].bool ?? false,
             away: json["away"].bool ?? false,
-            owner: json["owner"].bool ?? false
+            owner: json["owner"].bool ?? false,
+            av: json["av"].string
         )
     }
 }
@@ -164,6 +168,8 @@ enum ServerMessage: Equatable {
     /// The room moved on to the item at [index]; position 0 of it was heard at server time [startedAt].
     case advance(epoch: Int64, index: Int, startedAt: Int64)
     case pong(c0: Int64, s1: Int64)
+    /// The picture of member [id] as base64, with its fingerprint [av]; both are nil when the member has none.
+    case avatar(id: String, av: String?, data: String?)
     case error(code: String, message: String)
 }
 
@@ -199,6 +205,9 @@ enum Wire {
         case "pong":
             guard let c0 = json["c0"].int64, let s1 = json["s1"].int64 else { return nil }
             return .pong(c0: c0, s1: s1)
+        case "avatar":
+            guard let id = json["id"].string else { return nil }
+            return .avatar(id: id, av: json["av"].string, data: json["data"].string)
         case "error":
             guard let code = json["code"].string, let message = json["message"].string else { return nil }
             return .error(code: code, message: message)
@@ -227,6 +236,12 @@ enum Wire {
     static func roomSettings(guestControl: String) -> String { msg("room.settings", ["guestControl": guestControl]) }
 
     static func ping(_ c0: Int64) -> String { msg("ping", ["c0": c0]) }
+
+    /// The device's own picture as base64 of a small JPEG; nil takes it away. Only servers of protocol 8 or newer know it.
+    static func avatarSet(_ data: String?) -> String { msg("avatar.set", ["data": data ?? NSNull()]) }
+
+    /// Asks for the picture of the member [id].
+    static func avatarGet(_ id: String) -> String { msg("avatar.get", ["id": id]) }
 
     /// With [playNext] the track goes right after the current one instead of at the end.
     static func queueAdd(_ track: TrackRef, playNext: Bool = false) -> String {

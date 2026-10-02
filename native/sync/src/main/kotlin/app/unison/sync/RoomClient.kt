@@ -53,6 +53,9 @@ class RoomClient(
     /** Called after each successful (re)connect, once the join message was sent. */
     var onConnected: () -> Unit = {}
 
+    /** A member's picture arrived ([av] is its fingerprint), or with no [data] they took it away. */
+    var onAvatar: (id: String, av: String?, data: String?) -> Unit = { _, _, _ -> }
+
     private val url = baseUrl.trimEnd('/').replaceFirst("http", "ws") + "/room/" + roomCode.uppercase()
 
     private val _connection = MutableStateFlow(Connection.CONNECTING)
@@ -66,6 +69,18 @@ class RoomClient(
     /** When the server last answered a ping, on the [nowMs] clock. */
     @Volatile
     private var lastPongMs = 0L
+
+    /** This device's own picture, as base64; shared with the room once the server says it can keep pictures. */
+    @Volatile
+    private var avatar: String? = null
+
+    /** What the server last said it can do, and whether the picture went out on this connection. */
+    @Volatile
+    private var serverProtocol = 0
+    private var avatarSent = false
+
+    /** The fingerprint of each member's picture as last asked for, so a picture is fetched once and not at every change. */
+    private val known = HashMap<String, String>()
 
     /** A token here ends the current reconnect wait early. */
     private val wake = Channel<Unit>(Channel.CONFLATED)
@@ -81,6 +96,12 @@ class RoomClient(
         private set
 
     fun send(text: String): Boolean = socket?.send(text) ?: false
+
+    /** Sets, or with null takes away, the picture the others see of this device. Sent again on every reconnect. */
+    fun setAvatar(data: String?) {
+        avatar = data
+        if (serverProtocol >= AVATAR_PROTOCOL) send(Protocol.avatarSet(data))
+    }
 
     /** Changes the display name without dropping the connection: the server accepts a second join. */
     fun rename(newName: String) {
@@ -127,6 +148,7 @@ class RoomClient(
                     _connection.value = Connection.CONNECTED
                     log("connected to $url")
                     lastPongMs = nowMs()
+                    avatarSent = false
                     webSocket.send(Protocol.join(clientId, name, createOnJoin))
                     pinger = scope.launch { pingLoop(webSocket) }
                     onConnected()
@@ -139,8 +161,19 @@ class RoomClient(
                             lastPongMs = nowMs()
                             clock.addSample(msg.c0, nowMs(), msg.s1)
                         }
+                        is ServerMessage.Avatar -> {
+                            if (msg.av != null) known[msg.id] = msg.av else known.remove(msg.id)
+                            onAvatar(msg.id, msg.av, msg.data)
+                        }
                         else -> {
                             if (msg is ServerMessage.State && createOnJoin == true) createOnJoin = false
+                            if (msg is ServerMessage.State) {
+                                serverProtocol = msg.protocol
+                                shareAvatar(webSocket)
+                                wantPictures(msg.members)
+                            } else if (msg is ServerMessage.Members) {
+                                wantPictures(msg.members)
+                            }
                             onMessage(msg)
                         }
                     }
@@ -187,6 +220,29 @@ class RoomClient(
         }
     }
 
+    /** Hands the room this device's picture, once per connection, when the server can keep it. */
+    private fun shareAvatar(ws: WebSocket) {
+        if (avatarSent || serverProtocol < AVATAR_PROTOCOL) return
+        avatarSent = true
+        ws.send(Protocol.avatarSet(avatar))
+    }
+
+    /** Asks for the pictures of members whose picture changed since it was last fetched, and forgets those who are gone. */
+    private fun wantPictures(members: List<Member>) {
+        if (serverProtocol < AVATAR_PROTOCOL) return
+        known.keys.retainAll(members.map { it.id }.toSet())
+        for (member in members) {
+            if (member.id == clientId) continue
+            if (member.av == null) {
+                // They had one and took it away
+                if (known.remove(member.id) != null) onAvatar(member.id, null, null)
+            } else if (known[member.id] != member.av) {
+                known[member.id] = member.av
+                socket?.send(Protocol.avatarGet(member.id))
+            }
+        }
+    }
+
     /**
      * A quick burst right after connecting for a good first estimate, then a slow refresh: each ping keeps
      * the radio awake, and the server counts it as presence. A connection that stopped answering without
@@ -211,6 +267,8 @@ class RoomClient(
     private fun backoffMs(attempt: Int): Long = minOf(15_000L, 1000L shl attempt.coerceAtMost(4))
 
     private companion object {
+        /** The first protocol that keeps members' pictures. */
+        const val AVATAR_PROTOCOL = 8
         const val CLOSE_POLICY_VIOLATION = 1008
         const val CLOSE_REMOVED = 4001
         const val CLOSE_NOT_FOUND = 4004

@@ -190,4 +190,45 @@ class RoomClientTest {
         assertEquals(Connection.CONNECTED, client.connection.value)
         client.close()
     }
+
+    private fun stateWith(protocol: Int, members: String) =
+        """{"t":"state","serverNow":0,"you":"me","protocol":$protocol,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":$members}"""
+
+    @Test
+    fun `an older server is sent no pictures, which it would answer with an error`() {
+        accept(room()) // its state does not say it keeps pictures
+        val c = client(create = false)
+        c.setAvatar("TUlORQ==")
+        c.start()
+        assertTrue(waitFor { joins().isNotEmpty() })
+        Thread.sleep(300)
+        assertEquals(emptyList(), received.filter { it.contains("avatar") })
+    }
+
+    @Test
+    fun `pictures are shared and fetched once the server speaks protocol 8`() {
+        val members = """[{"id":"me","name":"Me","ready":false},{"id":"you","name":"You","ready":false,"av":"abcd1234"}]"""
+        val heard = CopyOnWriteArrayList<Triple<String, String?, String?>>()
+        val greeting = object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                received += text
+                if (text.contains("\"join\"")) webSocket.send(stateWith(8, members))
+                if (text.contains("\"avatar.get\"")) webSocket.send("""{"t":"avatar","id":"you","av":"abcd1234","data":"UElDVA=="}""")
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                webSocket.close(code, reason)
+            }
+        }
+        accept(greeting)
+        val c = client(create = false)
+        c.onAvatar = { id, av, data -> heard += Triple(id, av, data) }
+        c.setAvatar("TUlORQ==")
+        c.start()
+        assertTrue(waitFor { heard.isNotEmpty() })
+        assertEquals(Triple("you", "abcd1234", "UElDVA=="), heard.single())
+        assertTrue(received.any { it.contains("\"avatar.set\"") && it.contains("TUlORQ==") })
+        assertEquals(1, received.count { it.contains("\"avatar.get\"") && it.contains("\"you\"") })
+        assertTrue(received.none { it.contains("\"avatar.get\"") && it.contains("\"me\"") }, "its own picture is not asked for")
+    }
 }

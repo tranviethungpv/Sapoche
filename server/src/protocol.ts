@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 export interface QueueItem {
   id: string;
@@ -69,6 +69,8 @@ export interface Member {
   away: boolean;
   /** Can change the room's settings and remove people. */
   owner: boolean;
+  /** Short fingerprint of the member's picture; absent when they have none. The picture itself comes with avatar.get. */
+  av?: string;
 }
 
 // ---- client -> server ----
@@ -87,6 +89,10 @@ export type ClientMessage =
   /** Owner only. */
   | { t: "room.settings"; guestControl: GuestControl }
   | { t: "ping"; c0: number }
+  /** The member's own picture, as base64 of a small JPEG or PNG; null takes it away. Pictures are not part of the member list. */
+  | { t: "avatar.set"; data: string | null }
+  /** Asks for the picture of the member [id]; answered with an avatar message to this socket only. */
+  | { t: "avatar.get"; id: string }
   /** With [next] the item goes right after the current one instead of at the end of the queue. */
   | { t: "queue.add"; videoId: string; title: string; artist: string; thumb?: string; durMs: number; next?: boolean }
   /** Adds several songs in one go (a playlist). With [next] they go right after the current item. */
@@ -136,6 +142,8 @@ export type ServerMessage =
   /** The room moved on to the next item without a barrier; devices that already did the same keep playing. */
   | { t: "advance"; epoch: number; index: number; startedAt: number }
   | { t: "pong"; c0: number; s1: number }
+  /** The picture of [id] ([av] is its fingerprint); both are absent when that member has none. */
+  | { t: "avatar"; id: string; av?: string; data?: string }
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */

@@ -149,6 +149,7 @@ class UnisonBridge(
             emit(UiJson.calm(UnisonApp.heat.calm.value))
             outputs.refresh()
             emit(UiJson.output(outputs.current.value))
+            UnisonApp.group.value?.picturesSeen()?.forEach { emit(UiJson.avatar(it)) }
             UnisonApp.updater.refreshPermission()
             UnisonApp.updater.check(force = false)
             emit(UiJson.update(UnisonApp.updater.state.value))
@@ -236,6 +237,11 @@ class UnisonBridge(
                     }
                     launch { group.errors.collect { emit(UiJson.error(it.code, it.message)) } }
                     launch { group.notices.collect { emit(UiJson.notice(it)) } }
+                    launch {
+                        // A screen that starts listening is told the pictures that came while nobody looked
+                        group.picturesSeen().forEach { emit(UiJson.avatar(it)) }
+                        group.avatars.collect { if (visible) emit(UiJson.avatar(it)) }
+                    }
                     launch { group.sleep.state.collect { emit(UiJson.sleep(it)) } }
                     launch {
                         // No ticking at all while the screen is off
@@ -513,6 +519,7 @@ class UnisonBridge(
                 "song" -> group.sleep.startAtSongEnd()
                 else -> group.sleep.cancel()
             }
+            "setAvatar" -> group.setAvatar(call.argument<String>("data"))
             "rename" -> group.rename(call.argument<String>("name").orEmpty().trim())
             "setTrim" -> {
                 group.setTrim((call.argument<Number>("ms") ?: 0).toLong())
