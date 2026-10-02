@@ -134,9 +134,6 @@ abstract class Backend {
   /// Videos matching [query]; with [songsOnly] just what YouTube Music lists as songs.
   Future<List<Track>> search(String query, {bool songsOnly = false});
 
-  /// Playlists matching [query].
-  Future<List<PlaylistRef>> searchPlaylists(String query);
-
   /// Mixes up the songs still to come; with the queue finished, mixes them all and plays from the top.
   Future<void> shuffle();
 
@@ -258,6 +255,18 @@ abstract class Backend {
   Future<RelatedPage> musicRelated(String videoId);
 
   Future<ArtistPage> musicArtist(String artistId);
+
+  /// An album or a playlist of YouTube Music, by the id of its page (`MPRE…` for an album).
+  Future<CollectionPage> musicCollection(String id);
+
+  /// The songs of a long playlist after [token], which the page or an earlier call gave.
+  Future<MoreTracks> musicMore(String token);
+
+  /// Everything YouTube Music finds for [query], or with [params] (a filter the page offered) only one kind of it.
+  Future<SearchResults> musicSearchPage(String query, {String? params});
+
+  /// The results of a search after [token], which the page or an earlier call gave.
+  Future<SearchResults> musicSearchMore(String token);
 
   /// What YouTube Music shows everybody on its home page.
   Future<List<MusicShelf>> musicTrending();
@@ -421,15 +430,6 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> clear() => _call('clear');
-
-  @override
-  Future<List<PlaylistRef>> searchPlaylists(String query) async {
-    final raw = await _call<List<Object?>>('searchPlaylists', {'query': query});
-    return [
-      for (final e in raw ?? const [])
-        PlaylistRef.fromMap(e as Map<Object?, Object?>),
-    ];
-  }
 
   @override
   Future<void> shuffle() => _call('shuffle');
@@ -618,6 +618,34 @@ class NativeBackend implements Backend {
   @override
   Future<ArtistPage> musicArtist(String artistId) async => ArtistPage.fromMap(
     (await _call<Map<Object?, Object?>>('musicArtist', {'id': artistId}))!,
+  );
+
+  @override
+  Future<SearchResults> musicSearchPage(String query, {String? params}) async =>
+      SearchResults.fromMap(
+        (await _call<Map<Object?, Object?>>('musicSearchPage', {
+          'query': query,
+          'params': params,
+        }))!,
+      );
+
+  @override
+  Future<SearchResults> musicSearchMore(String token) async =>
+      SearchResults.fromMap(
+        (await _call<Map<Object?, Object?>>('musicSearchMore', {
+          'token': token,
+        }))!,
+      );
+
+  @override
+  Future<CollectionPage> musicCollection(String id) async =>
+      CollectionPage.fromMap(
+        (await _call<Map<Object?, Object?>>('musicCollection', {'id': id}))!,
+      );
+
+  @override
+  Future<MoreTracks> musicMore(String token) async => MoreTracks.fromMap(
+    (await _call<Map<Object?, Object?>>('musicMore', {'token': token}))!,
   );
 
   @override

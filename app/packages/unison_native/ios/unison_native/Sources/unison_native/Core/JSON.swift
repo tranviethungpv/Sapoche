@@ -95,13 +95,13 @@ struct JSON {
         }
     }
 
-    /// Every value under [key], wherever it is in the tree.
-    func findAll(_ key: String) -> [JSON] {
+    /// Every value under [key], wherever it is in the tree, leaving out what is under [skipping].
+    func findAll(_ key: String, skipping: String? = nil) -> [JSON] {
         var found: [JSON] = []
         func walk(_ node: Any?) {
             if let object = node as? [String: Any] {
                 for (name, value) in object {
-                    if name == key { found.append(JSON(value)) } else { walk(value) }
+                    if name == key { found.append(JSON(value)) } else if name != skipping { walk(value) }
                 }
             } else if let list = node as? [Any] {
                 list.forEach(walk)

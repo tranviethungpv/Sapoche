@@ -13,6 +13,7 @@ import '../data/update_info.dart';
 import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'home_shell.dart';
 import 'scope.dart';
 import 'setup_dialog.dart';
 import 'profile_sheet.dart';
@@ -51,7 +52,13 @@ class SettingsPage extends StatelessWidget {
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        // The mini player and the tab bar are drawn over the end of the list: it scrolls clear of them
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          HomeShell.bottomInsetOf(context),
+        ),
         children: [
           _ProfileCard(room: model.room),
           _Group(
@@ -998,7 +1005,14 @@ class _SubPage extends StatelessWidget {
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          // The mini player and the tab bar are drawn over the end of the page: it scrolls clear of them, so the
+          // last button (Install, Download) can be reached however long the text above it is
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            HomeShell.bottomInsetOf(context),
+          ),
           children: children,
         ),
       ),

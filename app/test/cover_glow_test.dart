@@ -59,6 +59,14 @@ void main() {
       expect(CoverGlow.averageLuma(Uint8List(0)), 0.5);
     });
 
+    test('the light matrix mixes white in', () {
+      final m = CoverGlow.tint(0.4, lift: 0.6);
+      expect(m[4], closeTo(153, 0.01));
+      expect(m[9], closeTo(153, 0.01));
+      expect(m[14], closeTo(153, 0.01));
+      expect(CoverGlow.tint(1)[4], 0);
+    });
+
     test('the colour matrix keeps grey grey and pulls colours apart', () {
       final m = CoverGlow.tint(1);
       double apply(List<double> row, List<double> rgb) =>
@@ -107,6 +115,24 @@ void main() {
       });
     });
 
+    testWidgets('in the light theme is pale, even from a black cover', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        double luma(List<int> px) =>
+            (0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]) / 255;
+        final black = await CoverGlow.render(await solid(0, 0, 0), light: true);
+        expect(luma(await pixelAt(black, 36, 78)), greaterThan(0.55));
+        final red = await CoverGlow.render(
+          await solid(220, 40, 60),
+          light: true,
+        );
+        final px = await pixelAt(red, 36, 78);
+        expect(px[0], greaterThan(px[1] + 30), reason: 'still red');
+        expect(luma(px), greaterThan(0.55));
+      });
+    });
+
     testWidgets('of a black cover stays dark and does not break', (
       tester,
     ) async {
@@ -119,6 +145,23 @@ void main() {
   });
 
   group('the background of the player', () {
+    testWidgets('is made again for the other theme', (tester) async {
+      final mode = ValueNotifier(Palette.light);
+      addTearDown(mode.dispose);
+      await tester.pumpWidget(
+        ValueListenableBuilder(
+          valueListenable: mode,
+          builder: (context, palette, _) => MaterialApp(
+            theme: buildTheme(palette),
+            home: const Scaffold(body: PlayerBackdrop(coverUrl: null)),
+          ),
+        ),
+      );
+      mode.value = Palette.dark;
+      await tester.pump();
+      expect(find.byKey(const ValueKey('pink')), findsOneWidget);
+    });
+
     testWidgets('is the pink veil when the song has no cover', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

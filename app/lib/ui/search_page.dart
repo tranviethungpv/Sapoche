@@ -4,20 +4,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/models.dart';
-import '../data/song_key.dart';
+import '../data/music_models.dart';
 import '../data/room_controller.dart';
+import '../data/song_key.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'artist_page.dart';
+import 'collection_screen.dart';
 import 'home_shell.dart';
+import 'player/track_section.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/link_banner.dart';
-import 'widgets/shimmer.dart';
 import 'widgets/play_actions.dart';
+import 'widgets/queue_actions.dart';
+import 'widgets/shimmer.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 
-/// Search YouTube (or paste a link) and put songs on the room's queue.
+/// Search YouTube Music (or paste a link) for anything: songs, videos, albums, artists, playlists, profiles and
+/// podcasts. While the person types, a few completions and what is found so far are listed under one another; once
+/// they press search, the filters appear, to keep one kind of result.
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -27,31 +34,35 @@ class SearchPage extends StatefulWidget {
 
 enum _Phase { idle, loading, results, failed }
 
-/// What a search looks for.
-enum _Filter { videos, songs, playlists }
-
 class _SearchPageState extends State<SearchPage> {
+  /// How many completions are offered.
+  static const _completions = 3;
+
   final _field = TextEditingController();
+  final _scroll = ScrollController();
   Timer? _debounce;
   _Phase _phase = _Phase.idle;
-  List<Track> _results = const [];
 
-  /// Set when the results are the songs of a pasted playlist link.
-  String? _playlistTitle;
+  /// The words the results on screen were asked for.
+  String? _asked;
 
-  _Filter _filter = _Filter.videos;
+  /// Set once the person pressed search or picked a completion: only then are the filters offered.
+  bool _submitted = false;
 
-  /// Playlists found by the last search while looking for playlists.
-  List<PlaylistRef> _playlists = const [];
+  /// The filters YouTube Music offers for the words asked, the one in use (null for everything, the top results) and
+  /// whether it is the extra one for ordinary YouTube videos.
+  List<SearchChip> _chips = const [];
+  String? _params;
+  bool _youtube = false;
 
-  /// The songs on screen belong to a playlist that was picked from [_playlists], so there is a way back.
-  bool _fromPlaylists = false;
+  SearchItem? _top;
+  List<SearchItem> _items = const [];
 
-  /// Showing the list of playlists, as opposed to the songs of one.
-  bool get _showingPlaylists =>
-      _filter == _Filter.playlists && _playlistTitle == null;
+  /// Where the results after these are asked for.
+  String? _more;
+  bool _loadingMore = false;
 
-  /// Guards against a slow answer for an old query replacing a newer one.
+  /// Guards against a slow answer for an old search replacing a newer one.
   int _generation = 0;
 
   /// How YouTube would complete what is typed, and the timer that waits for a pause before asking.
@@ -65,11 +76,24 @@ class _SearchPageState extends State<SearchPage> {
   RoomController get _room => AppScope.roomOf(context);
 
   @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _suggestTimer?.cancel();
     _field.dispose();
+    _scroll.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_more != null && !_loadingMore && _scroll.position.extentAfter < 600) {
+      _loadMore();
+    }
   }
 
   void _onChanged(String text) {
@@ -80,12 +104,21 @@ class _SearchPageState extends State<SearchPage> {
       _suggestGeneration++;
       setState(() {
         _phase = _Phase.idle;
-        _results = const [];
-        _playlistTitle = null;
+        _asked = null;
+        _submitted = false;
+        _top = null;
+        _items = const [];
+        _more = null;
         _suggestions = const [];
       });
       return;
     }
+    // New words start from everything again, with the filters out of sight until search is pressed
+    setState(() {
+      _submitted = false;
+      _params = null;
+      _youtube = false;
+    });
     _debounce = Timer(
       const Duration(milliseconds: 450),
       () => _run(text.trim()),
@@ -103,152 +136,175 @@ class _SearchPageState extends State<SearchPage> {
     final generation = ++_suggestGeneration;
     final found = await _room.suggest(text);
     if (!mounted || generation != _suggestGeneration) return;
-    setState(() => _suggestions = found);
+    setState(() => _suggestions = found.take(_completions).toList());
   }
 
-  /// A completion was picked: search for it now.
-  void _pick(String term) {
+  /// Search was pressed, or a completion or an earlier search was picked: look now, and offer the filters.
+  void _submit(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return;
     _debounce?.cancel();
     _suggestTimer?.cancel();
+    _suggestGeneration++;
+    FocusScope.of(context).unfocus();
+    if (!text.contains('youtu')) AppScope.of(context).searches.add(text);
+    final same = _asked == text && _params == null && !_youtube;
+    setState(() {
+      _submitted = true;
+      _suggestions = const [];
+    });
+    // What is on screen, or on its way, is for these words already (a link is still gone to)
+    if (!same || _phase == _Phase.failed || text.contains('youtu')) {
+      _run(text, open: true);
+    }
+  }
+
+  /// A completion or an earlier search was picked.
+  void _pick(String term) {
     _field.value = TextEditingValue(
       text: term,
       selection: TextSelection.collapsed(offset: term.length),
     );
-    FocusScope.of(context).unfocus();
-    setState(() => _suggestions = const []);
-    AppScope.of(context).searches.add(term);
-    _run(term);
+    setState(() {
+      _params = null;
+      _youtube = false;
+    });
+    _submit(term);
   }
 
-  Future<void> _run(String query) async {
+  /// Looks for [query] in the way the filters say. With [open], a link to a playlist is opened as the page it is.
+  Future<void> _run(String query, {bool open = false}) async {
     final generation = ++_generation;
     _lastQuery = query.contains('youtu') ? null : query;
-    setState(() => _phase = _Phase.loading);
+    _asked = query;
+    setState(() {
+      _phase = _Phase.loading;
+      _loadingMore = false;
+    });
     try {
-      final looksLikeLink = query.contains('youtu');
-      final link = looksLikeLink ? await _room.lookup(query) : null;
-      if (link == null && _filter == _Filter.playlists) {
-        final lists = await _room.searchPlaylists(query);
-        if (!mounted || generation != _generation) return;
-        setState(() {
-          _playlists = lists;
-          _results = const [];
-          _playlistTitle = null;
-          _fromPlaylists = false;
-          _phase = _Phase.results;
-        });
+      final link = query.contains('youtu') ? await _room.lookup(query) : null;
+      if (!mounted || generation != _generation) return;
+      if (link != null) {
+        _show(
+          items: [for (final t in link.tracks) _videoItem(t)],
+          chips: const [],
+        );
+        final list = RegExp(r'[?&]list=([\w-]+)').firstMatch(query)?[1];
+        if (open && link.playlistTitle != null && list != null) {
+          openCollection(context, id: list, title: link.playlistTitle);
+        }
         return;
       }
-      final found =
-          link?.tracks ??
-          await _room.search(query, songsOnly: _filter == _Filter.songs);
-      if (!mounted || generation != _generation) return;
-      setState(() {
+      if (_youtube) {
+        final found = await _room.search(query, songsOnly: false);
+        if (!mounted || generation != _generation) return;
         // A song and its official video come up side by side: one row is enough
-        _results = link == null ? uniqueSongs(found) : found;
-        _playlistTitle = link?.playlistTitle;
-        _playlists = const [];
-        _fromPlaylists = false;
-        _phase = _Phase.results;
-      });
+        _show(items: [for (final t in uniqueSongs(found)) _videoItem(t)]);
+        return;
+      }
+      final found = await AppScope.of(context).music
+          .searchPage(query, params: _params);
+      if (!mounted || generation != _generation) return;
+      _show(
+        top: found.top,
+        items: found.items,
+        // The filters are those of the search for everything; a filtered answer repeats them
+        chips: _params == null ? found.chips : null,
+        more: found.more,
+      );
     } on Object {
       if (!mounted || generation != _generation) return;
       setState(() => _phase = _Phase.failed);
     }
   }
 
-  /// Fetches the songs of a playlist from the list of playlists.
-  Future<void> _openPlaylist(PlaylistRef playlist) async {
-    final generation = ++_generation;
-    setState(() => _phase = _Phase.loading);
+  void _show({
+    SearchItem? top,
+    required List<SearchItem> items,
+    List<SearchChip>? chips,
+    String? more,
+  }) => setState(() {
+    _top = top;
+    _items = items;
+    _more = more;
+    if (chips != null) _chips = chips;
+    _phase = _Phase.results;
+  });
+
+  /// An ordinary YouTube video, which is what the search of YouTube itself and a pasted link give.
+  SearchItem _videoItem(Track track) => SearchItem(
+    kind: 'video',
+    id: track.videoId,
+    title: track.title,
+    thumb: track.thumb,
+    track: track,
+  );
+
+  Future<void> _loadMore() async {
+    final token = _more;
+    if (token == null || _loadingMore) return;
+    final generation = _generation;
+    setState(() => _loadingMore = true);
     try {
-      final link = await _room.lookup(
-        'https://www.youtube.com/playlist?list=${playlist.id}',
-      );
-      if (link == null) throw StateError('not a playlist');
+      final next = await AppScope.of(context).music.searchMore(token);
       if (!mounted || generation != _generation) return;
+      final known = {for (final i in _items) '${i.kind} ${i.id}'};
       setState(() {
-        _results = link.tracks;
-        _playlistTitle = link.playlistTitle ?? playlist.title;
-        _fromPlaylists = true;
-        _phase = _Phase.results;
+        _items = [
+          ..._items,
+          for (final i in next.items)
+            if (!known.contains('${i.kind} ${i.id}')) i,
+        ];
+        _more = next.more;
+        _loadingMore = false;
       });
     } on Object {
       if (!mounted || generation != _generation) return;
-      // Stay on the list of playlists
-      setState(() => _phase = _Phase.results);
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(S.playlistFailed)));
+      // The results so far stay; scrolling again tries again
+      setState(() => _loadingMore = false);
     }
   }
 
-  void _closePlaylist() => setState(() {
-    _results = const [];
-    _playlistTitle = null;
-    _fromPlaylists = false;
-  });
-
-  Future<void> _add(Track track, {bool playNext = false}) => _addTracks(
-    [track],
-    playNext ? S.willPlayNext : S.addedToQueue,
-    playNext: playNext,
-  );
-
-  /// Keeps the songs of the playlist that is showing as a playlist of the person's own.
-  Future<void> _saveAsPlaylist() async {
-    final id = await AppScope.of(context).library
-        .createPlaylist(_playlistTitle ?? '', _results);
-    if (id == null || !mounted) return;
+  /// A filter was chosen: [params] for one kind of result, none for everything, or the one for YouTube itself.
+  void _choose({String? params, bool youtube = false}) {
+    if (_params == params && _youtube == youtube) return;
     HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(S.playlistSaved)));
+    setState(() {
+      _params = params;
+      _youtube = youtube;
+      _top = null;
+      _items = const [];
+      _more = null;
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+    final text = _field.text.trim();
+    if (text.isNotEmpty) _run(text);
   }
 
-  Future<void> _addAll({bool playNext = false}) =>
-      _addTracks(_results, S.playlistAdded, playNext: playNext);
-
-  Future<void> _addTracks(
-    List<Track> tracks,
-    String confirmation, {
-    required bool playNext,
-  }) async {
-    HapticFeedback.selectionClick();
+  /// Remembers the words of the search once the person does something with what it found.
+  void _remember() {
     final query = _lastQuery;
     if (query != null) AppScope.of(context).searches.add(query);
-    // What is waiting in the queue is not added twice
-    final fresh = _room.snapshot.fresh(tracks);
-    if (fresh.length == 1) {
-      await _room.add(fresh.single, playNext: playNext);
-    } else if (fresh.isNotEmpty) {
-      await _room.addMany(fresh, playNext: playNext);
+  }
+
+  /// A touch on a result: what plays plays (or is queued, in a room), the rest opens its page.
+  void _open(SearchItem item) {
+    _remember();
+    final track = item.track;
+    if (track != null) {
+      playNow(context, track);
+      return;
     }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            fresh.isEmpty
-                ? S.alreadyInQueue
-                : fresh.length < tracks.length
-                ? S.addedSkipped(fresh.length, tracks.length - fresh.length)
-                : confirmation,
-          ),
-          duration: const Duration(milliseconds: 1400),
-        ),
-      );
-  }
-
-  /// A touch on result [index]: it plays, or in a room is queued. Songs of a playlist play on from there.
-  void _play(int index) {
-    final query = _lastQuery;
-    if (query != null) AppScope.of(context).searches.add(query);
-    if (_playlistTitle != null) {
-      playFrom(context, _results, index);
-    } else {
-      playNow(context, _results[index]);
+    switch (item.kind) {
+      case 'artist' || 'profile':
+        openArtist(context, item.id);
+      default:
+        openCollection(
+          context,
+          id: item.id,
+          title: item.title,
+          thumb: item.thumb,
+        );
     }
   }
 
@@ -334,8 +390,9 @@ class _SearchPageState extends State<SearchPage> {
                     onTap: () => playNow(context, track),
                     trailing: TrackMenu(
                       track: track,
-                      onAdd: () => _add(track),
-                      onPlayNext: () => _add(track, playNext: true),
+                      onAdd: () => queueTrack(context, track),
+                      onPlayNext: () =>
+                          queueTrack(context, track, playNext: true),
                     ),
                   ),
               ],
@@ -365,14 +422,7 @@ class _SearchPageState extends State<SearchPage> {
               builder: (context, _) => TextField(
                 controller: _field,
                 onChanged: _onChanged,
-                onSubmitted: (text) {
-                  _debounce?.cancel();
-                  if (text.trim().isEmpty) return;
-                  if (!text.contains('youtu')) {
-                    AppScope.of(context).searches.add(text);
-                  }
-                  _run(text.trim());
-                },
+                onSubmitted: _submit,
                 textInputAction: TextInputAction.search,
                 style: theme.bodyLarge,
                 decoration: InputDecoration(
@@ -403,41 +453,8 @@ class _SearchPageState extends State<SearchPage> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            // Wraps onto a second line where a language or a large text size needs more room
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final (filter, label) in [
-                  (_Filter.videos, S.filterVideos),
-                  (_Filter.songs, S.filterSongs),
-                  (_Filter.playlists, S.filterPlaylists),
-                ])
-                  _FilterChip(
-                    label: label,
-                    selected: _filter == filter,
-                    onTap: () => _setFilter(filter),
-                  ),
-              ],
-            ),
-          ),
-          if (_suggestions.isNotEmpty && _field.text.trim().isNotEmpty)
-            SizedBox(
-              height: 46,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                itemCount: _suggestions.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, i) => _FilterChip(
-                  label: _suggestions[i],
-                  selected: false,
-                  onTap: () => _pick(_suggestions[i]),
-                ),
-              ),
-            ),
+          // The filters are only offered once search was pressed
+          if (_submitted && _phase != _Phase.idle) _filters(context),
           ListenableBuilder(
             listenable: _room,
             builder: (context, _) => LinkBanner(link: _room.snapshot.link),
@@ -448,17 +465,41 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  void _setFilter(_Filter value) {
-    if (_filter == value) return;
-    setState(() {
-      _filter = value;
-      _results = const [];
-      _playlists = const [];
-      _playlistTitle = null;
-      _fromPlaylists = false;
-    });
-    final text = _field.text.trim();
-    if (text.isNotEmpty) _run(text);
+  /// "Top results", songs, the one for ordinary YouTube videos, and the other filters YouTube Music gives for these
+  /// words: songs and videos are what most searches are for, so they come first.
+  Widget _filters(BuildContext context) {
+    Widget chip(SearchChip chip) => Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: _FilterChip(
+        label: S.searchChip(chip.label),
+        selected: _params == chip.params && !_youtube,
+        onTap: () => _choose(params: chip.params),
+      ),
+    );
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        children: [
+          _FilterChip(
+            label: S.searchTop,
+            selected: _params == null && !_youtube,
+            onTap: _choose,
+          ),
+          for (final c in _chips.where((c) => c.label == 'Songs')) chip(c),
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: _FilterChip(
+              label: S.searchYouTube,
+              selected: _youtube,
+              onTap: () => _choose(youtube: true),
+            ),
+          ),
+          for (final c in _chips.where((c) => c.label != 'Songs')) chip(c),
+        ],
+      ),
+    );
   }
 
   Future<void> _paste() async {
@@ -466,196 +507,223 @@ class _SearchPageState extends State<SearchPage> {
     final text = data?.text?.trim();
     if (text == null || text.isEmpty) return;
     _field.text = text;
+    // A pasted link is meant to be gone to
     _onChanged(text);
+    _submit(text);
   }
 
+  /// The completions, then what was found: one list that scrolls.
+  List<Widget> _completionRows() => [
+    if (!_submitted && _field.text.trim().isNotEmpty)
+      for (final term in _suggestions)
+        _CompletionRow(term: term, onTap: () => _pick(term)),
+  ];
+
   Widget _content(BuildContext context) {
+    final bottom = HomeShell.bottomInsetOf(context);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       child: switch (_phase) {
+        // Before the first answer, what is typed has its completions only
+        _Phase.idle when _field.text.trim().isNotEmpty => ListView(
+          key: const ValueKey('typing'),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          children: _completionRows(),
+        ),
         _Phase.idle => _idle(context),
-        _Phase.loading => const SkeletonList(key: ValueKey('loading')),
+        _Phase.loading => Column(
+          key: const ValueKey('loading'),
+          children: [
+            ..._completionRows(),
+            const Expanded(child: SkeletonList()),
+          ],
+        ),
         _Phase.failed => _Message(
           key: ValueKey('failed'),
           icon: Icons.wifi_off_rounded,
           title: S.searchFailed,
         ),
-        _Phase.results when _showingPlaylists && _playlists.isNotEmpty =>
-          ListView.builder(
-            key: const ValueKey('playlists'),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.only(
-              top: 4,
-              bottom: HomeShell.bottomInsetOf(context),
-            ),
-            itemCount: _playlists.length,
-            itemBuilder: (context, i) => _PlaylistRow(
-              playlist: _playlists[i],
-              onTap: () => _openPlaylist(_playlists[i]),
-            ),
-          ),
-        _Phase.results when _showingPlaylists || _results.isEmpty => _Message(
-          key: ValueKey('empty'),
-          icon: Icons.music_off_rounded,
-          title: S.noResults,
-        ),
-        _Phase.results => ListView.builder(
-          key: const ValueKey('results'),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: EdgeInsets.only(
-            top: 4,
-            bottom: HomeShell.bottomInsetOf(context),
-          ),
-          itemCount: _results.length + (_playlistTitle == null ? 0 : 1),
-          itemBuilder: (context, index) {
-            if (_playlistTitle != null && index == 0) {
-              return _PlaylistHeader(
-                title: _playlistTitle!,
-                count: _results.length,
-                onBack: _fromPlaylists ? _closePlaylist : null,
-                onAddAll: _addAll,
-                onPlayNext: () => _addAll(playNext: true),
-                onSave: _saveAsPlaylist,
-              );
-            }
-            final track = _results[index - (_playlistTitle == null ? 0 : 1)];
-            return TrackTile(
-              track: track,
-              onTap: () => _play(index - (_playlistTitle == null ? 0 : 1)),
-              trailing: TrackMenu(
-                track: track,
-                onAdd: () => _add(track),
-                onPlayNext: () => _add(track, playNext: true),
+        _Phase.results when _items.isEmpty && _top == null => Column(
+          key: const ValueKey('empty'),
+          children: [
+            ..._completionRows(),
+            Expanded(
+              child: _Message(
+                icon: Icons.music_off_rounded,
+                title: S.noResults,
               ),
-            );
-          },
+            ),
+          ],
+        ),
+        _Phase.results => ListView(
+          key: const ValueKey('results'),
+          controller: _scroll,
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.only(top: 4, bottom: bottom),
+          children: [
+            ..._completionRows(),
+            if (_top != null) ...[
+              SectionHeading(S.topResult),
+              _ResultRow(item: _top!, onTap: _open, labelled: true),
+              if (_items.isNotEmpty) const SizedBox(height: 6),
+            ],
+            for (final item in _items)
+              _ResultRow(
+                item: item,
+                onTap: _open,
+                labelled: _params == null && !_youtube,
+              ),
+            if (_loadingMore)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(
+                  child: SizedBox.square(
+                    dimension: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
+          ],
         ),
       },
     );
   }
 }
 
-/// Top of a playlist's songs: what it is and how to add all of it.
-class _PlaylistHeader extends StatelessWidget {
-  const _PlaylistHeader({
-    required this.title,
-    required this.count,
-    required this.onAddAll,
-    required this.onPlayNext,
-    required this.onSave,
-    this.onBack,
-  });
+/// One way YouTube would complete what is typed.
+class _CompletionRow extends StatelessWidget {
+  const _CompletionRow({required this.term, required this.onTap});
 
-  final String title;
-  final int count;
-
-  /// Set when the playlist was picked from a list of playlists.
-  final VoidCallback? onBack;
-  final VoidCallback onAddAll;
-  final VoidCallback onPlayNext;
-  final VoidCallback onSave;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final theme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (onBack != null)
-            TextButton.icon(
-              onPressed: onBack,
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(0, 36),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 14),
-              label: Text(S.backToPlaylists),
-            ),
-          Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.titleLarge,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            S.playlistSongs(count),
-            style: theme.bodyMedium?.copyWith(color: p.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onAddAll,
-                  icon: const Icon(Icons.playlist_add_rounded),
-                  label: Text(S.addAll),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: onPlayNext,
-                  child: Text(S.playNext),
-                ),
-              ),
-            ],
-          ),
-          TextButton.icon(
-            onPressed: onSave,
-            icon: const Icon(Icons.bookmark_add_outlined),
-            label: Text(S.saveAsPlaylist),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One playlist in the results: tap to see its songs.
-class _PlaylistRow extends StatelessWidget {
-  const _PlaylistRow({required this.playlist, required this.onTap});
-
-  final PlaylistRef playlist;
+  final String term;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final theme = Theme.of(context).textTheme;
     return InkWell(
       onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+        child: Row(
+          children: [
+            Icon(Icons.search_rounded, size: 20, color: p.textTertiary),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                term,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            ),
+            Icon(Icons.north_west_rounded, size: 18, color: p.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One result: what plays has the usual row of a song, the rest (an album, an artist, a playlist) has a row that opens
+/// its page.
+class _ResultRow extends StatelessWidget {
+  const _ResultRow({
+    required this.item,
+    required this.onTap,
+    this.labelled = false,
+  });
+
+  final SearchItem item;
+  final ValueChanged<SearchItem> onTap;
+
+  /// Says what kind of result it is, as the list of everything has all kinds mixed.
+  final bool labelled;
+
+  /// What kind of result it is, in the language of the app.
+  String get _kind => switch (item.kind) {
+    'song' => S.kindSong,
+    'video' => S.kindVideo,
+    'episode' => S.kindEpisode,
+    'artist' => S.infoArtist,
+    'profile' => S.kindProfile,
+    'album' => S.collectionKind(item.label ?? 'Album'),
+    _ => S.collectionKind(item.label ?? 'Playlist'),
+  };
+
+  /// The line under a song, video or episode: who it is by and how many watched it.
+  String? get _byline {
+    final track = item.track;
+    if (track == null) return null;
+    if (item.kind == 'episode') return item.subtitle;
+    final stats = track is MusicTrack ? track.stats : null;
+    return [
+      track.artist,
+      if (stats != null && stats.isNotEmpty) stats,
+    ].where((e) => e.isNotEmpty).join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final track = item.track;
+    if (track != null) {
+      final line = _byline;
+      return TrackTile(
+        track: track,
+        subtitle: labelled ? [_kind, ?line].join(' · ') : line,
+        onTap: () => onTap(item),
+        trailing: TrackMenu(
+          track: track,
+          onAdd: () => queueTrack(context, track),
+          onPlayNext: () => queueTrack(context, track, playNext: true),
+        ),
+      );
+    }
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final round = item.kind == 'artist' || item.kind == 'profile';
+    // The same picture and the same height as the row of a song, so all kinds of result line up
+    const size = 54.0;
+    final line = [
+      _kind,
+      ?(track == null ? item.subtitle : _byline),
+    ].where((e) => e.isNotEmpty).join(' · ');
+    return InkWell(
+      onTap: () => onTap(item),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
         child: Row(
           children: [
-            Artwork(url: playlist.thumb, size: 54),
+            Artwork(
+              url: item.thumb,
+              size: size,
+              radius: round ? size / 2 : UnisonTheme.artworkRadius,
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    playlist.title,
-                    maxLines: 2,
+                    item.title,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.titleMedium,
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    S.playlistBy(playlist.uploader, playlist.count),
+                    line,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                    style: theme.bodyMedium?.copyWith(color: p.textSecondary),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: p.textTertiary),
+            // As wide as the menu of a song, so the end of every row is in the same place
+            SizedBox(
+              width: 48,
+              child: Icon(Icons.chevron_right_rounded, color: p.textTertiary),
+            ),
           ],
         ),
       ),
@@ -708,7 +776,7 @@ class _Message extends StatelessWidget {
   }
 }
 
-/// A pill that narrows what a search looks for.
+/// A pill that narrows what a search looks for: a fixed height, with the words in the middle of it.
 class _FilterChip extends StatelessWidget {
   const _FilterChip({
     required this.label,
@@ -728,7 +796,9 @@ class _FilterChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        height: 32,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: selected ? p.primaryContainer : Colors.transparent,
           borderRadius: BorderRadius.circular(999),
@@ -736,7 +806,10 @@ class _FilterChip extends StatelessWidget {
         ),
         child: Text(
           label,
+          // The font's own spacing above and below the letters is uneven: one height for the line, centred
+          strutStyle: const StrutStyle(forceStrutHeight: true, height: 1),
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            fontSize: 13,
             color: selected ? p.onPrimaryContainer : p.textSecondary,
           ),
         ),

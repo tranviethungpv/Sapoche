@@ -174,15 +174,25 @@ abstract final class S {
     'Videos, songs, or a YouTube link',
     'Video, bài hát hoặc liên kết YouTube',
   );
-  static String get filterVideos => _t('Videos', 'Video');
-  static String get filterSongs => _t('Songs', 'Bài hát');
-  static String get filterPlaylists => _t('Playlists', 'Danh sách phát');
-  static String playlistBy(String uploader, int count) => [
-    if (uploader.isNotEmpty) uploader,
-    if (count > 0) _t(count == 1 ? '1 song' : '$count songs', '$count bài'),
-  ].join(' · ');
-  static String get backToPlaylists =>
-      _t('All playlists', 'Tất cả danh sách phát');
+  static String get searchTop => _t('Top results', 'Hàng đầu');
+  static String get topResult => _t('Top result', 'Kết quả hàng đầu');
+  static String get searchYouTube => 'YouTube';
+
+  /// The name of a filter of a search as YouTube Music gives it (in English); one it is not known by is left as it is.
+  static String searchChip(String label) => switch (label) {
+    'Artists' => _t('Artists', 'Nghệ sĩ'),
+    'Albums' => _t('Albums', 'Album'),
+    'Songs' => _t('Songs', 'Bài hát'),
+    'Videos' => _t('Videos', 'Video'),
+    'Community playlists' => playlists,
+    'Featured playlists' => _t('Featured playlists', 'Danh sách nổi bật'),
+    'Profiles' => _t('Profiles', 'Hồ sơ'),
+    'Episodes' => _t('Episodes', 'Tập'),
+    'Podcasts' => _t('Podcasts', 'Podcast'),
+    _ => label,
+  };
+  static String get kindEpisode => _t('Episode', 'Tập');
+  static String get kindProfile => _t('Profile', 'Hồ sơ');
   static String get playlistFailed =>
       _t('Could not open that playlist', 'Không mở được danh sách phát đó');
   static String get searchEmptyTitle =>
@@ -195,10 +205,6 @@ abstract final class S {
   static String get searchFailed => _t(
     'Search failed. Check your connection.',
     'Tìm kiếm không được. Hãy kiểm tra kết nối.',
-  );
-  static String playlistSongs(int n) => _t(
-    n == 1 ? 'Playlist · 1 song' : 'Playlist · $n songs',
-    'Danh sách phát · $n bài',
   );
   static String get addAll => _t('Add all', 'Thêm tất cả');
   static String get playlistAdded =>
@@ -584,6 +590,28 @@ abstract final class S {
   static String get addedByLabel => _t('Added by', 'Người thêm');
   static String get kindSong => _t('Song', 'Bài hát');
   static String get kindVideo => _t('Video', 'Video');
+  static String get goToAlbum => _t('Go to album', 'Đến trang album');
+  static String get seeAll => _t('See all', 'Xem tất cả');
+  static String get albums => _t('Albums', 'Album');
+  static String get singlesAndEps => _t('Singles & EPs', 'Đĩa đơn & EP');
+
+  /// What YouTube calls a page of songs, in the language of the app; a word it does not know is left as it is.
+  static String collectionKind(String kind) => switch (kind) {
+    'Album' => _t('Album', 'Album'),
+    'Single' => _t('Single', 'Đĩa đơn'),
+    'EP' => 'EP',
+    'Playlist' => _t('Playlist', 'Danh sách phát'),
+    _ => kind,
+  };
+
+  /// The name of a row of a page as YouTube gives it (in English); the ones that are always there are translated.
+  static String shelfTitle(String title) => switch (title) {
+    'Videos' => _t('Videos', 'Video'),
+    'Live performances' => _t('Live performances', 'Biểu diễn trực tiếp'),
+    'Featured on' => _t('Featured on', 'Xuất hiện trong'),
+    'Playlists' => playlists,
+    _ => title,
+  };
   static String get showMore => _t('More', 'Xem thêm');
   static String get showLess => _t('Less', 'Thu gọn');
   static String subscribers(String count) =>

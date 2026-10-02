@@ -8,7 +8,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'artist_page.dart';
 import 'home_shell.dart';
-import 'playlist_screen.dart';
+import 'collection_screen.dart';
 import 'player/track_section.dart';
 import 'scope.dart';
 import 'settings_page.dart';
@@ -370,7 +370,12 @@ class _Trending extends StatelessWidget {
                     title: list.title,
                     subtitle: list.subtitle ?? '',
                     thumb: list.thumb,
-                    onTap: () => openPlaylist(context, list.id, list.title),
+                    onTap: () => openCollection(
+                      context,
+                      id: list.id,
+                      title: list.title,
+                      thumb: list.thumb,
+                    ),
                   ),
               ],
             ),

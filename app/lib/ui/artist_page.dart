@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/music_models.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'collection_screen.dart';
 import 'player/player_message.dart';
 import 'player/track_section.dart';
 import 'home_shell.dart';
 import 'scope.dart';
+import 'widgets/artwork.dart';
+import 'widgets/music_shelf.dart';
+import 'widgets/play_row.dart';
 import 'widgets/wash.dart';
 
 /// Opens the page of an artist in the tab that is showing, with a way back.
@@ -32,7 +37,9 @@ class ArtistScreen extends StatefulWidget {
 class _ArtistScreenState extends State<ArtistScreen> {
   Future<ArtistPage>? _page;
 
-  void _load() => _page = AppScope.of(context).music.artist(widget.artistId);
+  void _load() {
+    _page = AppScope.of(context).music.artist(widget.artistId);
+  }
 
   @override
   void didChangeDependencies() {
@@ -81,73 +88,79 @@ class _Content extends StatefulWidget {
 
 class _ContentState extends State<_Content> {
   bool _open = false;
+  PlayWorking _working = PlayWorking.none;
+
+  ArtistPage get _page => widget.page;
+
+  /// What Play and Shuffle take: all of the top songs when YouTube Music keeps them in a playlist, else the few
+  /// that are on the page. A page with neither (a profile) has nothing to play from here.
+  Future<List<MusicTrack>> _songs() async {
+    final id = _page.topSongsId;
+    if (id != null) {
+      try {
+        final all = await AppScope.of(context).music.collection(id);
+        if (all.tracks.isNotEmpty) return all.tracks;
+      } on Object {
+        // The few on the page will do
+      }
+    }
+    return _page.topSongs;
+  }
+
+  Future<void> _play({required bool shuffle}) async {
+    if (_working != PlayWorking.none) return;
+    HapticFeedback.selectionClick();
+    setState(() => _working = shuffle ? PlayWorking.shuffle : PlayWorking.play);
+    final songs = [...await _songs()];
+    if (!mounted) return;
+    setState(() => _working = PlayWorking.none);
+    if (songs.isEmpty) return;
+    if (shuffle) songs.shuffle();
+    await AppScope.roomOf(context).playTracks(songs);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final page = widget.page;
+    final page = _page;
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    final room = AppScope.roomOf(context);
     return ListView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
       padding: EdgeInsets.only(bottom: HomeShell.bottomInsetOf(context)),
       children: [
-        Center(
-          child: ClipOval(
-            child: SizedBox.square(
-              dimension: 160,
-              child: page.thumb == null
-                  ? ColoredBox(
-                      color: p.primaryContainer,
-                      child: Icon(
-                        Icons.person_rounded,
-                        size: 64,
-                        color: p.primary,
-                      ),
-                    )
-                  : Image.network(
-                      page.thumb!,
-                      fit: BoxFit.cover,
-                      cacheWidth: 480,
-                      errorBuilder: (_, _, _) =>
-                          ColoredBox(color: p.primaryContainer),
-                    ),
-            ),
+        _Hero(page: page),
+        if (page.topSongs.isNotEmpty || page.topSongsId != null)
+          PlayRow(
+            working: _working,
+            onPlay: () => _play(shuffle: false),
+            onShuffle: () => _play(shuffle: true),
           ),
+        TrackSection(
+          title: S.topSongs,
+          tracks: page.topSongs,
+          headerAction: page.topSongsId == null
+              ? null
+              : TextButton(
+                  onPressed: () => openCollection(
+                    context,
+                    id: page.topSongsId!,
+                    title: S.topSongs,
+                  ),
+                  child: Text(S.seeAll),
+                ),
         ),
-        const SizedBox(height: 14),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Text(
-            page.name,
-            textAlign: TextAlign.center,
-            style: theme.headlineMedium,
+        _releases(S.albums, page.albums),
+        _releases(S.singlesAndEps, page.singles),
+        for (final shelf in page.shelves) MusicShelfView(shelf: shelf),
+        if (page.similar.isNotEmpty) ...[
+          SectionHeading(S.fansAlsoLike),
+          ArtistRow(
+            artists: page.similar,
+            onOpen: (id) => openArtist(context, id),
           ),
-        ),
-        if (page.subscribers != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              S.subscribers(page.subscribers!.replaceAll(' subscribers', '')),
-              textAlign: TextAlign.center,
-              style: theme.bodyMedium?.copyWith(color: p.textSecondary),
-            ),
-          ),
-        if (page.topSongs.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-            child: FilledButton.icon(
-              onPressed: () {
-                room.playTracks(page.topSongs);
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(S.play),
-            ),
-          ),
-        TrackSection(title: S.topSongs, tracks: page.topSongs),
+        ],
         if (page.description != null) ...[
           SectionHeading(S.aboutArtist),
           Padding(
@@ -179,14 +192,92 @@ class _ContentState extends State<_Content> {
             ),
           ),
         ],
-        if (page.similar.isNotEmpty) ...[
-          SectionHeading(S.fansAlsoLike),
-          ArtistRow(
-            artists: page.similar,
-            onOpen: (id) => openArtist(context, id),
-          ),
-        ],
       ],
+    );
+  }
+
+  /// A row of albums or singles to open.
+  Widget _releases(String title, List<Release> releases) => MusicShelfView(
+    shelf: MusicShelf(title: title, albums: releases),
+  );
+}
+
+/// The picture of the artist across the page, with the name and what is known of their reach on it.
+class _Hero extends StatelessWidget {
+  const _Hero({required this.page});
+
+  final ArtistPage page;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final size = MediaQuery.sizeOf(context).width - 40;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: SizedBox.square(
+          dimension: size,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              page.thumb == null
+                  ? ColoredBox(
+                      color: p.primaryContainer,
+                      child: Icon(
+                        Icons.person_rounded,
+                        size: size * 0.3,
+                        color: p.primary,
+                      ),
+                    )
+                  : Artwork(
+                      url: page.thumb,
+                      size: size,
+                      radius: 0,
+                      sharp: true,
+                    ),
+              // Dark at the bottom, so the name reads on any picture
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0.45, 1],
+                    colors: [Color(0x00000000), Color(0xB3000000)],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 18,
+                right: 18,
+                bottom: 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      page.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.headlineLarge?.copyWith(color: Colors.white),
+                    ),
+                    if (page.subscribers != null)
+                      Text(
+                        S.subscribers(
+                          page.subscribers!.replaceAll(' subscribers', ''),
+                        ),
+                        style: theme.bodyMedium?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

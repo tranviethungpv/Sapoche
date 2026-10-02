@@ -155,32 +155,15 @@ void main() {
     },
   );
 
-  test('a playlist search and the shuffle command cross the channel', () async {
+  test('the shuffle command crosses the channel', () async {
     final calls = <MethodCall>[];
     messenger.setMockMethodCallHandler(control, (call) async {
       calls.add(call);
-      if (call.method == 'searchPlaylists') {
-        return [
-          {
-            'id': 'PLabc',
-            'title': 'Mix',
-            'uploader': 'Anna',
-            'thumb': null,
-            'count': 9,
-          },
-        ];
-      }
       return null;
     });
     final backend = NativeBackend();
-    final found = await backend.searchPlaylists('mix');
     await backend.shuffle();
-    expect(found.single.id, 'PLabc');
-    expect((found.single.uploader, found.single.count), ('Anna', 9));
-    expect(calls.map((c) => '${c.method} ${c.arguments}'), [
-      'searchPlaylists {query: mix}',
-      'shuffle null',
-    ]);
+    expect(calls.map((c) => '${c.method} ${c.arguments}'), ['shuffle null']);
   });
 
   test('room info, owner actions and settings use the channel names the native side handles', () async {

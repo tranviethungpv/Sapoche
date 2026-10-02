@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
+import 'package:unison/data/music_models.dart';
 import 'package:unison/ui/now_playing_page.dart';
 import 'package:unison/ui/setup_dialog.dart';
 import 'package:unison/ui/widgets/qr_code_view.dart';
@@ -121,45 +122,69 @@ void main() {
     });
   }
 
-  testWidgets('pasting a playlist link offers to add every song', (
-    tester,
-  ) async {
-    final (backend, _) = await pumpApp(tester);
-    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump(const Duration(milliseconds: 500));
-    backend.lookupResult = const LinkResult(
-      playlistTitle: 'Road trip',
-      tracks: [
-        Track(videoId: 'aaaaaaaaaaa', title: 'First', artist: 'x', durMs: 1000),
-        Track(
-          videoId: 'bbbbbbbbbbb',
-          title: 'Second',
-          artist: 'x',
-          durMs: 1000,
-        ),
-      ],
-    );
+  testWidgets(
+    'a pasted playlist link lists its songs, and going to it opens the playlist',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      backend.lookupResult = const LinkResult(
+        playlistTitle: 'Road trip',
+        tracks: [
+          Track(
+            videoId: 'aaaaaaaaaaa',
+            title: 'First',
+            artist: 'x',
+            durMs: 1000,
+          ),
+          Track(
+            videoId: 'bbbbbbbbbbb',
+            title: 'Second',
+            artist: 'x',
+            durMs: 1000,
+          ),
+        ],
+      );
+      backend.collectionResult = const CollectionPage(
+        id: 'PLabcdefghijk',
+        title: 'Road trip',
+        kind: 'Playlist',
+        tracks: [
+          MusicTrack(
+            videoId: 'aaaaaaaaaaa',
+            title: 'First',
+            artist: 'x',
+            durMs: 1000,
+          ),
+        ],
+      );
 
-    await tester.tap(find.text('Search'));
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.enterText(
-      find.byType(TextField),
-      'https://www.youtube.com/playlist?list=PLabcdefghijk',
-    );
-    await tester.pump(const Duration(milliseconds: 600)); // debounce
-    await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('Search'));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.enterText(
+        find.byType(TextField),
+        'https://www.youtube.com/playlist?list=PLabcdefghijk',
+      );
+      await tester.pump(const Duration(milliseconds: 600)); // debounce
+      await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Road trip'), findsOneWidget);
-    expect(find.text('Playlist · 2 songs'), findsOneWidget);
-    await tester.tap(find.text('Add all'));
-    await tester.pump();
-    expect(backend.calls.last, 'addMany aaaaaaaaaaa,bbbbbbbbbbb next=false');
-    await tester.pump(
-      const Duration(seconds: 3),
-    ); // let the confirmation timers finish
-  });
+      // While typing the songs are only listed
+      expect(find.text('First'), findsOneWidget);
+      expect(find.text('Second'), findsOneWidget);
+      expect(
+        backend.calls.where((c) => c.startsWith('musicCollection')),
+        isEmpty,
+      );
+
+      // Pressing search goes to the playlist, which has its own page
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('musicCollection PLabcdefghijk'));
+      expect(find.text('Play'), findsOneWidget);
+    },
+  );
 
   testWidgets('the repeat button on the full player asks for the next mode', (
     tester,
@@ -920,23 +945,211 @@ void main() {
     },
   );
 
-  testWidgets('search can be narrowed to songs and looks again', (
+  testWidgets('the filters come after search is pressed, and one looks again', (
     tester,
   ) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
+    backend.searchPageResult = const SearchResults(
+      chips: [
+        SearchChip(label: 'Songs', params: 'SONGS'),
+        SearchChip(label: 'Community playlists', params: 'LISTS'),
+      ],
+      items: [SearchItem(kind: 'artist', id: 'UCx', title: 'Lofi Artist')],
+    );
+    backend.searchPageResults['SONGS'] = const SearchResults(
+      items: [
+        SearchItem(
+          kind: 'song',
+          id: 'aaaaaaaaaaa',
+          title: 'Lofi Song',
+          track: Track(
+            videoId: 'aaaaaaaaaaa',
+            title: 'Lofi Song',
+            artist: 'x',
+            durMs: 1000,
+          ),
+        ),
+      ],
+    );
     await tester.tap(find.text('Search'));
     await tester.pumpAndSettle();
 
+    // Typing finds things at once, with no filters yet
     await tester.enterText(find.byType(TextField), 'lofi');
     await tester.pump(const Duration(milliseconds: 600));
-    expect(backend.calls.last, 'search lofi');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(backend.calls.last, 'musicSearchPage - lofi');
+    expect(find.text('Lofi Artist'), findsOneWidget);
+    expect(find.text('Top results'), findsNothing);
+
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(find.text('Top results'), findsOneWidget);
+    expect(find.text('Songs'), findsOneWidget);
+    expect(find.text('Playlists'), findsOneWidget);
+    expect(find.text('YouTube'), findsOneWidget);
+    // Songs come second and the one for ordinary videos third, before the other filters of YouTube Music
+    double at(String text) => tester.getTopLeft(find.text(text)).dx;
+    expect(at('Top results'), lessThan(at('Songs')));
+    expect(at('Songs'), lessThan(at('YouTube')));
+    expect(at('YouTube'), lessThan(at('Playlists')));
+    // Nothing was asked for twice: the results on screen were for these words
+    expect(
+      backend.calls.where((c) => c.startsWith('musicSearchPage')),
+      hasLength(1),
+    );
 
     await tester.tap(find.text('Songs'));
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(backend.calls.last, 'search lofi songs');
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'musicSearchPage SONGS lofi');
+    expect(find.text('Lofi Song'), findsOneWidget);
+    expect(find.text('Lofi Artist'), findsNothing);
+
+    // The filter for ordinary videos is the search of YouTube itself
+    backend.searchResults = const [
+      Track(
+        videoId: 'bbbbbbbbbbb',
+        title: 'Plain Video',
+        artist: 'y',
+        durMs: 1000,
+      ),
+    ];
+    await tester.tap(find.text('YouTube'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'search lofi');
+    expect(find.text('Plain Video'), findsOneWidget);
+
+    // Back to everything
+    await tester.tap(find.text('Top results'));
+    await tester.pumpAndSettle();
+    expect(find.text('Lofi Artist'), findsOneWidget);
+  });
+
+  testWidgets('at most three completions are listed, above what was found', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    backend.suggestions = ['lofi a', 'lofi b', 'lofi c', 'lofi d', 'lofi e'];
+    backend.searchPageResult = const SearchResults(
+      items: [SearchItem(kind: 'artist', id: 'UCx', title: 'Lofi Artist')],
+    );
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'lofi');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.text('lofi a'), findsOneWidget);
+    expect(find.text('lofi c'), findsOneWidget);
+    expect(find.text('lofi d'), findsNothing);
+    final above = tester.getTopLeft(find.text('lofi c')).dy;
+    expect(above, lessThan(tester.getTopLeft(find.text('Lofi Artist')).dy));
+  });
+
+  testWidgets('what is found opens its page: artist, album and playlist', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    backend.searchPageResult = const SearchResults(
+      top: SearchItem(
+        kind: 'artist',
+        id: 'UCtop',
+        title: 'Top Artist',
+        subtitle: '1M monthly audience',
+        label: 'Artist',
+      ),
+      items: [
+        SearchItem(
+          kind: 'album',
+          id: 'MPREb_x',
+          title: 'An Album',
+          subtitle: 'Top Artist · 2020',
+          label: 'Single',
+        ),
+        SearchItem(
+          kind: 'playlist',
+          id: 'PLroad',
+          title: 'Road trip',
+          subtitle: 'Anna · 12 songs',
+        ),
+        SearchItem(
+          kind: 'profile',
+          id: 'UCme',
+          title: 'Somebody',
+          subtitle: '@somebody',
+        ),
+      ],
+    );
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'top');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Top result'), findsOneWidget);
+    expect(find.text('Artist · 1M monthly audience'), findsOneWidget);
+    expect(find.text('Single · Top Artist · 2020'), findsOneWidget);
+    expect(find.text('Playlist · Anna · 12 songs'), findsOneWidget);
+    expect(find.text('Profile · @somebody'), findsOneWidget);
+
+    await tester.tap(find.text('An Album'));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('musicCollection MPREb_x'));
+    expect(await tester.binding.handlePopRoute(), isTrue);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Road trip'));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('musicCollection PLroad'));
+    expect(await tester.binding.handlePopRoute(), isTrue);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Somebody'));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('musicArtist UCme'));
+    expect(await tester.binding.handlePopRoute(), isTrue);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Top Artist'));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('musicArtist UCtop'));
+  });
+
+  testWidgets('more results are asked for as the end of the list comes near', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    backend.searchPageResult = SearchResults(
+      items: [
+        for (var i = 0; i < 14; i++)
+          SearchItem(kind: 'artist', id: 'UC$i', title: 'Artist $i'),
+      ],
+      more: 'NEXT',
+    );
+    backend.searchMoreResults['NEXT'] = const SearchResults(
+      items: [SearchItem(kind: 'artist', id: 'UCtail', title: 'Tail Artist')],
+    );
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'many');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).last, const Offset(0, -4000));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('musicSearchMore NEXT'));
+    expect(find.text('Tail Artist'), findsOneWidget);
   });
 
   testWidgets('a song that is queued already cannot be added from search', (
@@ -1009,18 +1222,35 @@ void main() {
   ) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(const StateEvent(RoomSnapshot()));
+    const songs = [
+      MusicTrack(
+        videoId: 'aaaaaaaaaaa',
+        title: 'First',
+        artist: 'x',
+        durMs: 1000,
+      ),
+      MusicTrack(
+        videoId: 'bbbbbbbbbbb',
+        title: 'Second',
+        artist: 'x',
+        durMs: 1000,
+      ),
+      MusicTrack(
+        videoId: 'ccccccccccc',
+        title: 'Third',
+        artist: 'x',
+        durMs: 1000,
+      ),
+    ];
     backend.lookupResult = const LinkResult(
       playlistTitle: 'Road trip',
-      tracks: [
-        Track(videoId: 'aaaaaaaaaaa', title: 'First', artist: 'x', durMs: 1000),
-        Track(
-          videoId: 'bbbbbbbbbbb',
-          title: 'Second',
-          artist: 'x',
-          durMs: 1000,
-        ),
-        Track(videoId: 'ccccccccccc', title: 'Third', artist: 'x', durMs: 1000),
-      ],
+      tracks: songs,
+    );
+    backend.collectionResult = const CollectionPage(
+      id: 'PLroadtrip',
+      title: 'Road trip',
+      kind: 'Playlist',
+      tracks: songs,
     );
     await tester.tap(find.text('Search'));
     await tester.pumpAndSettle();
@@ -1044,62 +1274,6 @@ void main() {
     expect(backend.calls.where((c) => c.startsWith('radio')), isEmpty);
     await tester.pumpAndSettle();
   });
-
-  testWidgets(
-    'searching playlists lists them, and one can be opened and left again',
-    (tester) async {
-      final (backend, _) = await pumpApp(tester);
-      backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.pump(const Duration(milliseconds: 500));
-      backend.playlistResults = const [
-        PlaylistRef(
-          id: 'PLroadtrip',
-          title: 'Road trip',
-          uploader: 'Anna',
-          count: 12,
-        ),
-      ];
-      backend.lookupResult = const LinkResult(
-        playlistTitle: 'Road trip',
-        tracks: [
-          Track(
-            videoId: 'aaaaaaaaaaa',
-            title: 'First',
-            artist: 'x',
-            durMs: 1000,
-          ),
-        ],
-      );
-      await tester.tap(find.text('Search'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Playlists'));
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), 'road');
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(backend.calls, contains('searchPlaylists road'));
-      expect(find.text('Road trip'), findsOneWidget);
-      expect(find.text('Anna · 12 songs'), findsOneWidget);
-
-      await tester.tap(find.text('Road trip'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(
-        backend.calls,
-        contains('lookup https://www.youtube.com/playlist?list=PLroadtrip'),
-      );
-      expect(find.text('First'), findsOneWidget);
-      expect(find.text('Add all'), findsOneWidget);
-
-      await tester.tap(find.text('All playlists'));
-      await tester.pump(const Duration(milliseconds: 400));
-      // A cross-fade starts on the frame after the change, then needs its own time to end
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Road trip'), findsOneWidget);
-      expect(find.text('First'), findsNothing);
-    },
-  );
 
   testWidgets('the shuffle button mixes up what is to come', (tester) async {
     final (backend, _) = await pumpApp(tester);
@@ -1961,7 +2135,7 @@ void main() {
         expect(find.text('Recent searches'), findsOneWidget);
         await tester.tap(find.text('jazz'));
         await tester.pumpAndSettle();
-        expect(backend.calls, contains('search jazz'));
+        expect(backend.calls, contains('musicSearchPage - jazz'));
         expect(find.text('Alpha'), findsOneWidget);
       },
     );
@@ -2003,7 +2177,7 @@ void main() {
 
         await tester.tap(find.text('lofi beats'));
         await tester.pumpAndSettle();
-        expect(backend.calls, contains('search lofi beats'));
+        expect(backend.calls, contains('musicSearchPage - lofi beats'));
         expect(find.text('Alpha'), findsOneWidget);
         expect(
           find.text('lofi girl'),

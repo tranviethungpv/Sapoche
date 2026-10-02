@@ -15,9 +15,11 @@ class TrackTile extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.onTap,
+    this.leading,
     this.leadingOverlay,
     this.highlight = false,
     this.dimmed = false,
+    this.dense = false,
   });
 
   final Track track;
@@ -27,10 +29,16 @@ class TrackTile extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
 
+  /// Takes the place of the cover, e.g. the number of the song in an album.
+  final Widget? leading;
+
   /// Drawn over the cover, e.g. the equalizer for the song that is playing.
   final Widget? leadingOverlay;
   final bool highlight;
   final bool dimmed;
+
+  /// Rows closer together, for a list of songs with no cover to give each its height.
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -41,27 +49,31 @@ class TrackTile extends StatelessWidget {
       child: Opacity(
         opacity: dimmed ? 0.55 : 1,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+          padding: EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: dense ? 0 : 7,
+          ),
           child: Row(
             children: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  Artwork(url: track.thumb, size: 54),
-                  if (leadingOverlay != null)
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.38),
-                          borderRadius: BorderRadius.circular(
-                            UnisonTheme.artworkRadius,
+              leading ??
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Artwork(url: track.thumb, size: 54),
+                      if (leadingOverlay != null)
+                        Positioned.fill(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.38),
+                              borderRadius: BorderRadius.circular(
+                                UnisonTheme.artworkRadius,
+                              ),
+                            ),
+                            child: Center(child: leadingOverlay),
                           ),
                         ),
-                        child: Center(child: leadingOverlay),
-                      ),
-                    ),
-                ],
-              ),
+                    ],
+                  ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -75,38 +87,41 @@ class TrackTile extends StatelessWidget {
                         color: highlight ? p.primary : p.text,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        // A song that is on the phone says so
-                        ListenableBuilder(
-                          listenable: AppScope.of(context).library,
-                          builder: (context, _) =>
-                              AppScope.of(context).library
-                                      .downloadState(track.videoId) ==
-                                  DownloadState.done
-                              ? Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: Icon(
-                                    Icons.download_done_rounded,
-                                    size: 15,
-                                    color: p.primary,
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-                        Expanded(
-                          child: Text(
-                            subtitle ?? track.artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.bodyMedium?.copyWith(
-                              color: p.textSecondary,
+                    // A song with nothing to say about it (an album's, by the one artist) has the title alone
+                    if ((subtitle ?? track.artist).isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          // A song that is on the phone says so
+                          ListenableBuilder(
+                            listenable: AppScope.of(context).library,
+                            builder: (context, _) =>
+                                AppScope.of(context).library
+                                        .downloadState(track.videoId) ==
+                                    DownloadState.done
+                                ? Padding(
+                                    padding: const EdgeInsets.only(right: 4),
+                                    child: Icon(
+                                      Icons.download_done_rounded,
+                                      size: 15,
+                                      color: p.primary,
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                          Expanded(
+                            child: Text(
+                              subtitle ?? track.artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.bodyMedium?.copyWith(
+                                color: p.textSecondary,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

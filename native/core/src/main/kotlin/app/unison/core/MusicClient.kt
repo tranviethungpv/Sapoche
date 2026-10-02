@@ -43,6 +43,20 @@ class MusicClient(
 
     override suspend fun artist(artistId: String): ArtistPage = MusicParser.artist(artistId, browse(artistId))
 
+    override suspend fun collection(id: String): CollectionPage =
+        MusicParser.collection(id, browse(if (id.startsWith("MPRE") || id.startsWith("MPSP") || id.startsWith("VL")) id else "VL$id"))
+
+    override suspend fun more(token: String): Continuation = MusicParser.continuation(ask("browse") { put("continuation", token) })
+
+    override suspend fun searchPage(query: String, params: String?): SearchPage = MusicParser.searchPage(
+        ask("search") {
+            put("query", query)
+            if (params != null) put("params", params)
+        },
+    )
+
+    override suspend fun searchMore(token: String): SearchPage = MusicParser.searchMore(ask("search") { put("continuation", token) })
+
     override suspend fun searchSongs(query: String): List<MusicTrack> = MusicParser.search(search(query, SONGS))
 
     override suspend fun searchVideos(query: String): List<MusicTrack> = MusicParser.search(search(query, VIDEOS))

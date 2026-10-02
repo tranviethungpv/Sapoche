@@ -10,6 +10,9 @@ import 'pump_app.dart';
 Track song(String id, String title, String artist) =>
     Track(videoId: id, title: title, artist: artist, durMs: 200000);
 
+MusicTrack musicSong(String id, String title, String artist) =>
+    MusicTrack(videoId: id, title: title, artist: artist, durMs: 200000);
+
 HistoryEntry heard(Track track, {int days = 1, int plays = 1}) => HistoryEntry(
   track: track,
   at: DateTime.now().subtract(Duration(days: days)),
@@ -253,18 +256,17 @@ void main() {
             playlists: [Release(id: 'PLabc', title: 'Chill Mix')],
           ),
         ];
-        b.lookupResult = LinkResult(
-          playlistTitle: 'Chill Mix',
-          tracks: [song('pl1aaaaaaaa', 'Calm Song', 'Zen')],
+        b.collectionResult = CollectionPage(
+          id: 'PLabc',
+          title: 'Chill Mix',
+          kind: 'Playlist',
+          tracks: [musicSong('pl1aaaaaaaa', 'Calm Song', 'Zen')],
         );
       },
     );
     await tester.tap(find.text('Chill Mix'));
     await tester.pumpAndSettle();
-    expect(
-      backend.calls,
-      contains('lookup https://www.youtube.com/playlist?list=PLabc'),
-    );
+    expect(backend.calls, contains('musicCollection PLabc'));
     expect(find.text('Calm Song'), findsOneWidget);
   });
 
@@ -279,9 +281,11 @@ void main() {
               playlists: [Release(id: 'PLabc', title: 'Chill Mix')],
             ),
           ];
-          b.lookupResult = LinkResult(
-            playlistTitle: 'Chill Mix',
-            tracks: [song('pl1aaaaaaaa', 'Calm Song', 'Zen')],
+          b.collectionResult = CollectionPage(
+            id: 'PLabc',
+            title: 'Chill Mix',
+            kind: 'Playlist',
+            tracks: [musicSong('pl1aaaaaaaa', 'Calm Song', 'Zen')],
           );
         },
       );
@@ -334,11 +338,13 @@ void main() {
             playlists: [Release(id: 'PLabc', title: 'Chill Mix')],
           ),
         ];
-        b.lookupResult = LinkResult(
-          playlistTitle: 'Chill Mix',
+        b.collectionResult = CollectionPage(
+          id: 'PLabc',
+          title: 'Chill Mix',
+          kind: 'Playlist',
           tracks: [
-            song('pl1aaaaaaaa', 'Calm Song', 'Zen'),
-            song('pl2aaaaaaaa', 'Quiet Song', 'Zen'),
+            musicSong('pl1aaaaaaaa', 'Calm Song', 'Zen'),
+            musicSong('pl2aaaaaaaa', 'Quiet Song', 'Zen'),
           ],
         );
       },

@@ -160,6 +160,7 @@ class RelatedPage {
   );
 }
 
+/// An artist, or a profile: somebody who is not an artist but puts videos and playlists up.
 class ArtistPage {
   const ArtistPage({
     required this.id,
@@ -171,6 +172,8 @@ class ArtistPage {
     this.albums = const [],
     this.singles = const [],
     this.similar = const [],
+    this.shelves = const [],
+    this.topSongsId,
   });
 
   final String id;
@@ -183,6 +186,12 @@ class ArtistPage {
   final List<Release> singles;
   final List<ArtistCard> similar;
 
+  /// The other rows of the page: videos, live performances, playlists.
+  final List<MusicShelf> shelves;
+
+  /// The playlist that holds all of the top songs, of which [topSongs] are the first few.
+  final String? topSongsId;
+
   factory ArtistPage.fromMap(Map<Object?, Object?> map) => ArtistPage(
     id: map['id'] as String,
     name: map['name'] as String? ?? '',
@@ -193,7 +202,155 @@ class ArtistPage {
     albums: _releases(map['albums']),
     singles: _releases(map['singles']),
     similar: _artists(map['similar']),
+    shelves: _shelves(map['shelves']),
+    topSongsId: map['topSongsId'] as String?,
   );
+}
+
+/// An album, single, EP or playlist: what it is, who made it and its songs. A long playlist comes a hundred songs
+/// at a time: [more] is where the next ones are asked for, null when [tracks] are all of them.
+class CollectionPage {
+  const CollectionPage({
+    required this.id,
+    required this.title,
+    this.kind,
+    this.year,
+    this.owner,
+    this.ownerId,
+    this.description,
+    this.thumb,
+    this.stats = const [],
+    this.tracks = const [],
+    this.more,
+    this.shelves = const [],
+  });
+
+  final String id;
+  final String title;
+
+  /// What YouTube calls it: `Album`, `Single`, `EP` or `Playlist`.
+  final String? kind;
+  final String? year;
+
+  /// The artist of an album, or who made the playlist, and where their page is when there is one.
+  final String? owner;
+  final String? ownerId;
+  final String? description;
+  final String? thumb;
+
+  /// The facts under the title, like "18 songs" and "1 hour, 13 minutes".
+  final List<String> stats;
+  final List<MusicTrack> tracks;
+  final String? more;
+
+  /// Other rows of the page: more by the artist, similar playlists.
+  final List<MusicShelf> shelves;
+
+  factory CollectionPage.fromMap(Map<Object?, Object?> map) => CollectionPage(
+    id: map['id'] as String,
+    title: map['title'] as String? ?? '',
+    kind: map['kind'] as String?,
+    year: map['year'] as String?,
+    owner: map['owner'] as String?,
+    ownerId: map['ownerId'] as String?,
+    description: map['description'] as String?,
+    thumb: map['thumb'] as String?,
+    stats: [for (final e in map['stats'] as List<Object?>? ?? const []) '$e'],
+    tracks: _tracks(map['tracks']),
+    more: map['more'] as String?,
+    shelves: _shelves(map['shelves']),
+  );
+}
+
+/// One result of a search. [kind] is `song`, `video`, `episode`, `album` (an album, single or EP), `artist`,
+/// `profile` or `playlist` (a playlist or a podcast); [id] is the video to play or the page to open. [label] is what
+/// YouTube calls it when it says so (`Single`, `EP`). [track] is there for what plays.
+class SearchItem {
+  const SearchItem({
+    required this.kind,
+    required this.id,
+    required this.title,
+    this.subtitle,
+    this.label,
+    this.thumb,
+    this.track,
+  });
+
+  final String kind;
+  final String id;
+  final String title;
+  final String? subtitle;
+  final String? label;
+  final String? thumb;
+  final Track? track;
+
+  /// What a touch plays, as against what it opens.
+  bool get plays => track != null;
+
+  factory SearchItem.fromMap(Map<Object?, Object?> map) => SearchItem(
+    kind: map['kind'] as String,
+    id: map['id'] as String,
+    title: map['title'] as String? ?? '',
+    subtitle: map['subtitle'] as String?,
+    label: map['label'] as String?,
+    thumb: map['thumb'] as String?,
+    track: map['track'] == null
+        ? null
+        : MusicTrack.fromMap(map['track'] as Map<Object?, Object?>),
+  );
+}
+
+/// A filter YouTube Music offers for a search, and the code that asks for it.
+class SearchChip {
+  const SearchChip({required this.label, required this.params});
+
+  final String label;
+  final String params;
+}
+
+/// What a search found: the [top] result when YouTube picks one, the [items] in the order it lists them, and the
+/// [chips] to narrow it down. [more] is where the results after these are asked for, null when these are all.
+class SearchResults {
+  const SearchResults({
+    this.chips = const [],
+    this.top,
+    this.items = const [],
+    this.more,
+  });
+
+  final List<SearchChip> chips;
+  final SearchItem? top;
+  final List<SearchItem> items;
+  final String? more;
+
+  factory SearchResults.fromMap(Map<Object?, Object?> map) => SearchResults(
+    chips: [
+      for (final e in map['chips'] as List<Object?>? ?? const [])
+        SearchChip(
+          label: (e as Map<Object?, Object?>)['label'] as String,
+          params: e['params'] as String,
+        ),
+    ],
+    top: map['top'] == null
+        ? null
+        : SearchItem.fromMap(map['top'] as Map<Object?, Object?>),
+    items: [
+      for (final e in map['items'] as List<Object?>? ?? const [])
+        SearchItem.fromMap(e as Map<Object?, Object?>),
+    ],
+    more: map['more'] as String?,
+  );
+}
+
+/// The songs after those of a [CollectionPage], and where the ones after them are (null at the end).
+class MoreTracks {
+  const MoreTracks({this.tracks = const [], this.more});
+
+  final List<MusicTrack> tracks;
+  final String? more;
+
+  factory MoreTracks.fromMap(Map<Object?, Object?> map) =>
+      MoreTracks(tracks: _tracks(map['tracks']), more: map['more'] as String?);
 }
 
 /// One line of a song, sung from [ms] on.
@@ -242,24 +399,35 @@ class Lyrics {
   );
 }
 
-/// A titled row of a home page: songs, playlists, or both.
+/// A titled row of a page: songs, albums, playlists or artists, any mix of them.
 class MusicShelf {
   const MusicShelf({
     required this.title,
     this.tracks = const [],
     this.playlists = const [],
+    this.albums = const [],
+    this.artists = const [],
   });
 
   final String title;
   final List<MusicTrack> tracks;
   final List<Release> playlists;
+  final List<Release> albums;
+  final List<ArtistCard> artists;
 
   factory MusicShelf.fromMap(Map<Object?, Object?> map) => MusicShelf(
     title: map['title'] as String? ?? '',
     tracks: _tracks(map['tracks']),
     playlists: _releases(map['playlists']),
+    albums: _releases(map['albums']),
+    artists: _artists(map['artists']),
   );
 }
+
+List<MusicShelf> _shelves(Object? list) => [
+  for (final e in list as List<Object?>? ?? const [])
+    MusicShelf.fromMap(e as Map<Object?, Object?>),
+];
 
 /// The songs kept for one seed: a song the person likes or plays a lot, and what YouTube Music lists beside it.
 /// A song or an artist the person asked not to be offered: [kind] is `song` (the key is its video id) or `artist`

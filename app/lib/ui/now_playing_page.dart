@@ -33,16 +33,16 @@ class NowPlayingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: playerTheme,
-      // Light icons in the status bar and the navigation bar, whatever the rest of the app wears
-      child: const AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle(
-          statusBarIconBrightness: Brightness.light,
-          systemNavigationBarIconBrightness: Brightness.light,
-        ),
-        child: _PlayerPage(),
+    // Icons in the status bar and the navigation bar that show on the backdrop, light or dark like the app
+    final icons = Theme.of(context).brightness == Brightness.dark
+        ? Brightness.light
+        : Brightness.dark;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarIconBrightness: icons,
+        systemNavigationBarIconBrightness: icons,
       ),
+      child: const _PlayerPage(),
     );
   }
 }

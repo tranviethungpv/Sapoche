@@ -1,0 +1,8 @@
+Search for everything
+- Search now finds songs, videos, albums, artists, playlists, profiles and podcasts. Press search to get the filters: Top results, Songs, YouTube (ordinary videos), Artists, Albums and more. Up to three completions are listed above the results.
+Pages for albums, playlists and artists
+- Albums, playlists and podcasts open on a page of their own, with Play and Shuffle for all of it, the songs numbered, and more to look at below. The page takes its colours from the cover.
+- Artist pages have Play and Shuffle for the top songs, albums, singles, videos, live performances, playlists and similar artists. Profiles open the same way.
+Player and settings
+- In the light theme the player's background is now pale instead of dark.
+- The mini player no longer hides the last buttons of Settings, such as Install on the Updates page.

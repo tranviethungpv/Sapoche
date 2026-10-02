@@ -246,6 +246,8 @@ actor MusicFeed {
     private var nextKept = Recent<String, WatchNext>()
     private var relatedKept = Recent<String, Related>()
     private var artistsKept = Recent<String, ArtistPage>()
+    private var collectionsKept = Recent<String, CollectionPage>()
+    private var searchesKept = Recent<String, SearchPage>()
     private var trendingKept: (language: String, at: Int64, shelves: [MusicShelf])?
     private let lyricsLock = AsyncMutex()
 
@@ -280,12 +282,39 @@ actor MusicFeed {
         return found
     }
 
+    /// An album or a playlist, with its first songs.
+    func collection(_ id: String) async throws -> CollectionPage {
+        if let kept = collectionsKept[id] { return kept }
+        let found = try await music.collection(id)
+        collectionsKept[id] = found
+        return found
+    }
+
+    /// The next songs of a long playlist; asked for as the person scrolls, so not kept.
+    func more(_ token: String) async throws -> Continuation {
+        try await music.more(token)
+    }
+
     /// What YouTube Music shows everybody, kept for [trendingMs] (and not shown in another language than it was asked in).
     func trending(_ language: String = "en") async throws -> [MusicShelf] {
         if let kept = trendingKept, kept.language == language, now() - kept.at < Self.trendingMs { return kept.shelves }
         let shelves = try await music.trending(language: language)
         trendingKept = (language, now(), shelves)
         return shelves
+    }
+
+    /// Everything matching [query], or only what [params] (a filter of the page) keeps; kept, so going back to it is free.
+    func searchPage(_ query: String, params: String?) async throws -> SearchPage {
+        let key = (params ?? "") + "\n" + query
+        if let kept = searchesKept[key] { return kept }
+        let found = try await music.searchPage(query, params: params)
+        searchesKept[key] = found
+        return found
+    }
+
+    /// The results after those of [searchPage]; asked for as the person scrolls, so not kept.
+    func searchMore(_ token: String) async throws -> SearchPage {
+        try await music.searchMore(token)
     }
 
     /// Songs matching [query], as audio releases or as videos.

@@ -33,6 +33,10 @@ class MusicFeedTest {
         override suspend fun related(relatedId: String) = Related(emptyList(), emptyList(), emptyList(), emptyList(), null)
         override suspend fun lyrics(lyricsId: String): String? = plain.also { lyricsCalls++ }
         override suspend fun artist(artistId: String) = ArtistPage(artistId, "N", null, null, null, emptyList(), emptyList(), emptyList(), emptyList())
+        override suspend fun collection(id: String) = CollectionPage(id, "T", null, null, null, null, null, null, emptyList(), emptyList(), null, emptyList())
+        override suspend fun more(token: String) = Continuation(emptyList(), null)
+        override suspend fun searchPage(query: String, params: String?) = SearchPage(emptyList(), null, emptyList(), null)
+        override suspend fun searchMore(token: String) = SearchPage(emptyList(), null, emptyList(), null)
         override suspend fun searchSongs(query: String) = emptyList<MusicTrack>()
         override suspend fun searchVideos(query: String) = emptyList<MusicTrack>()
         override suspend fun trending(language: String) = emptyList<MusicShelf>()
@@ -151,6 +155,53 @@ class MusicFeedTest {
         assertEquals("Hits in vi", feed.trending("vi").single().title)
         assertEquals("Hits in vi", feed.trending("vi").single().title)
         assertEquals(listOf("en", "vi"), asked)
+    }
+
+    @Test
+    fun `an album is asked for once and the next songs of a playlist every time`() = runTest {
+        var pages = 0
+        var continuations = 0
+        val music = object : MusicSource by FakeMusic() {
+            override suspend fun collection(id: String): CollectionPage {
+                pages++
+                return FakeMusic().collection(id)
+            }
+
+            override suspend fun more(token: String): Continuation {
+                continuations++
+                return Continuation(emptyList(), null)
+            }
+        }
+        val feed = MusicFeed(music, LyricsClient(FakeLrclib(null)), LyricsStore(dir))
+        feed.collection("MPREb_x")
+        feed.collection("MPREb_x")
+        feed.more("t")
+        feed.more("t")
+        assertEquals(1, pages)
+        assertEquals(2, continuations)
+    }
+
+    @Test
+    fun `a search is asked for once for each filter, and the next results every time`() = runTest {
+        val asked = mutableListOf<String>()
+        val music = object : MusicSource by FakeMusic() {
+            override suspend fun searchPage(query: String, params: String?): SearchPage {
+                asked += "$params|$query"
+                return SearchPage(emptyList(), null, emptyList(), "t")
+            }
+
+            override suspend fun searchMore(token: String): SearchPage {
+                asked += "more $token"
+                return SearchPage(emptyList(), null, emptyList(), null)
+            }
+        }
+        val feed = MusicFeed(music, LyricsClient(FakeLrclib(null)), LyricsStore(dir))
+        feed.searchPage("q", null)
+        feed.searchPage("q", null)
+        feed.searchPage("q", "SONGS")
+        feed.searchMore("t")
+        feed.searchMore("t")
+        assertEquals(listOf("null|q", "SONGS|q", "more t", "more t"), asked)
     }
 
     @Test

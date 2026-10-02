@@ -383,6 +383,12 @@ class UnisonBridge(
             "musicNext" -> return MusicJson.next(UnisonApp.musicFeed.watchNext(call.argument<String>("videoId").orEmpty()))
             "musicRelated" -> return MusicJson.related(UnisonApp.musicFeed.related(call.argument<String>("videoId").orEmpty()))
             "musicArtist" -> return MusicJson.artist(UnisonApp.musicFeed.artist(call.argument<String>("id").orEmpty()))
+            "musicSearchPage" -> return MusicJson.searchPage(
+                UnisonApp.musicFeed.searchPage(call.argument<String>("query").orEmpty(), call.argument<String>("params")),
+            )
+            "musicSearchMore" -> return MusicJson.searchPage(UnisonApp.musicFeed.searchMore(call.argument<String>("token").orEmpty()))
+            "musicCollection" -> return MusicJson.collection(UnisonApp.musicFeed.collection(call.argument<String>("id").orEmpty()))
+            "musicMore" -> return MusicJson.continuation(UnisonApp.musicFeed.more(call.argument<String>("token").orEmpty()))
             "lyrics" -> return MusicJson.lyrics(
                 UnisonApp.musicFeed.lyrics(
                     call.argument<String>("videoId").orEmpty(),

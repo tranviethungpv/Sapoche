@@ -1,0 +1,8 @@
+Tìm kiếm mọi thứ
+- Tìm kiếm giờ ra bài hát, video, album, nghệ sĩ, danh sách phát, hồ sơ và podcast. Bấm tìm để hiện bộ lọc: Hàng đầu, Bài hát, YouTube (video thường), Nghệ sĩ, Album và nhiều loại khác. Tối đa ba gợi ý nằm trên kết quả.
+Trang riêng cho album, danh sách phát và nghệ sĩ
+- Album, danh sách phát và podcast mở thành trang riêng, có Phát và Trộn bài cho cả danh sách, bài đánh số, và thêm nội dung để xem bên dưới. Màu nền lấy từ ảnh bìa.
+- Trang nghệ sĩ có Phát và Trộn bài cho các bài hàng đầu, album, đĩa đơn, video, biểu diễn trực tiếp, danh sách phát và nghệ sĩ tương tự. Hồ sơ mở theo cách tương tự.
+Trình phát và cài đặt
+- Ở giao diện sáng, nền trình phát giờ là màu nhạt thay vì tối.
+- Mini player không còn che các nút cuối của Cài đặt, như nút Cài đặt ở trang Cập nhật.

@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'palette.dart';
 
@@ -27,10 +28,6 @@ extension UnisonThemeContext on BuildContext {
 }
 
 const fontFamily = 'Inter';
-
-/// The full player is always dark, like Apple Music's: its background takes the cover's colours, and light text
-/// reads on all of them where dark text would not. Built once, when first needed.
-final playerTheme = buildTheme(Palette.dark);
 
 ThemeData buildTheme(Palette p) {
   final scheme = ColorScheme(
@@ -99,6 +96,14 @@ ThemeData buildTheme(Palette p) {
       elevation: 0,
       scrolledUnderElevation: 0,
       foregroundColor: p.text,
+      // The bar has no colour of its own, so Material would guess the icons from black: white ones on the pink veil
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: p.brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
+        statusBarBrightness: p.brightness,
+      ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(

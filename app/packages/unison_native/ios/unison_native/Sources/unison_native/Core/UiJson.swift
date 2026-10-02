@@ -130,7 +130,7 @@ enum MusicJson {
         [
             "more": (related?.more ?? []).map(track),
             "otherPerformances": (related?.otherPerformances ?? []).map(track),
-            "artists": (related?.artists ?? []).map { ["id": $0.id, "name": $0.name, "subtitle": $0.subtitle ?? NSNull(), "thumb": $0.thumbUrl ?? NSNull()] as [String: Any] },
+            "artists": (related?.artists ?? []).map(artistCard),
             "playlists": (related?.playlists ?? []).map(playlistCard),
             "about": related?.about ?? NSNull(),
         ]
@@ -141,8 +141,38 @@ enum MusicJson {
             "id": page.id, "name": page.name, "description": page.description ?? NSNull(), "subscribers": page.subscribers ?? NSNull(),
             "thumb": page.thumbUrl ?? NSNull(), "topSongs": page.topSongs.map(track),
             "albums": page.albums.map(albumCard), "singles": page.singles.map(albumCard),
-            "similar": page.similar.map { ["id": $0.id, "name": $0.name, "subtitle": $0.subtitle ?? NSNull(), "thumb": $0.thumbUrl ?? NSNull()] as [String: Any] },
+            "similar": page.similar.map(artistCard),
+            "shelves": shelves(page.shelves), "topSongsId": page.topSongsId ?? NSNull(),
         ]
+    }
+
+    static func collection(_ page: CollectionPage) -> [String: Any] {
+        [
+            "id": page.id, "title": page.title, "kind": page.kind ?? NSNull(), "year": page.year ?? NSNull(),
+            "owner": page.owner ?? NSNull(), "ownerId": page.ownerId ?? NSNull(), "description": page.description ?? NSNull(),
+            "thumb": page.thumbUrl ?? NSNull(), "stats": page.stats, "tracks": page.tracks.map(track),
+            "more": page.more ?? NSNull(), "shelves": shelves(page.shelves),
+        ]
+    }
+
+    static func searchPage(_ page: SearchPage) -> [String: Any] {
+        [
+            "chips": page.chips.map { ["label": $0.label, "params": $0.params] },
+            "top": page.top.map(searchItem) ?? NSNull(),
+            "items": page.items.map(searchItem),
+            "more": page.more ?? NSNull(),
+        ]
+    }
+
+    private static func searchItem(_ item: SearchItem) -> [String: Any] {
+        [
+            "kind": item.kind, "id": item.id, "title": item.title, "subtitle": item.subtitle ?? NSNull(),
+            "label": item.label ?? NSNull(), "thumb": item.thumbUrl ?? NSNull(), "track": item.track.map(track) ?? NSNull(),
+        ]
+    }
+
+    static func continuation(_ next: Continuation) -> [String: Any] {
+        ["tracks": next.tracks.map(track), "more": next.more ?? NSNull()]
     }
 
     /// Times in whole milliseconds, one pair per line; with no times the lines are empty and only the plain text is there.
@@ -152,7 +182,16 @@ enum MusicJson {
     }
 
     static func shelves(_ shelves: [MusicShelf]) -> [[String: Any]] {
-        shelves.map { ["title": $0.title, "tracks": $0.tracks.map(track), "playlists": $0.playlists.map(playlistCard)] as [String: Any] }
+        shelves.map {
+            [
+                "title": $0.title, "tracks": $0.tracks.map(track), "playlists": $0.playlists.map(playlistCard),
+                "albums": $0.albums.map(albumCard), "artists": $0.artists.map(artistCard),
+            ] as [String: Any]
+        }
+    }
+
+    private static func artistCard(_ card: ArtistCard) -> [String: Any] {
+        ["id": card.id, "name": card.name, "subtitle": card.subtitle ?? NSNull(), "thumb": card.thumbUrl ?? NSNull()]
     }
 
     private static func albumCard(_ card: AlbumCard) -> [String: Any] {

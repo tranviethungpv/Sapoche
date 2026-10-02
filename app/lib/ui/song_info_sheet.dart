@@ -6,6 +6,7 @@ import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'artist_page.dart';
+import 'collection_screen.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 
@@ -119,7 +120,21 @@ class _SongInfo extends StatelessWidget {
                           openArtist(context, artistId);
                         },
                 ),
-                row(S.infoAlbum, song?.album),
+                row(
+                  S.infoAlbum,
+                  song?.album,
+                  onTap: song?.albumId == null
+                      ? null
+                      : () {
+                          Navigator.pop(context);
+                          openCollection(
+                            context,
+                            id: song!.albumId!,
+                            title: song.album,
+                            thumb: song.thumb,
+                          );
+                        },
+                ),
                 row(S.infoYear, song?.year),
                 row(S.infoLength, formatDuration(entry.durMs)),
                 row(S.infoReach, song?.stats),

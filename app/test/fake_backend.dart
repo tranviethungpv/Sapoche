@@ -107,14 +107,6 @@ class FakeBackend implements Backend {
   @override
   Future<void> clear() => _record('clear');
 
-  List<PlaylistRef> playlistResults = const [];
-
-  @override
-  Future<List<PlaylistRef>> searchPlaylists(String query) async {
-    await _record('searchPlaylists $query');
-    return playlistResults;
-  }
-
   @override
   Future<void> shuffle() => _record('shuffle');
 
@@ -349,6 +341,22 @@ class FakeBackend implements Backend {
   RelatedPage relatedResult = const RelatedPage();
   ArtistPage artistResult = const ArtistPage(id: 'UC1', name: 'Artist');
   Lyrics? lyricsResult;
+  CollectionPage collectionResult = const CollectionPage(
+    id: 'PL1',
+    title: 'Playlist',
+  );
+
+  /// What a search of YouTube Music answers; when not set, the songs of [searchResults].
+  SearchResults? searchPageResult;
+
+  /// The answer to a search for one kind of result, by its filter.
+  final searchPageResults = <String, SearchResults>{};
+
+  /// The answer to each [musicSearchMore] token.
+  final searchMoreResults = <String, SearchResults>{};
+
+  /// The answer to each [musicMore] token.
+  final moreResults = <String, MoreTracks>{};
 
   /// When set, these calls wait for it, so a test can look at the loading state.
   Completer<void>? musicGate;
@@ -399,6 +407,42 @@ class FakeBackend implements Backend {
   @override
   Future<ArtistPage> musicArtist(String artistId) =>
       _music('musicArtist $artistId', artistResult);
+
+  @override
+  Future<SearchResults> musicSearchPage(String query, {String? params}) async {
+    final found = await _music(
+      'musicSearchPage ${params ?? '-'} $query',
+      (params == null ? null : searchPageResults[params]) ??
+          searchPageResult ??
+          SearchResults(
+            items: [
+              for (final t in searchResults)
+                SearchItem(
+                  kind: 'song',
+                  id: t.videoId,
+                  title: t.title,
+                  track: t,
+                ),
+            ],
+          ),
+    );
+    await searchGate?.future;
+    return found;
+  }
+
+  @override
+  Future<SearchResults> musicSearchMore(String token) => _music(
+    'musicSearchMore $token',
+    searchMoreResults[token] ?? const SearchResults(),
+  );
+
+  @override
+  Future<CollectionPage> musicCollection(String id) =>
+      _music('musicCollection $id', collectionResult);
+
+  @override
+  Future<MoreTracks> musicMore(String token) =>
+      _music('musicMore $token', moreResults[token] ?? const MoreTracks());
 
   @override
   Future<Lyrics?> lyrics(Track track) =>

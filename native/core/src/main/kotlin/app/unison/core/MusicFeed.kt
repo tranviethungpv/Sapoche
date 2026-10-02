@@ -16,6 +16,8 @@ class MusicFeed(
     private val next = Recent<String, WatchNext>()
     private val related = Recent<String, Related>()
     private val artists = Recent<String, ArtistPage>()
+    private val collections = Recent<String, CollectionPage>()
+    private val searches = Recent<String, SearchPage>()
     private val lyricsLock = Mutex()
     private var trendingKept: Triple<String, Long, List<MusicShelf>>? = null
 
@@ -29,11 +31,24 @@ class MusicFeed(
 
     suspend fun artist(artistId: String): ArtistPage = artists.getOrPut(artistId) { music.artist(artistId) }
 
+    /** An album or a playlist, with its first songs. */
+    suspend fun collection(id: String): CollectionPage = collections.getOrPut(id) { music.collection(id) }
+
+    /** The next songs of a long playlist; asked for as the person scrolls, so not kept. */
+    suspend fun more(token: String): Continuation = music.more(token)
+
     /** What YouTube Music shows everybody, kept for [TRENDING_MS] (and not shown in another language than it was asked in). */
     suspend fun trending(language: String = "en"): List<MusicShelf> {
         trendingKept?.let { (kept, at, shelves) -> if (kept == language && now() - at < TRENDING_MS) return shelves }
         return music.trending(language).also { trendingKept = Triple(language, now(), it) }
     }
+
+    /** Everything matching [query], or only what [params] (a filter of the page) keeps; kept, so going back to it is free. */
+    suspend fun searchPage(query: String, params: String?): SearchPage =
+        searches.getOrPut("${params.orEmpty()}\n$query") { music.searchPage(query, params) }
+
+    /** The results after those of [searchPage]; asked for as the person scrolls, so not kept. */
+    suspend fun searchMore(token: String): SearchPage = music.searchMore(token)
 
     /** Songs matching [query], as audio releases or as videos. */
     suspend fun search(query: String, songs: Boolean): List<MusicTrack> =

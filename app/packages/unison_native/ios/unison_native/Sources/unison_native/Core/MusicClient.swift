@@ -58,6 +58,24 @@ struct MusicClient: MusicSource {
         MusicParser.artist(artistId, try await browse(artistId))
     }
 
+    func collection(_ id: String) async throws -> CollectionPage {
+        MusicParser.collection(id, try await browse(id.hasPrefix("MPRE") || id.hasPrefix("MPSP") || id.hasPrefix("VL") ? id : "VL" + id))
+    }
+
+    func more(_ token: String) async throws -> Continuation {
+        MusicParser.continuation(try await ask("browse", ["continuation": token]))
+    }
+
+    func searchPage(_ query: String, params: String?) async throws -> SearchPage {
+        var fields: [String: Any] = ["query": query]
+        if let params { fields["params"] = params }
+        return MusicParser.searchPage(try await ask("search", fields))
+    }
+
+    func searchMore(_ token: String) async throws -> SearchPage {
+        MusicParser.searchMore(try await ask("search", ["continuation": token]))
+    }
+
     func searchSongs(_ query: String) async throws -> [MusicTrack] {
         MusicParser.search(try await search(query, Self.songs))
     }

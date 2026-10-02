@@ -7,8 +7,9 @@ import '../cover_glow.dart';
 import 'wash.dart';
 
 /// Background of the full player, in the manner of Apple Music: the cover's own colours, enlarged and blurred
-/// until they are only light, with the bottom darkened for the controls. It changes from song to song by fading
-/// from one picture to the next. A song with no cover, or one that cannot be read, gets the app's pink veil.
+/// until they are only light. In the dark theme the colours are deep and the bottom is darkened for the controls;
+/// in the light theme they are pale and the bottom fades to white. It changes from song to song by fading from one
+/// picture to the next. A song with no cover, or one that cannot be read, gets the app's pink veil.
 ///
 /// The picture is made once per cover (see [CoverGlow]) and is not drawn again until the song changes, so the
 /// player costs no more with it than without.
@@ -26,9 +27,15 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
   ui.Image? _glow;
   String? _shownFor;
 
+  /// The theme the picture on show was made for; the picture is made again when the app changes theme.
+  bool? _light;
+
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final light = context.palette.brightness == Brightness.light;
+    if (light == _light) return;
+    _light = light;
     _load();
   }
 
@@ -47,8 +54,9 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
       });
       return;
     }
-    CoverGlow.of(url).then((image) {
-      if (!mounted || widget.coverUrl != url) return;
+    final light = _light!;
+    CoverGlow.of(url, light: light).then((image) {
+      if (!mounted || widget.coverUrl != url || _light != light) return;
       setState(() {
         _glow = image;
         _shownFor = url;
@@ -60,6 +68,7 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final glow = _glow;
+    final light = p.brightness == Brightness.light;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -85,14 +94,24 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
                   ),
                 ),
         ),
-        // Darker towards the bottom, where the controls are
-        const DecoratedBox(
+        // Darker (lighter, in the light theme) towards the bottom, where the controls are
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              stops: [0, 0.45, 1],
-              colors: [Color(0x14000000), Color(0x26000000), Color(0x73000000)],
+              stops: const [0, 0.45, 1],
+              colors: light
+                  ? const [
+                      Color(0x00FFFFFF),
+                      Color(0x1AFFFFFF),
+                      Color(0x66FFFFFF),
+                    ]
+                  : const [
+                      Color(0x14000000),
+                      Color(0x26000000),
+                      Color(0x73000000),
+                    ],
             ),
           ),
         ),

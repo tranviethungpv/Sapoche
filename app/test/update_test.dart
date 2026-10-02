@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/update_info.dart';
+import 'package:unison/ui/home_shell.dart';
 
 import 'pump_app.dart';
 
@@ -205,6 +206,43 @@ void main() {
       expect(bar.value, 0.4);
       expect(find.byKey(const ValueKey('update-action')), findsNothing);
     });
+
+    testWidgets(
+      'long notes do not push the button under the mini player and the tab bar',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.emit(
+          news(
+            UpdatePhase.available,
+            notes: [
+              'Everything',
+              for (var i = 0; i < 70; i++) '- A change number $i',
+            ].join('\n'),
+          ),
+        );
+        await openTopic(tester, 'updates');
+        final button = find.byKey(const ValueKey('update-action'));
+        await tester.dragUntilVisible(
+          button,
+          find.byType(ListView).last,
+          const Offset(0, -300),
+        );
+        // The bars take the bottom of the window; the button has to come to rest above them
+        await tester.drag(find.byType(ListView).last, const Offset(0, -2000));
+        await tester.pumpAndSettle();
+        final windowHeight =
+            tester.view.physicalSize.height / tester.view.devicePixelRatio;
+        expect(
+          tester.getBottomLeft(button).dy,
+          lessThanOrEqualTo(
+            windowHeight - HomeShell.bottomInsetOf(tester.element(button)),
+          ),
+        );
+        await tester.tap(button);
+        await tester.pump();
+        expect(backend.calls, contains('updateDownload false'));
+      },
+    );
 
     testWidgets('warns that the app closes before installing', (tester) async {
       final (backend, _) = await pumpApp(tester);

@@ -54,20 +54,26 @@ enum MusicParser {
         let header = root.at("header").at("musicImmersiveHeaderRenderer").isNull
             ? root.at("header").at("musicVisualHeaderRenderer")
             : root.at("header").at("musicImmersiveHeaderRenderer")
-        let topSongs = (root.findAll("musicShelfRenderer").first?.at("contents").array ?? [])
+        let topShelf = root.findAll("musicShelfRenderer").first
+        let topSongs = (topShelf?.at("contents").array ?? [])
             .compactMap { listTrack($0.at("musicResponsiveListItemRenderer")) }
+        var topSongsId = topShelf?.at("title", "runs", "0", "navigationEndpoint", "browseEndpoint", "browseId").string
+        if topSongsId == nil { topSongsId = topShelf?.at("bottomEndpoint", "browseEndpoint", "browseId").string }
+        if let id = topSongsId, id.hasPrefix("VL") { topSongsId = String(id.dropFirst(2)) }
         var albums: [AlbumCard] = []
         var singles: [AlbumCard] = []
         var similar: [ArtistCard] = []
+        var others: [MusicShelf] = []
         for shelf in root.findAll("musicCarouselShelfRenderer") {
-            let title = shelf.at("header", "musicCarouselShelfBasicHeaderRenderer", "title").text
-            for item in shelf.at("contents").array {
-                let card = item.at("musicTwoRowItemRenderer")
-                if let artist = artistCard(card) {
-                    similar.append(artist)
-                } else if let album = albumCard(card) {
-                    if title == "Albums" { albums.append(album) } else if title == "Singles & EPs" { singles.append(album) }
-                }
+            guard let built = carousel(shelf) else { continue }
+            if built.title == "Albums" {
+                albums += built.albums
+            } else if built.title == "Singles & EPs" {
+                singles += built.albums
+            } else if !built.artists.isEmpty && built.tracks.isEmpty && built.albums.isEmpty && built.playlists.isEmpty {
+                similar += built.artists
+            } else {
+                others.append(built)
             }
         }
         return ArtistPage(
@@ -79,8 +85,66 @@ enum MusicParser {
             topSongs: topSongs,
             albums: albums,
             singles: singles,
-            similar: similar
+            similar: similar,
+            shelves: others,
+            topSongsId: topSongsId
         )
+    }
+
+    /// An album or a playlist page: the header, the first songs and the rows below them.
+    static func collection(_ id: String, _ root: JSON) -> CollectionPage {
+        let header = ["musicResponsiveHeaderRenderer", "musicDetailHeaderRenderer", "musicEditablePlaylistDetailHeaderRenderer"]
+            .compactMap { root.findAll($0).first }.first ?? JSON(nil)
+        let subtitle = header.at("subtitle").parts
+        let kind = subtitle.first.flatMap { isYear($0) ? nil : $0 }
+        let year = subtitle.last.flatMap { isYear($0) ? $0 : nil }
+        let strapline = header.at("straplineTextOne").runs
+        // An album names its artist under the title; a playlist names whoever made it beside a small picture
+        let named = strapline.map { $0.at("text").string ?? "" }.joined()
+        let owner = named.isEmpty ? header.at("facepile", "avatarStackViewModel", "text", "content").string : named
+        let ownerId = strapline.compactMap { $0.at("navigationEndpoint", "browseEndpoint", "browseId").string }.first { $0.hasPrefix("UC") }
+        let shelf = root.findAll("musicPlaylistShelfRenderer").first ?? root.findAll("musicShelfRenderer").first
+        let rows = shelf?.at("contents").array ?? []
+        let isAlbum = id.hasPrefix("MPRE") || ["Album", "Single", "EP"].contains(kind ?? "")
+        let title = header.at("title").text ?? ""
+        let cover = thumbnail(header.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails"))
+        let tracks = rows.compactMap { listTrack($0.at("musicResponsiveListItemRenderer")) }.map { song -> MusicTrack in
+            // The rows of an album leave out what the page says once: whose songs they are, which album and its cover
+            guard isAlbum else { return song }
+            let anonymous = song.artist.isEmpty
+            return MusicTrack(
+                videoId: song.videoId, title: song.title, artist: anonymous ? owner ?? "" : song.artist,
+                artistId: song.artistId ?? (anonymous ? ownerId : nil), album: song.album ?? title,
+                albumId: song.albumId ?? (id.hasPrefix("MPRE") ? id : nil), year: song.year ?? year,
+                durationSec: song.durationSec, thumbUrl: song.thumbUrl ?? cover, isSong: song.isSong, stats: song.stats,
+                counterpart: song.counterpart
+            )
+        }
+        return CollectionPage(
+            id: id,
+            title: title,
+            kind: kind,
+            year: year,
+            owner: owner,
+            ownerId: ownerId,
+            description: header.at("description", "musicDescriptionShelfRenderer", "description").text,
+            thumbUrl: cover,
+            stats: header.at("secondSubtitle").parts,
+            tracks: tracks,
+            more: continuationToken(rows),
+            shelves: root.findAll("musicCarouselShelfRenderer").compactMap(carousel)
+        )
+    }
+
+    /// What comes after the first songs of a long playlist.
+    static func continuation(_ root: JSON) -> Continuation {
+        var items = root.at("onResponseReceivedActions", "0", "appendContinuationItemsAction", "continuationItems").array
+        if items.isEmpty { items = root.at("continuationContents", "musicPlaylistShelfContinuation", "contents").array }
+        return Continuation(tracks: items.compactMap { listTrack($0.at("musicResponsiveListItemRenderer")) }, more: continuationToken(items))
+    }
+
+    private static func continuationToken(_ items: [JSON]) -> String? {
+        items.compactMap { $0.at("continuationItemRenderer", "continuationEndpoint", "continuationCommand", "token").string }.first
     }
 
     /// What a search gave, as tracks; results that are not a song or video (artists, albums) are skipped.
@@ -105,6 +169,119 @@ enum MusicParser {
                   !(tracks.isEmpty && playlists.isEmpty) else { return nil }
             return MusicShelf(title: title, tracks: tracks, playlists: playlists)
         }
+    }
+
+    // ------------------------------------------------------------------ search
+
+    /// What a search found: the top result, the list of the rest, the filters on offer and where more can be had.
+    static func searchPage(_ root: JSON) -> SearchPage {
+        let chips = root.findAll("chipCloudChipRenderer").compactMap { chip -> SearchChip? in
+            guard let label = chip.at("text").text, let params = chip.at("navigationEndpoint", "searchEndpoint", "params").string else { return nil }
+            return SearchChip(label: label, params: params)
+        }
+        let top = root.findAll("musicCardShelfRenderer").first.flatMap(cardItem)
+        // The songs shown inside the card of the top result are in the list below it too, so they are left out here
+        let items = root.findAll("musicResponsiveListItemRenderer", skipping: "musicCardShelfRenderer").compactMap(searchItem)
+        return SearchPage(chips: chips, top: top, items: items, more: root.findAll("musicShelfRenderer").first.flatMap(searchToken))
+    }
+
+    /// The results after the first ones of a search.
+    static func searchMore(_ root: JSON) -> SearchPage {
+        let shelf = root.at("continuationContents", "musicShelfContinuation")
+        let items = shelf.at("contents").array.compactMap { searchItem($0.at("musicResponsiveListItemRenderer")) }
+        return SearchPage(chips: [], top: nil, items: items, more: shelf.isNull ? nil : searchToken(shelf))
+    }
+
+    private static func searchToken(_ shelf: JSON) -> String? {
+        shelf.at("continuations", "0", "nextContinuationData", "continuation").string ?? continuationToken(shelf.at("contents").array)
+    }
+
+    private static func searchItem(_ row: JSON?) -> SearchItem? {
+        guard let row, !row.isNull else { return nil }
+        let columns = row.at("flexColumns").array.map { $0.at("musicResponsiveListItemFlexColumnRenderer", "text") }
+        guard let title = columns.first?.text else { return nil }
+        let byline = columns.count > 1 ? columns[1].runs : []
+        let thumb = thumbnail(row.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails"))
+        let page = row.at("navigationEndpoint", "browseEndpoint")
+        if let pageId = page.at("browseId").string {
+            let pageType = page.at("browseEndpointContextSupportedConfigs", "browseEndpointContextMusicConfig", "pageType").string
+            return pageItem(pageId, pageType, title, byline, thumb)
+        }
+        guard let song = listTrack(row, labelled: true) else { return nil }
+        return trackItem(song, videoType(row), byline)
+    }
+
+    /// The big card at the top of a search, which is one result like the others.
+    private static func cardItem(_ card: JSON) -> SearchItem? {
+        guard let title = card.at("title").text else { return nil }
+        let byline = card.at("subtitle").runs
+        let thumbs = card.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails")
+        let endpoint = card.at("title").runs.first?.at("navigationEndpoint") ?? JSON(nil)
+        if let pageId = endpoint.at("browseEndpoint", "browseId").string {
+            let pageType = endpoint.at("browseEndpoint", "browseEndpointContextSupportedConfigs", "browseEndpointContextMusicConfig", "pageType").string
+            return pageItem(pageId, pageType, title, byline, thumbnail(thumbs))
+        }
+        let watch = endpoint.at("watchEndpoint")
+        guard let videoId = watch.at("videoId").string else { return nil }
+        let type = watch.at("watchEndpointMusicSupportedConfigs", "watchEndpointMusicConfig", "musicVideoType").string
+        let duration = byline.compactMap { $0.at("text").string?.trimmingCharacters(in: .whitespaces) }.last { isDuration($0) }
+        let song = track(videoId: videoId, title: title, byline: withoutLabel(byline), duration: duration, thumbs: thumbs, type: type)
+        return trackItem(song, type, byline)
+    }
+
+    /// A result that opens a page: an artist, a profile, an album or a playlist.
+    private static func pageItem(_ pageId: String, _ pageType: String?, _ title: String, _ byline: [JSON], _ thumb: String?) -> SearchItem? {
+        let label = labelOf(byline)
+        let joined = groups(withoutLabel(byline)).joined(separator: " · ")
+        let rest = joined.isEmpty ? nil : joined
+        switch pageType {
+        case "MUSIC_PAGE_TYPE_ARTIST": return SearchItem(kind: "artist", id: pageId, title: title, subtitle: rest, label: label, thumbUrl: thumb)
+        case "MUSIC_PAGE_TYPE_USER_CHANNEL": return SearchItem(kind: "profile", id: pageId, title: title, subtitle: rest, label: label, thumbUrl: thumb)
+        case "MUSIC_PAGE_TYPE_ALBUM": return SearchItem(kind: "album", id: pageId, title: title, subtitle: rest, label: label, thumbUrl: thumb)
+        case "MUSIC_PAGE_TYPE_PLAYLIST":
+            let id = pageId.hasPrefix("VL") ? String(pageId.dropFirst(2)) : pageId
+            return SearchItem(kind: "playlist", id: id, title: title, subtitle: rest, label: label, thumbUrl: thumb)
+        case "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE":
+            return SearchItem(kind: "playlist", id: pageId, title: title, subtitle: rest, label: label, thumbUrl: thumb)
+        default: return nil
+        }
+    }
+
+    /// A result that plays: a song, a video or an episode of a podcast.
+    private static func trackItem(_ song: MusicTrack, _ type: String?, _ byline: [JSON]) -> SearchItem {
+        let label = labelOf(byline)
+        guard type == "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" else {
+            return SearchItem(kind: song.isSong ? "song" : "video", id: song.videoId, title: song.title, subtitle: nil, label: label,
+                              thumbUrl: song.thumbUrl, track: song)
+        }
+        // An episode's line is its date and its show, not an artist
+        let parts = groups(withoutLabel(byline))
+        let episode = MusicTrack(videoId: song.videoId, title: song.title, artist: parts.last ?? "", album: song.album, albumId: song.albumId,
+                                 year: song.year, durationSec: song.durationSec, thumbUrl: song.thumbUrl, isSong: false, stats: song.stats,
+                                 counterpart: song.counterpart)
+        return SearchItem(kind: "episode", id: song.videoId, title: song.title, subtitle: parts.joined(separator: " · "), label: label,
+                          thumbUrl: song.thumbUrl, track: episode)
+    }
+
+    private static let labels: Set<String> = ["Song", "Video", "Episode", "Podcast", "Single", "EP", "Album", "Playlist", "Artist", "Profile"]
+
+    /// The word at the start of a line like "Single • Artist • 2014" that says what the result is, if there is one.
+    private static func labelOf(_ runs: [JSON]) -> String? {
+        guard let first = runs.first, let text = first.at("text").string?.trimmingCharacters(in: .whitespaces) else { return nil }
+        let alone = runs.count == 1 || runs[1].at("text").string?.trimmingCharacters(in: .whitespaces) == "•"
+        return labels.contains(text) && alone && first.at("navigationEndpoint").isNull ? text : nil
+    }
+
+    private static func withoutLabel(_ runs: [JSON]) -> [JSON] { labelOf(runs) == nil ? runs : Array(runs.dropFirst(2)) }
+
+    /// The pieces of a line of runs between its "•" separators, each one text.
+    fileprivate static func groups(_ runs: [JSON]) -> [String] {
+        var out: [String] = [""]
+        for run in runs {
+            let text = run.at("text").string ?? ""
+            if text.trimmingCharacters(in: .whitespaces) == "•" { out.append("") } else { out[out.count - 1] += text }
+        }
+        return out.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
     // ------------------------------------------------------------------ items
@@ -135,14 +312,13 @@ enum MusicParser {
     }
 
     /// A row of a list (search result, top songs, related), or nil when the row is not a song or video.
-    private static func listTrack(_ row: JSON?) -> MusicTrack? {
+    private static func listTrack(_ row: JSON?, labelled: Bool = false) -> MusicTrack? {
         guard let row, !row.isNull else { return nil }
         guard let videoId = row.at("playlistItemData", "videoId").string
                 ?? row.at("overlay", "musicItemThumbnailOverlayRenderer", "content", "musicPlayButtonRenderer", "playNavigationEndpoint", "watchEndpoint", "videoId").string
         else { return nil }
         let columns = row.at("flexColumns").array.map { $0.at("musicResponsiveListItemFlexColumnRenderer", "text") }
-        let type = row.at("overlay", "musicItemThumbnailOverlayRenderer", "content", "musicPlayButtonRenderer", "playNavigationEndpoint", "watchEndpoint", "watchEndpointMusicSupportedConfigs", "watchEndpointMusicConfig", "musicVideoType").string
-            ?? columns.first?.runs.first?.at("navigationEndpoint", "watchEndpoint", "watchEndpointMusicSupportedConfigs", "watchEndpointMusicConfig", "musicVideoType").string
+        let type = videoType(row)
         // The length is in a column of its own, or at the end of the second one
         let candidates = columns.dropFirst().flatMap { $0.runs }
             + row.at("fixedColumns").array.flatMap { $0.at("musicResponsiveListItemFixedColumnRenderer", "text").runs }
@@ -151,11 +327,18 @@ enum MusicParser {
         return track(
             videoId: videoId,
             title: title,
-            byline: columns.count > 1 ? columns[1].runs : [],
+            byline: columns.count > 1 ? (labelled ? withoutLabel(columns[1].runs) : columns[1].runs) : [],
             duration: duration,
             thumbs: row.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails"),
             type: type
         )
+    }
+
+    /// What kind of video a row plays (`MUSIC_VIDEO_TYPE_ATV` for a song), as the row says it.
+    private static func videoType(_ row: JSON) -> String? {
+        let columns = row.at("flexColumns").array.map { $0.at("musicResponsiveListItemFlexColumnRenderer", "text") }
+        return row.at("overlay", "musicItemThumbnailOverlayRenderer", "content", "musicPlayButtonRenderer", "playNavigationEndpoint", "watchEndpoint", "watchEndpointMusicSupportedConfigs", "watchEndpointMusicConfig", "musicVideoType").string
+            ?? columns.first?.runs.first?.at("navigationEndpoint", "watchEndpoint", "watchEndpointMusicSupportedConfigs", "watchEndpointMusicConfig", "musicVideoType").string
     }
 
     /// The parts of a line like "Artist • Album • 1987" are told apart by where the separators are.
@@ -214,6 +397,42 @@ enum MusicParser {
                             thumbUrl: thumbnail(card.at("thumbnailRenderer", "musicThumbnailRenderer", "thumbnail", "thumbnails")))
     }
 
+    /// A row of cards that scrolls sideways, whatever the cards are; nil when it has no name or nothing in it.
+    private static func carousel(_ shelf: JSON) -> MusicShelf? {
+        guard let title = shelf.at("header", "musicCarouselShelfBasicHeaderRenderer", "title").text else { return nil }
+        var built = MusicShelf(title: title, tracks: [])
+        var tracks: [MusicTrack] = []
+        for item in shelf.at("contents").array {
+            let card = item.at("musicTwoRowItemRenderer")
+            if let song = listTrack(item.at("musicResponsiveListItemRenderer")) ?? videoCard(card) {
+                tracks.append(song)
+            } else if let artist = artistCard(card) {
+                built.artists.append(artist)
+            } else if let album = albumCard(card) {
+                built.albums.append(album)
+            } else if let playlist = playlistCard(card) {
+                built.playlists.append(playlist)
+            }
+        }
+        built = MusicShelf(title: title, tracks: tracks, playlists: built.playlists, albums: built.albums, artists: built.artists)
+        return tracks.isEmpty && built.playlists.isEmpty && built.albums.isEmpty && built.artists.isEmpty ? nil : built
+    }
+
+    /// A card of a video, which opens the video instead of a page.
+    private static func videoCard(_ card: JSON?) -> MusicTrack? {
+        guard let card, !card.isNull else { return nil }
+        let watch = card.at("navigationEndpoint", "watchEndpoint")
+        guard let videoId = watch.at("videoId").string, let title = card.at("title").text else { return nil }
+        return track(
+            videoId: videoId,
+            title: title,
+            byline: card.at("subtitle").runs,
+            duration: nil,
+            thumbs: card.at("thumbnailRenderer", "musicThumbnailRenderer", "thumbnail", "thumbnails"),
+            type: watch.at("watchEndpointMusicSupportedConfigs", "watchEndpointMusicConfig", "musicVideoType").string
+        )
+    }
+
     // ------------------------------------------------------------------ reading
 
     /// "3:34" or "1:02:03": one or two digits, then one or two groups of a colon and two digits.
@@ -253,6 +472,9 @@ enum MusicParser {
 extension JSON {
     /// The runs of a text, as YouTube Music splits it.
     fileprivate var runs: [JSON] { at("runs").array }
+
+    /// The pieces of a line like "18 songs • 1 hour, 13 minutes", without the separators.
+    fileprivate var parts: [String] { MusicParser.groups(runs) }
 
     /// The text of a run list joined, like the title of a shelf.
     fileprivate var text: String? {

@@ -31,3 +31,30 @@ Future<void> queueTrack(
       ),
     );
 }
+
+/// Puts [tracks] on the queue (or next) and says how many went on: the ones already waiting there are left out.
+Future<void> queueTracks(
+  BuildContext context,
+  List<Track> tracks, {
+  bool playNext = false,
+}) async {
+  HapticFeedback.selectionClick();
+  final room = AppScope.roomOf(context);
+  final messenger = ScaffoldMessenger.of(context);
+  final fresh = room.snapshot.fresh(tracks);
+  if (fresh.isNotEmpty) await room.addMany(fresh, playNext: playNext);
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(
+          fresh.isEmpty
+              ? S.alreadyInQueue
+              : fresh.length < tracks.length
+              ? S.addedSkipped(fresh.length, tracks.length - fresh.length)
+              : S.playlistAdded,
+        ),
+        duration: const Duration(milliseconds: 1400),
+      ),
+    );
+}

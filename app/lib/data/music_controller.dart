@@ -16,6 +16,8 @@ class MusicController {
   final _radio = <String, Future<SongRadio>>{};
   final _related = <String, Future<RelatedPage>>{};
   final _artists = <String, Future<ArtistPage>>{};
+  final _collections = <String, Future<CollectionPage>>{};
+  final _searchPages = <String, Future<SearchResults>>{};
   final _lyrics = <String, Future<Lyrics?>>{};
   final _trending = <String, Future<List<MusicShelf>>>{};
   final _searches = <String, Future<List<MusicTrack>>>{};
@@ -30,6 +32,23 @@ class MusicController {
 
   Future<ArtistPage> artist(String artistId) =>
       _cached(_artists, artistId, () => _backend.musicArtist(artistId));
+
+  Future<CollectionPage> collection(String id) =>
+      _cached(_collections, id, () => _backend.musicCollection(id));
+
+  /// What YouTube Music finds for [query], all of it or one kind with [params]; the same answer when asked again.
+  Future<SearchResults> searchPage(String query, {String? params}) => _cached(
+    _searchPages,
+    '${params ?? ''}\n$query',
+    () => _backend.musicSearchPage(query, params: params),
+  );
+
+  /// The results after those a page of a search has; asked for as the person scrolls, so not kept.
+  Future<SearchResults> searchMore(String token) =>
+      _backend.musicSearchMore(token);
+
+  /// The songs after those a page has; asked for as the person scrolls, so not kept.
+  Future<MoreTracks> more(String token) => _backend.musicMore(token);
 
   /// What YouTube Music shows everybody; the same answer for the rest of the session.
   Future<List<MusicShelf>> trending() =>

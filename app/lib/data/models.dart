@@ -143,33 +143,6 @@ class HistoryEntry {
   );
 }
 
-/// A playlist found by search: what it is, before its songs are fetched.
-class PlaylistRef {
-  const PlaylistRef({
-    required this.id,
-    required this.title,
-    this.uploader = '',
-    this.thumb,
-    this.count = 0,
-  });
-
-  final String id;
-  final String title;
-  final String uploader;
-  final String? thumb;
-
-  /// Number of songs, or 0 when YouTube does not say.
-  final int count;
-
-  factory PlaylistRef.fromMap(Map<Object?, Object?> map) => PlaylistRef(
-    id: map['id'] as String,
-    title: map['title'] as String,
-    uploader: map['uploader'] as String? ?? '',
-    thumb: map['thumb'] as String?,
-    count: (map['count'] as num?)?.toInt() ?? 0,
-  );
-}
-
 /// A song in the room's shared queue.
 class QueueEntry extends Track {
   const QueueEntry({

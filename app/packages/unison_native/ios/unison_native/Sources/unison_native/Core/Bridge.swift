@@ -333,6 +333,14 @@ final class Bridge {
             return MusicJson.related(try await music.related(string("videoId")))
         case "musicArtist":
             return MusicJson.artist(try await music.artist(string("id")))
+        case "musicSearchPage":
+            return MusicJson.searchPage(try await music.searchPage(string("query"), params: args["params"] as? String))
+        case "musicSearchMore":
+            return MusicJson.searchPage(try await music.searchMore(string("token")))
+        case "musicCollection":
+            return MusicJson.collection(try await music.collection(string("id")))
+        case "musicMore":
+            return MusicJson.continuation(try await music.more(string("token")))
         case "lyrics":
             return MusicJson.lyrics(try await music.lyrics(videoId: string("videoId"), title: string("title"), artist: string("artist"),
                                                            durationSec: int64("durMs") / 1000))

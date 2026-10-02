@@ -84,6 +84,8 @@ struct Related {
     let about: String?
 }
 
+/// An artist, or a profile (somebody who is not an artist but puts videos and playlists up). [shelves] are the other
+/// rows of the page (videos, live performances, playlists); [topSongsId] is the playlist that holds all of the top songs.
 struct ArtistPage {
     let id: String
     let name: String
@@ -94,13 +96,72 @@ struct ArtistPage {
     let albums: [AlbumCard]
     let singles: [AlbumCard]
     let similar: [ArtistCard]
+    var shelves: [MusicShelf] = []
+    var topSongsId: String?
 }
 
-/// A titled row of a home page: songs, playlists, or both.
+/// A titled row of a page: songs, albums, playlists or artists, any mix of them.
 struct MusicShelf {
     let title: String
     let tracks: [MusicTrack]
     var playlists: [PlaylistCard] = []
+    var albums: [AlbumCard] = []
+    var artists: [ArtistCard] = []
+}
+
+/// An album, single, EP or playlist: what it is, who made it and its songs. [more] is where the songs after these are
+/// asked for (a long playlist comes a hundred at a time); nil when these are all of them.
+struct CollectionPage {
+    let id: String
+    let title: String
+    /// What YouTube calls it: "Album", "Single", "EP", "Playlist".
+    let kind: String?
+    let year: String?
+    /// The artist of an album, or who made the playlist, and where their page is when there is one.
+    let owner: String?
+    let ownerId: String?
+    let description: String?
+    let thumbUrl: String?
+    /// The facts under the title, like "18 songs" and "1 hour, 13 minutes".
+    let stats: [String]
+    let tracks: [MusicTrack]
+    let more: String?
+    /// Other rows of the page: more by the artist, similar playlists.
+    let shelves: [MusicShelf]
+}
+
+/// One result of a search. [kind] is `song`, `video`, `episode`, `album` (an album, single or EP), `artist`, `profile` or
+/// `playlist` (a playlist or a podcast); [id] is the video to play or the page to open. [label] is what YouTube calls it
+/// when it says so ("Single", "EP"). [track] is there for what plays: song, video and episode.
+struct SearchItem {
+    let kind: String
+    let id: String
+    let title: String
+    let subtitle: String?
+    let label: String?
+    let thumbUrl: String?
+    var track: MusicTrack?
+}
+
+/// A filter YouTube Music offers for a search, and the code that asks for it.
+struct SearchChip: Equatable {
+    let label: String
+    let params: String
+}
+
+/// What a search found: the [top] result when YouTube picks one, the [items] in the order it lists them, and the [chips]
+/// to narrow it down. [more] is where the results after these are asked for; nil when these are all.
+struct SearchPage {
+    let chips: [SearchChip]
+    let top: SearchItem?
+    let items: [SearchItem]
+    let more: String?
+}
+
+/// The songs after those of a [CollectionPage].
+struct Continuation {
+    let tracks: [MusicTrack]
+    let more: String?
 }
 
 /// The part of YouTube Music this app reads; the rest of the app only knows this interface.
@@ -114,6 +175,18 @@ protocol MusicSource {
     func lyrics(_ lyricsId: String) async throws -> String?
 
     func artist(_ artistId: String) async throws -> ArtistPage
+
+    /// An album or a playlist, by the id of its page (`MPRE…` for an album, a playlist id otherwise).
+    func collection(_ id: String) async throws -> CollectionPage
+
+    /// The songs of a long playlist after [token], which an earlier answer gave.
+    func more(_ token: String) async throws -> Continuation
+
+    /// Everything that matches [query], or what a filter of [SearchChip.params] keeps of it.
+    func searchPage(_ query: String, params: String?) async throws -> SearchPage
+
+    /// The results of a search after [token], which an earlier answer gave.
+    func searchMore(_ token: String) async throws -> SearchPage
 
     /// Songs (audio releases) matching [query].
     func searchSongs(_ query: String) async throws -> [MusicTrack]

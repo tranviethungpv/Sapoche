@@ -24,7 +24,6 @@ void main() {
         S.backupSaved(3, 1, 0),
         'Đã lưu: 3 bài đã thích, 1 danh sách phát',
       );
-      expect(S.playlistBy('Ann', 12), 'Ann · 12 bài');
     });
 
     test('keep English plurals right', () {
