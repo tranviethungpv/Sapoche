@@ -60,6 +60,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a picture of yourself to show in Unison.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

@@ -116,4 +116,37 @@ class ListenTrackerTest {
         tracker.check(230_000)
         assertEquals(2, heard.size)
     }
+
+    private val skipped = mutableListOf<String>()
+    private val watching = ListenTracker(skipped = { id, _ -> skipped += id }) { id, durationMs -> heard += id to durationMs }
+
+    @Test
+    fun `a song left after a few seconds was skipped`() {
+        watching.begin("a", 200_000, now = 0)
+        watching.setPlaying(true, now = 0)
+        watching.begin("b", 200_000, now = 8_000)
+        assertEquals(listOf("a"), skipped)
+        assertEquals(emptyList(), heard)
+    }
+
+    @Test
+    fun `a song that was heard is not skipped, and nor is one left at once or never played`() {
+        watching.begin("a", 200_000, now = 0)
+        watching.setPlaying(true, now = 0)
+        watching.begin("b", 200_000, now = 40_000) // heard: more than thirty seconds
+        watching.setPlaying(true, now = 40_000)
+        watching.begin("c", 200_000, now = 41_000) // a second is a glitch
+        watching.begin("d", 200_000, now = 100_000) // c was never playing
+        watching.begin(null, 0, now = 101_000) // d was never playing either
+        assertEquals(emptyList(), skipped)
+    }
+
+    @Test
+    fun `pauses do not make a song longer when it is left`() {
+        watching.begin("a", 200_000, now = 0)
+        watching.setPlaying(true, now = 0)
+        watching.setPlaying(false, now = 2_000)
+        watching.begin("b", 200_000, now = 600_000)
+        assertEquals(emptyList(), skipped, "two seconds of playing is a glitch, however long it sat paused")
+    }
 }

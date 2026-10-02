@@ -1,0 +1,7 @@
+Gợi ý tốt hơn, chọn thiết bị phát, tên và ảnh của bạn
+- Gợi ý học từ những gì bạn nghe: bài bạn bỏ qua làm giảm điểm nghệ sĩ, bài nghe hết và bài đã thích làm tăng điểm, nghe càng lâu thì càng nhẹ đi.
+- Trang chủ có thêm "Thử nghe cái mới" (nghệ sĩ bạn chưa nghe) và một mix theo giờ trong ngày khi bạn đã có thói quen vào giờ đó.
+- Nhấn giữ một bài, hoặc dùng menu của bài, rồi chọn "Không quan tâm" để không gợi ý bài hay nghệ sĩ đó nữa. Cài đặt > Gợi ý liệt kê chúng để bạn gọi lại.
+- Trình phát cho biết âm thanh đang đi đâu (điện thoại, tai nghe, loa) và chạm vào để mở danh sách thiết bị phát.
+- Cài đặt > Giao diện là danh sách như Ngôn ngữ. Mini player thấp hơn một chút và tiêu đề dài chạy chữ.
+- Đổi tên và chọn ảnh của bạn ngay trong Cài đặt, dù đang trong phòng hay không.

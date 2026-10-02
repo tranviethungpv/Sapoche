@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:unison/data/backend.dart';
 import 'package:unison/data/models.dart';
 import 'package:unison/data/music_models.dart';
+import 'package:unison/data/song_key.dart';
 
 /// In-memory [Backend] that records calls and lets a test push state.
 class FakeBackend implements Backend {
@@ -88,7 +89,10 @@ class FakeBackend implements Backend {
   Future<void> setRepeat(Repeat mode) => _record('repeat ${mode.name}');
 
   @override
-  Future<void> rename(String name) => _record('rename $name');
+  Future<void> rename(String name) async {
+    await _record('rename $name');
+    profileValue = Profile(name: name);
+  }
 
   @override
   Future<void> share(String text) => _record('share $text');
@@ -265,6 +269,52 @@ class FakeBackend implements Backend {
     await _record('refreshSuggestions');
     forYouSongs = [...refreshedSongs];
     return [...forYouSongs];
+  }
+
+  List<Track> discoverSongs = [];
+  ContextMix contextMixResult = const ContextMix();
+  List<BlockedItem> blockedItems = [];
+
+  @override
+  Future<List<Track>> discover() async {
+    await _record('discover');
+    return [...discoverSongs];
+  }
+
+  @override
+  Future<ContextMix> contextMix() async {
+    await _record('contextMix');
+    return contextMixResult;
+  }
+
+  @override
+  Future<void> block(Track track, {bool artistOnly = false}) async {
+    await _record(
+      artistOnly ? 'block artist ${track.artist}' : 'block ${track.videoId}',
+    );
+    blockedItems = [
+      BlockedItem(
+        kind: artistOnly ? 'artist' : 'song',
+        key: artistOnly ? mainArtist(track.artist) : track.videoId,
+        label: artistOnly ? displayArtist(track.artist) : track.title,
+      ),
+      ...blockedItems,
+    ];
+  }
+
+  @override
+  Future<void> unblock(BlockedItem item) async {
+    await _record('unblock ${item.kind} ${item.key}');
+    blockedItems = [
+      for (final b in blockedItems)
+        if (b.kind != item.kind || b.key != item.key) b,
+    ];
+  }
+
+  @override
+  Future<List<BlockedItem>> blocked() async {
+    await _record('blocked');
+    return [...blockedItems];
   }
 
   @override

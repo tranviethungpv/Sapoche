@@ -23,7 +23,7 @@ class ListenHistory(
 ) : Player.Listener {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val tracker = ListenTracker { id, durationMs -> record(id, durationMs) }
+    private val tracker = ListenTracker(skipped = ::skip) { id, durationMs -> record(id, durationMs) }
 
     /** The song being followed; kept whole so its details are not read from a player that has moved on. */
     private var item: MediaItem? = null
@@ -61,15 +61,32 @@ class ListenHistory(
         tracker.msUntilHeard(now())?.let { handler.postDelayed(due, it) }
     }
 
-    private fun record(id: String, durationMs: Long) {
-        val meta = item?.takeIf { it.mediaId == id }?.mediaMetadata ?: return
-        val track = TrackRef(
+    private fun trackOf(id: String, durationMs: Long): TrackRef? {
+        val meta = item?.takeIf { it.mediaId == id }?.mediaMetadata ?: return null
+        return TrackRef(
             videoId = id,
             title = meta.title?.toString().orEmpty(),
             artist = meta.artist?.toString().orEmpty(),
             thumb = meta.artworkUri?.toString(),
             durMs = durationMs,
         )
+    }
+
+    /** The song was left after a few seconds: the suggestions learn not to offer more of it. */
+    private fun skip(id: String, durationMs: Long) {
+        val track = trackOf(id, durationMs) ?: return
+        log("skipped '${track.title}'")
+        scope.launch {
+            try {
+                store.recordSkip(track)
+            } catch (e: Exception) {
+                log("could not write the skip: ${e.message}")
+            }
+        }
+    }
+
+    private fun record(id: String, durationMs: Long) {
+        val track = trackOf(id, durationMs) ?: return
         log("heard '${track.title}'")
         scope.launch {
             try {

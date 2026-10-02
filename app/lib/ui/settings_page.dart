@@ -15,6 +15,7 @@ import '../strings.dart';
 import '../theme/theme.dart';
 import 'scope.dart';
 import 'setup_dialog.dart';
+import 'profile_sheet.dart';
 import 'widgets/avatars.dart';
 import 'widgets/text_dialog.dart';
 import 'widgets/wash.dart';
@@ -86,6 +87,13 @@ class SettingsPage extends StatelessWidget {
                 icon: Icons.play_circle_outline_rounded,
                 label: S.playback,
                 onTap: () => _open(context, () => S.playback, _playback),
+              ),
+              _NavRow(
+                key: const ValueKey('settings-suggestions'),
+                icon: Icons.auto_awesome_outlined,
+                label: S.suggestionsTitle,
+                onTap: () =>
+                    _open(context, () => S.suggestionsTitle, _suggestions),
               ),
               ListenableBuilder(
                 listenable: model.room,
@@ -238,6 +246,52 @@ class SettingsPage extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ],
+    ),
+  ];
+
+  /// What was blocked from the suggestions, to be let back one by one.
+  static List<Widget> _suggestions(BuildContext context, AppModel model) => [
+    _Group(
+      title: S.blockedHeading,
+      footer: S.blockedHelp,
+      children: [
+        ListenableBuilder(
+          listenable: model.library,
+          builder: (context, _) {
+            final blocked = model.library.blocked;
+            if (blocked.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  S.blockedNone,
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: context.palette.textSecondary),
+                ),
+              );
+            }
+            return Column(
+              children: [
+                for (final item in blocked)
+                  _Row(
+                    key: ValueKey('blocked-${item.kind}-${item.key}'),
+                    label: item.label,
+                    leading: Icon(
+                      item.isArtist
+                          ? Icons.person_off_outlined
+                          : Icons.music_off_outlined,
+                      color: context.palette.primary,
+                    ),
+                    trailing: Icon(
+                      Icons.close_rounded,
+                      color: context.palette.textTertiary,
+                    ),
+                    onTap: () => model.library.unblock(item),
+                  ),
+              ],
+            );
+          },
         ),
       ],
     ),
@@ -969,35 +1023,47 @@ class _ProfileCard extends StatelessWidget {
         final name = snapshot.me?.name ?? room.profile.name ?? '';
         return _Group(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Avatar(name: name, size: 52),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name.isEmpty ? S.appName : name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.titleLarge,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          snapshot.inRoom
-                              ? '${S.room} ${snapshot.room} · ${S.listening(snapshot.members.length)}'
-                              : S.noRoom,
-                          style: theme.bodyMedium?.copyWith(
-                            color: p.textSecondary,
-                          ),
-                        ),
-                      ],
+            InkWell(
+              key: const ValueKey('settings-profile'),
+              onTap: () => showProfileSheet(context),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    ListenableBuilder(
+                      listenable: AppScope.of(context).settings,
+                      builder: (context, _) => Avatar(
+                        name: name,
+                        size: 52,
+                        image: AppScope.of(context).settings.avatar,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name.isEmpty ? S.appName : name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.titleLarge,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            snapshot.inRoom
+                                ? '${S.room} ${snapshot.room} · ${S.listening(snapshot.members.length)}'
+                                : S.noRoom,
+                            style: theme.bodyMedium?.copyWith(
+                              color: p.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.edit_outlined, size: 18, color: p.textTertiary),
+                  ],
+                ),
               ),
             ),
           ],

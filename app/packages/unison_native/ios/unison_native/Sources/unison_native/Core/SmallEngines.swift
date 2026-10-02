@@ -22,11 +22,11 @@ enum Suggestions {
     }
 
     /// One list from several [lists], taking a song from each in turn so no seed crowds out the others. Songs in
-    /// [exclude], repeats and non-songs are dropped. At most [limit] come back.
-    static func mix(_ lists: [[TrackRef]], exclude: Set<String>, limit: Int) -> [TrackRef] {
+    /// [exclude], repeats, non-songs and what [allow] refuses are dropped. At most [limit] come back.
+    static func mix(_ lists: [[TrackRef]], exclude: Set<String>, limit: Int, allow: (TrackRef) -> Bool = { _ in true }) -> [TrackRef] {
         var seen = exclude
         var result: [TrackRef] = []
-        var queues = lists.map { list in list.filter(isSong)[...] }
+        var queues = lists.map { list in list.filter { isSong($0) && allow($0) }[...] }
         while result.count < limit && queues.contains(where: { !$0.isEmpty }) {
             for at in queues.indices {
                 while let track = queues[at].popFirst() {
@@ -39,31 +39,115 @@ enum Suggestions {
         }
         return result
     }
+
+    /// At most this many songs of one artist in a list of suggestions.
+    static let maxPerArtist = 2
+
+    /// Of every ten songs, these come from artists the person does not know yet (the rest from ones they do).
+    private static let newArtistSlots: Set<Int> = [2, 5, 8]
+
+    /// What the person should be offered, or nothing from artists they asked not to hear or left again and again.
+    static func welcome(_ track: TrackRef, taste: Taste, block: Blocklist) -> Bool {
+        isSong(track) && block.allows(track) && !taste.dislikes(track.artist)
+    }
+
+    /// The suggestions of the seeds ([lists], best loved seed first) as one list: songs by artists the person knows, with
+    /// a few by artists they do not know in between, so the list is mostly what they like and a little of what they
+    /// might. Songs in [exclude] and what is not welcome are left out, and no artist comes more than [maxPerArtist]
+    /// times. At most [limit] come back.
+    static func compose(_ lists: [[TrackRef]], taste: Taste, block: Blocklist, exclude: Set<String>, limit: Int) -> [TrackRef] {
+        let wanted = lists.map { list in list.filter { welcome($0, taste: taste, block: block) } }
+        var known = turns(wanted.map { list in list.filter { taste.knows($0.artist) } })[...]
+        var fresh = turns(wanted.map { list in list.filter { !taste.knows($0.artist) } })[...]
+        var seen = exclude
+        var perArtist: [String: Int] = [:]
+        func take(_ queue: inout ArraySlice<TrackRef>) -> TrackRef? {
+            while let track = queue.popFirst() {
+                let artist = Taste.artistKey(track.artist)
+                if seen.contains(track.videoId) || (perArtist[artist] ?? 0) >= Suggestions.maxPerArtist { continue }
+                seen.insert(track.videoId)
+                perArtist[artist, default: 0] += 1
+                return track
+            }
+            return nil
+        }
+        var result: [TrackRef] = []
+        while result.count < limit {
+            let wantFresh = Suggestions.newArtistSlots.contains(result.count % 10)
+            let next: TrackRef?
+            if wantFresh {
+                next = take(&fresh) ?? take(&known)
+            } else {
+                next = take(&known) ?? take(&fresh)
+            }
+            guard let track = next else { break }
+            result.append(track)
+        }
+        return result
+    }
+
+    /// Only the songs by artists the person does not know yet, one of each artist: something new to try.
+    static func discover(_ lists: [[TrackRef]], taste: Taste, block: Blocklist, exclude: Set<String>, limit: Int) -> [TrackRef] {
+        let fresh = lists.map { list in list.filter { welcome($0, taste: taste, block: block) && !taste.knows($0.artist) } }
+        var seen = exclude
+        var artists = Set<String>()
+        var result: [TrackRef] = []
+        for track in turns(fresh) {
+            if result.count >= limit { break }
+            if seen.insert(track.videoId).inserted && artists.insert(Taste.artistKey(track.artist)).inserted { result.append(track) }
+        }
+        return result
+    }
+
+    /// The lists read in turns, one song from each at a time.
+    private static func turns(_ lists: [[TrackRef]]) -> [TrackRef] {
+        var queues = lists.map { ArraySlice($0) }
+        var result: [TrackRef] = []
+        while queues.contains(where: { !$0.isEmpty }) {
+            for at in queues.indices {
+                if let track = queues[at].popFirst() { result.append(track) }
+            }
+        }
+        return result
+    }
 }
 
 /// Decides when a song counts as heard: after [heardMs] of playing it, or half of it when it is shorter than a
 /// minute. Only time spent playing counts, so pauses and buffering do not, and seeking neither adds nor skips anything.
+///
+/// A song that is left before it counts, after a few seconds, is reported as skipped.
 ///
 /// It keeps no clock and no timer. The caller passes the time in and asks [msUntilHeard] how long to wait before
 /// calling [check], so it works the same for the personal queue, a room, and a test.
 final class ListenTracker {
     static let heardMs: Int64 = 30_000
 
+    /// A song left after at least this long, and before it counted, was skipped; less is a change of mind or a glitch.
+    static let skippedMs: Int64 = 3_000
+
     /// Called once per song, with its id and the length last reported (0 if unknown).
     private let heard: (_ id: String, _ durationMs: Int64) -> Void
+
+    /// Called once for a song left after a few seconds, before it counted, with its id and length: the person did not want it.
+    private let skipped: (_ id: String, _ durationMs: Int64) -> Void
     private var id: String?
     private var durationMs: Int64 = 0
     private var playedMs: Int64 = 0
     private var playingSince: Int64?
     private var counted = false
 
-    init(heard: @escaping (_ id: String, _ durationMs: Int64) -> Void) {
+    init(heard: @escaping (_ id: String, _ durationMs: Int64) -> Void,
+         skipped: @escaping (_ id: String, _ durationMs: Int64) -> Void = { _, _ in }) {
         self.heard = heard
+        self.skipped = skipped
     }
 
     /// A different song is now loaded, or with nil nothing is.
     func begin(songId: String?, durationMs: Int64, now: Int64) {
         check(now)
+        if let leaving = id, !counted, playedMs + (playingSince.map { now - $0 } ?? 0) >= Self.skippedMs {
+            skipped(leaving, self.durationMs)
+        }
         id = songId
         self.durationMs = max(durationMs, 0)
         playedMs = 0

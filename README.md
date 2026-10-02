@@ -10,6 +10,7 @@ An Android and iPhone app for a small group of friends. Every phone fetches the 
 
 - Plays music like an ordinary player: search, a personal queue, background playback, lock-screen controls.
 - Rooms: create a room or join one with a code; everybody hears the same song at the same moment, and anyone can add songs and steer playback (the room owner can limit guests to adding songs).
+- Suggestions that learn from what you hear, like and skip, on the phone only: a home page with mixes for you, for the time of day and with something new, and a way to say "not interested".
 - Over-the-air updates for the app, English and Vietnamese interface, battery and heat saving modes.
 
 ## Layout

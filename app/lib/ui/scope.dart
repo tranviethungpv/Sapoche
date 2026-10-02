@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../data/app_settings.dart';
 import '../data/library_controller.dart';
 import '../data/music_controller.dart';
+import '../data/photo_picker.dart';
 import '../data/recent_rooms.dart';
 import '../data/recent_searches.dart';
 import '../data/room_controller.dart';
@@ -18,6 +19,7 @@ class AppModel {
     required this.searches,
     required this.music,
     required this.update,
+    this.photoPicker = pickPhoto,
   });
 
   final RoomController room;
@@ -37,6 +39,9 @@ class AppModel {
 
   /// Newer versions of this app.
   final UpdateController update;
+
+  /// Where the person's own picture comes from.
+  final PhotoPicker photoPicker;
 }
 
 class AppScope extends InheritedWidget {

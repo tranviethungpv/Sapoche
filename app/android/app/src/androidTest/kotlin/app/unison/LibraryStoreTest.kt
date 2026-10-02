@@ -264,42 +264,73 @@ class LibraryStoreTest {
 
     // ------------------------------------------------------------------ suggestions
 
-    private val day = 24L * 60 * 60 * 1000
-
     @Test
-    fun seedsAreTheLatestLikesThenTheMostHeardThenTheLatestHeard() = runTest {
-        val now = 100 * day
-        store.setLiked(song("like1"), true, at = now - 5 * day)
-        store.setLiked(song("like2"), true, at = now - 4 * day)
-        store.setLiked(song("like3"), true, at = now - 3 * day)
-        repeat(3) { store.recordListen(song("fav"), at = now - day + it) }
-        store.recordListen(song("once"), at = now - 100)
-        assertEquals(listOf("like3", "like2", "fav"), store.suggestionSeeds(now))
+    fun everyListenComesBackWithItsOwnTime() = runTest {
+        store.recordListen(song("a"), at = 10)
+        store.recordListen(song("b"), at = 30)
+        store.recordListen(song("a"), at = 20)
+        assertEquals(listOf("b" to 30L, "a" to 20L, "a" to 10L), store.listens().map { it.track.videoId to it.at })
     }
 
     @Test
-    fun withoutLikesTheSeedsComeFromWhatWasHeard() = runTest {
-        val now = 100 * day
-        store.recordListen(song("a"), at = now - 3 * day)
-        store.recordListen(song("b"), at = now - 2 * day)
-        store.recordListen(song("b"), at = now - 2 * day + 1)
-        store.recordListen(song("c"), at = now - day)
-        store.recordListen(song("d"), at = now - 1000)
-        assertEquals(listOf("b", "d", "c"), store.suggestionSeeds(now))
+    fun songsLeftAfterAFewSecondsAreKeptAndForgottenWithTheHistory() = runTest {
+        store.recordSkip(song("a"), at = 1)
+        store.recordSkip(song("b"), at = 2)
+        assertEquals(listOf("b", "a"), store.skipped().map { it.track.videoId })
+        // A skipped song is a song something points to, so its details are kept
+        assertEquals("Title b", store.skipped().first().track.title)
+        store.clearHistory()
+        assertEquals(emptyList<String>(), store.skipped().map { it.track.videoId })
     }
 
     @Test
-    fun songsHeardLongAgoAreNotTheMostHeard() = runTest {
-        val now = 100 * day
-        repeat(5) { store.recordListen(song("old"), at = now - 40 * day + it) }
-        store.recordListen(song("new"), at = now - day)
-        // "old" was heard most, but not in the last two weeks: it only comes in as one of the latest
-        assertEquals(listOf("new", "old"), store.suggestionSeeds(now))
+    fun onlyTheLastSkipsAreKept() = runTest {
+        repeat(LibraryStore.SKIPS_KEEP + 20) { store.recordSkip(song("s"), at = it.toLong()) }
+        assertEquals(LibraryStore.SKIPS_KEEP, store.skipped().size)
+        assertEquals((LibraryStore.SKIPS_KEEP + 19).toLong(), store.skipped().first().at)
     }
 
     @Test
-    fun noLikesAndNoHistoryMeansNoSeeds() = runTest {
-        assertEquals(emptyList<String>(), store.suggestionSeeds())
+    fun blockedSongsAndArtistsAreListedAndCanBeLetBack() = runTest {
+        store.block("song", "x", "Song X", at = 1)
+        store.block("artist", "some artist", "Some Artist", at = 2)
+        store.block("song", "x", "Song X renamed", at = 3)
+        assertEquals(
+            listOf(LibraryStore.Blocked("song", "x", "Song X renamed"), LibraryStore.Blocked("artist", "some artist", "Some Artist")),
+            store.blocked(),
+        )
+        store.unblock("song", "x")
+        assertEquals(listOf("artist"), store.blocked().map { it.kind })
+    }
+
+    @Test
+    fun aDatabaseFromVersionFourGainsSkipsAndBlocked() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = "upgrade-test4.db"
+        context.deleteDatabase(file)
+        context.openOrCreateDatabase(file, android.content.Context.MODE_PRIVATE, null).use { db ->
+            db.execSQL("CREATE TABLE tracks(video_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, thumb TEXT, dur_ms INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE likes(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), liked_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), played_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE playlists(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE playlist_items(playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, video_id TEXT NOT NULL REFERENCES tracks(video_id), position INTEGER NOT NULL, PRIMARY KEY(playlist_id, video_id))")
+            db.execSQL("CREATE TABLE suggestions(seed_video_id TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE downloads(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), state TEXT NOT NULL, bytes INTEGER NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL)")
+            db.execSQL("INSERT INTO tracks VALUES('old', 'Old song', 'Old artist', NULL, 1000)")
+            db.execSQL("INSERT INTO history(video_id, played_at) VALUES('old', 5)")
+            db.version = 4
+        }
+        val upgraded = LibraryStore(context, file)
+        try {
+            assertEquals(listOf("old"), upgraded.listens().map { it.track.videoId })
+            upgraded.recordSkip(song("new"), at = 7)
+            upgraded.block("artist", "x", "X")
+            assertEquals(listOf("new"), upgraded.skipped().map { it.track.videoId })
+            assertEquals(1, upgraded.blocked().size)
+        } finally {
+            upgraded.close()
+            context.deleteDatabase(file)
+        }
     }
 
     @Test

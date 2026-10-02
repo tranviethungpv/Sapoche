@@ -11,6 +11,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import app.unison.core.TrackInfo
 import app.unison.core.YoutubeLinks
+import app.unison.sync.Taste
 import app.unison.sync.TrackRef
 import com.google.common.util.concurrent.ListenableFuture
 import io.flutter.embedding.android.FlutterActivity
@@ -348,6 +349,26 @@ class UnisonBridge(
             "seedLists" -> return UnisonApp.suggestions.seedLists().map { (seed, tracks) ->
                 mapOf("seed" to seed, "tracks" to tracks.map { it.toMap() })
             }
+            "discover" -> return UnisonApp.suggestions.discover().map { it.toMap() }
+            "contextMix" -> {
+                val (bucket, tracks) = UnisonApp.suggestions.contextMix()
+                return mapOf("bucket" to bucket, "tracks" to tracks.map { it.toMap() })
+            }
+            "block" -> {
+                // A song is blocked by its video id, an artist by the name of the first artist credited
+                val artist = call.argument<String>("artist").orEmpty()
+                if (call.argument<Boolean>("artistOnly") == true) {
+                    UnisonApp.library.block(SuggestionFeed.ARTIST, Taste.artistKey(artist), Taste.artistLabel(artist))
+                } else {
+                    UnisonApp.library.block(SuggestionFeed.SONG, call.argument<String>("videoId").orEmpty(), call.argument<String>("title").orEmpty())
+                }
+                return null
+            }
+            "unblock" -> {
+                UnisonApp.library.unblock(call.argument<String>("kind").orEmpty(), call.argument<String>("key").orEmpty())
+                return null
+            }
+            "blocked" -> return UnisonApp.library.blocked().map { mapOf("kind" to it.kind, "key" to it.key, "label" to it.label) }
             "musicTrending" -> return MusicJson.shelves(UnisonApp.musicFeed.trending(UnisonApp.language.value))
             "musicSearch" -> return UnisonApp.musicFeed.search(
                 call.argument<String>("query").orEmpty(),

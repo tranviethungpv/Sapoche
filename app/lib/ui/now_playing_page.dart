@@ -18,6 +18,7 @@ import 'scope.dart';
 import 'sleep_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
+import 'widgets/not_interested.dart';
 import 'widgets/like_button.dart';
 import 'widgets/marquee_text.dart';
 import 'widgets/download_actions.dart';
@@ -636,6 +637,7 @@ class _MoreButton extends StatelessWidget {
         'artist' => _openArtist(context),
         'playlist' => showAddToPlaylist(context, [current]),
         'download' => startDownload(context, [current]),
+        'blocked' => showNotInterested(context, current),
         _ => library.removeDownload(current.videoId),
       },
       itemBuilder: (context) => [
@@ -655,6 +657,7 @@ class _MoreButton extends StatelessWidget {
           ],
           _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
         },
+        PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
       ],
     );
   }

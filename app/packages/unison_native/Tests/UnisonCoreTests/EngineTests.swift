@@ -20,6 +20,44 @@ final class ListenTrackerTests: XCTestCase {
         XCTAssertEqual(heard.map(\.1), [200_000])
     }
 
+    private func watching(_ skipped: @escaping (String) -> Void) -> ListenTracker {
+        ListenTracker(heard: { [unowned self] id, duration in self.heard.append((id, duration)) },
+                      skipped: { id, _ in skipped(id) })
+    }
+
+    func testASongLeftAfterAFewSecondsWasSkipped() {
+        var skipped: [String] = []
+        let watcher = watching { skipped.append($0) }
+        watcher.begin(songId: "a", durationMs: 200_000, now: 0)
+        watcher.setPlaying(true, now: 0)
+        watcher.begin(songId: "b", durationMs: 200_000, now: 8_000)
+        XCTAssertEqual(skipped, ["a"])
+        XCTAssertTrue(heard.isEmpty)
+    }
+
+    func testASongThatWasHeardIsNotSkippedAndNorIsOneLeftAtOnceOrNeverPlayed() {
+        var skipped: [String] = []
+        let watcher = watching { skipped.append($0) }
+        watcher.begin(songId: "a", durationMs: 200_000, now: 0)
+        watcher.setPlaying(true, now: 0)
+        watcher.begin(songId: "b", durationMs: 200_000, now: 40_000) // heard: more than thirty seconds
+        watcher.setPlaying(true, now: 40_000)
+        watcher.begin(songId: "c", durationMs: 200_000, now: 41_000) // a second is a glitch
+        watcher.begin(songId: "d", durationMs: 200_000, now: 100_000) // c was never playing
+        watcher.begin(songId: nil, durationMs: 0, now: 101_000) // d was never playing either
+        XCTAssertTrue(skipped.isEmpty)
+    }
+
+    func testPausesDoNotMakeASongLongerWhenItIsLeft() {
+        var skipped: [String] = []
+        let watcher = watching { skipped.append($0) }
+        watcher.begin(songId: "a", durationMs: 200_000, now: 0)
+        watcher.setPlaying(true, now: 0)
+        watcher.setPlaying(false, now: 2_000)
+        watcher.begin(songId: "b", durationMs: 200_000, now: 600_000)
+        XCTAssertTrue(skipped.isEmpty, "two seconds of playing is a glitch, however long it sat paused")
+    }
+
     func testItCountsOnceHoweverOftenItIsChecked() {
         tracker.begin(songId: "a", durationMs: 200_000, now: 0)
         tracker.setPlaying(true, now: 0)
@@ -544,6 +582,58 @@ final class SmallPartsTests: XCTestCase {
         let second = [track("b1", 200), track("a1", 200), track("b2", 30), track("b3", 200)]
         let mixed = Suggestions.mix([first, second], exclude: ["a2"], limit: 5)
         XCTAssertEqual(mixed.map(\.videoId), ["a1", "b1", "a3", "b3"])
+    }
+
+    private func by(_ id: String, _ artist: String) -> TrackRef {
+        TrackRef(videoId: id, title: "Title \(id)", artist: artist, thumb: nil, durMs: 200_000)
+    }
+
+    private func tasteOf(_ known: [String]) -> Taste {
+        let now: Int64 = 1_000 * 24 * 60 * 60 * 1000
+        let heard = known.enumerated().map { Stamped(track: by("k\($0.offset)", $0.element), at: now - 1000) }
+        return Taste(heard: heard, liked: [], skipped: [], now: now)
+    }
+
+    func testWhatTheMixIsToldToRefuseStaysOut() {
+        let lists = [[by("a", "X"), by("b", "X"), by("c", "X")]]
+        let mixed = Suggestions.mix(lists, exclude: [], limit: 10) { $0.videoId != "b" }
+        XCTAssertEqual(mixed.map(\.videoId), ["a", "c"])
+    }
+
+    func testMostlyArtistsThePersonKnowsWithNewOnesInBetween() {
+        let known = (1...9).map { by("k\($0)", "Known \($0)") }
+        let fresh = (1...9).map { by("f\($0)", "Fresh \($0)") }
+        let taste = tasteOf((1...9).map { "Known \($0)" })
+        let mixed = Suggestions.compose([known + fresh], taste: taste, block: Blocklist(), exclude: [], limit: 10)
+        // Three of ten come from artists the person does not know, at the third, sixth and ninth place
+        XCTAssertEqual(mixed.map(\.videoId), ["k1", "k2", "f1", "k3", "k4", "f2", "k5", "k6", "f3", "k7"])
+    }
+
+    func testWhenOneKindRunsOutTheOtherFillsTheList() {
+        let taste = tasteOf(["Known"])
+        let onlyFresh = Suggestions.compose([[by("f1", "A"), by("f2", "B"), by("f3", "C")]], taste: taste, block: Blocklist(), exclude: [], limit: 10)
+        XCTAssertEqual(onlyFresh.map(\.videoId), ["f1", "f2", "f3"])
+        let onlyKnown = Suggestions.compose([[by("k1", "Known"), by("k2", "Known"), by("k3", "Known")]], taste: taste, block: Blocklist(), exclude: [], limit: 10)
+        XCTAssertEqual(onlyKnown.map(\.videoId), ["k1", "k2"], "and no artist comes more than twice")
+    }
+
+    func testBlockedAndDislikedArtistsAreNeverOffered() {
+        let now: Int64 = 1_000 * 24 * 60 * 60 * 1000
+        let skipped = [Stamped(track: by("s1", "Disliked"), at: now - 1000), Stamped(track: by("s2", "Disliked"), at: now - 2000)]
+        let taste = Taste(heard: [], liked: [], skipped: skipped, now: now)
+        let lists = [[by("a", "Disliked"), by("b", "Blocked"), by("c", "Fine"), by("d", "Fine 2")]]
+        let mixed = Suggestions.compose(lists, taste: taste, block: Blocklist(artists: ["blocked"]), exclude: ["d"], limit: 10)
+        XCTAssertEqual(mixed.map(\.videoId), ["c"])
+    }
+
+    func testDiscoverOffersOneSongOfEachArtistThatIsNew() {
+        let taste = tasteOf(["Known"])
+        let lists = [
+            [by("k1", "Known"), by("n1", "New"), by("n2", "New"), by("m1", "More")],
+            [by("o1", "Other"), by("n3", "New")],
+        ]
+        XCTAssertEqual(Suggestions.discover(lists, taste: taste, block: Blocklist(), exclude: [], limit: 10).map(\.videoId), ["n1", "o1", "m1"])
+        XCTAssertEqual(Suggestions.discover(lists, taste: taste, block: Blocklist(), exclude: [], limit: 1).map(\.videoId), ["n1"])
     }
 
     func testVideoStreamsAreChosenByHeightAndOnlyH264Plays() {

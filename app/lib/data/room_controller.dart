@@ -238,7 +238,16 @@ class RoomController extends ChangeNotifier {
   Future<void> kick(Member member) => _run(() => _backend.kick(member.id));
 
   /// Changes the name the others see; playback carries on.
-  Future<void> rename(String name) => _run(() => _backend.rename(name.trim()));
+  Future<void> rename(String name) async {
+    await _run(() => _backend.rename(name.trim()));
+    // Outside a room there is no state to carry the name back: read it where it is kept
+    try {
+      _profile = await _backend.profile();
+      notifyListeners();
+    } on Object {
+      // The name shown stays as it was
+    }
+  }
 
   /// Sends the room code (and a link that opens the app on it) through the share sheet.
   Future<void> shareInvite() {

@@ -7,6 +7,7 @@ import 'package:unison/data/models.dart';
 import 'package:unison/data/app_settings.dart';
 import 'package:unison/data/library_controller.dart';
 import 'package:unison/data/music_controller.dart';
+import 'package:unison/data/photo_picker.dart';
 import 'package:unison/data/recent_rooms.dart';
 import 'package:unison/data/recent_searches.dart';
 import 'package:unison/data/room_controller.dart';
@@ -26,6 +27,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
 
   /// What the native side knows about this phone; by default a name was already used.
   Profile? profile,
+
+  /// Stands in for the system's photo picker.
+  PhotoPicker? photoPicker,
 }) async {
   // A tall phone-shaped window; the default 800x600 one is not what the app runs on. Test text is
   // drawn with the wide Ahem font, so it is 540 dp wide instead of the usual 360 to avoid false overflows.
@@ -56,6 +60,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
         searches: searches,
         music: MusicController(backend),
         update: UpdateController(backend),
+        photoPicker: photoPicker ?? () async => null,
       ),
     ),
   );

@@ -13,6 +13,13 @@ actor LibraryStore {
         var plays = 0
     }
 
+    /// A song or an artist the person asked not to be offered: [kind] is `song` (the key is its video id) or `artist`.
+    struct Blocked: Equatable {
+        let kind: String
+        let key: String
+        let label: String
+    }
+
     /// A song to keep: [state] is queued, waiting (for Wi-Fi and a charger), done or failed.
     struct Download: Equatable {
         let track: TrackRef
@@ -61,14 +68,13 @@ actor LibraryStore {
     static let historyKeep = 2000
     static let maxPlaylist = 500
     static let maxName = 60
-    static let seeds = 3
+    static let skipsKeep = 300
     static let queued = "queued"
     static let waiting = "waiting"
     static let done = "done"
     static let failed = "failed"
     static let maxTries = 3
-    private static let seedWindowMs: Int64 = 14 * 24 * 60 * 60 * 1000
-    private static let version = 4
+    private static let version = 5
 
     private let db: SQLite
     private let onChange: @Sendable () -> Void
@@ -107,6 +113,11 @@ actor LibraryStore {
             if found < 4 {
                 // Songs to keep on this phone; the files are in the downloads folder, this says which and how far along
                 try db.run("CREATE TABLE downloads(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), state TEXT NOT NULL, bytes INTEGER NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL)")
+            }
+            if found < 5 {
+                // What tells the suggestions what not to offer: songs left after a few seconds, and what was blocked on purpose
+                try db.run("CREATE TABLE skips(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), skipped_at INTEGER NOT NULL)")
+                try db.run("CREATE TABLE blocked(kind TEXT NOT NULL, key TEXT NOT NULL, label TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(kind, key))")
             }
         }
         db.version = version
@@ -160,9 +171,37 @@ actor LibraryStore {
         onChange()
     }
 
+    /// Every listen, the latest first, each with its own time: what the taste is worked out from.
+    func listens(limit: Int = LibraryStore.historyKeep) throws -> [Entry] {
+        try entries(db.rows("""
+            SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 1
+            FROM history h JOIN tracks t ON t.video_id = h.video_id ORDER BY h.played_at DESC, h.id DESC LIMIT ?
+            """, [.int(Int64(limit))]))
+    }
+
+    /// [track] was left after a few seconds. Only the last [skipsKeep] are kept. It is not announced: nothing shows it.
+    func recordSkip(_ track: TrackRef, at: Int64 = LibraryStore.now()) throws {
+        try db.transaction {
+            try upsertTrack(track)
+            try db.run("INSERT INTO skips(video_id, skipped_at) VALUES(?, ?)", [.text(track.videoId), .int(at)])
+            try db.run("DELETE FROM skips WHERE id <= (SELECT id FROM skips ORDER BY id DESC LIMIT 1 OFFSET \(Self.skipsKeep))")
+            try dropUnusedTracks()
+        }
+    }
+
+    /// Songs left after a few seconds, the latest first, each time one entry.
+    func skipped() throws -> [Entry] {
+        try entries(db.rows("""
+            SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, s.skipped_at, 1
+            FROM skips s JOIN tracks t ON t.video_id = s.video_id ORDER BY s.skipped_at DESC, s.id DESC
+            """))
+    }
+
     func clearHistory() throws {
         try db.transaction {
             try db.run("DELETE FROM history")
+            // What was left is part of the listening a person asked to forget
+            try db.run("DELETE FROM skips")
             try dropUnusedTracks()
         }
         onChange()
@@ -342,21 +381,24 @@ actor LibraryStore {
 
     // ------------------------------------------------------------------ suggestions
 
-    /// The songs suggestions are built from, at most [seeds]: the two liked last, the one heard most in the last two
-    /// weeks, then whatever was heard last if that leaves room.
-    func suggestionSeeds(now: Int64 = LibraryStore.now()) throws -> [String] {
-        func ids(_ sql: String, _ values: [SQLValue] = []) throws -> [String] {
-            try db.rows(sql, values).compactMap { $0[0].text }
+    // ------------------------------------------------------------------ blocked
+
+    /// Block `song` (key: video id) or `artist` (key: [Taste.artistKey]); blocking again changes the label.
+    func block(kind: String, key: String, label: String, at: Int64 = LibraryStore.now()) throws {
+        try db.run("INSERT OR REPLACE INTO blocked(kind, key, label, at) VALUES(?, ?, ?, ?)", [.text(kind), .text(key), .text(label), .int(at)])
+        onChange()
+    }
+
+    func unblock(kind: String, key: String) throws {
+        try db.run("DELETE FROM blocked WHERE kind = ? AND key = ?", [.text(kind), .text(key)])
+        onChange()
+    }
+
+    /// What was blocked, the latest first.
+    func blocked() throws -> [Blocked] {
+        try db.rows("SELECT kind, key, label FROM blocked ORDER BY at DESC, key").map {
+            Blocked(kind: $0[0].text ?? "", key: $0[1].text ?? "", label: $0[2].text ?? "")
         }
-        var seeds: [String] = []
-        func add(_ more: [String]) { for id in more where !seeds.contains(id) { seeds.append(id) } }
-        add(try ids("SELECT video_id FROM likes ORDER BY liked_at DESC, video_id LIMIT 2"))
-        add(try ids("""
-            SELECT video_id FROM history WHERE played_at >= ? GROUP BY video_id
-            ORDER BY COUNT(*) DESC, MAX(played_at) DESC LIMIT 1
-            """, [.int(now - Self.seedWindowMs)]))
-        add(try ids("SELECT video_id FROM history GROUP BY video_id ORDER BY MAX(played_at) DESC LIMIT \(Self.seeds)"))
-        return Array(seeds.prefix(Self.seeds))
     }
 
     /// Ids of the songs heard since [since].
@@ -487,6 +529,7 @@ actor LibraryStore {
             AND video_id NOT IN (SELECT video_id FROM history)
             AND video_id NOT IN (SELECT video_id FROM playlist_items)
             AND video_id NOT IN (SELECT video_id FROM downloads)
+            AND video_id NOT IN (SELECT video_id FROM skips)
             """)
     }
 

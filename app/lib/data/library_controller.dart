@@ -25,6 +25,9 @@ class LibraryController extends ChangeNotifier {
   List<SavedPlaylist> _playlists = const [];
   List<Track> _forYou = const [];
   List<SeedList> _seedLists = const [];
+  List<Track> _discover = const [];
+  ContextMix _context = const ContextMix();
+  List<BlockedItem> _blocked = const [];
   List<DownloadEntry> _downloads = const [];
   Map<String, DownloadState> _downloadStates = const {};
 
@@ -51,6 +54,15 @@ class LibraryController extends ChangeNotifier {
 
   /// The songs kept beside each of the songs the suggestions are built from.
   List<SeedList> get seedLists => _seedLists;
+
+  /// Songs by artists the person does not know yet.
+  List<Track> get discover => _discover;
+
+  /// The mix for this time of day; without songs until enough was heard at this hour.
+  ContextMix get context => _context;
+
+  /// The songs and artists the person asked not to be offered, the latest first.
+  List<BlockedItem> get blocked => _blocked;
 
   /// The songs of a playlist that [openPlaylist] loaded.
   List<Track> playlistTracks(int id) => _items[id] ?? const [];
@@ -82,6 +94,9 @@ class LibraryController extends ChangeNotifier {
       final playlists = await _backend.playlists();
       final forYou = await _backend.forYou();
       final seedLists = await _backend.seedLists();
+      // Suggestions are extras: if they cannot be read, the library is still shown
+      final discover = await _backend.discover().catchError((_) => _discover);
+      final blocked = await _backend.blocked().catchError((_) => _blocked);
       final downloads = await _backend.downloads();
       final items = <int, List<Track>>{};
       for (final id in _items.keys.toList()) {
@@ -94,15 +109,40 @@ class LibraryController extends ChangeNotifier {
       _playlists = playlists;
       _forYou = forYou;
       _seedLists = seedLists;
+      _discover = discover;
+      _blocked = blocked;
       _downloads = downloads;
       _downloadStates = {for (final d in downloads) d.track.videoId: d.state};
       _items
         ..clear()
         ..addAll(items);
       notifyListeners();
+      unawaited(_refreshContext());
     } on Object {
       // Nothing to show is better than an error on every screen
     }
+  }
+
+  /// Reads the mix for this time of day, which may have to fetch a list: it must not hold the other lists back.
+  Future<void> _refreshContext() async {
+    try {
+      _context = await _backend.contextMix();
+      notifyListeners();
+    } on Object {
+      // The shelf stays as it was
+    }
+  }
+
+  /// Asks not to be offered [track], or with [artistOnly] its artist, any more.
+  Future<void> block(Track track, {bool artistOnly = false}) async {
+    await _run(() => _backend.block(track, artistOnly: artistOnly));
+    await refresh();
+  }
+
+  /// Lets a blocked song or artist be offered again.
+  Future<void> unblock(BlockedItem item) async {
+    await _run(() => _backend.unblock(item));
+    await refresh();
   }
 
   /// Likes the song, or takes the like back from every form of it. The heart changes at once; if the write
@@ -216,7 +256,9 @@ class LibraryController extends ChangeNotifier {
     try {
       _forYou = await _backend.refreshSuggestions();
       _seedLists = await _backend.seedLists();
+      _discover = await _backend.discover().catchError((_) => _discover);
       notifyListeners();
+      unawaited(_refreshContext());
       return true;
     } on Object {
       return false;

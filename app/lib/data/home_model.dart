@@ -30,6 +30,9 @@ class HomeShelves {
     this.mixes = const [],
     this.forgotten = const [],
     this.becauseOf = const [],
+    this.discover = const [],
+    this.context = const [],
+    this.contextBucket = '',
     this.topSeed,
   });
 
@@ -44,6 +47,13 @@ class HomeShelves {
   final List<Track> forgotten;
   final List<BecauseOf> becauseOf;
 
+  /// Songs by artists the person does not know yet.
+  final List<Track> discover;
+
+  /// What the person plays at this time of day and songs like it, with the part of the day it is for.
+  final List<Track> context;
+  final String contextBucket;
+
   /// The song the person plays most, which the rows that need a song to start from use.
   final Track? topSeed;
 
@@ -53,7 +63,9 @@ class HomeShelves {
       listenAgain.isEmpty &&
       mixes.isEmpty &&
       forgotten.isEmpty &&
-      becauseOf.isEmpty;
+      becauseOf.isEmpty &&
+      discover.isEmpty &&
+      context.isEmpty;
 }
 
 /// A play counts for less as it gets older: half as much after a month.
@@ -74,7 +86,23 @@ HomeShelves buildHome({
   required List<Track> forYou,
   required List<SeedList> seedLists,
   required DateTime now,
+  List<Track> discover = const [],
+  ContextMix context = const ContextMix(),
+  List<BlockedItem> blocked = const [],
 }) {
+  // What the person asked not to be offered shows nowhere, whatever was kept before they asked
+  final blockedSongs = {
+    for (final b in blocked)
+      if (!b.isArtist) b.key,
+  };
+  final blockedArtists = {
+    for (final b in blocked)
+      if (b.isArtist) b.key,
+  };
+  bool allowed(Track t) =>
+      !blockedSongs.contains(t.videoId) &&
+      !blockedArtists.contains(mainArtist(t.artist));
+
   // How much each song, and each artist, is loved
   final scores = <Track, double>{};
   for (final e in recent) {
@@ -83,7 +111,7 @@ HomeShelves buildHome({
   for (final t in liked) {
     scores[t] = (scores[t] ?? 0) + _likeWeight;
   }
-  final ranked = scores.keys.toList()
+  final ranked = scores.keys.where(allowed).toList()
     ..sort((a, b) => scores[b]!.compareTo(scores[a]!));
 
   final byArtist = <String, List<Track>>{};
@@ -143,20 +171,25 @@ HomeShelves buildHome({
   final because = <BecauseOf>[];
   for (final list in seedLists) {
     final seed = titled(list.seed);
-    if (seed == null) continue;
-    final tracks = uniqueSongs(list.tracks.where((t) => !isKnown(t)))
-        .take(15)
-        .toList();
+    if (seed == null || !allowed(seed)) continue;
+    final tracks = uniqueSongs(
+      list.tracks.where((t) => allowed(t) && !isKnown(t)),
+    ).take(15).toList();
     if (tracks.length >= 3) because.add(BecauseOf(seed: seed, tracks: tracks));
     if (because.length == 2) break;
   }
 
   return HomeShelves(
-    quickPicks: uniqueSongs(forYou).take(20).toList(),
+    quickPicks: uniqueSongs(forYou.where(allowed)).take(20).toList(),
     listenAgain: [for (final e in recent.take(12)) e.track],
     mixes: mixes,
-    forgotten: uniqueSongs(liked.where(forgottenSong)).take(12).toList(),
+    forgotten: uniqueSongs(liked.where((t) => allowed(t) && forgottenSong(t)))
+        .take(12)
+        .toList(),
     becauseOf: because,
+    discover: uniqueSongs(discover.where(allowed)).take(20).toList(),
+    context: uniqueSongs(context.tracks.where(allowed)).take(20).toList(),
+    contextBucket: context.bucket,
     topSeed: ranked.isEmpty ? null : ranked.first,
   );
 }

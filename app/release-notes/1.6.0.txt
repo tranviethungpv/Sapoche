@@ -1,0 +1,7 @@
+Better suggestions, output picker, your name and photo
+- Suggestions learn from what you hear: songs you skip count against an artist, songs you finish and like count for it, and older listening counts for less.
+- The home page gains "Try something new" (artists you have not heard yet) and a mix for the time of day once you have a habit at that hour.
+- Press and hold a song, or use its menu, and choose "Not interested" to stop a song or an artist from being suggested. Settings > Suggestions lists them so you can bring one back.
+- The player shows where the sound goes (this phone, headphones, a speaker) and a tap opens the list of outputs.
+- Settings > Appearance is a list like Language. The mini player is a little lower, and long titles scroll.
+- Change your name and choose a photo from Settings, in a room or not.

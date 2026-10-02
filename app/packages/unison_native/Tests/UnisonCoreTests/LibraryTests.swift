@@ -234,42 +234,44 @@ final class LibraryStoreTests: XCTestCase {
 
     // ------------------------------------------------------------------ suggestions
 
-    private let day: Int64 = 24 * 60 * 60 * 1000
-
-    func testSeedsAreTheLatestLikesThenTheMostHeardThenTheLatestHeard() async throws {
-        let now = 100 * day
-        try await store.setLiked(song("like1"), true, at: now - 5 * day)
-        try await store.setLiked(song("like2"), true, at: now - 4 * day)
-        try await store.setLiked(song("like3"), true, at: now - 3 * day)
-        for i in 0..<3 { try await store.recordListen(song("fav"), at: now - day + Int64(i)) }
-        try await store.recordListen(song("once"), at: now - 100)
-        let seeds = try await store.suggestionSeeds(now: now)
-        XCTAssertEqual(seeds, ["like3", "like2", "fav"])
+    func testEveryListenComesBackWithItsOwnTime() async throws {
+        try await store.recordListen(song("a"), at: 10)
+        try await store.recordListen(song("b"), at: 30)
+        try await store.recordListen(song("a"), at: 20)
+        let listens = try await store.listens()
+        XCTAssertEqual(listens.map(\.track.videoId), ["b", "a", "a"])
+        XCTAssertEqual(listens.map(\.at), [30, 20, 10])
     }
 
-    func testWithoutLikesTheSeedsComeFromWhatWasHeard() async throws {
-        let now = 100 * day
-        try await store.recordListen(song("a"), at: now - 3 * day)
-        try await store.recordListen(song("b"), at: now - 2 * day)
-        try await store.recordListen(song("b"), at: now - 2 * day + 1)
-        try await store.recordListen(song("c"), at: now - day)
-        try await store.recordListen(song("d"), at: now - 1000)
-        let seeds = try await store.suggestionSeeds(now: now)
-        XCTAssertEqual(seeds, ["b", "d", "c"])
+    func testSongsLeftAfterAFewSecondsAreKeptAndForgottenWithTheHistory() async throws {
+        try await store.recordSkip(song("a"), at: 1)
+        try await store.recordSkip(song("b"), at: 2)
+        let skipped = try await store.skipped()
+        XCTAssertEqual(skipped.map(\.track.videoId), ["b", "a"])
+        // A skipped song is a song something points to, so its details are kept
+        XCTAssertEqual(skipped.first?.track.title, "Title b")
+        try await store.clearHistory()
+        let after = try await store.skipped()
+        XCTAssertEqual(after.count, 0)
     }
 
-    func testSongsHeardLongAgoAreNotTheMostHeard() async throws {
-        let now = 100 * day
-        for i in 0..<5 { try await store.recordListen(song("old"), at: now - 40 * day + Int64(i)) }
-        try await store.recordListen(song("new"), at: now - day)
-        // "old" was heard most, but not in the last two weeks: it only comes in as one of the latest
-        let seeds = try await store.suggestionSeeds(now: now)
-        XCTAssertEqual(seeds, ["new", "old"])
+    func testOnlyTheLastSkipsAreKept() async throws {
+        for i in 0..<(LibraryStore.skipsKeep + 20) { try await store.recordSkip(song("s"), at: Int64(i)) }
+        let skipped = try await store.skipped()
+        XCTAssertEqual(skipped.count, LibraryStore.skipsKeep)
+        XCTAssertEqual(skipped.first?.at, Int64(LibraryStore.skipsKeep + 19))
     }
 
-    func testNoLikesAndNoHistoryMeansNoSeeds() async throws {
-        let seeds = try await store.suggestionSeeds()
-        XCTAssertEqual(seeds, [])
+    func testBlockedSongsAndArtistsAreListedAndCanBeLetBack() async throws {
+        try await store.block(kind: "song", key: "x", label: "Song X", at: 1)
+        try await store.block(kind: "artist", key: "some artist", label: "Some Artist", at: 2)
+        try await store.block(kind: "song", key: "x", label: "Song X renamed", at: 3)
+        let blocked = try await store.blocked()
+        XCTAssertEqual(blocked, [LibraryStore.Blocked(kind: "song", key: "x", label: "Song X renamed"),
+                                 LibraryStore.Blocked(kind: "artist", key: "some artist", label: "Some Artist")])
+        try await store.unblock(kind: "song", key: "x")
+        let left = try await store.blocked()
+        XCTAssertEqual(left.map(\.kind), ["artist"])
     }
 
     func testWhatWasFetchedForASeedComesBackWithItsTime() async throws {

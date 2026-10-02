@@ -5,6 +5,7 @@ import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
 import 'download_actions.dart';
+import 'not_interested.dart';
 import 'playlist_picker.dart';
 
 /// The "more" menu of a song row: play it next, queue it, like it.
@@ -38,6 +39,7 @@ class TrackMenu extends StatelessWidget {
         'playlist' => showAddToPlaylist(context, [track]),
         'download' => startDownload(context, [track]),
         'undownload' => library.removeDownload(track.videoId),
+        'blocked' => showNotInterested(context, track),
         _ => onAdd(),
       },
       itemBuilder: (context) => [
@@ -61,6 +63,7 @@ class TrackMenu extends StatelessWidget {
           value: 'like',
           child: Text(library.isLikedSong(track) ? S.unlike : S.like),
         ),
+        PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
       ],
     );
   }

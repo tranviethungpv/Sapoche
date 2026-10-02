@@ -188,7 +188,11 @@ class _MemberRow extends StatelessWidget {
         children: [
           Opacity(
             opacity: member.away ? 0.4 : 1,
-            child: Avatar(name: member.name, size: 40),
+            child: Avatar(
+              name: member.name,
+              size: 40,
+              image: isYou ? AppScope.of(context).settings.avatar : null,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(

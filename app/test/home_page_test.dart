@@ -353,4 +353,38 @@ void main() {
     );
     await tester.pumpAndSettle();
   });
+
+  testWidgets('the new shelves show, a held song can be refused and let back', (
+    tester,
+  ) async {
+    final backend = await openHome(
+      tester,
+      prepare: (b) {
+        b.forYouSongs = [beck];
+        b.discoverSongs = [anna];
+        b.contextMixResult = ContextMix(bucket: 'evening', tracks: [old]);
+      },
+    );
+    expect(find.text('Try something new'), findsOneWidget);
+    expect(find.text('Your evening mix'), findsOneWidget);
+
+    await tester.longPress(find.text('Hello'));
+    await tester.pumpAndSettle();
+    expect(find.text('Don’t suggest this song'), findsOneWidget);
+    expect(find.text('Don’t suggest Adele'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('not-interested-artist')));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('block artist Adele'));
+    expect(find.text('Got it, we won’t suggest that again'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('settings-suggestions')));
+    await tester.pumpAndSettle();
+    expect(find.text('Adele'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('blocked-artist-adele')));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('unblock artist adele'));
+    expect(find.textContaining('Nothing here'), findsOneWidget);
+  });
 }

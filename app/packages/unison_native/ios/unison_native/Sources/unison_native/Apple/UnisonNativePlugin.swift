@@ -96,6 +96,11 @@ final class UnisonRuntime {
                     do { try await store.recordListen(track) } catch { EventLog.d("library", "could not write the history: \(error.localizedDescription)") }
                 }
             },
+            recordSkip: { track in
+                Task {
+                    do { try await store.recordSkip(track) } catch { EventLog.d("library", "could not write the skip: \(error.localizedDescription)") }
+                }
+            },
             moreLike: { videoId, exclude, count in try await suggestions.after(videoId, exclude: exclude, count: count) }
         )
         bridge = Bridge(controller: controller, prefs: prefs, platform: platform, store: store, resolver: resolver, streams: streams,

@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
 import '../../theme/theme.dart';
+import '../scope.dart';
 
 /// Soft pastel tints that sit well on a pink background, picked per person from their name.
 const _tints = [
@@ -19,10 +22,14 @@ class Avatar extends StatelessWidget {
     required this.name,
     this.size = 36,
     this.ring = false,
+    this.image,
   });
 
   final String name;
   final double size;
+
+  /// The person's own picture, if they chose one; it takes the place of the initial.
+  final Uint8List? image;
 
   /// A thin ring in the background colour, so overlapping avatars stay distinct.
   final bool ring;
@@ -44,15 +51,20 @@ class Avatar extends StatelessWidget {
         shape: BoxShape.circle,
         color: dark ? Color.lerp(tint, p.base, 0.55) : tint,
         border: ring ? Border.all(color: p.base, width: 2) : null,
+        image: image == null
+            ? null
+            : DecorationImage(image: MemoryImage(image!), fit: BoxFit.cover),
       ),
-      child: Text(
-        initial,
-        style: TextStyle(
-          fontSize: size * 0.42,
-          fontWeight: FontWeight.w700,
-          color: dark ? const Color(0xFFFFE8EF) : const Color(0xFF5A2A3A),
-        ),
-      ),
+      child: image != null
+          ? null
+          : Text(
+              initial,
+              style: TextStyle(
+                fontSize: size * 0.42,
+                fontWeight: FontWeight.w700,
+                color: dark ? const Color(0xFFFFE8EF) : const Color(0xFF5A2A3A),
+              ),
+            ),
     );
   }
 }
@@ -72,6 +84,15 @@ class AvatarStack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final model = AppScope.of(context);
+    return ListenableBuilder(
+      listenable: model.settings,
+      builder: (context, _) =>
+          _stack(context, model.settings.avatar, model.room.snapshot.you),
+    );
+  }
+
+  Widget _stack(BuildContext context, Uint8List? mine, String? you) {
     final shown = members.take(max).toList();
     final extra = members.length - shown.length;
     final step = size * 0.68;
@@ -85,7 +106,12 @@ class AvatarStack extends StatelessWidget {
               key: ValueKey(shown[i].id),
               left: step * i,
               child: _PopIn(
-                child: Avatar(name: shown[i].name, size: size, ring: true),
+                child: Avatar(
+                  name: shown[i].name,
+                  size: size,
+                  ring: true,
+                  image: shown[i].id == you ? mine : null,
+                ),
               ),
             ),
           if (extra > 0)

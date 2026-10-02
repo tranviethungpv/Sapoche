@@ -218,4 +218,76 @@ void main() {
     );
     expect(home.quickPicks.map((s) => s.videoId), ['a', 'c']);
   });
+
+  group('what the person asked not to be offered', () {
+    BlockedItem song(String id) =>
+        BlockedItem(kind: 'song', key: id, label: id);
+    BlockedItem artist(String key) =>
+        BlockedItem(kind: 'artist', key: key, label: key);
+
+    test('is left out of every row made of suggestions', () {
+      final home = buildHome(
+        recent: const [],
+        liked: const [],
+        forYou: [t('a', 'X'), t('b', 'Y'), t('c', 'Z')],
+        seedLists: const [],
+        now: now,
+        discover: [t('d', 'X'), t('e', 'W')],
+        context: ContextMix(
+          bucket: 'evening',
+          tracks: [t('f', 'Y'), t('g', 'V')],
+        ),
+        blocked: [song('a'), artist('y')],
+      );
+      expect(home.quickPicks.map((s) => s.videoId), ['c']);
+      expect(home.discover.map((s) => s.videoId), ['d', 'e']);
+      expect(home.context.map((s) => s.videoId), ['g']);
+      expect(home.contextBucket, 'evening');
+    });
+
+    test('does not start a mix or seed a row', () {
+      final recent = [
+        heard(t('a1', 'Adele'), now, days: 1, plays: 5),
+        heard(t('b1', 'Beck'), now, days: 1, plays: 4),
+        heard(t('c1', 'Coldplay'), now, days: 1, plays: 3),
+      ];
+      final home = buildHome(
+        recent: recent,
+        liked: const [],
+        forYou: const [],
+        seedLists: [
+          SeedList(
+            seed: 'a1',
+            tracks: [t('x1', 'P'), t('x2', 'Q'), t('x3', 'R')],
+          ),
+          SeedList(
+            seed: 'b1',
+            tracks: [t('y1', 'P'), t('y2', 'Q'), t('y3', 'R'), t('y4', 'S')],
+          ),
+        ],
+        now: now,
+        blocked: [artist('adele'), song('y2')],
+      );
+      expect(home.mixes.map((m) => m.artist), ['Beck', 'Coldplay']);
+      expect(home.topSeed?.videoId, 'b1');
+      expect(home.becauseOf.map((b) => b.seed.videoId), ['b1']);
+      expect(home.becauseOf.single.tracks.map((s) => s.videoId), [
+        'y1',
+        'y3',
+        'y4',
+      ]);
+    });
+
+    test('a person who asks for nothing changes nothing', () {
+      final home = buildHome(
+        recent: const [],
+        liked: const [],
+        forYou: [t('a', 'X')],
+        seedLists: const [],
+        now: now,
+      );
+      expect(home.quickPicks.map((s) => s.videoId), ['a']);
+      expect(home.contextBucket, '');
+    });
+  });
 }

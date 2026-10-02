@@ -197,6 +197,21 @@ abstract class Backend {
   /// Fetches the suggestions again, whatever their age, and gives back the new list.
   Future<List<Track>> refreshSuggestions();
 
+  /// Songs by artists the person does not know yet, from what was kept: something new to try.
+  Future<List<Track>> discover();
+
+  /// A mix for this time of day; no songs until enough was heard at this hour.
+  Future<ContextMix> contextMix();
+
+  /// Asks not to be offered [track], or with [artistOnly] its artist, any more.
+  Future<void> block(Track track, {bool artistOnly = false});
+
+  /// Lets a blocked song or artist be offered again.
+  Future<void> unblock(BlockedItem item);
+
+  /// What was blocked, the latest first.
+  Future<List<BlockedItem>> blocked();
+
   /// What YouTube would complete [query] to; empty when it cannot say.
   Future<List<String>> suggest(String query);
 
@@ -532,6 +547,36 @@ class NativeBackend implements Backend {
     for (final e
         in await _call<List<Object?>>('refreshSuggestions') ?? const [])
       Track.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<List<Track>> discover() async => [
+    for (final e in await _call<List<Object?>>('discover') ?? const [])
+      Track.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<ContextMix> contextMix() async => ContextMix.fromMap(
+    await _call<Map<Object?, Object?>>('contextMix') ?? const {},
+  );
+
+  @override
+  Future<void> block(Track track, {bool artistOnly = false}) =>
+      _call<void>('block', {
+        'videoId': track.videoId,
+        'title': track.title,
+        'artist': track.artist,
+        'artistOnly': artistOnly,
+      });
+
+  @override
+  Future<void> unblock(BlockedItem item) =>
+      _call<void>('unblock', {'kind': item.kind, 'key': item.key});
+
+  @override
+  Future<List<BlockedItem>> blocked() async => [
+    for (final e in await _call<List<Object?>>('blocked') ?? const [])
+      BlockedItem.fromMap(e as Map<Object?, Object?>),
   ];
 
   @override

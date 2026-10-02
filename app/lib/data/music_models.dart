@@ -262,6 +262,45 @@ class MusicShelf {
 }
 
 /// The songs kept for one seed: a song the person likes or plays a lot, and what YouTube Music lists beside it.
+/// A song or an artist the person asked not to be offered: [kind] is `song` (the key is its video id) or `artist`
+/// (the key is the artist's name in plain letters, as [mainArtist] gives it).
+class BlockedItem {
+  const BlockedItem({
+    required this.kind,
+    required this.key,
+    required this.label,
+  });
+
+  final String kind;
+  final String key;
+  final String label;
+
+  bool get isArtist => kind == 'artist';
+
+  factory BlockedItem.fromMap(Map<Object?, Object?> map) => BlockedItem(
+    kind: map['kind'] as String? ?? 'song',
+    key: map['key'] as String? ?? '',
+    label: map['label'] as String? ?? '',
+  );
+}
+
+/// A mix for a time of day ([bucket] is `morning`, `afternoon`, `evening` or `night`): what the person plays at
+/// that hour and songs like it. No songs until enough was heard at that hour to say anything.
+class ContextMix {
+  const ContextMix({this.bucket = '', this.tracks = const []});
+
+  final String bucket;
+  final List<Track> tracks;
+
+  factory ContextMix.fromMap(Map<Object?, Object?> map) => ContextMix(
+    bucket: map['bucket'] as String? ?? '',
+    tracks: [
+      for (final e in map['tracks'] as List<Object?>? ?? const [])
+        Track.fromMap(e as Map<Object?, Object?>),
+    ],
+  );
+}
+
 class SeedList {
   const SeedList({required this.seed, required this.tracks});
 

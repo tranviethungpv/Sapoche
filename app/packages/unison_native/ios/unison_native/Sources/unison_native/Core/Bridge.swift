@@ -293,6 +293,24 @@ final class Bridge {
             return nil
         case "forYou":
             return try await suggestions.forYou().map { $0.toMap() }
+        case "discover":
+            return try await suggestions.discover().map { $0.toMap() }
+        case "contextMix":
+            let mix = try await suggestions.contextMix()
+            return ["bucket": mix.bucket, "tracks": mix.tracks.map { $0.toMap() }] as [String: Any]
+        case "block":
+            // A song is blocked by its video id, an artist by the name of the first artist credited
+            if bool("artistOnly") {
+                try await store.block(kind: SuggestionFeed.artist, key: Taste.artistKey(string("artist")), label: Taste.artistLabel(string("artist")))
+            } else {
+                try await store.block(kind: SuggestionFeed.song, key: string("videoId"), label: string("title"))
+            }
+            return nil
+        case "unblock":
+            try await store.unblock(kind: string("kind"), key: string("key"))
+            return nil
+        case "blocked":
+            return try await store.blocked().map { ["kind": $0.kind, "key": $0.key, "label": $0.label] as [String: Any] }
         case "refreshSuggestions":
             _ = try await suggestions.renew(force: true)
             return try await suggestions.forYou().map { $0.toMap() }

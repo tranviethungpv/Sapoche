@@ -29,6 +29,9 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** A song with the time it was liked or last heard, and how often it was heard. */
     data class Entry(val track: TrackRef, val at: Long, val plays: Int = 0)
 
+    /** A song or an artist the person asked not to be offered: [kind] is `song` (the key is its video id) or `artist`. */
+    data class Blocked(val kind: String, val key: String, val label: String)
+
     /** A song to keep: [state] is queued, waiting (for Wi-Fi and a charger), done or failed. */
     data class Download(val track: TrackRef, val state: String, val bytes: Long)
 
@@ -74,6 +77,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         createPlaylistTables(db)
         createSuggestionsTable(db)
         createDownloadsTable(db)
+        createTasteTables(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -81,6 +85,19 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         if (oldVersion < 2) createPlaylistTables(db)
         if (oldVersion < 3) createSuggestionsTable(db)
         if (oldVersion < 4) createDownloadsTable(db)
+        if (oldVersion < 5) createTasteTables(db)
+    }
+
+    /** What tells the suggestions what not to offer: songs left after a few seconds, and what was blocked on purpose. */
+    private fun createTasteTables(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE skips(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), " +
+                "skipped_at INTEGER NOT NULL)",
+        )
+        db.execSQL(
+            "CREATE TABLE blocked(kind TEXT NOT NULL, key TEXT NOT NULL, label TEXT NOT NULL, at INTEGER NOT NULL, " +
+                "PRIMARY KEY(kind, key))",
+        )
     }
 
     /** Songs to keep on this phone; the bytes are in [MediaCaches.downloads], this says which and how far along. */
@@ -173,10 +190,44 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         _changes.tryEmit(Unit)
     }
 
+    /** Every listen, the latest first, each with its own time: what the taste is worked out from. */
+    suspend fun listens(limit: Int = HISTORY_KEEP): List<Entry> = withContext(io) {
+        readableDatabase.rawQuery(
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 1 " +
+                "FROM history h JOIN tracks t ON t.video_id = h.video_id ORDER BY h.played_at DESC, h.id DESC LIMIT ?",
+            arrayOf(limit.toString()),
+        ).use(::entries)
+    }
+
+    /** [track] was left after a few seconds. Only the last [SKIPS_KEEP] are kept. It is not announced: nothing shows it. */
+    suspend fun recordSkip(track: TrackRef, at: Long = System.currentTimeMillis()) = withContext(io) {
+        val db = writableDatabase
+        db.transaction {
+            upsertTrack(track)
+            db.insert("skips", null, ContentValues().apply {
+                put("video_id", track.videoId)
+                put("skipped_at", at)
+            })
+            db.execSQL("DELETE FROM skips WHERE id <= (SELECT id FROM skips ORDER BY id DESC LIMIT 1 OFFSET $SKIPS_KEEP)")
+            dropUnusedTracks()
+        }
+    }
+
+    /** Songs left after a few seconds, the latest first, each time one entry. */
+    suspend fun skipped(): List<Entry> = withContext(io) {
+        readableDatabase.rawQuery(
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, s.skipped_at, 1 " +
+                "FROM skips s JOIN tracks t ON t.video_id = s.video_id ORDER BY s.skipped_at DESC, s.id DESC",
+            null,
+        ).use(::entries)
+    }
+
     suspend fun clearHistory() = withContext(io) {
         val db = writableDatabase
         db.transaction {
             db.delete("history", null, null)
+            // What was left is part of the listening a person asked to forget
+            db.delete("skips", null, null)
             dropUnusedTracks()
         }
         _changes.tryEmit(Unit)
@@ -413,27 +464,26 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
 
     // ------------------------------------------------------------------ suggestions
 
-    /**
-     * The songs suggestions are built from, at most [SEEDS]: the two liked last, the one heard most in the last
-     * two weeks, then whatever was heard last if that leaves room.
-     */
-    suspend fun suggestionSeeds(now: Long = System.currentTimeMillis()): List<String> = withContext(io) {
-        val db = readableDatabase
-        fun ids(sql: String, vararg args: Any): List<String> =
-            db.rawQuery(sql, args.map { it.toString() }.toTypedArray()).use { c ->
-                val list = ArrayList<String>()
-                while (c.moveToNext()) list += c.getString(0)
-                list
-            }
-        val seeds = LinkedHashSet<String>()
-        seeds += ids("SELECT video_id FROM likes ORDER BY liked_at DESC, video_id LIMIT 2")
-        seeds += ids(
-            "SELECT video_id FROM history WHERE played_at >= ? GROUP BY video_id " +
-                "ORDER BY COUNT(*) DESC, MAX(played_at) DESC LIMIT 1",
-            now - SEED_WINDOW_MS,
-        )
-        seeds += ids("SELECT video_id FROM history GROUP BY video_id ORDER BY MAX(played_at) DESC LIMIT $SEEDS")
-        seeds.take(SEEDS)
+    // ------------------------------------------------------------------ blocked
+
+    /** Block `song` (key: video id) or `artist` (key: [app.unison.sync.Taste.artistKey]); blocking again changes the label. */
+    suspend fun block(kind: String, key: String, label: String, at: Long = System.currentTimeMillis()) = withContext(io) {
+        writableDatabase.execSQL("INSERT OR REPLACE INTO blocked(kind, key, label, at) VALUES(?, ?, ?, ?)", arrayOf<Any>(kind, key, label, at))
+        _changes.tryEmit(Unit)
+    }
+
+    suspend fun unblock(kind: String, key: String) = withContext(io) {
+        writableDatabase.delete("blocked", "kind = ? AND key = ?", arrayOf(kind, key))
+        _changes.tryEmit(Unit)
+    }
+
+    /** What was blocked, the latest first. */
+    suspend fun blocked(): List<Blocked> = withContext(io) {
+        readableDatabase.rawQuery("SELECT kind, key, label FROM blocked ORDER BY at DESC, key", null).use { c ->
+            val list = ArrayList<Blocked>(c.count)
+            while (c.moveToNext()) list += Blocked(c.getString(0), c.getString(1), c.getString(2))
+            list
+        }
     }
 
     /** Ids of the songs heard since [since]. */
@@ -633,7 +683,8 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
             "DELETE FROM tracks WHERE video_id NOT IN (SELECT video_id FROM likes) " +
                 "AND video_id NOT IN (SELECT video_id FROM history) " +
                 "AND video_id NOT IN (SELECT video_id FROM playlist_items) " +
-                "AND video_id NOT IN (SELECT video_id FROM downloads)",
+                "AND video_id NOT IN (SELECT video_id FROM downloads) " +
+                "AND video_id NOT IN (SELECT video_id FROM skips)",
         )
     }
 
@@ -666,17 +717,16 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     companion object {
-        private const val VERSION = 4
+        private const val VERSION = 5
         const val RECENT_LIMIT = 100
         const val HISTORY_KEEP = 2000
         const val MAX_PLAYLIST = 500
         const val MAX_NAME = 60
-        const val SEEDS = 3
+        const val SKIPS_KEEP = 300
         const val QUEUED = "queued"
         const val WAITING = "waiting"
         const val DONE = "done"
         const val FAILED = "failed"
         const val MAX_TRIES = 3
-        private const val SEED_WINDOW_MS = 14L * 24 * 60 * 60 * 1000
     }
 }

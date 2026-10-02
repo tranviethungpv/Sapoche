@@ -34,6 +34,9 @@ class HomePage extends StatelessWidget {
             forYou: library.forYou,
             seedLists: library.seedLists,
             now: DateTime.now(),
+            discover: library.discover,
+            context: library.context,
+            blocked: library.blocked,
           );
           return RefreshIndicator(
             onRefresh: library.refreshForYou,
@@ -50,7 +53,22 @@ class HomePage extends StatelessWidget {
                   title: S.listenAgain,
                   cards: [
                     for (final t in home.listenAgain)
-                      SongCard.track(t, onTap: () => playNow(context, t)),
+                      SongCard.track(
+                        context,
+                        t,
+                        onTap: () => playNow(context, t),
+                      ),
+                  ],
+                ),
+                CardShelf(
+                  title: S.contextMix(home.contextBucket),
+                  cards: [
+                    for (final t in home.context)
+                      SongCard.track(
+                        context,
+                        t,
+                        onTap: () => playNow(context, t),
+                      ),
                   ],
                 ),
                 CardShelf(
@@ -66,10 +84,25 @@ class HomePage extends StatelessWidget {
                   ],
                 ),
                 CardShelf(
+                  title: S.discoverShelf,
+                  cards: [
+                    for (final t in home.discover)
+                      SongCard.track(
+                        context,
+                        t,
+                        onTap: () => playNow(context, t),
+                      ),
+                  ],
+                ),
+                CardShelf(
                   title: S.forgottenFavorites,
                   cards: [
                     for (final t in home.forgotten)
-                      SongCard.track(t, onTap: () => playNow(context, t)),
+                      SongCard.track(
+                        context,
+                        t,
+                        onTap: () => playNow(context, t),
+                      ),
                   ],
                 ),
                 for (final b in home.becauseOf)
@@ -77,7 +110,11 @@ class HomePage extends StatelessWidget {
                     title: S.becauseYouListened(b.seed.title),
                     cards: [
                       for (final t in b.tracks)
-                        SongCard.track(t, onTap: () => playNow(context, t)),
+                        SongCard.track(
+                          context,
+                          t,
+                          onTap: () => playNow(context, t),
+                        ),
                     ],
                   ),
                 if (home.topSeed != null) _SimilarArtists(seed: home.topSeed!),
@@ -327,7 +364,7 @@ class _Trending extends StatelessWidget {
                   : shelf.title,
               cards: [
                 for (final t in shelf.tracks)
-                  SongCard.track(t, onTap: () => playNow(context, t)),
+                  SongCard.track(context, t, onTap: () => playNow(context, t)),
                 for (final list in shelf.playlists)
                   SongCard(
                     title: list.title,

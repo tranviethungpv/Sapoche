@@ -385,6 +385,42 @@ abstract final class S {
     'Đã lưu, nhưng thư viện của bạn chưa có gì',
   );
 
+  // The person's own name and picture
+  static String get yourProfile => _t('Your profile', 'Hồ sơ của bạn');
+  static String get choosePhoto => _t('Choose photo', 'Chọn ảnh');
+  static String get removePhoto => _t('Remove photo', 'Bỏ ảnh');
+  static String get photoOnlyHere => _t(
+    'Your photo is shown on this phone only; others in a room see your initial.',
+    'Ảnh chỉ hiện trên máy này; người khác trong phòng thấy chữ cái đầu của bạn.',
+  );
+
+  // Suggestions: what the person does not want, and the mixes made from what they listen to
+  static String get notInterested => _t('Not interested', 'Không quan tâm');
+  static String get notInterestedSong =>
+      _t('Don’t suggest this song', 'Không gợi ý bài này');
+  static String notInterestedArtist(String artist) =>
+      _t('Don’t suggest $artist', 'Không gợi ý $artist');
+  static String get wontSuggest =>
+      _t('Got it, we won’t suggest that again', 'Đã hiểu, sẽ không gợi ý lại');
+  static String get suggestionsTitle => _t('Suggestions', 'Gợi ý');
+  static String get blockedHeading => _t('Not interested', 'Không quan tâm');
+  static String get blockedHelp => _t(
+    'Songs and artists you asked not to be offered. Tap one to offer it again.',
+    'Những bài và nghệ sĩ bạn đã chọn không gợi ý. Chạm vào để được gợi ý lại.',
+  );
+  static String get blockedNone => _t(
+    'Nothing here. Press and hold a song, or use its menu, to say you are not interested.',
+    'Chưa có gì. Nhấn giữ một bài, hoặc dùng menu của bài, để chọn không quan tâm.',
+  );
+  static String get discoverShelf =>
+      _t('Try something new', 'Thử nghe cái mới');
+  static String contextMix(String bucket) => switch (bucket) {
+    'morning' => _t('Your morning mix', 'Mix buổi sáng của bạn'),
+    'afternoon' => _t('Your afternoon mix', 'Mix buổi chiều của bạn'),
+    'evening' => _t('Your evening mix', 'Mix buổi tối của bạn'),
+    _ => _t('Your night mix', 'Mix ban đêm của bạn'),
+  };
+
   // Where the sound goes
   static String get playOn => _t('Play on', 'Phát trên');
   static String get thisPhone => _t('This phone', 'Điện thoại này');

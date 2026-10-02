@@ -4,6 +4,7 @@ import '../../data/models.dart';
 import '../../theme/theme.dart';
 import '../player/track_section.dart';
 import 'artwork.dart';
+import 'not_interested.dart';
 
 /// A cover with two lines under it, for a row that scrolls sideways.
 class SongCard extends StatelessWidget {
@@ -13,21 +14,28 @@ class SongCard extends StatelessWidget {
     required this.subtitle,
     required this.thumb,
     required this.onTap,
+    this.onLongPress,
     this.size = 148,
   });
 
-  factory SongCard.track(Track track, {required VoidCallback onTap}) =>
-      SongCard(
-        title: track.title,
-        subtitle: track.artist,
-        thumb: track.thumb,
-        onTap: onTap,
-      );
+  /// A card for a song; holding it down asks whether the person is interested in it.
+  factory SongCard.track(
+    BuildContext context,
+    Track track, {
+    required VoidCallback onTap,
+  }) => SongCard(
+    title: track.title,
+    subtitle: track.artist,
+    thumb: track.thumb,
+    onTap: onTap,
+    onLongPress: () => showNotInterested(context, track),
+  );
 
   final String title;
   final String subtitle;
   final String? thumb;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final double size;
 
   @override
@@ -36,6 +44,7 @@ class SongCard extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: size,

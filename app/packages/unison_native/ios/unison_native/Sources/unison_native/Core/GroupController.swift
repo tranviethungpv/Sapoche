@@ -134,7 +134,8 @@ final class GroupController {
     private(set) var videoMode: Bool
 
     init(engine: PlayerEngine, prefs: KeyValueStore, queueFile: QueueFile, config: @escaping () -> ServerConfig,
-         recordListen: @escaping (TrackRef) -> Void = { _ in }, time: TimeSource? = nil, sockets: SocketFactory? = nil,
+         recordListen: @escaping (TrackRef) -> Void = { _ in }, recordSkip: @escaping (TrackRef) -> Void = { _ in },
+         time: TimeSource? = nil, sockets: SocketFactory? = nil,
          moreLike: @escaping (String, Set<String>, Int) async throws -> [TrackRef] = { _, _, _ in [] }) {
         self.engine = engine
         self.prefs = prefs
@@ -164,7 +165,7 @@ final class GroupController {
             fade: { [weak engine] in engine?.setVolume($0) },
             pauseAtSongEnd: { [weak engine] in engine?.setPauseAtSongEnd($0) }
         )
-        recorder = ListenRecorder(engine: engine, time: self.time, scope: ownScope, record: recordListen)
+        recorder = ListenRecorder(engine: engine, time: self.time, scope: ownScope, record: recordListen, recordSkip: recordSkip)
         local.attach()
         engine.setVideoMode(videoMode)
         view.set(View(local: local.snapshot.value))
@@ -605,18 +606,24 @@ final class ListenRecorder {
     private let time: TimeSource
     private let scope: Scope
     private let record: (TrackRef) -> Void
+    private let recordSkip: (TrackRef) -> Void
     private var tracker: ListenTracker!
 
     /// The song being followed; kept whole so its details are not read from a player that has moved on.
     private var item: QueueItem?
     private var due: Job?
 
-    init(engine: PlayerEngine, time: TimeSource, scope: Scope, record: @escaping (TrackRef) -> Void) {
+    init(engine: PlayerEngine, time: TimeSource, scope: Scope, record: @escaping (TrackRef) -> Void,
+         recordSkip: @escaping (TrackRef) -> Void = { _ in }) {
         self.engine = engine
         self.time = time
         self.scope = scope
         self.record = record
-        tracker = ListenTracker { [weak self] id, durationMs in self?.heard(id, durationMs) }
+        self.recordSkip = recordSkip
+        tracker = ListenTracker(
+            heard: { [weak self] id, durationMs in self?.heard(id, durationMs) },
+            skipped: { [weak self] id, durationMs in self?.skipped(id, durationMs) }
+        )
     }
 
     /// The player's state changed.
@@ -645,6 +652,13 @@ final class ListenRecorder {
             self.tracker.check(self.time.nowMs())
             self.schedule()
         }
+    }
+
+    /// The song was left after a few seconds: the suggestions learn not to offer more of it.
+    private func skipped(_ id: String, _ durationMs: Int64) {
+        guard let item, item.videoId == id else { return }
+        EventLog.d("library", "skipped '\(item.title)'")
+        recordSkip(TrackRef(videoId: id, title: item.title, artist: item.artist, thumb: item.thumb, durMs: durationMs))
     }
 
     private func heard(_ id: String, _ durationMs: Int64) {
