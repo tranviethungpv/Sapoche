@@ -1,0 +1,2 @@
+Trang nghệ sĩ
+- Trang nghệ sĩ và hồ sơ giờ lấy màu nền từ ảnh, giống trang album, và có cùng nút quay lại tròn.

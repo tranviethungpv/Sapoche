@@ -1,0 +1,2 @@
+Artist pages
+- The page of an artist or a profile now takes its colours from the picture, like the page of an album, and has the same round back button.
