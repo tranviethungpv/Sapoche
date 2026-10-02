@@ -32,6 +32,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var currentPlayerItem: AVPlayerItem?
     private var currentHasVideo = false
     private var currentStreamed = false
+    /// The song that plays without its picture because none could be had, so it is not tried again and the screen
+    /// shows the cover instead of waiting.
+    private var pictureless: String?
 
     /// The song wanted after it, and the item that was made for it once its file was there.
     private var queuedNext: QueueItem?
@@ -51,6 +54,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var itemCancellables: [ObjectIdentifier: AnyCancellable] = [:]
     private var outputs: [ObjectIdentifier: AVPlayerItemVideoOutput] = [:]
     private var sessionActive = false
+    /// The last item whose failure was told, so that it is told once.
+    private weak var reportedFailure: AVPlayerItem?
 
     private var videoOn = false
     private var videoVisible = false
@@ -118,6 +123,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             }
         }
         if playable.isPlaylist { keepForLater(item) }
+        pictureless = wantsVideo && !currentHasVideo ? item.videoId : nil
+        showPicture(wantsVideo)
         if seekToMs > 0 { _ = await seek(to: seekToMs) }
         onChange?()
     }
@@ -164,6 +171,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         currentPlayerItem = nil
         currentHasVideo = false
         currentStreamed = false
+        pictureless = nil
         queuedNext = nil
         queuedPlayerItem = nil
         pausedAtEnd = false
@@ -221,7 +229,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             positionMs: positionMs(),
             durationMs: seconds.isFinite && seconds > 0 ? Int64(seconds * 1000) : 0,
             videoWidth: Int(size.width),
-            videoHeight: Int(size.height)
+            videoHeight: Int(size.height),
+            noPicture: wantsVideo && current != nil && !currentHasVideo && pictureless == current?.videoId
         )
     }
 
@@ -265,31 +274,52 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     private var wantsVideo: Bool { videoOn && videoVisible }
 
-    /// Loads the song again with or without its picture when that is not what it is playing with; the picture is only
-    /// fetched while somebody looks at it.
+    /// Shows or hides the picture. A song that has its picture keeps it and only turns it on or off, which costs no gap
+    /// in the sound: when the app goes to the background, when it comes back, when the person switches to sound only.
+    /// A song loaded without one is loaded again with it, once it is wanted and could be had; a new song gets its
+    /// picture only while somebody looks, so nothing is fetched for nobody.
     private func applyVideo() {
-        if current != nil, wantsVideo != currentHasVideo {
+        showPicture(wantsVideo)
+        if wantsVideo, current != nil, !currentHasVideo, pictureless != current?.videoId {
             rebuildTask?.cancel()
             rebuildTask = Task { [weak self] in await self?.rebuildCurrent() }
         }
+        // The queued song is not heard yet: it is simply made again, with or without its picture
         if let next = queuedNext, wantsVideo != queuedHasVideo {
             cancelNext()
             setNext(next)
         }
         updateTicker()
+        onChange?()
     }
 
-    /// Puts the same song in again, at the same moment, playing if it was playing.
+    /// Turns the picture of the current and the queued item on or off where they are.
+    private func showPicture(_ shown: Bool) {
+        for item in [currentPlayerItem, queuedPlayerItem].compactMap({ $0 }) {
+            for track in item.tracks where track.assetTrack?.mediaType == .video && track.isEnabled != shown {
+                track.isEnabled = shown
+            }
+        }
+    }
+
+    /// Puts the same song in again with its picture, at the moment it has got to, playing if it was playing. When no
+    /// picture can be had the song is left as it plays.
     private func rebuildCurrent() async {
         guard let item = current, let old = currentPlayerItem else { return }
-        let resume = player.timeControlStatus != .paused
-        let position = positionMs()
         let next = queuedNext
         do {
             let playable = try await library.playableAtOnce(item.videoId)
             let built = await build(item, playable, pictureInPieces: true)
             try Task.checkCancellation()
             guard current?.id == item.id, currentPlayerItem === old else { return }
+            guard built.video else {
+                if wantsVideo { pictureless = item.videoId }
+                onChange?()
+                return
+            }
+            // Taken now, not before the item was made: that took a moment, and the song went on meanwhile
+            let resume = player.timeControlStatus != .paused
+            let position = positionMs()
             cancelNext()
             player.pause()
             player.removeAllItems()
@@ -298,6 +328,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             player.insert(built.item, after: nil)
             watch(built.item)
             try await waitUntilReady(built.item)
+            showPicture(wantsVideo)
             if position > 0 { _ = await seek(to: position) }
             if resume { play() }
             if let next { setNext(next) }
@@ -328,7 +359,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                     return Built(item: withPicture(plain(asset(both))), video: true, inPieces: true, streamed: true)
                 }
             } catch {
-                log("could not lay out the picture of '\(queued.title)' in pieces: \(error.localizedDescription)")
+                // Cancelled when the song was changed meanwhile: nothing went wrong
+                if !Task.isCancelled { log("could not lay out the picture of '\(queued.title)' in pieces: \(error.localizedDescription)") }
             }
         }
         let audio = asset(playable)
@@ -341,7 +373,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
                 }
                 log("'\(queued.title)' has no picture an iPhone plays")
             } catch {
-                log("could not add the picture of '\(queued.title)': \(error.localizedDescription)")
+                if !Task.isCancelled { log("could not add the picture of '\(queued.title)': \(error.localizedDescription)") }
             }
         }
         return Built(item: plain(audio), video: false, inPieces: false, streamed: !playable.isFile)
@@ -378,7 +410,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     private func updateTicker() {
-        let wanted = texture != nil && currentHasVideo && videoVisible
+        let wanted = texture != nil && currentHasVideo && wantsVideo
         if wanted, ticker == nil {
             let link = CADisplayLink(target: TickTarget { [weak self] in self?.drawFrame() }, selector: #selector(TickTarget.tick))
             link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: 60, preferred: 30)
@@ -521,8 +553,23 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             .sink { [weak self, weak item] status in
                 guard let self, let item, status == .failed, item === self.currentPlayerItem else { return }
                 self.log("the player failed: \(item.error?.localizedDescription ?? "unknown")")
-                self.onError?(item.error ?? URLError(.cannotDecodeContentData))
+                self.failed(item, item.error ?? URLError(.cannotDecodeContentData))
             }
+    }
+
+    /// Tells the owner of the queue that the song broke, once per item (the player tells it in two ways); the owner
+    /// loads the song again. A song from the network gets a fresh address first, as the one it had may be what broke.
+    private func failed(_ item: AVPlayerItem, _ error: Error) {
+        guard item !== reportedFailure, let song = current else { return }
+        reportedFailure = item
+        guard currentStreamed else {
+            onError?(error)
+            return
+        }
+        Task { [weak self] in
+            await self?.library.refresh(song.videoId)
+            self?.onError?(error)
+        }
     }
 
     private func currentItemChanged(_ item: AVPlayerItem?) {
@@ -530,10 +577,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         // Only a natural move to the queued successor; our own loads put other items in
         current = next
         adopt(item, hasVideo: queuedHasVideo, streamed: queuedStreamed)
+        // The queued song is made again whenever its picture becomes wanted (see applyVideo): without one now, it has none
+        pictureless = wantsVideo && !queuedHasVideo ? next.videoId : nil
         queuedNext = nil
         queuedPlayerItem = nil
         queuedHasVideo = false
         queuedStreamed = false
+        showPicture(wantsVideo)
         onAdvanced?()
         onChange?()
     }
@@ -566,8 +616,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         center.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
             Task { @MainActor in
-                guard let self, (note.object as? AVPlayerItem) === self.currentPlayerItem else { return }
-                self.onError?(error ?? URLError(.networkConnectionLost))
+                guard let self, let item = note.object as? AVPlayerItem, item === self.currentPlayerItem else { return }
+                self.failed(item, error ?? URLError(.networkConnectionLost))
             }
         }
         center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in

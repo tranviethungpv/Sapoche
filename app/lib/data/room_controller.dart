@@ -395,8 +395,19 @@ class RoomController extends ChangeNotifier {
   /// Play songs with their picture on this device, or sound only.
   Future<void> setVideoMode(bool on) => _run(() => _backend.setVideoMode(on));
 
-  Future<void> setVideoVisible(bool visible) =>
-      _run(() => _backend.setVideoVisible(visible));
+  /// The picture views that are seen now. When the phone turns, the new layout's view comes before the old one's
+  /// goes, so a view that leaves must not hide the picture another still shows: the player is told whether any is seen.
+  final Set<Object> _videoViewsSeen = {};
+
+  /// Whether [view], a picture view, is seen: on screen with the app in front.
+  Future<void> setVideoSeen(Object view, bool seen) {
+    if (seen) {
+      _videoViewsSeen.add(view);
+    } else {
+      _videoViewsSeen.remove(view);
+    }
+    return _run(() => _backend.setVideoVisible(_videoViewsSeen.isNotEmpty));
+  }
 
   /// The texture the picture is drawn into, or null when it cannot be made.
   Future<int?> videoSurface() async {

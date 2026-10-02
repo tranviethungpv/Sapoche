@@ -90,6 +90,8 @@ dependencies {
 
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
+    // Streams are fetched with the same OkHttp as the resolver, so both reach YouTube from the same address
+    implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // Downloads run as jobs so that they go on, with the network, while the app is in the background
     implementation("androidx.work:work-runtime-ktx:2.10.1")

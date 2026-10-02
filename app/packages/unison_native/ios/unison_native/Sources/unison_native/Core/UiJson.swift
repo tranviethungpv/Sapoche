@@ -62,6 +62,7 @@ enum UiJson {
             "speed": Double(view.snapshot.speed),
             "videoWidth": player.videoWidth,
             "videoHeight": player.videoHeight,
+            "noPicture": player.noPicture,
         ] as [String: Any])
     }
 

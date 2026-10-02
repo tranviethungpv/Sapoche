@@ -1,0 +1,4 @@
+Videos keep going, and songs load more reliably
+- A video no longer freezes behind a spinner when the phone is turned, or when the app is left and opened again; on iPhone, switching between Audio and Video or pulling down Control Center no longer interrupts the sound either.
+- A song that cannot get its picture shows its cover instead of a spinner that never stops.
+- Songs no longer fail to load now and then on home networks that have both IPv4 and IPv6, and a song that stops loading halfway is fetched again by itself.

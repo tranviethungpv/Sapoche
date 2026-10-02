@@ -540,6 +540,8 @@ class GroupController(
         val durationMs: Long,
         val videoWidth: Int = 0,
         val videoHeight: Int = 0,
+        /** The picture is wanted but this song plays without one. */
+        val noPicture: Boolean = false,
     )
 
     /** Snapshot of the local player for the UI; call on the main thread. */
@@ -556,6 +558,7 @@ class GroupController(
             durationMs = exo.duration.coerceAtLeast(0),
             videoWidth = exo.videoSize.width,
             videoHeight = exo.videoSize.height,
+            noPicture = port.pictureMissing(),
         )
     }
 

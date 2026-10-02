@@ -427,6 +427,12 @@ actor MediaLibrary {
         await streams.invalidate(videoId)
     }
 
+    /// Drops the address [videoId] was streamed from, so that the next load resolves it again: an address that stopped
+    /// working in the middle of a song (expired, or tied to a network the phone has left) does not mend by being retried.
+    func refresh(_ videoId: String) async {
+        await streams.invalidate(videoId)
+    }
+
     /// Where the picture of [videoId] is streamed from, at most [maxHeight] tall; nil when it has none that plays.
     func video(_ videoId: String, maxHeight: Int) async throws -> Playable? {
         guard let pick = try await streams.video(videoId, maxHeight: maxHeight), let url = URL(string: pick.source.url) else { return nil }

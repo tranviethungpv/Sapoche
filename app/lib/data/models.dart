@@ -440,6 +440,7 @@ class PlayerPosition {
     this.speed = 1.0,
     this.videoWidth = 0,
     this.videoHeight = 0,
+    this.noPicture = false,
   });
 
   final bool playing;
@@ -455,6 +456,9 @@ class PlayerPosition {
   final int videoWidth;
   final int videoHeight;
 
+  /// The picture is wanted but this song plays without one: none could be had.
+  final bool noPicture;
+
   factory PlayerPosition.fromJson(Map<String, dynamic> json) => PlayerPosition(
     playing: json['playing'] as bool? ?? false,
     buffering: json['buffering'] as bool? ?? false,
@@ -464,6 +468,7 @@ class PlayerPosition {
     speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
     videoWidth: (json['videoWidth'] as num?)?.toInt() ?? 0,
     videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 0,
+    noPicture: json['noPicture'] as bool? ?? false,
   );
 }
 

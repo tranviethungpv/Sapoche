@@ -77,8 +77,8 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         var attempt = 0
         while (true) {
             try {
-                // A song whose picture cannot be had still plays: the second try is sound only
-                load(item, seekToMs, withVideo = videoOn && attempt == 0)
+                // A song whose picture cannot be had still plays: the last try is sound only
+                load(item, seekToMs, withVideo = videoOn && attempt < MAX_LOAD_ATTEMPTS - 1)
                 return
             } catch (e: CancellationException) {
                 throw e
@@ -87,6 +87,11 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
                 if (++attempt >= MAX_LOAD_ATTEMPTS) throw e
                 EventLog.d("port", "load of ${item.videoId} failed (${e.message}), resolving again")
                 UnisonApp.streams.invalidate(item.videoId)
+                // Bytes that do not read as a song will not read any better the next time: fetch them again
+                if (e is PlaybackException && e.errorCode in PARSING_ERRORS) {
+                    EventLog.d("port", "what was kept of ${item.videoId} does not read, dropping it")
+                    UnisonApp.caches.play.removeResource(item.videoId)
+                }
             }
         }
     }
@@ -164,6 +169,15 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         applyVideoSelection()
     }
 
+    /**
+     * The picture is wanted but the song plays without one: it could not be had, so it was loaded as sound only. The
+     * screen shows the cover then, rather than waiting for a picture that is not coming.
+     */
+    fun pictureMissing(): Boolean {
+        val current = player.currentMediaItem ?: return false
+        return videoOn && loaded != null && !UnisonMediaSourceFactory.isVideo(current)
+    }
+
     /** Whether the picture is on screen. Off, the picture stream is neither downloaded nor decoded. */
     fun setVideoVisible(visible: Boolean) {
         if (videoVisible == visible) return
@@ -215,8 +229,9 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         .build()
 
     private companion object {
-        const val MAX_LOAD_ATTEMPTS = 2
+        const val MAX_LOAD_ATTEMPTS = 3
         const val LOAD_TIMEOUT_MS = 20_000L
         const val SEEK_TIMEOUT_MS = 8_000L
+        val PARSING_ERRORS = PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED..PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED
     }
 }

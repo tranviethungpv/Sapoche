@@ -8,6 +8,8 @@ struct PlayerInfo: Equatable {
     var durationMs: Int64 = 0
     var videoWidth = 0
     var videoHeight = 0
+    /// The picture is wanted but this song plays without one.
+    var noPicture = false
 }
 
 /// A [PlayerPort] with what the controller needs beyond the session's needs: volume for the sleep timer's fade, a way to

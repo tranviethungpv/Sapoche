@@ -3,7 +3,7 @@ package app.unison
 import android.net.Uri
 import app.unison.core.OkHttpDownloader
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.TransferListener
@@ -18,6 +18,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 /**
  * Where the player and the downloads read songs from. A song is read from the downloads if it is there,
@@ -109,16 +110,18 @@ class MediaData(
         .createDataSource()
 
     /**
-     * YouTube's servers throttle a plain GET to about real-time speed (~270 kbit/s). ExoPlayer leaves out the Range header
-     * when starting at byte 0, so one is always sent; for later seeks the data source replaces it with the exact range.
+     * Streams go through the resolver's own kind of client, which reaches YouTube from the same address the stream
+     * address was signed for (see [app.unison.core.OneFamilyDns]). Every request asks for a bounded range, see
+     * [ChunkedDataSource]: no default Range header may be set here, as this data source adds the range of a request to
+     * it instead of replacing it, and YouTube answers two ranges with 416 or a throttled stream.
      */
-    fun httpFactory(listener: TransferListener? = null): DefaultHttpDataSource.Factory = DefaultHttpDataSource.Factory()
-        .setDefaultRequestProperties(mapOf("Range" to "bytes=0-"))
+    fun httpFactory(listener: TransferListener? = null): OkHttpDataSource.Factory = OkHttpDataSource.Factory(streamClient)
         .setUserAgent(OkHttpDownloader.USER_AGENT)
-        .setConnectTimeoutMs(15_000)
-        .setReadTimeoutMs(20_000)
-        .setAllowCrossProtocolRedirects(true)
         .apply { listener?.let(::setTransferListener) }
+
+    private val streamClient = OkHttpDownloader.defaultClient().newBuilder()
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
 
     /** Sound goes to [sound], anything else to [picture]. */
     private class Routed(private val sound: DataSource, private val picture: DataSource) : DataSource {

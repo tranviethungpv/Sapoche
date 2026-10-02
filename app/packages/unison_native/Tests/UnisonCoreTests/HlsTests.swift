@@ -153,6 +153,7 @@ final class IndexedResolver: StreamResolver, @unchecked Sendable {
 
     var audio: [Stream]
     var video: Stream?
+    private(set) var resolves = 0
 
     init(audio: [Stream], video: Stream? = nil) {
         self.audio = audio
@@ -167,6 +168,7 @@ final class IndexedResolver: StreamResolver, @unchecked Sendable {
 
     func search(_ query: String, limit: Int, songsOnly: Bool) async throws -> [TrackInfo] { [] }
     func resolve(_ videoId: String) async throws -> Resolved {
+        resolves += 1
         let sources = audio.enumerated().map { number, stream in
             AudioSource(url: "https://example.invalid/a\(number)", mimeType: "audio/mp4; codecs=\"mp4a.40.2\"", bitrateKbps: 128 - number,
                         contentLength: stream.size, itag: 140 - number, index: Self.ranges(stream))
@@ -334,6 +336,17 @@ final class PiecesTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(media.playlists.text(for: pictureList)).contains("https://example.invalid/v"))
         XCTAssertTrue(try XCTUnwrap(media.playlists.text(for: soundList)).contains("https://example.invalid/a0"))
         XCTAssertEqual(fetcher.whole, [])
+    }
+
+    func testAStreamThatBrokeIsResolvedAgainWhenItIsLoadedNext() async throws {
+        let resolver = IndexedResolver(audio: [stream(pieces: 3, of: 1000)])
+        let (media, _, _) = library(resolver)
+        _ = try await media.playableAtOnce("vid00000001")
+        _ = try await media.playableAtOnce("vid00000001")
+        XCTAssertEqual(resolver.resolves, 1, "an address is kept while it works")
+        await media.refresh("vid00000001")
+        _ = try await media.playableAtOnce("vid00000001")
+        XCTAssertEqual(resolver.resolves, 2)
     }
 
     func testWithoutAnIndexForThePictureThereIsNoPlaylistOfBoth() async throws {

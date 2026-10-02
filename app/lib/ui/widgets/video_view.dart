@@ -29,7 +29,7 @@ class _VideoViewState extends State<VideoView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _room.setVideoVisible(true);
+    _room.setVideoSeen(this, _seen(WidgetsBinding.instance.lifecycleState));
     _room.videoSurface().then((id) {
       if (mounted && id != null) setState(() => _texture = id);
     });
@@ -38,14 +38,19 @@ class _VideoViewState extends State<VideoView> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _room.setVideoVisible(false);
+    _room.setVideoSeen(this, false);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _room.setVideoVisible(state == AppLifecycleState.resumed);
+    _room.setVideoSeen(this, _seen(state));
   }
+
+  /// Only an app that went to the background hides the picture. A control centre, a call coming in or the app
+  /// switcher make it inactive for a moment, and taking the picture away then would cost a gap in the sound.
+  static bool _seen(AppLifecycleState? state) =>
+      state == null || state == AppLifecycleState.resumed || state == AppLifecycleState.inactive;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +60,8 @@ class _VideoViewState extends State<VideoView> with WidgetsBindingObserver {
       builder: (context, _) {
         final size = _room.player.value;
         final ready = size.videoWidth > 0 && size.videoHeight > 0;
+        // A song with no picture to be had shows its cover, without a spinner that would turn for ever
+        final waiting = !ready && !size.noPicture;
         return AspectRatio(
           aspectRatio: ready ? size.videoWidth / size.videoHeight : 16 / 9,
           child: DecoratedBox(
@@ -84,7 +91,7 @@ class _VideoViewState extends State<VideoView> with WidgetsBindingObserver {
                         sharp: true,
                       ),
                     ),
-                  if (!ready)
+                  if (waiting)
                     const Center(
                       child: SizedBox.square(
                         dimension: 26,

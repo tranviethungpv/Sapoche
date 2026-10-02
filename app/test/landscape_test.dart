@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:unison/data/backend.dart';
+import 'package:unison/data/models.dart';
 import 'package:unison/strings.dart';
 import 'package:unison/ui/home_shell.dart';
 import 'package:unison/ui/player/lyrics_view.dart';
 import 'package:unison/ui/player/up_next_view.dart';
 import 'package:unison/ui/player_sheet.dart';
+import 'package:unison/ui/widgets/artwork.dart';
 import 'package:unison/ui/widgets/marquee_text.dart';
 import 'package:unison/ui/widgets/mini_player.dart';
 import 'package:unison/ui/widgets/playback_bar.dart';
+import 'package:unison/ui/widgets/video_view.dart';
 
 import 'fake_backend.dart';
 import 'player_panels_test.dart' show openPanel, openPlayer;
@@ -135,6 +139,41 @@ void main() {
       expect(tester.takeException(), isNull);
       final bar = inside(tester, 844, 390, find.byType(PlaybackBar));
       expect(bar.left, greaterThan(844 * 0.45));
+    });
+
+    testWidgets('a song with no picture to be had shows its cover, without a spinner', (tester) async {
+      final backend = await openPlayer(tester, snapshot: sampleRoom(video: true));
+      final spinner = find.descendant(of: find.byType(VideoView), matching: find.byType(CircularProgressIndicator));
+      expect(spinner, findsOneWidget, reason: 'waiting for the picture');
+      backend.emit(const PositionEvent(PlayerPosition(playing: true, noPicture: true)));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(spinner, findsNothing);
+      expect(find.descendant(of: find.byType(VideoView), matching: find.byType(Artwork)), findsOneWidget);
+    });
+
+    testWidgets('turning the phone keeps the picture coming', (tester) async {
+      final backend = await openPlayer(tester, snapshot: sampleRoom(video: true));
+      String lastVisible() => backend.calls.lastWhere((c) => c.startsWith('videoVisible'));
+      expect(lastVisible(), 'videoVisible true');
+      // The new layout's picture comes before the old one's goes; the old one leaving must not hide the picture
+      await resize(tester, 844, 390);
+      expect(lastVisible(), 'videoVisible true');
+      await resize(tester, 390, 844);
+      expect(lastVisible(), 'videoVisible true');
+
+      // A control centre pulled down keeps it; the app going to the background stops it, and coming back brings it
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(lastVisible(), 'videoVisible true');
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(lastVisible(), 'videoVisible false');
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(lastVisible(), 'videoVisible true');
     });
   });
 

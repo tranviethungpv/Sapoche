@@ -104,6 +104,7 @@ object UiJson {
             .put("speed", view.snapshot.speed.toDouble())
             .put("videoWidth", player.videoWidth)
             .put("videoHeight", player.videoHeight)
+            .put("noPicture", player.noPicture)
             .toString()
 
     /** The sleep timer was set, ran out or was turned off. */

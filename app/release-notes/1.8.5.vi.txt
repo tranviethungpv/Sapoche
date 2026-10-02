@@ -1,0 +1,4 @@
+Video chạy liền mạch, bài hát nạp ổn định hơn
+- Video không còn đứng hình kèm vòng xoay khi xoay điện thoại, hay khi thoát ra rồi mở lại app; trên iPhone, chuyển giữa Audio và Video hoặc kéo Trung tâm điều khiển xuống cũng không làm ngắt tiếng nữa.
+- Bài không lấy được hình sẽ hiện ảnh bìa thay vì vòng xoay mãi không dừng.
+- Bài hát không còn thỉnh thoảng nạp lỗi trên mạng gia đình có cả IPv4 lẫn IPv6, và bài đang tải mà bị ngắt giữa chừng sẽ tự được tải lại.
