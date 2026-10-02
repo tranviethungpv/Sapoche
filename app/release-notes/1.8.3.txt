@@ -1,0 +1,2 @@
+Long songs no longer freeze the iPhone app
+- On iPhone, a very long video (such as a one-hour mix) no longer hangs the app: songs are now fetched in short pieces, which YouTube serves at full speed, and a long song is taken in a lower quality that starts sooner. Downloading long songs is fast as well.

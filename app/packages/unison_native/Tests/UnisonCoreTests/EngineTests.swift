@@ -852,24 +852,65 @@ final class MediaTests: XCTestCase {
         XCTAssertEqual(counter.count, 1)
     }
 
-    func testASongThatIsTooLongIsPlayedFromTheStream() async throws {
-        final class Long: StreamResolver, @unchecked Sendable {
-            func search(_ query: String, limit: Int, songsOnly: Bool) async throws -> [TrackInfo] { [] }
-            func resolve(_ videoId: String) async throws -> Resolved {
-                let source = AudioSource(url: "https://example.invalid/long", mimeType: "audio/mp4", bitrateKbps: 128, contentLength: MediaLibrary.wholeLimitBytes + 1, itag: 140)
-                return Resolved(track: TrackInfo(videoId: videoId, title: "T", artist: "A", thumbUrl: nil, durationSec: 9000), best: source, all: [source], userAgent: "ua")
+    /// A resolver whose one song comes in the given sizes, the best quality first.
+    private final class Sized: StreamResolver, @unchecked Sendable {
+        let sizes: [Int64]
+
+        init(_ sizes: [Int64]) { self.sizes = sizes }
+
+        func search(_ query: String, limit: Int, songsOnly: Bool) async throws -> [TrackInfo] { [] }
+        func resolve(_ videoId: String) async throws -> Resolved {
+            let sources = sizes.enumerated().map { index, size in
+                AudioSource(url: "https://example.invalid/q\(index)", mimeType: "audio/mp4", bitrateKbps: 128 - index * 40, contentLength: size, itag: 140 + index)
             }
-            func searchPlaylists(_ query: String, limit: Int) async throws -> [PlaylistRef] { [] }
-            func playlist(_ playlistId: String, limit: Int) async throws -> Playlist { Playlist(title: "", tracks: []) }
-            func related(_ videoId: String, limit: Int) async throws -> [TrackInfo] { [] }
-            func suggest(_ query: String) async throws -> [String] { [] }
+            return Resolved(track: TrackInfo(videoId: videoId, title: "T", artist: "A", thumbUrl: nil, durationSec: 9000), best: sources[0], all: sources, userAgent: "ua")
         }
+        func searchPlaylists(_ query: String, limit: Int) async throws -> [PlaylistRef] { [] }
+        func playlist(_ playlistId: String, limit: Int) async throws -> Playlist { Playlist(title: "", tracks: []) }
+        func related(_ videoId: String, limit: Int) async throws -> [TrackInfo] { [] }
+        func suggest(_ query: String) async throws -> [String] { [] }
+    }
+
+    /// Writes as many bytes as the address it is given says, like a transfer that worked, and keeps the addresses.
+    private final class Sizing: FileFetcher, @unchecked Sendable {
+        var fetched: [String] = []
+
+        func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
+            fetched.append(url.absoluteString)
+            let size: Int64 = url.absoluteString.hasSuffix("q1") ? 30 * 1024 * 1024 : 10
+            FileManager.default.createFile(atPath: file.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: file)
+            try handle.truncate(atOffset: UInt64(size))
+            try handle.close()
+            return size
+        }
+    }
+
+    func testASongThatIsTooLongIsPlayedFromTheStream() async throws {
         let files = files()
-        let media = MediaLibrary(files: files, streams: StreamCache(resolver: Long()), fetcher: FakeFetcher())
+        let media = MediaLibrary(files: files, streams: StreamCache(resolver: Sized([MediaLibrary.streamAboveBytes + 1])), fetcher: FakeFetcher())
         let playable = try await media.playable("vid00000001")
         XCTAssertFalse(playable.isFile)
-        XCTAssertEqual(playable.url.absoluteString, "https://example.invalid/long")
+        XCTAssertEqual(playable.url.absoluteString, "https://example.invalid/q0")
         XCTAssertEqual(playable.headers["User-Agent"], "ua")
+    }
+
+    func testALongSongIsFetchedInTheBestQualityThatIsSmallEnough() async throws {
+        let fetcher = Sizing()
+        let sizes: [Int64] = [99 * 1024 * 1024, 30 * 1024 * 1024, 5 * 1024 * 1024]
+        let files = files(limit: 1 << 30)
+        let media = MediaLibrary(files: files, streams: StreamCache(resolver: Sized(sizes)), fetcher: fetcher)
+        let playable = try await media.playable("vid00000001")
+        XCTAssertTrue(playable.isFile)
+        XCTAssertEqual(fetcher.fetched, ["https://example.invalid/q1"])
+    }
+
+    func testWhenNoQualityIsSmallEnoughTheSmallestIsTakenAndTheBestWhenThereIsNoLimit() async throws {
+        let streams = StreamCache(resolver: Sized([99 * 1024 * 1024, 80 * 1024 * 1024]))
+        let small = try await streams.audio("vid00000001", within: MediaLibrary.wholeLimitBytes)
+        XCTAssertEqual(small.contentLength, 80 * 1024 * 1024)
+        let best = try await streams.audio("vid00000001")
+        XCTAssertEqual(best.contentLength, 99 * 1024 * 1024)
     }
 
     func testAFailedTransferIsTriedAgainWithAFreshAddressAndThenTheStreamIsOffered() async throws {

@@ -11,28 +11,56 @@ protocol FileFetcher: Sendable {
 }
 
 struct URLSessionFetcher: FileFetcher {
+    /// YouTube's servers serve a range at full speed only up to about 10 MiB, and throttle a longer one to about
+    /// real-time speed: a song is fetched in ranges of this size, one after the other.
+    static let chunkBytes: Int64 = 8 * 1024 * 1024
+
     private let session: URLSession
 
-    init(timeout: TimeInterval = 20) {
-        let configuration = URLSessionConfiguration.ephemeral
+    init(timeout: TimeInterval = 20, configuration: URLSessionConfiguration = .ephemeral) {
         configuration.timeoutIntervalForRequest = timeout
         session = URLSession(configuration: configuration)
     }
 
     func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
-        var request = URLRequest(url: url)
-        // YouTube's servers throttle a plain GET to about real-time speed; asking for a range, even all of it, does not
-        request.setValue("bytes=0-", forHTTPHeaderField: "Range")
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        let manager = FileManager.default
+        try? manager.removeItem(at: file)
+        manager.createFile(atPath: file.path, contents: nil)
+        do {
+            let handle = try FileHandle(forWritingTo: file)
+            defer { try? handle.close() }
+            var written: Int64 = 0
+            while true {
+                var request = URLRequest(url: url)
+                // Asking for a range is what keeps a plain GET from being throttled
+                request.setValue("bytes=\(written)-\(written + Self.chunkBytes - 1)", forHTTPHeaderField: "Range")
+                headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+                let (data, response) = try await load(request)
+                try handle.write(contentsOf: data)
+                written += Int64(data.count)
+                // A server that sent the whole file whatever was asked has nothing more to give
+                if response.statusCode == 200 { return written }
+                // A range answer says how long the whole file is; what arrived must be all of it
+                guard let total = Self.total(response), !data.isEmpty, written <= total else { throw URLError(.networkConnectionLost) }
+                if written == total { return written }
+            }
+        } catch {
+            try? manager.removeItem(at: file)
+            throw error
+        }
+    }
+
+    /// One answer; throws when it is not a success. Stops when the calling task is cancelled.
+    private func load(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let box = TaskBox()
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int64, Error>) in
-                let task = session.downloadTask(with: request) { temporary, response, error in
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>) in
+                let task = session.dataTask(with: request) { data, response, error in
                     if let error {
                         continuation.resume(throwing: error)
                         return
                     }
-                    guard let temporary, let response = response as? HTTPURLResponse else {
+                    guard let data, let response = response as? HTTPURLResponse else {
                         continuation.resume(throwing: URLError(.badServerResponse))
                         return
                     }
@@ -40,21 +68,7 @@ struct URLSessionFetcher: FileFetcher {
                         continuation.resume(throwing: HTTPFailure(status: response.statusCode, service: "YouTube"))
                         return
                     }
-                    do {
-                        let manager = FileManager.default
-                        try? manager.removeItem(at: file)
-                        try manager.moveItem(at: temporary, to: file)
-                        let size = (try manager.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.int64Value ?? 0
-                        // A range answer says how long the whole file is; what arrived must be all of it
-                        if let total = Self.total(response), total != size {
-                            try? manager.removeItem(at: file)
-                            continuation.resume(throwing: URLError(.networkConnectionLost))
-                            return
-                        }
-                        continuation.resume(returning: size)
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
+                    continuation.resume(returning: (data, response))
                 }
                 box.set(task)
                 task.resume()
@@ -246,10 +260,11 @@ actor StreamCache {
     }
 
     /// The best audio stream of [videoId], resolving if needed. One resolve per video at a time, so a preload and a play
-    /// do not race.
-    func audio(_ videoId: String) async throws -> Pick {
+    /// do not race. When it is longer than [limit] bytes, the best one that fits is taken, or the smallest if none does.
+    func audio(_ videoId: String, within limit: Int64 = .max) async throws -> Pick {
         let resolved = try await resolved(videoId)
-        let best = resolved.best
+        let best = resolved.best.contentLength <= limit ? resolved.best
+            : resolved.all.first { $0.contentLength <= limit } ?? resolved.all.last ?? resolved.best
         return Pick(url: best.url, itag: best.itag, contentLength: best.contentLength, userAgent: resolved.userAgent, track: resolved.track)
     }
 
@@ -293,8 +308,10 @@ struct Playable: Equatable {
 /// Brings songs onto the disk, as whole files, and tells where a song can be played from. A song that was played or
 /// downloaded before is there already, and then nothing is fetched.
 actor MediaLibrary {
-    /// A song longer than this is played from the stream, not fetched whole first.
+    /// A song longer than this is fetched in a lower quality when it has one, so that it starts sooner.
     static let wholeLimitBytes: Int64 = 40 * 1024 * 1024
+    /// A song longer than this, in its lowest quality, is played from the stream, not fetched whole first.
+    static let streamAboveBytes: Int64 = 256 * 1024 * 1024
     private static let attempts = 3
 
     private let files: MediaFiles
@@ -323,9 +340,9 @@ actor MediaLibrary {
         var problem: Error = ResolveFailure(message: "No stream for \(videoId)")
         for attempt in 1...Self.attempts {
             do {
-                let pick = try await streams.audio(videoId)
+                let pick = try await streams.audio(videoId, within: Self.wholeLimitBytes)
                 guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
-                if pick.contentLength > Self.wholeLimitBytes {
+                if pick.contentLength > Self.streamAboveBytes {
                     log("\(videoId) is \(pick.contentLength / 1_048_576) MB, played from the stream")
                     return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
                 }

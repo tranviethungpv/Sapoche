@@ -414,7 +414,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             }
         } catch is TimedOut {
             let waiting = player.reasonForWaitingToPlay?.rawValue ?? "nothing"
-            throw PlayerNotReady(message: "The player did not get ready (item status \(item.status.rawValue), playable \(item.asset.isPlayable), waiting for \(waiting))")
+            throw PlayerNotReady(message: "The player did not get ready (item status \(item.status.rawValue), waiting for \(waiting))")
         }
     }
 
