@@ -17,6 +17,22 @@ ButtonStyle roundButtonStyle(BuildContext context) {
   );
 }
 
+/// A round back button, a soft disc like the other round buttons of a page.
+class RoundBackButton extends StatelessWidget {
+  const RoundBackButton({super.key});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(6),
+    child: IconButton(
+      onPressed: () => Navigator.maybePop(context),
+      tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+      style: roundButtonStyle(context),
+      icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+    ),
+  );
+}
+
 /// Play, shuffle and what else can be done with the page, in the manner of Apple Music: a round shuffle button, a
 /// wide Play, and [more] (a round button of the caller's, like a menu) when there is one.
 class PlayRow extends StatelessWidget {

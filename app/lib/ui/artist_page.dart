@@ -12,7 +12,7 @@ import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/play_row.dart';
-import 'widgets/wash.dart';
+import 'widgets/player_backdrop.dart';
 
 /// Opens the page of an artist in the tab that is showing, with a way back.
 Future<void> openArtist(BuildContext context, String artistId) {
@@ -49,30 +49,34 @@ class _ArtistScreenState extends State<ArtistScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // A page on its own has no backdrop: the pink veil is part of the home screen
-    return PinkWash(
-      child: Scaffold(
-        appBar: AppBar(),
-        body: FutureBuilder<ArtistPage>(
-          future: _page,
-          builder: (context, async) {
-            if (async.connectionState != ConnectionState.done) {
-              return const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              );
-            }
-            if (async.hasError || async.data!.name.isEmpty) {
-              return PlayerMessage(
-                icon: Icons.cloud_off_rounded,
-                text: S.musicFailed,
-                action: S.tryAgain,
-                onAction: () => setState(_load),
-              );
-            }
-            return _Content(page: async.data!);
-          },
-        ),
-      ),
+    return FutureBuilder<ArtistPage>(
+      future: _page,
+      builder: (context, async) {
+        final page = async.data;
+        final failed = async.hasError || (page != null && page.name.isEmpty);
+        // The page takes its colours from the picture, as the page of an album does
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            PlayerBackdrop(coverUrl: page?.thumb),
+            Scaffold(
+              appBar: AppBar(leading: const RoundBackButton()),
+              body: switch (page) {
+                _ when failed => PlayerMessage(
+                  icon: Icons.cloud_off_rounded,
+                  text: S.musicFailed,
+                  action: S.tryAgain,
+                  onAction: () => setState(_load),
+                ),
+                null => const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                _ => _Content(page: page),
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 }

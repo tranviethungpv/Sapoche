@@ -76,7 +76,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
               _Content(page: page)
             else
               Scaffold(
-                appBar: AppBar(leading: const _BackButton()),
+                appBar: AppBar(leading: const RoundBackButton()),
                 body: async.hasError
                     ? PlayerMessage(
                         icon: Icons.cloud_off_rounded,
@@ -91,22 +91,6 @@ class _CollectionScreenState extends State<CollectionScreen> {
       },
     );
   }
-}
-
-/// A round back button, a soft disc like the other round buttons of the page.
-class _BackButton extends StatelessWidget {
-  const _BackButton();
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(6),
-    child: IconButton(
-      onPressed: () => Navigator.maybePop(context),
-      tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-      style: roundButtonStyle(context),
-      icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-    ),
-  );
 }
 
 /// What the person tapped on, until the page arrives.
@@ -316,7 +300,7 @@ class _ContentState extends State<_Content> {
       ?_page.year,
     ].join(' · ');
     return Scaffold(
-      appBar: AppBar(leading: const _BackButton()),
+      appBar: AppBar(leading: const RoundBackButton()),
       body: CustomScrollView(
         controller: _scroll,
         physics: const BouncingScrollPhysics(

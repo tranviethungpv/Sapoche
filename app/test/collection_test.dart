@@ -8,6 +8,7 @@ import 'package:unison/data/music_models.dart';
 import 'package:unison/ui/artist_page.dart';
 import 'package:unison/ui/collection_screen.dart';
 import 'package:unison/ui/home_shell.dart';
+import 'package:unison/ui/widgets/player_backdrop.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';
@@ -333,6 +334,9 @@ void main() {
       tester,
     ) async {
       await open(tester);
+      // The colours come from the picture, as on the page of an album
+      expect(find.byType(PlayerBackdrop), findsOneWidget);
+      expect(find.byTooltip('Back'), findsOneWidget);
       expect(find.text('1.2M subscribers'), findsOneWidget);
       expect(find.text('Play'), findsOneWidget);
       expect(find.byTooltip('Shuffle'), findsOneWidget);
