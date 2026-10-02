@@ -1,8 +1,8 @@
-# Unison: Giao thức đồng bộ (bản nháp v0)
+# Unison: sync protocol (draft v0)
 
-Kết nối: WebSocket tới `wss://<worker>/room/<CODE>`. Mỗi phòng là một Durable Object. Tin nhắn là JSON, có trường `t` (type).
+Connection: a WebSocket to `wss://<worker>/room/<CODE>`. Every room is a Durable Object. Messages are JSON with a field `t` (type).
 
-## 1. Trạng thái phòng (nguồn sự thật nằm ở server)
+## 1. Room state (the server is the source of truth)
 
 ```json
 {
@@ -13,145 +13,145 @@ Kết nối: WebSocket tới `wss://<worker>/room/<CODE>`. Mỗi phòng là mộ
   "positionMs": 0,
   "epoch": 17,
   "repeat": "off | all | one",
-  "name": "Cả nhà",
+  "name": "Family",
   "ownerId": "u1",
   "guestControl": "all | add",
   "members": [{ "id": "u1", "name": "Ann", "ready": true, "solo": false, "away": false, "owner": true }]
 }
 ```
 
-`name`, `ownerId` có thể vắng. Xem mục 5c cho chủ phòng và tên phòng.
+`name` and `ownerId` may be absent. See section 5c for the owner and the room name.
 
-- `phase=playing`: vị trí hiện tại = `serverNow - startedAt`.
-- `phase=paused`: vị trí = `positionMs`.
-- `epoch` tăng mỗi khi có thay đổi làm mất hiệu lực trạng thái cũ (đổi bài, seek, play/pause). Client bỏ qua tin có `epoch` cũ.
+- `phase=playing`: the current position is `serverNow - startedAt`.
+- `phase=paused`: the position is `positionMs`.
+- `epoch` increases whenever a change makes the old state obsolete (song change, seek, play/pause). Clients ignore messages with an old `epoch`.
 
-## 2. Đo độ lệch đồng hồ (NTP đơn giản)
+## 2. Measuring the clock offset (simple NTP)
 
-Client gửi `{t:"ping", c0}` (c0 = giờ máy client). Server trả `{t:"pong", c0, s1}` (s1 = giờ server). Client nhận lúc c2:
+The client sends `{t:"ping", c0}` (c0 = the client's clock). The server answers `{t:"pong", c0, s1}` (s1 = the server's clock). When the client receives it at c2:
 - `rtt = c2 - c0`
-- `offset = s1 - (c0 + rtt/2)` (giờ server ≈ giờ máy + offset)
+- `offset = s1 - (c0 + rtt/2)` (server time ≈ local time + offset)
 
-Đo 8 lần lúc vào phòng, lấy mẫu có `rtt` nhỏ nhất. Đo lại mỗi 30 giây khi màn hình sáng, mỗi vài phút khi nền.
+It measures 8 times when joining and keeps the sample with the smallest `rtt`. It measures again every 30 seconds while the screen is on, and every few minutes in the background.
 
-## 2b. Xác thực
+## 2b. Authentication
 
-`POST /rooms`, `GET /room/<CODE>/info` và `WS /room/<CODE>` cần khóa dùng chung `ROOM_KEY` (header `X-Unison-Key`, hoặc tham số `?key=` khi không đặt được header). Sai hoặc thiếu trả HTTP 401 trước khi nâng cấp WebSocket; client coi đó là lỗi cuối cùng và không thử lại. Ba đường luôn mở: `GET /health` trả `{"ok":true,"protocol":6}`; `GET /join/<CODE>` là trang mà link mời mở ra (thử mở app bằng `intent://`, không thì hiện mã); `GET /.well-known/assetlinks.json` để Android xác minh link https của app. Ba đường này không đụng tới phòng nên không cần khóa. Chi tiết vận hành ở [../server/README.md](../server/README.md).
+`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Unison-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":6}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
 
-`GET /room/<CODE>/info` chỉ đọc, không tạo gì: `{"exists":true,"name":"Cả nhà","members":2,"playing":true,"title":"..."}`; `exists:false` khi phòng chưa từng có hoặc đã hết hạn. App dùng nó cho danh sách phòng gần đây.
+`GET /room/<CODE>/info` is read-only and creates nothing: `{"exists":true,"name":"Family","members":2,"playing":true,"title":"..."}`; `exists:false` when the room never existed or has expired. The app uses it for the list of recent rooms.
 
-## 3. Tin nhắn client → server
+## 3. Messages client → server
 
-| `t` | Trường | Ý nghĩa |
+| `t` | Fields | Meaning |
 |---|---|---|
-| `join` | `name`, `clientId`, `create?` | Vào phòng; server trả `state`. `create:true` là mã máy vừa tự tạo, `create:false` là mã được cho: phòng chưa tồn tại thì server trả lỗi `room_not_found` rồi đóng 4004 (gõ sai mã không mở phòng rỗng). Vắng `create` là app cũ, được mở phòng như trước |
-| `bye` | | Rời có chủ ý (khác với mất kết nối). Chủ phòng gửi `bye` thì người ở lâu nhất lên làm chủ; phòng hết người thì không còn chủ |
-| `kick` | `id` | Chỉ chủ phòng: ngắt kết nối thành viên đó (đóng 4001, kèm lỗi `removed`); họ vẫn vào lại được |
-| `room.name` | `name` | Đổi tên phòng, tối đa 32 ký tự, rỗng là xóa tên |
-| `room.settings` | `guestControl` | Chỉ chủ phòng: `all` (mọi người điều khiển, mặc định) hoặc `add` (khách chỉ thêm bài) |
-| `ping` | `c0` | Đo đồng hồ |
-| `queue.add` | `videoId`, metadata, `next?` | Thêm bài; `next: true` chèn ngay sau bài đang phát (nếu phòng đang `idle` thì bài mới chỉ được thêm vào cuối và phát) |
-| `queue.addMany` | `tracks[]`, `next?` | Thêm nhiều bài một lần (playlist), tối đa 100 bài mỗi tin, bài sai `videoId` bị bỏ; cùng quy tắc `next` như `queue.add`. Một tin, một lần phát `state`, nên không dính giới hạn 20 tin mỗi giây |
-| `queue.remove` | `id` | Xóa bài |
-| `queue.swap` | `id`, `track` (`videoId`, `title`, `artist`, `thumb?`, `durMs`) | Thay mục `id` bằng bản khác của cùng một bài (video ↔ bản audio), giữ chỗ, giữ `id` và người thêm. Nếu đó là bài đang phát (đang chạy, tạm dừng hay đang chuẩn bị): phát `prepare` mới cho mọi máy, tua đến đúng vị trí hiện tại (cắt theo độ dài bản mới), rồi `start` khi mọi người sẵn sàng; phòng đang tạm dừng thì phát tiếp sau lần đổi. `videoId` trùng với bản hiện có hoặc `id` không có thì bỏ qua; `videoId` sai thì `bad_video`. Bị giới hạn như `queue.move` khi chủ chỉ cho khách thêm bài. Giao thức 7 |
-| `queue.clear` | | Xóa hết hàng đợi, phòng về `idle` |
-| `queue.shuffle` | | Trộn các bài **sắp tới**, bài đang phát giữ nguyên chỗ. Khi phòng đang `idle` (hàng đợi đã hết) thì trộn toàn bộ và phát từ bài đầu. Dưới 2 bài thì không làm gì |
-| `jump` | `id` | Phát ngay bài này từ đầu (qua barrier) |
-| `queue.move` | `id`, `toIndex` | Đổi vị trí |
-| `play` / `pause` | | Điều khiển. `play` khi phòng `idle` ở bài cuối (hàng đợi đã hết) phát lại **từ bài đầu**, không chỉ bài cuối |
-| `seek` | `positionMs` | Tua |
-| `next` / `prev` | | Chuyển bài; `next` ở bài cuối khi `repeat=all` quay về bài đầu |
-| `repeat` | `mode` | `off`: dừng sau bài cuối. `all`: hết hàng đợi thì phát lại từ đầu. `one`: bài hiện tại hết thì phát lại chính nó (nút `next` vẫn sang bài kế). Giá trị lạ bị bỏ qua |
-| `solo` | `on` | Bắt đầu (`true`) hoặc thôi (`false`) nghe riêng: lệnh của phòng không điều khiển máy này nữa và phòng không chờ máy này ở barrier. Server quên cờ này khi socket đứt, nên client gửi lại sau mỗi lần kết nối lại |
-| `resync` | | Xin server gửi lại `state` (và `prepare` nếu phòng đang chuẩn bị) cho riêng socket này; dùng khi quay lại phòng sau khi nghe riêng |
-| `ready` | `epoch` | Máy đã resolve xong và nạp đệm đủ, sẵn sàng phát |
-| `report` | `epoch`, `posMs`, `bufferMs` | Báo vị trí định kỳ (chỉ dùng chẩn đoán, 10 giây một lần) |
-| `resolveFailed` | `epoch`, `reason` | Máy không lấy được luồng. Tính như đã trả lời để không kìm các máy khác; nếu **mọi** máy trong phòng đều báo lỗi thì server gửi `error` mã `unplayable` và chuyển sang bài kế (hoặc `idle` nếu hết bài) thay vì chạy đồng hồ im lặng |
-| `ended` | `epoch` | Bài phát hết mà không còn bài nạp trước (bài cuối, hoặc nạp trước thất bại) |
-| `advanced` | `epoch`, `itemId`, `startedAt` | Máy đã tự chuyển sang bài kế đã nạp trước; `startedAt` là giờ server lúc nghe thấy vị trí 0 của bài mới |
+| `join` | `name`, `clientId`, `create?` | Join a room; the server answers with `state`. `create:true` is a code the device just made up, `create:false` is a code it was given: if the room does not exist the server answers with the error `room_not_found` and closes with 4004 (a mistyped code does not open an empty room). A missing `create` is an old app, which is allowed to open the room as before |
+| `bye` | | Leave on purpose (as opposed to losing the connection). When the owner sends `bye` the longest-present member becomes the owner; a room with nobody left has no owner |
+| `kick` | `id` | Owner only: disconnect that member (closes 4001, with the error `removed`); they can join again |
+| `room.name` | `name` | Rename the room, at most 32 characters, empty removes the name |
+| `room.settings` | `guestControl` | Owner only: `all` (everybody steers, the default) or `add` (guests can only add songs) |
+| `ping` | `c0` | Clock measurement |
+| `queue.add` | `videoId`, metadata, `next?` | Add a song; `next: true` inserts it right after the current one (if the room is `idle` the new song is only appended and played) |
+| `queue.addMany` | `tracks[]`, `next?` | Add several songs at once (a playlist), at most 100 per message, songs with a bad `videoId` are dropped; the same `next` rule as `queue.add`. One message and one `state` broadcast, so it does not run into the limit of 20 messages per second |
+| `queue.remove` | `id` | Remove a song |
+| `queue.swap` | `id`, `track` (`videoId`, `title`, `artist`, `thumb?`, `durMs`) | Replace the entry `id` with another release of the same song (video ↔ audio), keeping its place, its `id` and who added it. If it is the song being played (running, paused or preparing): broadcast a new `prepare` to every device, seek to exactly the current position (clipped to the length of the new release), then `start` once everybody is ready; a paused room plays on after the swap. A `videoId` equal to an existing one or an unknown `id` is ignored; a bad `videoId` gives `bad_video`. Restricted like `queue.move` when the owner lets guests only add songs. Protocol 7 |
+| `queue.clear` | | Clear the whole queue, the room goes `idle` |
+| `queue.shuffle` | | Shuffle the **upcoming** songs, the current one keeps its place. When the room is `idle` (the queue has run out) it shuffles everything and plays from the first song. With fewer than 2 songs it does nothing |
+| `jump` | `id` | Play this song from the start now (through the barrier) |
+| `queue.move` | `id`, `toIndex` | Change the position |
+| `play` / `pause` | | Control. `play` when the room is `idle` at the last song (the queue has run out) plays again **from the first song**, not only the last one |
+| `seek` | `positionMs` | Seek |
+| `next` / `prev` | | Change song; `next` at the last song with `repeat=all` goes back to the first |
+| `repeat` | `mode` | `off`: stop after the last song. `all`: when the queue ends, play it again from the start. `one`: when the current song ends, play it again (the `next` button still goes to the next song). Unknown values are ignored |
+| `solo` | `on` | Start (`true`) or stop (`false`) listening alone: the room's commands no longer steer this device and the room does not wait for it at the barrier. The server forgets this flag when the socket drops, so the client sends it again after every reconnect |
+| `resync` | | Ask the server to send `state` again (and `prepare` if the room is preparing) to this socket only; used when coming back to the room after listening alone |
+| `ready` | `epoch` | The device has resolved the stream and buffered enough, ready to play |
+| `report` | `epoch`, `posMs`, `bufferMs` | Periodic position report (diagnostics only, every 10 seconds) |
+| `resolveFailed` | `epoch`, `reason` | The device could not get the stream. It counts as answered, so it does not hold the others back; if **every** device in the room reports a failure the server sends an `error` with code `unplayable` and moves on to the next song (or `idle` if there are none) instead of running a silent clock |
+| `ended` | `epoch` | The song ended with no preloaded song after it (the last song, or the preload failed) |
+| `advanced` | `epoch`, `itemId`, `startedAt` | The device moved to the preloaded next song by itself; `startedAt` is the server time at which it heard position 0 of the new song |
 
-## 4. Tin nhắn server → client
+## 4. Messages server → client
 
-| `t` | Trường | Ý nghĩa |
+| `t` | Fields | Meaning |
 |---|---|---|
-| `state` | toàn bộ trạng thái, `protocol` | Gửi khi vào phòng và khi thay đổi lớn; `protocol` là phiên bản giao thức của server (hiện là 6) |
-| `prepare` | `epoch`, bài, `seekToMs`, `by?` | Chuẩn bị bài: resolve, nạp đệm, rồi gửi `ready`. `by` là `clientId` người vừa bấm chuyển bài; vắng mặt khi phòng tự sang bài kế |
-| `start` | `epoch`, `startAt` (giờ server), `by?` | Bắt đầu phát tại thời điểm này |
-| `pause` | `epoch`, `positionMs`, `by?` | Dừng tại vị trí |
-| `advance` | `epoch`, `index`, `startedAt` | Cả phòng sang bài kế không qua barrier, vị trí 0 nghe thấy lúc `startedAt` |
-| `pong` | `c0`, `s1` | Trả lời ping |
-| `members` | `members[]` | Danh sách thành viên, gửi khi có người vào, ra, đổi tên, đổi chế độ nghe riêng, đổi chủ hoặc chuyển giữa hiện diện và `away` |
-| `error` | `code`, `message` | Mã hiện có: `not_joined`, `bad_message`, `bad_json`, `rate_limited`, `unknown_type`, `bad_video`, `queue_full`, `unplayable`, `room_not_found` (kèm đóng 4004), `room_full` (kèm đóng 1008), `forbidden` (lệnh chỉ dành cho chủ), `removed` (kèm đóng 4001) |
+| `state` | the whole state, `protocol` | Sent on joining and on big changes; `protocol` is the server's protocol version (currently 6) |
+| `prepare` | `epoch`, song, `seekToMs`, `by?` | Prepare the song: resolve, buffer, then send `ready`. `by` is the `clientId` of whoever just changed the song; absent when the room moves on by itself |
+| `start` | `epoch`, `startAt` (server time), `by?` | Start playing at this moment |
+| `pause` | `epoch`, `positionMs`, `by?` | Stop at the position |
+| `advance` | `epoch`, `index`, `startedAt` | The whole room moves to the next song without the barrier, position 0 heard at `startedAt` |
+| `pong` | `c0`, `s1` | Answer to a ping |
+| `members` | `members[]` | The member list, sent when someone joins, leaves, renames, changes solo mode, the owner changes, or someone switches between present and `away` |
+| `error` | `code`, `message` | Codes today: `not_joined`, `bad_message`, `bad_json`, `rate_limited`, `unknown_type`, `bad_video`, `queue_full`, `unplayable`, `room_not_found` (with close 4004), `room_full` (with close 1008), `forbidden` (a command only the owner may give), `removed` (with close 4001) |
 
-## 5. Luồng đổi bài (barrier)
+## 5. Changing song (the barrier)
 
-1. Một máy gửi `next` (hoặc bài hiện tại hết).
-2. Server tăng `epoch`, đặt `phase=preparing`, gửi `prepare` cho mọi máy.
-3. Mỗi máy resolve URL, nạp đệm khoảng 3 giây, gửi `ready`.
-4. Khi mọi máy `ready` (hoặc quá 8 giây thì bỏ qua máy chậm), server đặt `startedAt = serverNow + 1500ms`, `phase=playing`, gửi `start`.
-5. Mỗi máy đổi `startAt` sang giờ máy (trừ `offset`) và bắt đầu phát đúng thời điểm.
-6. Máy bị bỏ qua khi ready muộn: tự seek đến vị trí hiện tại rồi phát.
-7. Trong lúc phát, mỗi máy resolve và nạp trước bài kế tiếp để chuyển bài liền mạch.
+1. A device sends `next` (or the current song ends).
+2. The server increases `epoch`, sets `phase=preparing` and sends `prepare` to every device.
+3. Every device resolves the URL, buffers about 3 seconds and sends `ready`.
+4. When every device is `ready` (or after 8 seconds, skipping the slow ones) the server sets `startedAt = serverNow + 1500ms` and `phase=playing`, and sends `start`.
+5. Every device converts `startAt` to its own clock (minus `offset`) and starts playing at exactly that moment.
+6. A device that was skipped because it was late to be ready seeks to the current position and plays.
+7. While playing, every device resolves and preloads the next song so the change is seamless.
 
-### Chuyển bài liền mạch (gapless)
+### Seamless change (gapless)
 
-Chuyển bài tự nhiên không đi qua barrier, để không có khoảng lặng:
+A natural change does not go through the barrier, so there is no silence:
 
-1. Khi đang theo phòng, mỗi client đưa bài `queue[index+1]` cho trình phát làm bài kế (ExoPlayer nạp đệm và nối liền mạch). Danh sách thay đổi thì bài kế được thay theo.
-2. Khi trình phát tự sang bài kế, client chờ khoảng 1 giây cho vị trí ổn định rồi gửi `advanced` với `startedAt = giờ server - vị trí đang nghe`.
-3. Server nhận báo cáo hợp lệ đầu tiên (đúng `epoch`, đúng `itemId` là bài kế, mốc thời gian không quá 10 giây trước, bài hiện tại còn không quá 15 giây nữa là hết), tăng `epoch` và `index`, đặt `startedAt`, rồi gửi `advance` cho mọi máy. Báo cáo sau đó bị bỏ qua vì `epoch` đã cũ.
-4. Máy đã chuyển bài thì nhận gốc thời gian mới và tiếp tục chỉnh lệch. Máy sắp chuyển thì chờ trình phát của mình (tối đa 4 giây). Máy không có bài nạp trước thì nạp như người vào muộn.
-5. Nếu không máy nào báo `advanced`, đường cũ vẫn chạy: `ended` hoặc báo thức hết bài (thời lượng + 5 giây) dẫn tới `prepare` và barrier.
+1. While following the room, every client hands the player `queue[index+1]` as the next song (ExoPlayer buffers it and joins it seamlessly). If the list changes, the next song is replaced accordingly.
+2. When the player moves to the next song by itself, the client waits about 1 second for the position to settle and sends `advanced` with `startedAt = server time - the position being heard`.
+3. The server takes the first valid report (the right `epoch`, the right `itemId` being the next song, a timestamp not more than 10 seconds old, the current song having at most 15 seconds left), increases `epoch` and `index`, sets `startedAt`, and sends `advance` to every device. Later reports are ignored because the `epoch` is already old.
+4. A device that has already changed song takes the new time origin and goes on correcting drift. A device about to change waits for its own player (at most 4 seconds). A device with nothing preloaded loads like a late joiner.
+5. If no device reports `advanced`, the old path still runs: `ended` or the end-of-song alarm (length + 5 seconds) leads to `prepare` and the barrier.
 
-### Phát lặp
+### Repeat
 
-Phát lặp không đi đường gapless: hết bài thì client báo `ended` (hoặc báo thức hết bài chạy), server gọi `begin` lại đúng bài đó (`repeat=one`) hoặc bài đầu (`repeat=all` ở cuối hàng đợi), nên có một nhịp barrier khoảng 1,5 đến 4 giây giữa hai lượt. Khi `repeat=one` client không nạp trước bài kế (nếu không ExoPlayer sẽ tự sang bài kế) và server bỏ qua `advanced`.
+Repeat does not take the gapless path: when the song ends the client reports `ended` (or the end-of-song alarm runs), and the server calls `begin` again on that same song (`repeat=one`) or on the first song (`repeat=all` at the end of the queue), so there is one barrier beat of about 1.5 to 4 seconds between two rounds. With `repeat=one` the client does not preload the next song (otherwise ExoPlayer would move to it by itself) and the server ignores `advanced`.
 
-## 5b. Nghe riêng và hiện diện
+## 5b. Listening alone and presence
 
-**Nghe riêng (`solo`).** Một máy có thể thôi theo phòng mà không cần rời phòng. Máy đó giữ nguyên bài đang phát; từ đó `prepare`, `start`, `pause`, `advance` của phòng chỉ cập nhật phần hiển thị (phòng đang dừng, đang ở bài nào), còn nút phát, dừng, tua, bài kế, bài trước, chọn bài chỉ tác động lên máy này, đi theo hàng đợi của phòng và nạp trước bài kế để hết bài không có khoảng trống. Máy nghe riêng không gửi `ready`, `ended`, `advanced` nên không bao giờ kìm phòng. Quay lại phòng: gửi `solo:false` rồi `resync`, và xử lý `state` nhận về như người vào muộn (đang cùng bài thì chỉ căn lại vị trí, không nạp lại).
+**Listening alone (`solo`).** A device can stop following the room without leaving it. It keeps the song it is playing; from then on the room's `prepare`, `start`, `pause` and `advance` only update what is shown (the room is paused, which song it is on), while the play, pause, seek, next, previous and pick-a-song controls act on this device only, follow the room's queue and preload the next song so there is no gap when a song ends. A device listening alone does not send `ready`, `ended` or `advanced`, so it never holds the room back. To come back: send `solo:false` then `resync`, and handle the `state` that comes back like a late joiner (on the same song it only re-aligns the position, without reloading).
 
-Ai làm gì: `pause`, `start` và `prepare` mang `by` để máy khác hiện thông báo "Ann đã dừng phòng" kèm nút "Keep playing" (chuyển sang nghe riêng và phát tiếp) hoặc "Ann đã chuyển sang bài X".
+Who did what: `pause`, `start` and `prepare` carry `by` so that other devices can show "Ann paused the room" with a "Keep playing" button (switch to listening alone and carry on) or "Ann skipped to X".
 
-**Hiện diện (`away`).** Client gửi `ping` mỗi 30 giây (mỗi lần ping giữ sóng di động thức, nên thưa hơn thì tiết kiệm pin hơn), server ghi lại lần nghe cuối của từng socket. Im quá 75 giây thì thành viên được đánh dấu `away` (mờ đi, không tính là đang nghe, không kìm barrier); im quá 150 giây thì server đóng socket và xóa khỏi danh sách. Mỗi tin nhắn của bất kỳ ai là một dịp để server rà soát và phát lại `members` nếu ai đó đổi trạng thái, nên không cần bộ đếm giờ riêng. Đây là lớp dự phòng cho socket chết mà không đóng; app bị tắt cưỡng bức thường được nhận ra ngay khi socket đóng.
+**Presence (`away`).** The client sends `ping` every 30 seconds (every ping keeps the mobile radio awake, so sparser is better for battery), and the server records the last time it heard each socket. A member that is silent for more than 75 seconds is marked `away` (dimmed, not counted as listening, does not hold the barrier); after more than 150 seconds the server closes the socket and removes it from the list. Every message from anybody is a chance for the server to check and to broadcast `members` again if someone changed status, so no separate timer is needed. This is a fallback for a socket that died without closing; an app that was force-stopped is usually noticed at once when its socket closes.
 
-## 5c. Chủ phòng, tên phòng và vòng đời
+## 5c. Owner, room name and lifecycle
 
-**Chủ phòng.** Người mở phòng (`create:true`), hoặc người vào đầu tiên khi phòng chưa có chủ, là chủ. `guestControl` mặc định `all`: mọi người ngang quyền, như trước. Chủ chuyển sang `add` thì khách chỉ được thêm bài (`queue.add`, `queue.addMany`) và tự nghe riêng; `play`, `pause`, `seek`, `next`, `prev`, `jump`, `queue.remove`, `queue.swap`, `queue.move`, `queue.clear`, `queue.shuffle`, `repeat`, `room.name` bị trả `forbidden`. Giới hạn chỉ có hiệu lực khi chủ đang có mặt (socket mở và không `away`); chủ mất mạng thì mọi người điều khiển được, chủ quay lại thì giới hạn có lại, không cần bộ đếm bàn giao. `kick` và `room.settings` luôn chỉ dành cho chủ. Phòng hết người thì mất chủ và `guestControl` về `all`; người vào đầu tiên sau đó thành chủ mới.
+**Owner.** Whoever opens the room (`create:true`), or the first to join when the room has no owner, is the owner. `guestControl` defaults to `all`: everybody has equal rights, as before. When the owner switches to `add`, guests can only add songs (`queue.add`, `queue.addMany`) and listen alone; `play`, `pause`, `seek`, `next`, `prev`, `jump`, `queue.remove`, `queue.swap`, `queue.move`, `queue.clear`, `queue.shuffle`, `repeat` and `room.name` get `forbidden`. The limit only holds while the owner is present (socket open and not `away`); if the owner loses the connection everybody can steer, and when the owner is back the limit is back, with no handover timer. `kick` and `room.settings` are always owner-only. A room with nobody left loses its owner and `guestControl` goes back to `all`; the first to join afterwards becomes the new owner.
 
-**Vòng đời.** Mã chỉ là tên: phòng sinh ra khi có người vào với `create` không phải `false`, và không tồn tại cho đến lúc đó. Phòng trống giữ 7 ngày nếu còn bài trong hàng đợi, 1 giờ nếu không còn bài, rồi bị xóa hết (`deleteAll`). Server chỉ có một báo thức Durable Object nhưng giữ giờ đến hạn của từng việc (`barrier`, `end`, `gc`, `sweep`) và đặt báo thức ở mốc gần nhất. `sweep` chạy 5 phút một lần khi phòng có người: đóng socket im quá 150 giây (kể cả khi không ai gửi gì), để phòng toàn máy chết vẫn trống và bị dọn. Socket chưa vào phòng (hoặc bị từ chối) không tạo dữ liệu nào. Server còn hiểu trạng thái lưu theo dạng cũ (một báo thức duy nhất).
+**Lifecycle.** A code is only a name: a room is born when someone joins with `create` not equal to `false`, and does not exist before that. An empty room is kept for 7 days if there are songs left in its queue, for 1 hour if there are none, and then deleted entirely (`deleteAll`). The server has only one Durable Object alarm but keeps the due time of each job (`barrier`, `end`, `gc`, `sweep`) and sets the alarm at the nearest one. `sweep` runs every 5 minutes while the room has people: it closes sockets that have been silent for more than 150 seconds (even when nobody sends anything), so a room of dead devices still becomes empty and is cleaned up. A socket that has not joined (or was refused) creates no data. The server also understands the state stored in the old form (a single alarm).
 
-## 6. Chỉnh lệch khi đang phát
+## 6. Correcting drift while playing
 
-Mỗi 500ms, client tính `drift = playerPosition - expectedPosition`:
+Every 500 ms the client computes `drift = playerPosition - expectedPosition`:
 
-| `|drift|` | Hành động |
+| `|drift|` | Action |
 |---|---|
-| < 40ms | Giữ tốc độ 1.0 |
-| 40ms–400ms | Chỉnh tốc độ 0.97 hoặc 1.03 cho đến khi về gần 0 |
-| > 400ms | `seekTo(expectedPosition)`; nếu seek liên tục thất bại thì báo lỗi |
+| < 40 ms | Keep speed 1.0 |
+| 40 ms to 400 ms | Set the speed to 0.97 or 1.03 until it gets close to 0 |
+| > 400 ms | `seekTo(expectedPosition)`; if seeks keep failing, report an error |
 
-Ngưỡng là giá trị khởi đầu, sẽ chỉnh sau khi đo ở Prototype 2.
+The thresholds are starting values, to be tuned after measuring on real devices.
 
-Đo trên máy thật cho thấy vị trí ExoPlayer báo có nhiễu răng cưa khoảng 200ms chu kỳ 3–4 giây, nên quyết định không dựa trên từng mẫu mà dựa trên **trung bình cửa sổ 8 mẫu (4 giây)**, sau khi trừ phần đã chỉnh bằng đổi tốc độ. Cửa sổ được xóa sau mỗi lần seek và mỗi lần trình phát dừng hoặc đệm.
+Measurements on a real phone show that the position ExoPlayer reports has a sawtooth noise of about 200 ms with a period of 3 to 4 seconds, so decisions are not based on single samples but on the **average over a window of 8 samples (4 seconds)**, after subtracting what was corrected by changing speed. The window is cleared after every seek and every time the player stops or buffers.
 
-**Độ trễ khởi động.** Mỗi máy nghe chậm hơn yêu cầu khoảng 150–350ms sau `play()` hoặc seek (độ trễ đầu ra âm thanh). Máy tự học: sau mỗi lần khởi động thường, độ lệch còn lại trong cửa sổ đầy đầu tiên được cộng vào `startBias` (hệ số 0,8, giới hạn ±800ms, lưu vào bộ nhớ máy), và lần sau tua trước đúng lượng đó. Ngoài ra có `trim` do người dùng chỉnh tay cho thiết bị có độ trễ khác thường (loa Bluetooth).
+**Start latency.** Every device is heard about 150 to 350 ms later than asked after `play()` or a seek (audio output latency). The device learns it: after every normal start, the drift left in the first full window is added to `startBias` (factor 0.8, limited to ±800 ms, kept in the device's storage), and the next time it seeks ahead by exactly that amount. There is also a `trim` that the person sets by hand for devices with an unusual latency (a Bluetooth speaker).
 
-## 7. Phục hồi
+## 7. Recovery
 
-- Rớt WebSocket: client tự kết nối lại (backoff 1s, 2s, 4s tối đa 15s), vào lại bằng `join` với cùng `clientId`, nhận `state` mới và đồng bộ lại. Khi Android báo có mạng hoặc đổi mạng thì bỏ qua thời gian chờ và kết nối lại ngay.
-- Vào lại phòng đang phát đúng bài đã nạp thì không nạp lại: chỉ căn lại theo gốc thời gian của phòng (và bấm phát nếu máy đang dừng).
-- `prepare` lặp lại cùng `epoch` cho máy đã nạp xong: chỉ gửi lại `ready`.
-- Mất mạng giữa bài: trình phát thử lại lỗi mạng tối đa khoảng 8 phút và phát tiếp từ bộ đệm; riêng URL bị từ chối (401, 403, 404, 410) báo lỗi ngay để nạp lại bằng URL mới. Nạp lại thất bại (chưa có mạng) thì thử lại mỗi 5 giây.
-- Tiến trình bị hệ thống giết: app lưu mã phòng, thời điểm còn sống lần cuối (ghi mỗi phút khi ở trong phòng) và chế độ nghe riêng. Service khởi động lại trong vòng 10 phút thì vào lại phòng (`join` với `create:false`), và nếu đang nghe riêng thì vào lại ở chế độ nghe riêng, tạm dừng, không tự phát. Ngoài 10 phút, hoặc mở app bình thường, thì bắt đầu ở ngoài phòng với hàng đợi cá nhân.
-- Tạm dừng lâu: ở trong phòng mà không phát và màn hình không hiện quá 20 phút thì client đóng WebSocket (ping mỗi 30 giây giữ sóng thức cả ngày); nối lại khi màn hình hiện hoặc khi có lệnh từ thông báo (lệnh được giữ đến khi nối xong). Server thấy đó là một thành viên rời đi, và phòng cho phép mọi người điều khiển nếu chủ là người đó.
-- Kết nối chết mà không đóng: client dùng đúng một ping (30 giây) và coi kết nối đã chết nếu 45 giây không có `pong`, rồi nối lại; không còn ping cấp giao thức của OkHttp.
-- Máy tự dừng (cuộc gọi, ứng dụng khác chiếm âm thanh) trong lúc phòng đang phát: nút phát chỉ tiếp tục trên máy đó, phòng không bị khởi động lại; drift lớn được xử lý bằng một lần seek.
-- Server DO ngủ (Hibernation): trạng thái lưu trong storage, không mất khi tỉnh dậy.
-- Tin nhắn có `epoch` cũ bị bỏ qua.
+- WebSocket dropped: the client reconnects by itself (backoff 1 s, 2 s, 4 s, at most 15 s), joins again with `join` and the same `clientId`, receives a new `state` and syncs again. When Android reports that the network is back or changed, the wait is skipped and it reconnects at once.
+- Rejoining a room that is playing the very song already loaded does not reload it: it only re-aligns to the room's time origin (and presses play if the device is paused).
+- A repeated `prepare` with the same `epoch` for a device that has finished loading: it only sends `ready` again.
+- Losing the network mid-song: the player retries network errors for up to about 8 minutes and carries on from its buffer; only a URL that is refused (401, 403, 404, 410) reports an error at once so that it is loaded again with a fresh URL. If loading again fails (no network yet) it retries every 5 seconds.
+- The process is killed by the system: the app stores the room code, the last time it was alive (written every minute while in a room) and the solo mode. If the service restarts within 10 minutes it rejoins the room (`join` with `create:false`), and if it was listening alone it rejoins in solo mode, paused, without playing by itself. After 10 minutes, or when the app is opened normally, it starts outside a room with the personal queue.
+- A long pause: in a room, not playing and with the screen not shown for more than 20 minutes, the client closes the WebSocket (a ping every 30 seconds keeps the radio awake all day); it reconnects when the screen is shown or when a command arrives from the notification (the command is held until the connection is up). The server sees a member leaving, and the room lets everybody steer if that member was the owner.
+- A connection that died without closing: the client uses exactly one ping (30 seconds) and treats the connection as dead if there is no `pong` for 45 seconds, then reconnects; there is no OkHttp protocol-level ping any more.
+- The device stops by itself (a call, another app taking the audio) while the room is playing: the play button only resumes on that device, the room is not restarted; a large drift is handled with one seek.
+- The Durable Object sleeps (Hibernation): the state is in storage and is not lost when it wakes up.
+- Messages with an old `epoch` are ignored.
 
-## 8. Điểm chưa chốt (kiểm chứng ở Prototype 2)
+## 8. Open points (to verify by measuring)
 
-- Độ trễ bắt đầu 1500ms có đủ cho máy chậm không.
-- Ngưỡng chỉnh lệch và mức chỉnh tốc độ có gây nghe méo tiếng không.
-- Cách xử lý khi hai người bấm điều khiển cùng lúc (hiện tại: tin đến server trước thắng).
+- Whether the 1500 ms start delay is enough for slow devices.
+- Whether the drift thresholds and the speed correction make the sound distort.
+- How to handle two people pressing controls at the same time (today: the message that reaches the server first wins).

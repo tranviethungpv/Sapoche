@@ -1,67 +1,65 @@
 # Unison server
 
-Cloudflare Worker + một Durable Object cho mỗi phòng. Chỉ giữ siêu dữ liệu (queue, trạng thái phát, thành viên), không có audio.
+A Cloudflare Worker plus one Durable Object per room. It only keeps metadata (queue, playback state, members), never audio.
 
-- `src/index.ts`: định tuyến (`GET /health`, `POST /rooms`, `WS /room/<CODE>`, `GET /room/<CODE>/info`, `GET /join/<CODE>`, `GET /.well-known/assetlinks.json`, `GET /update/latest.json`, `GET /update/app-<mã bản>.apk`) và kiểm tra khóa dùng chung.
-- `src/update.ts`: cập nhật cho chính app, đọc từ bucket R2 `unison-releases` (riêng tư, chỉ đọc qua Worker, cần khóa). Phát hành bản mới bằng `app/tool/release.sh` (có `--publish` để tải lên R2).
-- `src/room.ts`: logic phòng (barrier chuẩn bị, phát, tạm dừng, tua, queue, chủ phòng và quyền, dọn phòng trống và socket chết).
-- `src/join-page.ts`: trang HTML của link mời và danh sách khóa ký cho `assetlinks.json` (thêm khóa mới ở đây khi đổi khóa ký).
-- `src/protocol.ts`: kiểu tin nhắn, khớp với [../docs/PROTOCOL.md](../docs/PROTOCOL.md).
-- `scripts/sim.mjs`: mô phỏng nhiều thiết bị, kiểm tra toàn bộ luồng giao thức.
-- `scripts/sim-keyed.mjs`: dựng hai server cục bộ có khóa (một với hẹn giờ thật, một với hẹn giờ vài giây để xem phòng hết hạn), chạy `sim.mjs`, rồi dọn sạch tiến trình (là lệnh `npm test`).
+- `src/index.ts`: routing (`GET /health`, `POST /rooms`, `WS /room/<CODE>`, `GET /room/<CODE>/info`, `GET /join/<CODE>`, `GET /.well-known/assetlinks.json`, `GET /update/latest.json`, `GET /update/app-<version>.apk`) and the shared-key check.
+- `src/update.ts`: updates for the app itself, read from the R2 bucket `unison-releases` (private, only readable through the Worker, needs the key). Publish a new version with `app/tool/release.sh` (`--publish` uploads it to R2).
+- `src/room.ts`: the room logic (preparation barrier, play, pause, seek, queue, owner and permissions, cleanup of empty rooms and dead sockets).
+- `src/join-page.ts`: the HTML page of the invitation link and the list of signing keys for `assetlinks.json` (add a new key here when the signing key changes).
+- `src/protocol.ts`: message types, matching [../docs/PROTOCOL.md](../docs/PROTOCOL.md).
+- `scripts/sim.mjs`: simulates several devices and checks the whole protocol flow.
+- `scripts/sim-keyed.mjs`: starts two local servers with a key (one with real timers, one with timers of a few seconds to watch a room expire), runs `sim.mjs`, then cleans up the processes (this is `npm test`).
 
-## Chạy cục bộ (không cần tài khoản Cloudflare)
+## Running locally (no Cloudflare account needed)
 
-Wrangler yêu cầu Node 22 trở lên. Máy này có Node 22 riêng tại `~/.local/share/node`:
+Wrangler needs Node 22 or newer.
 
 ```bash
-export PATH=$HOME/.local/share/node/bin:$PATH
 cd server
 npm install
 npm run typecheck
 npm run dev          # http://127.0.0.1:8787
-npm run sim          # ở terminal khác, server không khóa; kỳ vọng 39 passed
-npm test             # tự dựng server có khóa rồi kiểm thử; kỳ vọng 128 passed rồi 6 passed, 0 failed
+npm run sim          # in another terminal, against the server without a key; expect 39 passed
+npm test             # starts a server with a key and tests it; expect 128 passed, then 6 passed, 0 failed
 ```
 
-Để điện thoại trong cùng Wi-Fi kết nối được, chạy `npx wrangler dev --ip 0.0.0.0 --port 8787` rồi dùng `ws://<ip-máy-dev>:8787`.
+For a phone on the same Wi-Fi to connect, run `npx wrangler dev --ip 0.0.0.0 --port 8787` and use `ws://<dev-machine-ip>:8787`.
 
-## Triển khai
+## Deploying
 
-Đã triển khai tại `https://<tên-worker>.<tài-khoản>.workers.dev` (WebSocket: `wss://.../room/<CODE>`).
+The server is reachable at `https://<worker-name>.<account>.workers.dev` (WebSocket: `wss://.../room/<CODE>`).
 
 ```bash
-npx wrangler login        # một lần, mở trình duyệt
-npx wrangler r2 bucket create unison-releases   # một lần; bucket phải có trước khi deploy
+npx wrangler login        # once, opens the browser
+npx wrangler r2 bucket create unison-releases   # once; the bucket must exist before deploying
 npm run deploy
-node scripts/sim.mjs https://<tên-worker>.<tài-khoản>.workers.dev   # kiểm thử trên server thật
+node scripts/sim.mjs https://<worker-name>.<account>.workers.dev   # test against the real server
 ```
 
-Thử WebSocket bằng curl phải thêm `--http1.1` (HTTP/2 không có header Upgrade).
+To try the WebSocket with curl add `--http1.1` (HTTP/2 has no Upgrade header).
 
-## Khóa dùng chung (bí mật)
+## The shared key (secret)
 
-Nếu không có khóa, ai biết URL đều có thể tạo phòng và tiêu hạn mức 100.000 yêu cầu mỗi ngày của gói Free. Worker vì vậy yêu cầu khóa `ROOM_KEY` cho `POST /rooms` và `WS /room/<CODE>`; sai hoặc thiếu thì trả 401. `/health` luôn mở để phân biệt "server hỏng" với "sai khóa". Khóa gửi trong header `X-Unison-Key` (app) hoặc tham số `?key=` (client không đặt được header, ví dụ trình duyệt). Nếu server không có `ROOM_KEY` (chạy cục bộ) thì mở hoàn toàn.
+Without a key, anyone who knows the URL could create rooms and use up the Free plan's 100,000 requests per day. The Worker therefore requires the key `ROOM_KEY` for `POST /rooms` and `WS /room/<CODE>`; a wrong or missing key gets a 401. `/health` is always open, to tell "server broken" from "wrong key". The key is sent in the `X-Unison-Key` header (the app) or the `?key=` parameter (clients that cannot set headers, such as a browser). If the server has no `ROOM_KEY` (running locally) it is completely open.
 
 ```bash
-# đặt hoặc đổi khóa (giá trị tự sinh, không lưu vào Git)
+# set or change the key (a generated value, never stored in Git)
 openssl rand -hex 16 | tr -d '\n' | npx wrangler secret put ROOM_KEY
 ```
 
-App Android đọc khóa lúc build từ `app/android/unison.properties` (đã nằm trong `.gitignore`):
+The Android app reads the key at build time from `app/android/unison.properties` (already in `.gitignore`):
 
 ```properties
-unison.roomKey=<khóa>
-# tùy chọn, mặc định là server hiện tại
-unison.serverUrl=https://<tên-worker>.<tài-khoản>.workers.dev
+unison.roomKey=<key>
+unison.serverUrl=https://<worker-name>.<account>.workers.dev
 ```
 
-Đổi khóa nghĩa là phải build và cài lại app cho cả nhóm. Khóa nằm trong APK nên chỉ chống người lạ, không chống người trong nhóm.
+Changing the key means building and reinstalling the app for the whole group. The key is inside the APK, so it only keeps strangers out, not people in the group.
 
-## Vận hành
+## Operations
 
-- Xem log trực tiếp: `npx wrangler tail`.
-- Phòng trống còn bài tự xóa sau 7 ngày, phòng trống không còn bài sau 1 giờ; mỗi phòng chứa tối đa 12 người và 200 bài, mỗi kết nối tối đa 20 tin nhắn mỗi giây. Một phòng chiếm chưa tới 50 KB (gói miễn phí cho 5 GB tổng), nên phòng mồ côi không tốn tiền; việc dọn là để danh sách "phòng gần đây" trung thực.
-- Biến môi trường chỉ dành cho test (`STALE_MS`, `DROP_MS`, `SWEEP_MS`, `EMPTY_MS`, `EMPTY_BARE_MS`) rút ngắn các hẹn giờ trên; không đặt chúng trên server thật.
-- Ước tính tải: một thiết bị gửi khoảng 2 ping mỗi phút (đo đồng hồ) và vài tin mỗi bài, còn ghi bộ nhớ khoảng 10 lần mỗi bài, nên nhóm 5 người nghe cả ngày vẫn thấp hơn nhiều so với hạn mức 100.000 yêu cầu và 100.000 lượt ghi mỗi ngày (tin WebSocket tính 20 tin bằng 1 yêu cầu).
-- Bản triển khai hiện tại: giao thức phiên bản 6 (`GET /health` báo `protocol`, tin `state` cũng mang trường này). Thay đổi từ 5 sang 6 chỉ thêm, app bản 5 vẫn dùng được.
+- Live log: `npx wrangler tail`.
+- An empty room that still has songs is deleted after 7 days, an empty room without songs after 1 hour; a room holds at most 12 people and 200 songs, and each connection at most 20 messages per second. A room takes less than 50 KB (the free plan gives 5 GB in total), so an orphaned room costs nothing; the cleanup is there to keep the "recent rooms" list honest.
+- Environment variables meant for tests only (`STALE_MS`, `DROP_MS`, `SWEEP_MS`, `EMPTY_MS`, `EMPTY_BARE_MS`) shorten the timers above; do not set them on a real server.
+- Load estimate: a device sends about 2 pings a minute (to measure the clock) and a few messages per song, and writes to storage about 10 times per song, so a group of 5 listening all day stays far below the limit of 100,000 requests and 100,000 writes per day (WebSocket messages count 20 to 1 request).
+- Current deployment: protocol version 6 (`GET /health` reports `protocol`, and the `state` message carries it too). The change from 5 to 6 only added things, so an app on version 5 still works.

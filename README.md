@@ -1,37 +1,39 @@
 # Unison
 
-Nghe nhạc YouTube cùng nhau, cùng một nhịp, ở mọi nơi.
+Listen to YouTube music together, in sync, wherever you are.
 
-App Android và iPhone cho nhóm nhỏ bạn bè. Mỗi điện thoại tự lấy luồng nhạc ngay trên máy, còn server miễn phí (Cloudflare Workers) chỉ giữ phòng và giữ nhịp đồng bộ, không chứa nhạc.
+An Android and iPhone app for a small group of friends. Every phone fetches the audio stream by itself, on the device; a free server (Cloudflare Workers) only keeps the rooms and the sync clock. It never holds any music.
 
-## Có gì
+> **This is a vibe-coded project.** Almost all of the code, tests and documentation were written by an AI coding assistant (Claude Code), directed by a person who describes what they want, tries it on real phones and decides what stays. It is a personal hobby project: expect rough edges, read the code before you trust it, and do not treat it as production software.
 
-- Nghe nhạc như một app thường: tìm kiếm, hàng đợi cá nhân, phát nền, điều khiển ở màn hình khóa.
-- Room: tạo phòng hoặc vào bằng mã, mọi người nghe cùng một bài, cùng một nhịp, ai cũng thêm bài và điều khiển được.
-- Cập nhật app qua mạng (OTA), giao diện tiếng Anh và tiếng Việt, chế độ tiết kiệm pin và nhiệt.
+## What it does
 
-## Cấu trúc
+- Plays music like an ordinary player: search, a personal queue, background playback, lock-screen controls.
+- Rooms: create a room or join one with a code; everybody hears the same song at the same moment, and anyone can add songs and steer playback (the room owner can limit guests to adding songs).
+- Over-the-air updates for the app, English and Vietnamese interface, battery and heat saving modes.
 
-| Thư mục | Nội dung |
+## Layout
+
+| Folder | What is in it |
 |---|---|
-| [app/](app/README.md) | App Flutter (giao diện) và dịch vụ phát nhạc Kotlin (Media3) |
-| [app/packages/unison_native/](app/packages/unison_native/) | Phần native của iOS bằng Swift: trình phát, phòng, YouTube, thư viện; có test chạy trên Linux |
-| [native/](native/) | Thư viện Kotlin thuần: lấy luồng YouTube, đồng bộ phòng; có test JVM |
-| [server/](server/README.md) | Server phòng trên Cloudflare Workers và Durable Objects |
-| [docs/PROTOCOL.md](docs/PROTOCOL.md) | Giao thức đồng bộ giữa app và server |
+| [app/](app/README.md) | The Flutter app (UI) and the Kotlin playback service (Media3) |
+| [app/packages/unison_native/](app/packages/unison_native/) | The iOS native side in Swift: player, room, YouTube, library; its core is tested on Linux |
+| [native/](native/) | Plain Kotlin libraries: YouTube stream extraction and room sync, with JVM tests |
+| [server/](server/README.md) | The room server on Cloudflare Workers and Durable Objects |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | The sync protocol between the app and the server |
 
-## Tự chạy thử
+## Running it yourself
 
-Cần Flutter, JDK 17, Android SDK và một tài khoản Cloudflare miễn phí. Khóa phòng và khóa ký app là của riêng bạn, không nằm trong Git. Cách dựng server, đặt khóa và build app: xem [server/README.md](server/README.md) và [app/README.md](app/README.md).
+You need Flutter, JDK 17, the Android SDK and a free Cloudflare account. The room key and the app signing key are yours and are never committed. To set up the server, the key and the app build, see [server/README.md](server/README.md) and [app/README.md](app/README.md).
 
 ## iPhone
 
-Bản iOS dùng chung giao diện Flutter với bản Android; phần native viết lại bằng Swift (AVFoundation) và nói cùng giao thức phòng với server. Apple không cho cài app ngoài App Store miễn phí và lâu dài, nên bản này chỉ để dùng cá nhân:
+The iOS app shares the Flutter UI with Android; its native side is rewritten in Swift (AVFoundation) and speaks the same room protocol as the server. Apple does not allow free, lasting installs outside the App Store, so this build is for personal use only:
 
-- GitHub Actions dựng một tệp IPA chưa ký ([.github/workflows/ios.yml](.github/workflows/ios.yml)); bạn tải về và ký bằng Apple ID của riêng mình qua [SideStore](https://sidestore.io) (chứng chỉ miễn phí hết hạn sau 7 ngày, SideStore tự gia hạn khi máy ở cùng Wi-Fi).
-- Địa chỉ server và khóa phòng không nằm trong app. Cách dễ nhất: trên điện thoại Android đã dùng được, mở Cài đặt > Cài đặt cho máy khác để hiện mã QR, rồi quét bằng Camera của iPhone (hoặc sao chép liên kết `unison://setup?…` và dán ở Cài đặt > Máy chủ); app hỏi lại trước khi dùng. Cũng nhập tay được ở Cài đặt > Máy chủ.
-- Chưa có cập nhật qua mạng (SideStore lo), chưa đo pin, và chưa thử trên nhiều máy.
+- GitHub Actions builds an unsigned IPA ([.github/workflows/ios.yml](.github/workflows/ios.yml)); you download it and sign it with your own Apple ID through [SideStore](https://sidestore.io) (a free certificate expires after 7 days; SideStore renews it by itself while the phone is on the same Wi-Fi).
+- The server address and the room key are not in the app. The easy way: on an Android phone that already works, open Settings > Set up another phone to show a QR code, then scan it with the iPhone's Camera (or copy the `unison://setup?…` link and paste it in Settings > Server); the app asks before using it. You can also type them in Settings > Server.
+- There are no over-the-air updates (SideStore handles that), and battery use has not been measured on many devices.
 
-## Lưu ý
+## Notes
 
-Đây là dự án cá nhân, viết để nghe nhạc cùng bạn bè trong nhóm nhỏ, không có mục đích thương mại. Việc lấy luồng từ YouTube bằng client bên thứ ba không nằm trong điều khoản dịch vụ của YouTube, nên hãy tự cân nhắc trước khi dùng, và không dùng để lưu hay phân phối lại nhạc.
+This is a personal project, written to listen to music with friends in a small group, with no commercial purpose. Getting streams from YouTube with a third-party client is not covered by YouTube's terms of service, so decide for yourself before using it, and do not use it to store or redistribute music.

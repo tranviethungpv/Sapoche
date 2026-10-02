@@ -1,59 +1,59 @@
-# Unison (app Flutter)
+# Unison (Flutter app)
 
-Giao diện Flutter, còn phát nhạc và đồng bộ phòng nằm ở phần Kotlin trong `android/` (giao thức đồng bộ: [docs/PROTOCOL.md](../docs/PROTOCOL.md)).
+The Flutter UI. Playback and room sync live in the Kotlin part under `android/` (sync protocol: [docs/PROTOCOL.md](../docs/PROTOCOL.md)).
 
 ```
 lib/
-  theme/     bảng màu hồng nhạt (sáng và tối) và ThemeData
-  data/      mô hình, cầu nối tới Kotlin (backend.dart), RoomController
-  ui/        các màn hình và widget
-  strings.dart   toàn bộ chữ hiển thị
+  theme/     the light pink palette (light and dark) and ThemeData
+  data/      models, the bridge to Kotlin (backend.dart), RoomController
+  ui/        screens and widgets
+  strings.dart   every piece of text shown
 android/app/src/main/kotlin/app/unison/
-  UnisonBridge.kt   MethodChannel + EventChannel giữa Flutter và native
-  PlaybackService.kt, GroupController.kt, ExoPlayerPort.kt   phát nhạc và vào phòng
-../native/{core,sync}   tách luồng YouTube và engine đồng bộ, dùng chung với spike
+  UnisonBridge.kt   MethodChannel + EventChannel between Flutter and native
+  PlaybackService.kt, GroupController.kt, ExoPlayerPort.kt   playback and joining rooms
+../native/{core,sync}   YouTube stream extraction and the sync engine, shared with the spikes
 ```
 
-## Chạy thử
+## Running it
 
 ```bash
 export PATH=$HOME/.local/share/flutter/bin:$PATH
-# khóa dùng chung với server (không commit): tạo android/unison.properties với dòng
-#   unison.roomKey=<khóa>
-# và tùy chọn unison.serverUrl=<địa chỉ server>
+# the key shared with the server (not committed): create android/unison.properties with
+#   unison.roomKey=<key>
+#   unison.serverUrl=<server address>
 flutter pub get
-flutter run            # hoặc: flutter build apk --debug
+flutter run            # or: flutter build apk --debug
 ```
 
-Đổi khóa server thì build và cài lại app cho cả nhóm (xem [server/README.md](../server/README.md)).
+If you change the server key, build and reinstall the app for the whole group (see [server/README.md](../server/README.md)).
 
-## Kiểm thử
+## Tests
 
 ```bash
-flutter analyze && flutter test        # giao diện, bộ điều khiển, hợp đồng kênh
-cd android && ./gradlew :core:test :sync:test   # phân tích link, engine đồng bộ
+flutter analyze && flutter test        # UI, controllers, channel contracts
+cd android && ./gradlew :core:test :sync:test   # link parsing, the sync engine
 ```
 
-`tool/soak.sh` chạy một buổi nghe với màn hình tắt trên các máy đã vào cùng phòng (âm lượng phải để 0 từ trước) và in số lần chuyển bài, tua lại, lỗi, độ lệch. `tool/battery.sh` đo thời gian CPU, khung hình và số lần nối lại của app trong một khoảng, để so hai bản trên cùng một máy. Cả hai tắt màn hình bằng phím nguồn: máy có khoá màn hình sẽ bị khoá lại và chỉ mở được bằng tay.
+`tool/soak.sh` runs a listening session with the screen off on devices that joined the same room (the volume must be 0 beforehand) and prints the number of song changes, rewinds, errors and the drift. `tool/battery.sh` measures the app's CPU time, frames and reconnects over a period, to compare two builds on the same device. Both switch the screen off with the power key: a device with a screen lock gets locked and can only be unlocked by hand.
 
 ## iOS
 
-Phần native của iOS là plugin Flutter [packages/unison_native](packages/unison_native/) (Swift, không có phần Android). Nó nói qua cùng hai kênh `app.unison/control` và `app.unison/state` như `UnisonBridge.kt`, nên giao diện Dart không đổi.
+The iOS native side is the Flutter plugin [packages/unison_native](packages/unison_native/) (Swift, no Android part). It speaks over the same two channels, `app.unison/control` and `app.unison/state`, as `UnisonBridge.kt`, so the Dart UI is the same on both.
 
 ```
 packages/unison_native/ios/unison_native/Sources/unison_native/
-  Core/    phần thuần Foundation: đồng bộ phòng, hàng đợi, YouTube, thư viện SQLite, Bridge.swift (các lệnh của giao diện)
-  Apple/   phần chỉ chạy trên iPhone: AVPlayerEngine, màn hình khóa, chọn tệp, mạng, plugin
+  Core/    the plain-Foundation part: room sync, queue, YouTube, the SQLite library, Bridge.swift (the UI's commands)
+  Apple/   the part that only runs on an iPhone: AVPlayerEngine, lock screen, file pickers, network, the plugin
 ```
 
-`Core/` biên dịch và chạy test được trên Linux (không cần Mac): `cd packages/unison_native && swift test`. Phần `Apple/` chỉ biên dịch được trên macOS, nên CI (`.github/workflows/ios.yml`) dựng cả app. Cài vào máy: tải IPA chưa ký từ CI rồi ký bằng SideStore. Địa chỉ server và khóa phòng không build vào IPA: Android hiện chúng thành mã QR (Cài đặt > Cài đặt cho máy khác, liên kết `unison://setup?server=…&key=…`), iPhone quét bằng Camera hoặc dán liên kết ở Cài đặt > Máy chủ; nhập tay cũng được. Muốn đo khung hình trên iPhone thì dựng với `--dart-define=FRAME_STATS=true`: số liệu được ghi vào nhật ký (Cài đặt > Sao chép nhật ký). Đã đo ngày 2026-10-02: màn hình 120Hz, khoảng cách khung 8,3 ms.
+`Core/` compiles and its tests run on Linux (no Mac needed): `cd packages/unison_native && swift test`. `Apple/` only compiles on macOS, so CI (`.github/workflows/ios.yml`) builds the whole app. To install: download the unsigned IPA from CI and sign it with SideStore. The server address and the room key are not built into the IPA: Android shows them as a QR code (Settings > Set up another phone, link `unison://setup?server=…&key=…`), and the iPhone scans it with Camera or pastes the link in Settings > Server; typing them in works too. To measure frame times on an iPhone, build with `--dart-define=FRAME_STATS=true`: the figures go to the log (Settings > Copy log). Measured on 2026-10-02: a 120 Hz screen, a frame interval of 8.3 ms.
 
-Bài hát YouTube gửi về dưới dạng MP4 phân mảnh (DASH); `Core/Mp4.swift` ghi lại thành MP4 thường ngay sau khi tải (không mã hoá lại), vì AVPlayer không đáng tin với tệp phân mảnh nằm trên đĩa.
+YouTube songs arrive as fragmented MP4 (DASH); `Core/Mp4.swift` rewrites them as plain MP4 right after the download (no re-encoding), because AVPlayer is unreliable with fragmented files on disk.
 
-## Mời bạn bè
+## Inviting friends
 
-Tờ "Room" trong phòng có mã 6 ký tự, mã QR và liên kết `https://<server>/join/MÃ`; nút chia sẻ gửi mã kèm liên kết đó (bấm được trong Zalo, Messenger). Với app đã cài, Android xác minh địa chỉ server qua `/.well-known/assetlinks.json` (dấu vân tay khoá ký nằm ở `server/src/join-page.ts`; đổi khoá ký thì sửa ở đó) và mở thẳng app; chưa xác minh thì trang trên server thử mở app rồi hiện mã để gõ. Liên kết `unison://join/MÃ` cũ vẫn dùng được. Mở liên kết khi đang ngoài phòng sẽ mở tờ Room với mã điền sẵn, đang trong phòng khác thì hỏi có đổi phòng không.
+The "Room" sheet inside a room has a 6-character code, a QR code and a link `https://<server>/join/CODE`; the share button sends the code with that link (it is tappable in chat apps). For an installed app, Android verifies the server address through `/.well-known/assetlinks.json` (the signing key fingerprint is in `server/src/join-page.ts`; edit it there when the signing key changes) and opens the app directly; until it is verified, the server page tries to open the app and then shows the code to type. The older `unison://join/CODE` links still work. Opening a link while outside a room opens the Room sheet with the code filled in; while in another room it asks whether to switch.
 
-## Nghe ngoài phòng
+## Listening outside a room
 
-Mở app là vào hàng đợi cá nhân (lưu trong `files/local_queue.json`, trở lại sau khi khởi động lại ở trạng thái tạm dừng). Nút "Room" ở đầu trang dẫn tới tờ để tạo, vào bằng mã, hoặc vào lại một phòng gần đây.
+Opening the app lands on the personal queue (kept in `files/local_queue.json`, and back after a restart in the paused state). The "Room" button at the top leads to a sheet for creating a room, joining by code, or rejoining a recent one.
