@@ -521,6 +521,25 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `a new song in the place of one that broke gets all its tries`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step(1000)
+        h.player.onError?.invoke(RuntimeException("403"))
+        step()
+        // A new list starts where the old one was, at the top of the queue
+        h.session.clear()
+        h.session.add(listOf(track(2)), next = false)
+        step(1000)
+        repeat(3) {
+            h.player.onError?.invoke(RuntimeException("403"))
+            step()
+        }
+        assertEquals("Song 2", h.player.loaded?.title)
+        assertFalse(h.problems.any { it.contains("Song 2") }, "the tries of Song 1 are not counted for it")
+    }
+
+    @Test
     fun `asking to play twice while the song is loading loads it once`() = runTest {
         val song = QueueItem("a", "aaaaaaaaaaa", "One", "x", null, 200_000, "")
         val h = harness(SavedQueue(listOf(song)))

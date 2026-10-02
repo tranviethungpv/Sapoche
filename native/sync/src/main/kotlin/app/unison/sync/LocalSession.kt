@@ -323,12 +323,13 @@ class LocalSession(
     }
 
     private fun load(item: QueueItem, positionMs: Long, play: Boolean) {
+        // The tries are counted for the song, not its place: a new song where the last one was starts from none
+        if (item.id != loadedId) recoveries = 0
         job?.cancel()
         preloaded = null
         loadedId = null
         val at = snapshot.value.queue.indexOfFirst { it.id == item.id }
         if (at < 0) return
-        if (at != snapshot.value.index) recoveries = 0
         // The person sees the new song at once, not when it has loaded
         _snapshot.update { it.copy(index = at, finished = false) }
         playOnLoad = play

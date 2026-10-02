@@ -82,14 +82,14 @@ final class YouTubeTests: XCTestCase {
         XCTAssertEqual(player.body["videoId"] as? String, "dQw4w9WgXcQ")
     }
 
-    func testTheVisitorIdentityIsAskedForOnce() async throws {
+    func testEveryResolveAsksForANewVisitorIdentity() async throws {
         let http = FakeHTTP()
         http.answer("visitor_id", text: visitorAnswer())
         try http.answer("/player", fixture: "player_visionos")
         let resolver = resolver(http)
         _ = try await resolver.resolve("dQw4w9WgXcQ")
         _ = try await resolver.resolve("dQw4w9WgXcQ")
-        XCTAssertEqual(http.calls.filter { $0.url.contains("visitor_id") }.count, 1)
+        XCTAssertEqual(http.calls.filter { $0.url.contains("visitor_id") }.count, 2, "an identity is not kept from one resolve to the next")
     }
 
     func testWhenTheFirstClientIsTurnedDownTheNextOneIsTried() async throws {

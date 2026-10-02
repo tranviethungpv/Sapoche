@@ -192,9 +192,6 @@ actor YouTubeResolver: StreamResolver {
     private let region: String
     private let clients: [InnertubeClient]
 
-    /// An identity YouTube gives to a visitor; asking for streams with one is what keeps it from calling us a robot.
-    private var visitor: (id: String, at: Date)?
-
     init(http: HTTPClient = URLSessionHTTP(), music: MusicSource? = nil, region: String = "US",
          clients: [InnertubeClient] = [.visionOS, .iPhone]) {
         self.http = http
@@ -207,9 +204,9 @@ actor YouTubeResolver: StreamResolver {
 
     func resolve(_ videoId: String) async throws -> Resolved {
         var lastProblem = "no answer"
-        for (attempt, client) in (clients + [clients[0]]).enumerated() {
+        for client in clients + [clients[0]] {
             do {
-                let visitorData = try await visitorData(for: client, refresh: attempt > 0)
+                let visitorData = try await visitorData(for: client)
                 let answer = try await http.postJSON(
                     "https://youtubei.googleapis.com/youtubei/v1/player?prettyPrint=false",
                     body: [
@@ -232,17 +229,18 @@ actor YouTubeResolver: StreamResolver {
         throw ResolveFailure(message: "Could not get a stream for \(videoId): \(lastProblem)")
     }
 
-    private func visitorData(for client: InnertubeClient, refresh: Bool) async throws -> String? {
-        if !refresh, let visitor, Date().timeIntervalSince(visitor.at) < 3600 { return visitor.id }
+    /// An identity YouTube gives to a visitor; asking for streams with one is what keeps it from calling us a robot. A
+    /// new one is asked for every time, as Android's extractor does: one kept across many songs was seen to get only
+    /// streams that broke with 403 after their first moments, however often they were resolved again, until the app
+    /// was restarted.
+    private func visitorData(for client: InnertubeClient) async throws -> String? {
         let answer = try await http.postJSON(
             "https://youtubei.googleapis.com/youtubei/v1/visitor_id?prettyPrint=false",
             body: ["context": client.context(region: region, visitorData: nil)],
             headers: client.headers(visitorData: nil),
             service: "YouTube"
         )
-        guard let id = answer.at("responseContext", "visitorData").string else { return visitor?.id }
-        visitor = (id, Date())
-        return id
+        return answer.at("responseContext", "visitorData").string
     }
 
     /// The song and its audio streams that an iPhone can play (AAC in an MP4 file), from a `player` answer.

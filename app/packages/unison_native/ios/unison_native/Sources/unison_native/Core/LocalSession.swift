@@ -367,11 +367,12 @@ final class LocalSession {
     }
 
     private func load(_ item: QueueItem, _ positionMs: Int64, play: Bool) {
+        // The tries are counted for the song, not its place: a new song where the last one was starts from none
+        if item.id != loadedId { recoveries = 0 }
         job?.cancel()
         preloaded = nil
         loadedId = nil
         guard let at = snapshot.value.queue.firstIndex(where: { $0.id == item.id }) else { return }
-        if at != snapshot.value.index { recoveries = 0 }
         // The person sees the new song at once, not when it has loaded
         snapshot.update { $0.index = at; $0.finished = false }
         playOnLoad = play

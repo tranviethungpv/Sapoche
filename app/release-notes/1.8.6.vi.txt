@@ -1,0 +1,3 @@
+Nhạc phát ổn định khi chuyển bài liên tục
+- Trên iPhone, tua hoặc chuyển bài liên tục có thể khiến mọi bài đều không nạp được cho đến khi tắt app mở lại; giờ app không còn giữ một phiên YouTube đã hỏng nữa.
+- Bài mới thay chỗ một bài vừa lỗi nhiều lần giờ được thử lại đủ số lần của nó trước khi bị bỏ qua.

@@ -494,6 +494,24 @@ final class LocalSessionTests: XCTestCase {
         XCTAssertTrue(h.problems.contains { $0.contains("Song 1") })
     }
 
+    func testANewSongInThePlaceOfOneThatBrokeGetsAllItsTries() async {
+        let h = harness()
+        h.session.add([track(1)], next: false)
+        await h.step(1000)
+        h.player.onError?(NSError(domain: "t", code: 403))
+        await h.step()
+        // A new list starts where the old one was, at the top of the queue
+        h.session.clear()
+        h.session.add([track(2)], next: false)
+        await h.step(1000)
+        for _ in 0..<3 {
+            h.player.onError?(NSError(domain: "t", code: 403))
+            await h.step()
+        }
+        XCTAssertEqual(h.player.loaded?.title, "Song 2")
+        XCTAssertFalse(h.problems.contains { $0.contains("Song 2") }, "the tries of Song 1 are not counted for it")
+    }
+
     func testAskingToPlayTwiceWhileTheSongIsLoadingLoadsItOnce() async {
         let h = harness(SavedQueue(queue: [item("a", "aaaaaaaaaaa", "One")]))
         h.player.prepareDelayMs = 2000
