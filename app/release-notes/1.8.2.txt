@@ -1,0 +1,2 @@
+Softer, richer light backgrounds
+- In the light theme the backgrounds of the player and of the album, playlist and artist pages keep more of the colours of the cover, so the blur shows, without turning garish; they are paler only where a dark cover needs it for the text to stay easy to read.

@@ -26,9 +26,12 @@ class CoverGlow {
   /// The brightness the background should average, 0 black to 1 white.
   static const _targetLuma = 0.30;
 
-  /// In the light theme, how much of the colour is kept and how much white is mixed in.
-  static const _lightKeep = 0.4;
-  static const _lightLift = 1 - _lightKeep;
+  /// How vivid the colours are made in the light theme: less than in the dark one, where they have a dark ground to
+  /// glow on, as against pale ones that turn garish.
+  static const _lightSaturation = 1.35;
+
+  /// The brightness the background should average in the light theme, 0 black to 1 white: pale enough for dark text.
+  static const _lightLuma = 0.62;
 
   /// In the order they were last used, the oldest first (a map literal keeps the order of insertion).
   static final _cache = <String, ui.Image?>{};
@@ -99,9 +102,7 @@ class CoverGlow {
 
   /// Blurs and tints [cover] into the small picture. Public so that it can be tested with a made-up cover.
   static Future<ui.Image> render(ui.Image cover, {bool light = false}) async {
-    final data = light
-        ? null
-        : await cover.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final data = await cover.toByteData(format: ui.ImageByteFormat.rawRgba);
     final luma = data == null ? 0.5 : averageLuma(data.buffer.asUint8List());
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -113,7 +114,13 @@ class CoverGlow {
         tileMode: TileMode.mirror,
       )
       ..colorFilter = ColorFilter.matrix(
-        light ? tint(_lightKeep, lift: _lightLift) : tint(darkening(luma)),
+        light
+            ? tint(
+                lightKeep(luma),
+                lift: 1 - lightKeep(luma),
+                saturation: _lightSaturation,
+              )
+            : tint(darkening(luma)),
       );
     // The cover fills the height and is cropped at the sides, as it would be on a tall screen
     final target = Rect.fromCenter(
@@ -151,9 +158,18 @@ class CoverGlow {
   static double darkening(double luma) =>
       (_targetLuma / (luma <= 0.01 ? 0.01 : luma)).clamp(0.38, 0.9);
 
+  /// How much of the colour of a cover of this [luma] is kept in the light theme, the rest being white: a dark cover
+  /// is faded a lot to stay pale, a light or colourful one keeps more of its colours.
+  static double lightKeep(double luma) =>
+      ((1 - _lightLuma) / (1 - (luma > 0.9 ? 0.9 : luma))).clamp(0.38, 0.75);
+
   /// A colour matrix that makes colours more vivid, darkens them by [factor] and then mixes in [lift] of white.
-  static List<double> tint(double factor, {double lift = 0}) {
-    const s = saturation;
+  static List<double> tint(
+    double factor, {
+    double lift = 0,
+    double saturation = CoverGlow.saturation,
+  }) {
+    final s = saturation;
     const r = 0.2126, g = 0.7152, b = 0.0722;
     double k(double v) => v * factor;
     final white = lift * 255;

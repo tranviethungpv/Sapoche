@@ -59,6 +59,31 @@ void main() {
       expect(CoverGlow.averageLuma(Uint8List(0)), 0.5);
     });
 
+    test('a dark cover is faded more than a light one in the light theme', () {
+      expect(CoverGlow.lightKeep(0), 0.38);
+      expect(CoverGlow.lightKeep(0.4), greaterThan(CoverGlow.lightKeep(0.1)));
+      expect(
+        CoverGlow.lightKeep(1),
+        0.75,
+        reason: 'white does not divide by zero',
+      );
+    });
+
+    test('a lower saturation pulls colours apart less', () {
+      double spread(List<double> m) {
+        const orange = [200.0, 120.0, 40.0];
+        double row(int at) =>
+            m[at] * orange[0] + m[at + 1] * orange[1] + m[at + 2] * orange[2];
+        return row(0) - row(10);
+      }
+
+      expect(
+        spread(CoverGlow.tint(1, saturation: 1.35)),
+        lessThan(spread(CoverGlow.tint(1))),
+      );
+      expect(spread(CoverGlow.tint(1, saturation: 1)), closeTo(160, 0.01));
+    });
+
     test('the light matrix mixes white in', () {
       final m = CoverGlow.tint(0.4, lift: 0.6);
       expect(m[4], closeTo(153, 0.01));

@@ -104,8 +104,8 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
               colors: light
                   ? const [
                       Color(0x00FFFFFF),
-                      Color(0x1AFFFFFF),
-                      Color(0x66FFFFFF),
+                      Color(0x0DFFFFFF),
+                      Color(0x4DFFFFFF),
                     ]
                   : const [
                       Color(0x14000000),

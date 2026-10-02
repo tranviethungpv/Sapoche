@@ -1,0 +1,2 @@
+Nền sáng đậm hơn nhưng dịu màu
+- Ở giao diện sáng, nền của trình phát và của các trang album, danh sách phát, nghệ sĩ giữ nhiều màu của ảnh bìa hơn nên thấy rõ hiệu ứng blur mà không bị sặc sỡ; chỉ nhạt đi khi bìa tối để chữ vẫn dễ đọc.
