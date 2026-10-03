@@ -9,7 +9,7 @@ import 'theme/palette.dart';
 import 'theme/theme.dart';
 import 'ui/home_shell.dart';
 import 'ui/scope.dart';
-import 'ui/widgets/wash.dart';
+import 'ui/widgets/ambient_backdrop.dart';
 
 class SapocheApp extends StatefulWidget {
   const SapocheApp({super.key, required this.model});
@@ -69,6 +69,15 @@ class _SapocheAppState extends State<SapocheApp> {
           return MaterialApp(
             title: S.appName,
             debugShowCheckedModeBanner: false,
+            // A mouse (DeX, a computer) drags a row of covers the way a finger does
+            scrollBehavior: const MaterialScrollBehavior().copyWith(
+              dragDevices: {
+                ui.PointerDeviceKind.touch,
+                ui.PointerDeviceKind.mouse,
+                ui.PointerDeviceKind.stylus,
+                ui.PointerDeviceKind.trackpad,
+              },
+            ),
             themeMode: model.settings.themeMode,
             theme: buildTheme(Palette.light),
             darkTheme: buildTheme(Palette.dark),
@@ -89,7 +98,7 @@ class _SapocheAppState extends State<SapocheApp> {
   }
 }
 
-/// Shows the home screen once the first state arrived, and paints the pink veil behind it.
+/// Shows the home screen once the first state arrived, and paints the colours of the song that is playing behind it.
 class _Root extends StatelessWidget {
   const _Root();
 
@@ -107,7 +116,7 @@ class _Root extends StatelessWidget {
             ? Brightness.light
             : Brightness.dark,
       ),
-      child: PinkWash(
+      child: AmbientBackdrop(
         child: ListenableBuilder(
           listenable: room,
           builder: (context, _) {

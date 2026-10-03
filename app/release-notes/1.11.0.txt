@@ -1,0 +1,6 @@
+One look for the whole app, and a layout for tablets and big screens
+- Home, Search, Library, Listen and Settings now take the colours of the song that is playing, so the glass bars match them as they match an album page. A small glass title comes in at the top as a page scrolls.
+- Settings, the search field and the filters are soft see-through shapes, with round buttons at the top of a page.
+- On a tablet, a foldable or a window of Samsung DeX the app has a layout of its own: a rail of tabs on a tablet held upright, and on a wide screen a sidebar with your playlists and a player bar along the bottom. Albums, artists and Settings use the width, and the full player no longer fills the whole screen with one huge cover.
+- With a mouse you can drag rows of covers and right-click a song for its menu. Keys: Space plays or pauses, Shift with the arrows goes ten seconds back or on, Ctrl with the arrows skips, / searches, Esc closes the player.
+- The app can now be started from the home screen of an Android TV and moved with a remote.

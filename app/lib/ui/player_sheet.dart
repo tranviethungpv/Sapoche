@@ -1,10 +1,12 @@
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
+import 'home_shell.dart';
 import 'now_playing_page.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/mini_player.dart';
+import 'widgets/player_bar.dart';
 
 /// The full player as a sheet inside the home screen rather than a route: a pushed route would
 /// cancel the finger that is dragging it open. One animation value, 0 closed to 1 open, is the
@@ -71,6 +73,21 @@ class PlayerSheetController extends ChangeNotifier {
     _animate(1, ms: _openMs, byFinger: false);
   }
 
+  PlayerPanel? _panel;
+
+  /// Opens the player on one of its panels, for the buttons of the player bar of a wide screen.
+  void openOn(PlayerPanel panel) {
+    _panel = panel;
+    open();
+  }
+
+  /// The panel the player was asked to open on, once.
+  PlayerPanel? takePanel() {
+    final panel = _panel;
+    _panel = null;
+    return panel;
+  }
+
   void close() {
     _setOpen(false);
     _animate(0, ms: _closeMs, byFinger: false);
@@ -128,6 +145,9 @@ class PlayerSheetController extends ChangeNotifier {
   }
 }
 
+/// The panels of the full player that can be opened on from outside it.
+enum PlayerPanel { lyrics, upNext }
+
 class PlayerSheetScope extends InheritedWidget {
   const PlayerSheetScope({
     super.key,
@@ -180,7 +200,9 @@ class PlayerSheetLayer extends StatelessWidget {
       final shape = RRect.fromLTRBR(
         mini.left * (1 - grown),
         0,
-        screen.width - mini.left * (1 - grown),
+        // The mini player is in the middle of a phone's screen but not always beside a rail, and the player bar of a
+        // wide screen runs from the sidebar to the edge
+        mini.right + (screen.width - mini.right) * grown,
         mini.height + (screen.height - mini.height) * open,
         Radius.circular(mini.height / 2 * (1 - grown)),
       );
@@ -209,11 +231,17 @@ class PlayerSheetLayer extends StatelessWidget {
                       opacity: capsule,
                       // Its glass is in the bars' backdrop group, so opening the player takes no second reading of
                       // the screen behind it
-                      child: MiniPlayerCapsule(
-                        controller: AppScope.roomOf(context),
-                        ghost: true,
-                        folded: folded.value,
-                      ),
+                      child: switch (HomeShell.layoutOf(context)) {
+                        ShellLayout.sidebar => PlayerBarBody(
+                          controller: AppScope.roomOf(context),
+                          ghost: true,
+                        ),
+                        final layout => MiniPlayerCapsule(
+                          controller: AppScope.roomOf(context),
+                          ghost: true,
+                          folded: layout == ShellLayout.bars ? folded.value : 0,
+                        ),
+                      },
                     ),
                   ),
                 ),

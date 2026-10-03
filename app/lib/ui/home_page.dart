@@ -14,6 +14,8 @@ import 'scope.dart';
 import 'settings_page.dart';
 import 'widgets/artwork.dart';
 import 'widgets/play_actions.dart';
+import 'widgets/play_row.dart';
+import 'widgets/scroll_edge.dart';
 import 'widgets/song_card.dart';
 
 /// Where the app opens: what to play next, drawn from what the person listens to, like the home of YouTube Music.
@@ -23,8 +25,10 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final library = AppScope.of(context).library;
-    return SafeArea(
-      bottom: false,
+    // The page scrolls up under the status bar, where its glass edge blurs it away
+    final top = MediaQuery.paddingOf(context).top;
+    return ScrollEdge(
+      title: _Header.greeting(DateTime.now().hour),
       child: ListenableBuilder(
         listenable: library,
         builder: (context, _) {
@@ -40,9 +44,11 @@ class HomePage extends StatelessWidget {
           );
           return RefreshIndicator(
             onRefresh: library.refreshForYou,
+            edgeOffset: top,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.only(
+                top: top,
                 bottom: HomeShell.bottomInsetOf(context),
               ),
               children: [
@@ -131,7 +137,7 @@ class HomePage extends StatelessWidget {
 class _Header extends StatelessWidget {
   const _Header();
 
-  static String _greeting(int hour) => hour < 12
+  static String greeting(int hour) => hour < 12
       ? S.goodMorning
       : hour < 18
       ? S.goodAfternoon
@@ -141,18 +147,19 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 8, 6),
+      padding: const EdgeInsets.fromLTRB(20, 18, 16, 6),
       child: Row(
         children: [
           Expanded(
             child: Text(
-              _greeting(DateTime.now().hour),
+              greeting(DateTime.now().hour),
               style: Theme.of(context).textTheme.headlineLarge,
             ),
           ),
           IconButton(
             onPressed: () => openSettings(context),
             tooltip: S.settingsTitle,
+            style: roundButtonStyle(context, size: 40),
             // A dot while a newer version of the app is waiting
             icon: ListenableBuilder(
               listenable: AppScope.of(context).update,
@@ -161,7 +168,7 @@ class _Header extends StatelessWidget {
                 smallSize: 9,
                 backgroundColor: p.primary,
                 isLabelVisible: AppScope.of(context).update.info.hasUpdate,
-                child: Icon(Icons.settings_outlined, color: p.textSecondary),
+                child: Icon(Icons.settings_outlined, size: 22, color: p.text),
               ),
             ),
           ),
@@ -184,8 +191,8 @@ class _Welcome extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: p.primaryContainer.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
+          color: p.veil,
+          borderRadius: BorderRadius.circular(SapocheTheme.groupRadius),
         ),
         child: Row(
           children: [
@@ -224,6 +231,8 @@ class _QuickPicks extends StatelessWidget {
   Widget build(BuildContext context) {
     if (tracks.isEmpty) return const SizedBox.shrink();
     final columns = (tracks.length / _rows).ceil();
+    // A phone shows one column and a bit of the next; a wide window shows as many as fit
+    final fit = (MediaQuery.sizeOf(context).width / 380).floor();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -232,7 +241,9 @@ class _QuickPicks extends StatelessWidget {
           height: _rows * _rowHeight,
           child: PageView.builder(
             padEnds: false,
-            controller: PageController(viewportFraction: 0.9),
+            controller: PageController(
+              viewportFraction: fit < 2 ? 0.9 : 1 / fit.clamp(2, 4),
+            ),
             itemCount: columns,
             itemBuilder: (context, column) => Column(
               children: [

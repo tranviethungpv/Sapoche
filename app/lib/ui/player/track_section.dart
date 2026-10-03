@@ -87,8 +87,9 @@ class ArtistRow extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 14),
         itemBuilder: (context, i) {
           final artist = artists[i];
-          return GestureDetector(
+          return InkWell(
             onTap: () => onOpen(artist.id),
+            borderRadius: BorderRadius.circular(46),
             child: SizedBox(
               width: 92,
               child: Column(

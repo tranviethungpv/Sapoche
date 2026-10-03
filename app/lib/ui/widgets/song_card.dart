@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
 import '../../theme/theme.dart';
+import '../home_shell.dart';
 import '../player/track_section.dart';
 import 'artwork.dart';
 import 'not_interested.dart';
@@ -15,7 +16,7 @@ class SongCard extends StatelessWidget {
     required this.thumb,
     required this.onTap,
     this.onLongPress,
-    this.size = 148,
+    this.size,
   });
 
   /// A card for a song; holding it down asks whether the person is interested in it.
@@ -36,16 +37,20 @@ class SongCard extends StatelessWidget {
   final String? thumb;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
-  final double size;
+
+  /// Side of the cover; by default the one that suits the window.
+  final double? size;
 
   @override
   Widget build(BuildContext context) {
+    final size = this.size ?? HomeShell.cardSizeOf(context);
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    return GestureDetector(
+    // An InkWell, so that a remote's arrows and a keyboard's Tab can reach it, and a mouse lights it up
+    return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
-      behavior: HitTestBehavior.opaque,
+      borderRadius: BorderRadius.circular(14),
       child: SizedBox(
         width: size,
         child: Column(
@@ -87,7 +92,8 @@ class CardShelf extends StatelessWidget {
       children: [
         SectionHeading(title),
         SizedBox(
-          height: 208,
+          // The cover and its two lines
+          height: HomeShell.cardSizeOf(context) + 60,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),

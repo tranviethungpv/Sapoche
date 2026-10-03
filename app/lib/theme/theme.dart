@@ -14,6 +14,9 @@ class SapocheTheme extends ThemeExtension<SapocheTheme> {
   static const cardRadius = 14.0;
   static const artworkRadius = 10.0;
 
+  /// Groups of rows and the larger see-through panels on a page.
+  static const groupRadius = 22.0;
+
   @override
   SapocheTheme copyWith({Palette? palette}) =>
       SapocheTheme(palette ?? this.palette);
@@ -88,6 +91,9 @@ ThemeData buildTheme(Palette p) {
     scaffoldBackgroundColor: Colors.transparent,
     canvasColor: p.base,
     splashFactory: InkSparkle.splashFactory,
+    // A mouse lights the row it is over, and a remote's or a keyboard's focus is clearly seen
+    hoverColor: p.text.withValues(alpha: 0.06),
+    focusColor: p.primary.withValues(alpha: 0.24),
     dividerColor: p.outlineSoft,
     extensions: [SapocheTheme(p)],
     appBarTheme: AppBarTheme(
@@ -145,6 +151,11 @@ ThemeData buildTheme(Palette p) {
     ),
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(foregroundColor: p.text),
+    ),
+    // Back is the same chevron everywhere, as on the round Back of an album page
+    actionIconTheme: ActionIconThemeData(
+      backButtonIconBuilder: (context) =>
+          const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: p.brightness == Brightness.light

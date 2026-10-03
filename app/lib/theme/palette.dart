@@ -46,6 +46,15 @@ class Palette {
   final Color error;
   final Color success;
 
+  /// The see-through fill of what sits on a page's backdrop (groups of settings, the search field, filters, round
+  /// buttons): the soft tint of the glass bars without their blur, so the cover's colours show through it.
+  Color get veil =>
+      text.withValues(alpha: brightness == Brightness.light ? 0.05 : 0.07);
+
+  /// The same, stronger: what is chosen among things on a veil.
+  Color get veilStrong =>
+      text.withValues(alpha: brightness == Brightness.light ? 0.08 : 0.10);
+
   static const light = Palette._(
     brightness: Brightness.light,
     base: Color(0xFFFFFFFF),

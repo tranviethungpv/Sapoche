@@ -17,172 +17,215 @@ import 'home_shell.dart';
 import 'scope.dart';
 import 'setup_dialog.dart';
 import 'profile_sheet.dart';
+import 'widgets/ambient_backdrop.dart';
 import 'widgets/avatars.dart';
+import 'widgets/page_width.dart';
+import 'widgets/play_row.dart';
+import 'widgets/scroll_edge.dart';
 import 'widgets/text_dialog.dart';
-import 'widgets/wash.dart';
 
-/// Opens the settings on top of everything, with a way back.
-Future<void> openSettings(BuildContext context) =>
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+/// Opens the settings in the tab that is showing (beside the sidebar of a wide screen), with a way back.
+Future<void> openSettings(BuildContext context) => TabNavigation.push(
+  context,
+  MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+);
 
-/// The settings as a page of their own. A page on its own has no backdrop: the pink veil is part of the home screen.
+/// The settings as a page of their own. A page on its own paints its own backdrop, the same as the home screen's,
+/// so that the page it covers does not show through.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => PinkWash(
-    child: Scaffold(
-      appBar: AppBar(title: Text(S.settingsTitle)),
-      body: const SettingsPage(),
+  Widget build(BuildContext context) => AmbientBackdrop(
+    child: Padding(
+      padding: EdgeInsets.only(left: SideInset.of(context)),
+      child: const Scaffold(body: SettingsPage()),
     ),
   );
 }
 
-/// A short list of topics; each opens a page of its own, so no page grows long.
-class SettingsPage extends StatelessWidget {
+/// A topic of the settings: its title, and what is on its page.
+typedef _Topic = (
+  String Function() title,
+  List<Widget> Function(BuildContext context, AppModel model) children,
+);
+
+/// A short list of topics; each opens a page of its own, so no page grows long. On a wide screen the topic is shown
+/// beside the list instead, as the settings of a tablet do.
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final model = AppScope.of(context);
-    return SafeArea(
-      top: false,
-      child: ListView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-        // The mini player and the tab bar are drawn over the end of the list: it scrolls clear of them
-        padding: EdgeInsets.fromLTRB(
-          16,
-          8,
-          16,
-          HomeShell.bottomInsetOf(context),
-        ),
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  /// Whether the topics are shown beside the list, as of the last layout.
+  bool _wide = false;
+
+  /// The topic beside the list on a wide screen.
+  _Topic _topic = (() => S.appearance, _appearance);
+
+  /// Whether [children] is the topic shown beside the list.
+  bool _shows(List<Widget> Function(BuildContext, AppModel) children) =>
+      _wide && _topic.$2 == children;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      _wide = box.maxWidth >= 760;
+      final list = _SettingsList(
+        title: S.settingsTitle,
+        children: _topics(context),
+      );
+      if (!_wide) return list;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _ProfileCard(room: model.room),
-          _Group(
-            children: [
-              ListenableBuilder(
-                listenable: model.settings,
-                builder: (context, _) => _NavRow(
-                  key: const ValueKey('settings-appearance'),
-                  icon: Icons.palette_outlined,
-                  label: S.appearance,
-                  value: switch (model.settings.themeMode) {
-                    ThemeMode.system => S.themeSystem,
-                    ThemeMode.light => S.themeLight,
-                    ThemeMode.dark => S.themeDark,
-                  },
-                  onTap: () => _open(context, () => S.appearance, _appearance),
-                ),
-              ),
-              ListenableBuilder(
-                listenable: model.settings,
-                builder: (context, _) => _NavRow(
-                  key: const ValueKey('settings-language'),
-                  icon: Icons.translate_rounded,
-                  label: S.languageLabel,
-                  value: model.settings.language == null
-                      ? S.languageSystem
-                      : S.languageName(model.settings.language!),
-                  onTap: () => _open(context, () => S.languageLabel, _language),
-                ),
-              ),
-              _NavRow(
-                key: const ValueKey('settings-playback'),
-                icon: Icons.play_circle_outline_rounded,
-                label: S.playback,
-                onTap: () => _open(context, () => S.playback, _playback),
-              ),
-              _NavRow(
-                key: const ValueKey('settings-suggestions'),
-                icon: Icons.auto_awesome_outlined,
-                label: S.suggestionsTitle,
-                onTap: () =>
-                    _open(context, () => S.suggestionsTitle, _suggestions),
-              ),
-              ListenableBuilder(
-                listenable: model.room,
-                builder: (context, _) {
-                  final snapshot = model.room.snapshot;
-                  if (!snapshot.inRoom) return const SizedBox.shrink();
-                  return _NavRow(
-                    key: const ValueKey('settings-room'),
-                    icon: Icons.groups_outlined,
-                    label: S.room,
-                    value: snapshot.room,
-                    onTap: () => _open(context, () => S.room, _room),
-                  );
-                },
-              ),
-              _NavRow(
-                key: const ValueKey('settings-storage'),
-                icon: Icons.download_for_offline_outlined,
-                label: S.storage,
-                onTap: () => _open(context, () => S.storage, _storage),
-              ),
-              _NavRow(
-                key: const ValueKey('settings-backup'),
-                icon: Icons.backup_outlined,
-                label: S.backup,
-                onTap: () => _open(context, () => S.backup, _backup),
-              ),
-              // The server is set by the person on iOS; on Android it is built into the app
-              if (Platform.isIOS)
-                _NavRow(
-                  key: const ValueKey('settings-server'),
-                  icon: Icons.dns_outlined,
-                  label: S.serverSection,
-                  onTap: () => _open(context, () => S.serverSection, _server),
-                ),
-              // The phone that has the server built in can set another one up
-              if (Platform.isAndroid)
-                _NavRow(
-                  key: const ValueKey('settings-setup-another'),
-                  icon: Icons.qr_code_2_rounded,
-                  label: S.setupAnother,
-                  onTap: () => showSetupLinkDialog(context, model.room),
-                ),
-              // iOS installs updates by itself: they come from SideStore, not from the app
-              if (!Platform.isIOS)
-                ListenableBuilder(
-                  listenable: model.update,
-                  builder: (context, _) {
-                    final info = model.update.info;
-                    return _NavRow(
-                      key: const ValueKey('settings-updates'),
-                      icon: Icons.system_update_outlined,
-                      label: S.updates,
-                      value: info.hasUpdate ? info.version : info.installed,
-                      onTap: () => _open(context, () => S.updates, _updates),
-                    );
-                  },
-                ),
-            ],
+          SizedBox(width: 380, child: list),
+          Expanded(
+            child: _SettingsList(
+              key: ValueKey(_topic.$2),
+              title: _topic.$1(),
+              back: false,
+              children: _topic.$2(context, AppScope.of(context)),
+            ),
           ),
-          _Group(
-            footer: S.diagnosticsHelp,
-            children: [
-              _Row(
-                label: S.copyLog,
-                onTap: () async {
-                  final lines = await model.room.log();
-                  await Clipboard.setData(
-                    ClipboardData(text: lines.join('\n')),
-                  );
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text(S.logCopied)));
-                  }
-                },
-              ),
-            ],
+        ],
+      );
+    },
+  );
+
+  List<Widget> _topics(BuildContext context) {
+    final model = AppScope.of(context);
+    return [
+      _ProfileCard(room: model.room),
+      _Group(
+        children: [
+          ListenableBuilder(
+            listenable: model.settings,
+            builder: (context, _) => _NavRow(
+              selected: _shows(_appearance),
+              key: const ValueKey('settings-appearance'),
+              icon: Icons.palette_outlined,
+              label: S.appearance,
+              value: switch (model.settings.themeMode) {
+                ThemeMode.system => S.themeSystem,
+                ThemeMode.light => S.themeLight,
+                ThemeMode.dark => S.themeDark,
+              },
+              onTap: () => _open(context, () => S.appearance, _appearance),
+            ),
           ),
-          const _VersionLabel(),
+          ListenableBuilder(
+            listenable: model.settings,
+            builder: (context, _) => _NavRow(
+              selected: _shows(_language),
+              key: const ValueKey('settings-language'),
+              icon: Icons.translate_rounded,
+              label: S.languageLabel,
+              value: model.settings.language == null
+                  ? S.languageSystem
+                  : S.languageName(model.settings.language!),
+              onTap: () => _open(context, () => S.languageLabel, _language),
+            ),
+          ),
+          _NavRow(
+            selected: _shows(_playback),
+            key: const ValueKey('settings-playback'),
+            icon: Icons.play_circle_outline_rounded,
+            label: S.playback,
+            onTap: () => _open(context, () => S.playback, _playback),
+          ),
+          _NavRow(
+            selected: _shows(_suggestions),
+            key: const ValueKey('settings-suggestions'),
+            icon: Icons.auto_awesome_outlined,
+            label: S.suggestionsTitle,
+            onTap: () => _open(context, () => S.suggestionsTitle, _suggestions),
+          ),
+          ListenableBuilder(
+            listenable: model.room,
+            builder: (context, _) {
+              final snapshot = model.room.snapshot;
+              if (!snapshot.inRoom) return const SizedBox.shrink();
+              return _NavRow(
+                selected: _shows(_room),
+                key: const ValueKey('settings-room'),
+                icon: Icons.groups_outlined,
+                label: S.room,
+                value: snapshot.room,
+                onTap: () => _open(context, () => S.room, _room),
+              );
+            },
+          ),
+          _NavRow(
+            selected: _shows(_storage),
+            key: const ValueKey('settings-storage'),
+            icon: Icons.download_for_offline_outlined,
+            label: S.storage,
+            onTap: () => _open(context, () => S.storage, _storage),
+          ),
+          _NavRow(
+            selected: _shows(_backup),
+            key: const ValueKey('settings-backup'),
+            icon: Icons.backup_outlined,
+            label: S.backup,
+            onTap: () => _open(context, () => S.backup, _backup),
+          ),
+          // The server is set by the person on iOS; on Android it is built into the app
+          if (Platform.isIOS)
+            _NavRow(
+              selected: _shows(_server),
+              key: const ValueKey('settings-server'),
+              icon: Icons.dns_outlined,
+              label: S.serverSection,
+              onTap: () => _open(context, () => S.serverSection, _server),
+            ),
+          // The phone that has the server built in can set another one up
+          if (Platform.isAndroid)
+            _NavRow(
+              key: const ValueKey('settings-setup-another'),
+              icon: Icons.qr_code_2_rounded,
+              label: S.setupAnother,
+              onTap: () => showSetupLinkDialog(context, model.room),
+            ),
+          // iOS installs updates by itself: they come from SideStore, not from the app
+          if (!Platform.isIOS)
+            ListenableBuilder(
+              listenable: model.update,
+              builder: (context, _) {
+                final info = model.update.info;
+                return _NavRow(
+                  selected: _shows(_updates),
+                  key: const ValueKey('settings-updates'),
+                  icon: Icons.system_update_outlined,
+                  label: S.updates,
+                  value: info.hasUpdate ? info.version : info.installed,
+                  onTap: () => _open(context, () => S.updates, _updates),
+                );
+              },
+            ),
         ],
       ),
-    );
+      _Group(
+        footer: S.diagnosticsHelp,
+        children: [
+          _Row(
+            label: S.copyLog,
+            onTap: () async {
+              final lines = await model.room.log();
+              await Clipboard.setData(ClipboardData(text: lines.join('\n')));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(S.logCopied)));
+              }
+            },
+          ),
+        ],
+      ),
+      const _VersionLabel(),
+    ];
   }
 
   /// [title] is a function so that the page can change its words when the language does.
@@ -191,6 +234,10 @@ class SettingsPage extends StatelessWidget {
     String Function() title,
     List<Widget> Function(BuildContext context, AppModel model) children,
   ) {
+    if (_wide) {
+      setState(() => _topic = (title, children));
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => _SubPage(
@@ -988,7 +1035,7 @@ class _BackupGroup extends StatelessWidget {
   }
 }
 
-/// A page of one topic, opened from the settings list.
+/// A page of one topic, opened from the settings list. A page on its own paints its own backdrop.
 class _SubPage extends StatelessWidget {
   const _SubPage({required this.title, required this.children});
 
@@ -996,28 +1043,65 @@ class _SubPage extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    // A page on its own has no backdrop: the pink veil is part of the home screen
-    return PinkWash(
+  Widget build(BuildContext context) => AmbientBackdrop(
+    child: Padding(
+      padding: EdgeInsets.only(left: SideInset.of(context)),
       child: Scaffold(
-        appBar: AppBar(title: Text(title)),
-        body: ListView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          // The mini player and the tab bar are drawn over the end of the page: it scrolls clear of them, so the
-          // last button (Install, Download) can be reached however long the text above it is
-          padding: EdgeInsets.fromLTRB(
-            16,
-            8,
-            16,
-            HomeShell.bottomInsetOf(context),
-          ),
-          children: children,
-        ),
+        body: _SettingsList(title: title, children: children),
       ),
-    );
-  }
+    ),
+  );
+}
+
+/// The settings list, or a topic's page: a round Back, the title large, and what is under it scrolling up under the
+/// glass edge.
+class _SettingsList extends StatelessWidget {
+  const _SettingsList({
+    super.key,
+    required this.title,
+    required this.children,
+    this.back = true,
+  });
+
+  final String title;
+  final List<Widget> children;
+
+  /// False for a topic beside the list on a wide screen, which goes back with the list.
+  final bool back;
+
+  @override
+  Widget build(BuildContext context) => ScrollEdge(
+    title: title,
+    child: ListView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      // The mini player and the tab bar are drawn over the end of the page: it scrolls clear of them, so the
+      // last button (Install, Download) can be reached however long the text above it is
+      padding: EdgeInsets.fromLTRB(
+        16,
+        MediaQuery.paddingOf(context).top + 8,
+        16,
+        HomeShell.bottomInsetOf(context),
+      ),
+      children: [
+        SizedBox(
+          height: 44,
+          child: back
+              ? Align(
+                  alignment: Alignment.centerLeft,
+                  child: BackButton(style: roundButtonStyle(context, size: 44)),
+                )
+              : null,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 12, 4, 18),
+          child: Text(title, style: Theme.of(context).textTheme.headlineLarge),
+        ),
+        ...children,
+      ],
+    ),
+  );
 }
 
 /// Who this is and where: the name shown to others and the room, if any.
@@ -1095,6 +1179,7 @@ class _NavRow extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.value,
+    this.selected = false,
   });
 
   final IconData icon;
@@ -1102,15 +1187,21 @@ class _NavRow extends StatelessWidget {
   final String? value;
   final VoidCallback onTap;
 
+  /// Its topic is the one shown beside the list, on a wide screen.
+  final bool selected;
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return _Row(
-      label: label,
-      value: value,
-      leading: Icon(icon, color: p.primary),
-      trailing: Icon(Icons.chevron_right_rounded, color: p.textTertiary),
-      onTap: onTap,
+    return ColoredBox(
+      color: selected ? p.veilStrong : Colors.transparent,
+      child: _Row(
+        label: label,
+        value: value,
+        leading: Icon(icon, color: p.primary),
+        trailing: Icon(Icons.chevron_right_rounded, color: p.textTertiary),
+        onTap: onTap,
+      ),
     );
   }
 }
@@ -1139,20 +1230,22 @@ class _Group extends StatelessWidget {
                 style: theme.labelSmall?.copyWith(letterSpacing: 0.8),
               ),
             ),
+          // See-through on the page's backdrop, like the rest of what sits on it
           Container(
             decoration: BoxDecoration(
-              color: p.surfaceRaised.withValues(
-                alpha: p.brightness == Brightness.dark ? 0.9 : 0.75,
-              ),
-              borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
-              border: Border.all(color: p.outlineSoft),
+              color: p.veil,
+              borderRadius: BorderRadius.circular(SapocheTheme.groupRadius),
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
                 for (var i = 0; i < children.length; i++) ...[
                   if (i > 0)
-                    Divider(height: 1, indent: 16, color: p.outlineSoft),
+                    Divider(
+                      height: 1,
+                      indent: 16,
+                      color: p.text.withValues(alpha: 0.07),
+                    ),
                   children[i],
                 ],
               ],

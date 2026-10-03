@@ -14,6 +14,7 @@ import 'widgets/avatars.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/equalizer.dart';
 import 'widgets/link_banner.dart';
+import 'widgets/scroll_edge.dart';
 import 'widgets/track_tile.dart';
 
 /// What is playing and what is queued: the room's shared queue while in a room, and otherwise
@@ -49,13 +50,17 @@ class _RoomPageState extends State<RoomPage> {
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _known.addAll(snapshot.queue.map((e) => e.id)),
         );
-        return SafeArea(
-          bottom: false,
+        // The list starts below the status bar and scrolls up under it, to its glass edge
+        return ScrollEdge(
+          title: snapshot.inRoom ? snapshot.name ?? S.tabRoom : S.tabListen,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             slivers: [
+              SliverToBoxAdapter(
+                child: SizedBox(height: MediaQuery.paddingOf(context).top),
+              ),
               SliverToBoxAdapter(child: _Header(snapshot: snapshot)),
               SliverToBoxAdapter(child: LinkBanner(link: snapshot.link)),
               if (snapshot.solo)

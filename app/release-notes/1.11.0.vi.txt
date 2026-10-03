@@ -1,0 +1,6 @@
+Một diện mạo cho cả app, và bố cục riêng cho máy tính bảng, màn hình lớn
+- Trang chủ, Tìm kiếm, Thư viện, Nghe và Cài đặt giờ mang màu của bài đang phát, nên thanh kính hợp với chúng như hợp với trang album. Cuộn trang thì một tiêu đề nhỏ trên nền kính hiện ở mép trên.
+- Cài đặt, ô tìm kiếm và các bộ lọc là những khối trong mờ mềm mại, với nút tròn ở đầu trang.
+- Trên máy tính bảng, máy gập hay cửa sổ Samsung DeX, app có bố cục riêng: một cột tab khi cầm dọc, còn màn rộng thì có thanh bên với các danh sách phát của bạn và thanh phát nhạc dọc đáy. Album, nghệ sĩ và Cài đặt tận dụng bề rộng, trình phát đầy đủ không còn phóng một ảnh bìa khổng lồ ra cả màn hình.
+- Với chuột, bạn kéo được các hàng ảnh bìa và bấm chuột phải vào bài hát để mở menu. Phím tắt: Space phát hoặc dừng, Shift với mũi tên tua lùi hoặc tới mười giây, Ctrl với mũi tên chuyển bài, / để tìm kiếm, Esc đóng trình phát.
+- App có thể mở từ màn hình chính của Android TV và điều khiển bằng remote.

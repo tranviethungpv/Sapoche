@@ -7,10 +7,10 @@ import '../../theme/theme.dart';
 enum PlayWorking { none, play, shuffle, other }
 
 /// The style of a round button beside the Play button: a soft disc that takes its colour from the page.
-ButtonStyle roundButtonStyle(BuildContext context) {
+ButtonStyle roundButtonStyle(BuildContext context, {double size = 52}) {
   final p = context.palette;
   return IconButton.styleFrom(
-    fixedSize: const Size.square(52),
+    fixedSize: Size.square(size),
     backgroundColor: p.text.withValues(alpha: 0.14),
     foregroundColor: p.text,
     shape: const CircleBorder(),
@@ -42,7 +42,12 @@ class PlayRow extends StatelessWidget {
     required this.onShuffle,
     this.working = PlayWorking.none,
     this.more,
+    this.inline = false,
   });
+
+  /// Beside a cover, on a wide screen: the buttons keep their own size and start at the left, instead of Play taking
+  /// the width of the page.
+  final bool inline;
 
   final VoidCallback onPlay;
   final VoidCallback onShuffle;
@@ -57,9 +62,25 @@ class PlayRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final play = FilledButton.icon(
+      onPressed: onPlay,
+      style: FilledButton.styleFrom(
+        backgroundColor: p.text,
+        foregroundColor: p.base,
+        shape: const StadiumBorder(),
+        padding: inline ? const EdgeInsets.symmetric(horizontal: 32) : null,
+      ),
+      icon: working == PlayWorking.play
+          ? _spinner
+          : const Icon(Icons.play_arrow_rounded),
+      label: Text(S.play),
+    );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 18, 24, 4),
+      padding: inline
+          ? const EdgeInsets.only(top: 18)
+          : const EdgeInsets.fromLTRB(24, 18, 24, 4),
       child: Row(
+        mainAxisSize: inline ? MainAxisSize.min : MainAxisSize.max,
         children: [
           IconButton(
             onPressed: onShuffle,
@@ -70,20 +91,7 @@ class PlayRow extends StatelessWidget {
                 : const Icon(Icons.shuffle_rounded),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: onPlay,
-              style: FilledButton.styleFrom(
-                backgroundColor: p.text,
-                foregroundColor: p.base,
-                shape: const StadiumBorder(),
-              ),
-              icon: working == PlayWorking.play
-                  ? _spinner
-                  : const Icon(Icons.play_arrow_rounded),
-              label: Text(S.play),
-            ),
-          ),
+          if (inline) play else Expanded(child: play),
           if (more != null) ...[const SizedBox(width: 12), more!],
         ],
       ),

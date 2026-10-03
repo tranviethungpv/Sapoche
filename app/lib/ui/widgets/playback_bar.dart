@@ -8,9 +8,16 @@ import 'low_rate_timer.dart';
 /// Seek bar with elapsed and remaining time. It moves five times a second while playing, which is
 /// finer than a pixel of the bar, and it grows under the finger like Apple's.
 class PlaybackBar extends StatefulWidget {
-  const PlaybackBar({super.key, required this.controller});
+  const PlaybackBar({
+    super.key,
+    required this.controller,
+    this.compact = false,
+  });
 
   final RoomController controller;
+
+  /// One low line with the times on either side, for the player bar of a wide screen.
+  final bool compact;
 
   @override
   State<PlaybackBar> createState() => _PlaybackBarState();
@@ -58,64 +65,76 @@ class _PlaybackBarState extends State<PlaybackBar> {
         (duration > 0 ? (_c.positionMs() / duration).clamp(0.0, 1.0) : 0.0);
     final shownMs = (fraction * duration).round();
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        LayoutBuilder(
-          builder: (context, box) => GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragStart: (d) => setState(
-              () =>
-                  _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
-            ),
-            onHorizontalDragUpdate: (d) => setState(
-              () =>
-                  _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
-            ),
-            onHorizontalDragEnd: (_) => _finish(duration),
-            onHorizontalDragCancel: () => setState(() => _dragFraction = null),
-            onTapUp: (d) {
-              _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth);
-              _finish(duration);
-            },
-            child: SizedBox(
-              height: 28,
-              child: Center(
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(end: dragging ? 10 : 5),
-                  duration: const Duration(milliseconds: 160),
-                  curve: Curves.easeOut,
-                  builder: (context, height, _) => ClipRRect(
-                    borderRadius: BorderRadius.circular(height),
-                    child: Stack(
-                      children: [
-                        Container(height: height, color: p.outline),
-                        FractionallySizedBox(
-                          widthFactor: fraction,
-                          child: Container(
-                            height: height,
-                            color: dragging
-                                ? p.primary
-                                : p.primary.withValues(alpha: 0.9),
-                          ),
-                        ),
-                      ],
+    final compact = widget.compact;
+    final bar = LayoutBuilder(
+      builder: (context, box) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (d) => setState(
+          () => _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
+        ),
+        onHorizontalDragUpdate: (d) => setState(
+          () => _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
+        ),
+        onHorizontalDragEnd: (_) => _finish(duration),
+        onHorizontalDragCancel: () => setState(() => _dragFraction = null),
+        onTapUp: (d) {
+          _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth);
+          _finish(duration);
+        },
+        child: SizedBox(
+          height: compact ? 20 : 28,
+          child: Center(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(
+                end: compact ? (dragging ? 6 : 4) : (dragging ? 10 : 5),
+              ),
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              builder: (context, height, _) => ClipRRect(
+                borderRadius: BorderRadius.circular(height),
+                child: Stack(
+                  children: [
+                    Container(height: height, color: p.outline),
+                    FractionallySizedBox(
+                      widthFactor: fraction,
+                      child: Container(
+                        height: height,
+                        color: dragging
+                            ? p.primary
+                            : p.primary.withValues(alpha: 0.9),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+    final elapsed = Text(formatDuration(shownMs), style: _timeStyle(context));
+    final left = Text(
+      '−${formatDuration(duration - shownMs)}',
+      style: _timeStyle(context),
+    );
+    if (compact) {
+      return Row(
+        children: [
+          elapsed,
+          const SizedBox(width: 10),
+          Expanded(child: bar),
+          const SizedBox(width: 10),
+          left,
+        ],
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        bar,
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(formatDuration(shownMs), style: _timeStyle(context)),
-            Text(
-              '−${formatDuration(duration - shownMs)}',
-              style: _timeStyle(context),
-            ),
-          ],
+          children: [elapsed, left],
         ),
       ],
     );

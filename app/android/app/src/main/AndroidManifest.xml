@@ -9,12 +9,17 @@
     <!-- Updates from inside the app (Settings > Updates) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- A television has no touch screen and a remote instead; the app can be started from its launcher -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
     <application
         android:label="Sapoche"
         android:name=".SapocheApp"
         android:allowBackup="false"
         android:localeConfig="@xml/locales_config"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/tv_banner">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -35,6 +40,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

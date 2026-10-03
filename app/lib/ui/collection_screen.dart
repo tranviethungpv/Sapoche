@@ -10,6 +10,7 @@ import 'player/player_message.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
+import 'widgets/page_width.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
 import 'widgets/player_backdrop.dart';
@@ -72,20 +73,22 @@ class _CollectionScreenState extends State<CollectionScreen> {
           fit: StackFit.expand,
           children: [
             PlayerBackdrop(coverUrl: page?.thumb ?? widget.thumb),
-            if (page != null)
-              _Content(page: page)
-            else
-              Scaffold(
-                appBar: AppBar(leading: const RoundBackButton()),
-                body: async.hasError
-                    ? PlayerMessage(
-                        icon: Icons.cloud_off_rounded,
-                        text: S.playlistFailed,
-                        action: S.tryAgain,
-                        onAction: () => setState(_load),
-                      )
-                    : _Waiting(title: widget.title, thumb: widget.thumb),
-              ),
+            Padding(
+              padding: EdgeInsets.only(left: SideInset.of(context)),
+              child: page != null
+                  ? _Content(page: page)
+                  : Scaffold(
+                      appBar: AppBar(leading: const RoundBackButton()),
+                      body: async.hasError
+                          ? PlayerMessage(
+                              icon: Icons.cloud_off_rounded,
+                              text: S.playlistFailed,
+                              action: S.tryAgain,
+                              onAction: () => setState(_load),
+                            )
+                          : _Waiting(title: widget.title, thumb: widget.thumb),
+                    ),
+            ),
           ],
         );
       },
@@ -126,13 +129,17 @@ class _Waiting extends StatelessWidget {
 
 /// The cover, large and with a soft shadow.
 class _Cover extends StatelessWidget {
-  const _Cover({this.url});
+  const _Cover({this.url, this.side});
 
   final String? url;
 
+  /// Side of the cover; by default what the width of the screen gives.
+  final double? side;
+
   @override
   Widget build(BuildContext context) {
-    final size = (MediaQuery.sizeOf(context).width * 0.74).clamp(200.0, 320.0);
+    final size =
+        side ?? (MediaQuery.sizeOf(context).width * 0.74).clamp(200.0, 320.0);
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: DecoratedBox(
@@ -299,141 +306,189 @@ class _ContentState extends State<_Content> {
       if (_page.kind != null) S.collectionKind(_page.kind!),
       ?_page.year,
     ].join(' · ');
-    return Scaffold(
-      appBar: AppBar(leading: const RoundBackButton()),
-      body: CustomScrollView(
-        controller: _scroll,
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-        slivers: [
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                Center(child: _Cover(url: _page.thumb)),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Wide, the cover goes beside what is said of it, and the songs keep to a readable width in the middle
+        final wide = box.maxWidth >= 720;
+        final gutter = ((box.maxWidth - 1100) / 2).clamp(0.0, double.infinity);
+        final align = wide
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center;
+        final textAlign = wide ? TextAlign.start : TextAlign.center;
+        final info = Column(
+          crossAxisAlignment: align,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: wide
+                  ? EdgeInsets.zero
+                  : const EdgeInsets.fromLTRB(24, 18, 24, 0),
+              child: Text(
+                _page.title,
+                textAlign: textAlign,
+                style: wide ? theme.headlineLarge : theme.headlineSmall,
+              ),
+            ),
+            if (_page.owner != null)
+              Padding(
+                padding: wide
+                    ? const EdgeInsets.only(top: 4)
+                    : const EdgeInsets.fromLTRB(24, 4, 24, 0),
+                child: GestureDetector(
+                  onTap: _page.ownerId == null
+                      ? null
+                      : () => openArtist(context, _page.ownerId!),
                   child: Text(
-                    _page.title,
-                    textAlign: TextAlign.center,
-                    style: theme.headlineSmall,
+                    _page.owner!,
+                    textAlign: textAlign,
+                    style: theme.titleMedium?.copyWith(
+                      color: _page.ownerId == null
+                          ? p.textSecondary
+                          : p.primary,
+                    ),
                   ),
                 ),
-                if (_page.owner != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                    child: GestureDetector(
-                      onTap: _page.ownerId == null
-                          ? null
-                          : () => openArtist(context, _page.ownerId!),
-                      child: Text(
-                        _page.owner!,
-                        textAlign: TextAlign.center,
-                        style: theme.titleMedium?.copyWith(
-                          color: _page.ownerId == null
-                              ? p.textSecondary
-                              : p.primary,
-                        ),
-                      ),
-                    ),
-                  ),
-                if (meta.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      meta,
-                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                    ),
-                  ),
-                PlayRow(
-                  working: _working,
-                  onPlay: () => _playAll(shuffle: false),
-                  onShuffle: () => _playAll(shuffle: true),
-                  more: PopupMenuButton<String>(
-                    tooltip: S.showMore,
-                    icon: _working == PlayWorking.other
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.more_horiz_rounded),
-                    style: roundButtonStyle(context),
-                    color: p.brightness == Brightness.light
-                        ? const Color(0xFFFFF7F9)
-                        : const Color(0xFF2B1F25),
-                    surfaceTintColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    onSelected: _menu,
-                    itemBuilder: (context) => [
-                      PopupMenuItem(value: 'next', child: Text(S.playNext)),
-                      PopupMenuItem(value: 'queue', child: Text(S.addToQueue)),
-                      PopupMenuItem(
-                        value: 'save',
-                        child: Text(S.saveAsPlaylist),
-                      ),
-                    ],
-                  ),
+              ),
+            if (meta.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  meta,
+                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
                 ),
-                if (_page.description != null) _description(context),
-                const SizedBox(height: 6),
-              ],
-            ),
-          ),
-          SliverList.builder(
-            itemCount: _tracks.length,
-            itemBuilder: (context, i) => _row(context, i),
-          ),
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_loadingMore)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(
-                      child: SizedBox.square(
-                        dimension: 22,
+              ),
+            PlayRow(
+              inline: wide,
+              working: _working,
+              onPlay: () => _playAll(shuffle: false),
+              onShuffle: () => _playAll(shuffle: true),
+              more: PopupMenuButton<String>(
+                tooltip: S.showMore,
+                icon: _working == PlayWorking.other
+                    ? const SizedBox.square(
+                        dimension: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.more_horiz_rounded),
+                style: roundButtonStyle(context),
+                color: p.brightness == Brightness.light
+                    ? const Color(0xFFFFF7F9)
+                    : const Color(0xFF2B1F25),
+                surfaceTintColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                onSelected: _menu,
+                itemBuilder: (context) => [
+                  PopupMenuItem(value: 'next', child: Text(S.playNext)),
+                  PopupMenuItem(value: 'queue', child: Text(S.addToQueue)),
+                  PopupMenuItem(value: 'save', child: Text(S.saveAsPlaylist)),
+                ],
+              ),
+            ),
+            if (_page.description != null) _description(context, wide: wide),
+          ],
+        );
+        return Scaffold(
+          appBar: AppBar(leading: const RoundBackButton()),
+          body: CustomScrollView(
+            controller: _scroll,
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.symmetric(horizontal: gutter),
+                sliver: SliverMainAxisGroup(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: wide
+                          ? Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  _Cover(url: _page.thumb, side: 232),
+                                  const SizedBox(width: 32),
+                                  Expanded(child: info),
+                                ],
+                              ),
+                            )
+                          : Column(
+                              children: [
+                                Center(child: _Cover(url: _page.thumb)),
+                                info,
+                                const SizedBox(height: 6),
+                              ],
+                            ),
+                    ),
+                    SliverList.builder(
+                      itemCount: _tracks.length,
+                      itemBuilder: (context, i) => _row(context, i),
+                    ),
+                    SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_loadingMore)
+                            const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(
+                                child: SizedBox.square(
+                                  dimension: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (_moreFailed)
+                            Center(
+                              child: TextButton(
+                                onPressed: _loadMore,
+                                child: Text(S.tryAgain),
+                              ),
+                            ),
+                          if (_page.stats.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+                              child: Text(
+                                _page.stats.join(' · '),
+                                style: theme.bodySmall?.copyWith(
+                                  color: p.textSecondary,
+                                ),
+                              ),
+                            ),
+                          for (final shelf in _page.shelves)
+                            MusicShelfView(shelf: shelf),
+                          SizedBox(
+                            height: HomeShell.bottomInsetOf(context) + 8,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                if (_moreFailed)
-                  Center(
-                    child: TextButton(
-                      onPressed: _loadMore,
-                      child: Text(S.tryAgain),
-                    ),
-                  ),
-                if (_page.stats.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-                    child: Text(
-                      _page.stats.join(' · '),
-                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                    ),
-                  ),
-                for (final shelf in _page.shelves) MusicShelfView(shelf: shelf),
-                SizedBox(height: HomeShell.bottomInsetOf(context) + 8),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _description(BuildContext context) {
+  Widget _description(BuildContext context, {bool wide = false}) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      padding: wide
+          ? const EdgeInsets.only(top: 14)
+          : const EdgeInsets.fromLTRB(20, 14, 20, 0),
       child: GestureDetector(
         onTap: () => setState(() => _open = !_open),
         child: AnimatedSize(
           duration: const Duration(milliseconds: 220),
-          alignment: Alignment.topCenter,
+          alignment: wide ? Alignment.topLeft : Alignment.topCenter,
           child: Text(
             _page.description!,
             maxLines: _open ? null : 3,

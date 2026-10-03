@@ -7,6 +7,7 @@ import '../scope.dart';
 import 'download_actions.dart';
 import 'not_interested.dart';
 import 'playlist_picker.dart';
+import 'track_tile.dart';
 
 /// The "more" menu of a song row: play it next, queue it, like it.
 class TrackMenu extends StatelessWidget {
@@ -26,6 +27,8 @@ class TrackMenu extends StatelessWidget {
     final p = context.palette;
     final library = AppScope.of(context).library;
     return PopupMenuButton<String>(
+      // The row this is in opens it from a right click
+      key: RowMenuKey.maybeOf(context),
       useRootNavigator: true,
       icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
       color: p.brightness == Brightness.light

@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../theme/palette.dart';
 import '../../theme/theme.dart';
 
 /// Frosted glass for the bars that float over the pages (the tabs, the search button, the mini player): what is
@@ -19,22 +20,30 @@ class Glass extends StatelessWidget {
   final Widget child;
   final BorderRadius borderRadius;
 
-  static final _blur = ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20);
+  /// How strongly what is behind is blurred.
+  static const sigma = 20.0;
+
+  static final _blur = ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma);
+
+  /// The veil over the blur.
+  static Color tintOf(Palette p) {
+    final light = p.brightness == Brightness.light;
+    return Color.alphaBlend(
+      p.text.withValues(alpha: light ? 0.06 : 0.08),
+      p.base.withValues(alpha: light ? 0.55 : 0.40),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final light = p.brightness == Brightness.light;
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter.grouped(
         filter: _blur,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Color.alphaBlend(
-              p.text.withValues(alpha: light ? 0.06 : 0.08),
-              p.base.withValues(alpha: light ? 0.55 : 0.40),
-            ),
+            color: tintOf(p),
             borderRadius: borderRadius,
             border: Border.all(color: p.text.withValues(alpha: 0.09)),
           ),

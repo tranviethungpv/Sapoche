@@ -6,6 +6,7 @@ import '../data/music_models.dart';
 import '../data/room_controller.dart';
 import '../format.dart';
 import '../strings.dart';
+import '../theme/palette.dart';
 import '../theme/theme.dart';
 import 'artist_page.dart';
 import 'members_sheet.dart';
@@ -104,7 +105,12 @@ class _Body extends StatefulWidget {
 }
 
 class _BodyState extends State<_Body> {
-  _Panel _panel = _Panel.cover;
+  /// Opens on the panel the player bar of a wide screen was asked for, if it was.
+  late _Panel _panel = switch (PlayerSheetScope.of(context).takePanel()) {
+    PlayerPanel.lyrics => _Panel.lyrics,
+    PlayerPanel.upNext => _Panel.upNext,
+    null => _Panel.cover,
+  };
 
   RoomController get _c => widget.controller;
 
@@ -133,6 +139,16 @@ class _BodyState extends State<_Body> {
   Widget _tall(BuildContext context) {
     final p = context.palette;
     final current = widget.current;
+    // On a tablet held upright the column does not stretch across the screen
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: _tallColumn(p, current),
+      ),
+    );
+  }
+
+  Widget _tallColumn(Palette p, QueueEntry current) {
     return Column(
       children: [
         const SizedBox(height: 6),
@@ -185,13 +201,19 @@ class _BodyState extends State<_Body> {
   /// The cover on the left, as tall as the screen allows; the controls, or a panel in their place, on the right.
   Widget _wide(BoxConstraints box) {
     const margin = 16.0;
-    final side = (box.maxHeight - 2 * margin).clamp(100.0, box.maxWidth * 0.46);
+    // As tall as the screen allows, but not the size of a wall on a big one
+    final side = (box.maxHeight - 2 * margin).clamp(
+      100.0,
+      (box.maxWidth * 0.46).clamp(100.0, 520.0),
+    );
     // A picture keeps its own proportions, so it gets a wider place than a square cover
     final left = _c.snapshot.video
         ? (side * 16 / 9).clamp(0.0, box.maxWidth * 0.52)
         : side;
+    // The cover and the controls stay together in the middle of a wide window instead of drifting to its two sides
+    final gutter = ((box.maxWidth - 1040) / 2).clamp(0.0, double.infinity);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: margin),
+      padding: EdgeInsets.symmetric(horizontal: 24 + gutter, vertical: margin),
       child: Row(
         children: [
           SizedBox(
@@ -355,7 +377,7 @@ class _WidePanel extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
+        constraints: const BoxConstraints(maxWidth: 640),
         child: Column(
           children: [
             Row(

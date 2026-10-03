@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +10,7 @@ import 'collection_screen.dart';
 import 'player/player_message.dart';
 import 'player/track_section.dart';
 import 'home_shell.dart';
+import 'widgets/page_width.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
@@ -59,20 +62,23 @@ class _ArtistScreenState extends State<ArtistScreen> {
           fit: StackFit.expand,
           children: [
             PlayerBackdrop(coverUrl: page?.thumb),
-            Scaffold(
-              appBar: AppBar(leading: const RoundBackButton()),
-              body: switch (page) {
-                _ when failed => PlayerMessage(
-                  icon: Icons.cloud_off_rounded,
-                  text: S.musicFailed,
-                  action: S.tryAgain,
-                  onAction: () => setState(_load),
-                ),
-                null => const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                _ => _Content(page: page),
-              },
+            Padding(
+              padding: EdgeInsets.only(left: SideInset.of(context)),
+              child: Scaffold(
+                appBar: AppBar(leading: const RoundBackButton()),
+                body: switch (page) {
+                  _ when failed => PlayerMessage(
+                    icon: Icons.cloud_off_rounded,
+                    text: S.musicFailed,
+                    action: S.tryAgain,
+                    onAction: () => setState(_load),
+                  ),
+                  null => const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  _ => _Content(page: page),
+                },
+              ),
             ),
           ],
         );
@@ -125,16 +131,29 @@ class _ContentState extends State<_Content> {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) => _content(context, box.maxWidth),
+    );
+  }
+
+  Widget _content(BuildContext context, double available) {
     final page = _page;
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
+    // In a big window the page keeps to a readable width, in the middle
+    final gutter = ((available - 1100) / 2).clamp(0.0, double.infinity);
     return ListView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
-      padding: EdgeInsets.only(bottom: HomeShell.bottomInsetOf(context)),
+      padding: EdgeInsets.fromLTRB(
+        gutter,
+        0,
+        gutter,
+        HomeShell.bottomInsetOf(context),
+      ),
       children: [
-        _Hero(page: page),
+        _Hero(page: page, available: math.min(available, 1100.0)),
         if (page.topSongs.isNotEmpty || page.topSongsId != null)
           PlayRow(
             working: _working,
@@ -208,21 +227,28 @@ class _ContentState extends State<_Content> {
 
 /// The picture of the artist across the page, with the name and what is known of their reach on it.
 class _Hero extends StatelessWidget {
-  const _Hero({required this.page});
+  const _Hero({required this.page, required this.available});
 
   final ArtistPage page;
+
+  /// The width the page has.
+  final double available;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    final size = MediaQuery.sizeOf(context).width - 40;
+    // A square on a phone; a wide banner on a big screen, where a square would be taller than the window
+    final width = available - 40;
+    final size = width;
+    final height = width > 640 ? width * 0.36 : width;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: SizedBox.square(
-          dimension: size,
+        child: SizedBox(
+          width: width,
+          height: height,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -231,15 +257,23 @@ class _Hero extends StatelessWidget {
                       color: p.primaryContainer,
                       child: Icon(
                         Icons.person_rounded,
-                        size: size * 0.3,
+                        size: height * 0.3,
                         color: p.primary,
                       ),
                     )
-                  : Artwork(
-                      url: page.thumb,
-                      size: size,
-                      radius: 0,
-                      sharp: true,
+                  // The picture is square, so a banner shows a band of it, from a little above its middle
+                  : OverflowBox(
+                      alignment: const Alignment(0, -0.35),
+                      minWidth: size,
+                      maxWidth: size,
+                      minHeight: size,
+                      maxHeight: size,
+                      child: Artwork(
+                        url: page.thumb,
+                        size: size,
+                        radius: 0,
+                        sharp: true,
+                      ),
                     ),
               // Dark at the bottom, so the name reads on any picture
               const DecoratedBox(

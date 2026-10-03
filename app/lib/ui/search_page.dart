@@ -26,7 +26,10 @@ import 'widgets/track_tile.dart';
 /// podcasts. While the person types, a few completions and what is found so far are listed under one another; once
 /// they press search, the filters appear, to keep one kind of result.
 class SearchPage extends StatefulWidget {
-  const SearchPage({super.key});
+  const SearchPage({super.key, this.focusNode});
+
+  /// The search field's focus, for the shell to put the cursor in it (from the sidebar, or with the `/` key).
+  final FocusNode? focusNode;
 
   @override
   State<SearchPage> createState() => _SearchPageState();
@@ -37,6 +40,11 @@ enum _Phase { idle, loading, results, failed }
 class _SearchPageState extends State<SearchPage> {
   /// How many completions are offered.
   static const _completions = 3;
+
+  static const _capsule = OutlineInputBorder(
+    borderRadius: BorderRadius.all(Radius.circular(999)),
+    borderSide: BorderSide.none,
+  );
 
   final _field = TextEditingController();
   final _scroll = ScrollController();
@@ -421,11 +429,27 @@ class _SearchPageState extends State<SearchPage> {
               listenable: _field,
               builder: (context, _) => TextField(
                 controller: _field,
+                focusNode: widget.focusNode,
                 onChanged: _onChanged,
                 onSubmitted: _submit,
                 textInputAction: TextInputAction.search,
                 style: theme.bodyLarge,
+                // A see-through capsule on the page's backdrop, like the other things that sit on it
                 decoration: InputDecoration(
+                  filled: true,
+                  fillColor: context.palette.veil,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 13,
+                  ),
+                  border: _capsule,
+                  enabledBorder: _capsule,
+                  focusedBorder: _capsule.copyWith(
+                    borderSide: BorderSide(
+                      color: context.palette.primary,
+                      width: 1.5,
+                    ),
+                  ),
                   hintText: S.searchHint,
                   prefixIcon: Icon(
                     Icons.search_rounded,
@@ -791,27 +815,24 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: 32,
+        height: 34,
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: selected ? p.primaryContainer : Colors.transparent,
+          color: selected ? p.primary : p.veil,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: selected ? p.primary : p.outline),
         ),
         child: Text(
           label,
           // The font's own spacing above and below the letters is uneven: one height for the line, centred
           strutStyle: const StrutStyle(forceStrutHeight: true, height: 1),
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontSize: 13,
-            color: selected ? p.onPrimaryContainer : p.textSecondary,
-          ),
+          style: Theme.of(context).textTheme.labelMedium
+              ?.copyWith(fontSize: 13, color: selected ? p.onPrimary : p.text),
         ),
       ),
     );
