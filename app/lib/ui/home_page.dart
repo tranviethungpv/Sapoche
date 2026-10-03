@@ -413,17 +413,17 @@ class _Hero extends StatelessWidget {
                     ),
                   ),
                   Positioned(
-                    left: 10,
-                    right: 10,
-                    bottom: 10,
+                    left: 8,
+                    right: 8,
+                    bottom: 8,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(16),
                       child: BackdropFilter(
                         filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                         child: ColoredBox(
                           color: Colors.black.withValues(alpha: 0.42),
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
                             child: Row(
                               children: [
                                 Expanded(
@@ -445,15 +445,16 @@ class _Hero extends StatelessWidget {
                                         S.mixOf(mix.artist),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: theme.titleLarge?.copyWith(
+                                        style: theme.titleSmall?.copyWith(
                                           color: Colors.white,
-                                          fontWeight: FontWeight.w800,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8),
                                 // Not a button of its own: the whole card is
                                 DecoratedBox(
                                   decoration: BoxDecoration(
@@ -462,22 +463,23 @@ class _Hero extends StatelessWidget {
                                   ),
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 7,
+                                      horizontal: 11,
+                                      vertical: 5,
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         const Icon(
                                           Icons.play_arrow_rounded,
-                                          size: 18,
+                                          size: 16,
                                           color: Color(0xFF22161A),
                                         ),
                                         const SizedBox(width: 2),
                                         Text(
                                           S.play,
-                                          style: theme.labelLarge?.copyWith(
+                                          style: theme.labelMedium?.copyWith(
                                             color: const Color(0xFF22161A),
+                                            fontSize: 13,
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),

@@ -1,0 +1,2 @@
+Calmer mix cards
+- The text on the mix cards of the home page is smaller and the Play button is lighter, so the picture has more room.
