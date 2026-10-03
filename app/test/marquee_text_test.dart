@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/ui/widgets/marquee_text.dart';
+import 'package:sapoche/ui/widgets/marquee_text.dart';
 
 const _long =
     'A title that is much too long to fit in the little room it is given';

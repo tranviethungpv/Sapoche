@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:unison/app.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/data/app_settings.dart';
-import 'package:unison/data/library_controller.dart';
-import 'package:unison/data/music_controller.dart';
-import 'package:unison/data/photo_picker.dart';
-import 'package:unison/data/recent_rooms.dart';
-import 'package:unison/data/recent_searches.dart';
-import 'package:unison/data/room_controller.dart';
-import 'package:unison/strings.dart';
-import 'package:unison/data/update_controller.dart';
-import 'package:unison/ui/scope.dart';
+import 'package:sapoche/app.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/data/app_settings.dart';
+import 'package:sapoche/data/library_controller.dart';
+import 'package:sapoche/data/music_controller.dart';
+import 'package:sapoche/data/photo_picker.dart';
+import 'package:sapoche/data/recent_rooms.dart';
+import 'package:sapoche/data/recent_searches.dart';
+import 'package:sapoche/data/room_controller.dart';
+import 'package:sapoche/strings.dart';
+import 'package:sapoche/data/update_controller.dart';
+import 'package:sapoche/ui/scope.dart';
 
 import 'fake_backend.dart';
 
@@ -51,7 +51,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
   final library = LibraryController(backend);
   final settings = await AppSettings.load();
   await tester.pumpWidget(
-    UnisonApp(
+    SapocheApp(
       model: AppModel(
         room: room,
         settings: settings,

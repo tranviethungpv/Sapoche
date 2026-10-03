@@ -7,16 +7,16 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Room server and shared secret come from unison.properties, which is not committed. Not
+// Room server and shared secret come from sapoche.properties, which is not committed. Not
 // local.properties: the Flutter tool rewrites that file on every build and drops unknown keys.
 val localProperties = Properties().apply {
-    rootProject.file("unison.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+    rootProject.file("sapoche.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
-val serverUrl = localProperties.getProperty("unison.serverUrl", "https://your-worker.example.workers.dev")
+val serverUrl = localProperties.getProperty("sapoche.serverUrl", "https://your-worker.example.workers.dev")
 
 android {
-    namespace = "app.unison"
+    namespace = "app.sapoche"
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
@@ -33,7 +33,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "app.unison"
+        applicationId = "app.sapoche"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -49,19 +49,19 @@ android {
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
         // Invitation links (https://<server>/join/CODE) open the app directly once Android has verified the server
         manifestPlaceholders["serverHost"] = URI(serverUrl).host
-        buildConfigField("String", "ROOM_KEY", "\"${localProperties.getProperty("unison.roomKey", "")}\"")
+        buildConfigField("String", "ROOM_KEY", "\"${localProperties.getProperty("sapoche.roomKey", "")}\"")
     }
 
-    // The release key lives next to unison.properties and is not committed. Without it the release
+    // The release key lives next to sapoche.properties and is not committed. Without it the release
     // build falls back to the debug key, which still installs but cannot update an app signed for real.
-    val releaseKey = localProperties.getProperty("unison.keystore")?.let { rootProject.file(it) }?.takeIf { it.exists() }
+    val releaseKey = localProperties.getProperty("sapoche.keystore")?.let { rootProject.file(it) }?.takeIf { it.exists() }
     signingConfigs {
         if (releaseKey != null) {
             create("release") {
                 storeFile = releaseKey
-                storePassword = localProperties.getProperty("unison.keystorePassword")
-                keyAlias = localProperties.getProperty("unison.keyAlias")
-                keyPassword = localProperties.getProperty("unison.keystorePassword")
+                storePassword = localProperties.getProperty("sapoche.keystorePassword")
+                keyAlias = localProperties.getProperty("sapoche.keyAlias")
+                keyPassword = localProperties.getProperty("sapoche.keystorePassword")
             }
         }
     }

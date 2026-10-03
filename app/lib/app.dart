@@ -11,16 +11,16 @@ import 'ui/home_shell.dart';
 import 'ui/scope.dart';
 import 'ui/widgets/wash.dart';
 
-class UnisonApp extends StatefulWidget {
-  const UnisonApp({super.key, required this.model});
+class SapocheApp extends StatefulWidget {
+  const SapocheApp({super.key, required this.model});
 
   final AppModel model;
 
   @override
-  State<UnisonApp> createState() => _UnisonAppState();
+  State<SapocheApp> createState() => _SapocheAppState();
 }
 
-class _UnisonAppState extends State<UnisonApp> {
+class _SapocheAppState extends State<SapocheApp> {
   @override
   void initState() {
     super.initState();

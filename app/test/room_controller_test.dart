@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/calm.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/calm.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/data/recent_rooms.dart';
-import 'package:unison/data/room_controller.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/data/recent_rooms.dart';
+import 'package:sapoche/data/room_controller.dart';
 
 import 'fake_backend.dart';
 
@@ -179,13 +179,13 @@ void main() {
     'a setup link that was opened is kept for the screen to ask about',
     () async {
       backend.emit(
-        const SetupEvent('unison://setup?server=https://a.example&key=k'),
+        const SetupEvent('sapoche://setup?server=https://a.example&key=k'),
       );
       await settle();
       expect(controller.setup.value?.server, 'https://a.example');
       expect(controller.setup.value?.key, 'k');
       controller.setup.value = null;
-      backend.emit(const SetupEvent('unison://setup?server=http://a.example'));
+      backend.emit(const SetupEvent('sapoche://setup?server=http://a.example'));
       await settle();
       expect(controller.setup.value, isNull, reason: 'not an https server');
     },
@@ -240,7 +240,7 @@ void main() {
     await settle();
     await controller.shareInvite();
     expect(backend.calls.last, contains('ABC234'));
-    expect(backend.calls.last, contains('unison://join/ABC234'));
+    expect(backend.calls.last, contains('sapoche://join/ABC234'));
   });
 
   test('sharing does nothing outside a room', () async {
@@ -366,7 +366,7 @@ void main() {
   test(
     'the invitation link lives on the server, or falls back to the app\'s own',
     () async {
-      expect(controller.inviteLink('K2A5RF'), 'unison://join/K2A5RF');
+      expect(controller.inviteLink('K2A5RF'), 'sapoche://join/K2A5RF');
       backend.profileValue = const Profile(
         name: 'Anna',
         server: 'https://x.example',

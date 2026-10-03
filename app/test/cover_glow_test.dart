@@ -4,10 +4,10 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/theme/palette.dart';
-import 'package:unison/theme/theme.dart';
-import 'package:unison/ui/cover_glow.dart';
-import 'package:unison/ui/widgets/player_backdrop.dart';
+import 'package:sapoche/theme/palette.dart';
+import 'package:sapoche/theme/theme.dart';
+import 'package:sapoche/ui/cover_glow.dart';
+import 'package:sapoche/ui/widgets/player_backdrop.dart';
 
 Future<ui.Image> solid(int r, int g, int b, {int size = 16}) async {
   final bytes = Uint8List(size * size * 4);

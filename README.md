@@ -1,4 +1,4 @@
-# Unison
+# Sapoche
 
 Listen to YouTube music together, in sync, wherever you are.
 
@@ -18,7 +18,7 @@ An Android and iPhone app for a small group of friends. Every phone fetches the 
 | Folder | What is in it |
 |---|---|
 | [app/](app/README.md) | The Flutter app (UI) and the Kotlin playback service (Media3) |
-| [app/packages/unison_native/](app/packages/unison_native/) | The iOS native side in Swift: player, room, YouTube, library; its core is tested on Linux |
+| [app/packages/sapoche_native/](app/packages/sapoche_native/) | The iOS native side in Swift: player, room, YouTube, library; its core is tested on Linux |
 | [native/](native/) | Plain Kotlin libraries: YouTube stream extraction and room sync, with JVM tests |
 | [server/](server/README.md) | The room server on Cloudflare Workers and Durable Objects |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | The sync protocol between the app and the server |
@@ -32,9 +32,11 @@ You need Flutter, JDK 17, the Android SDK and a free Cloudflare account. The roo
 The iOS app shares the Flutter UI with Android; its native side is rewritten in Swift (AVFoundation) and speaks the same room protocol as the server. Apple does not allow free, lasting installs outside the App Store, so this build is for personal use only:
 
 - GitHub Actions builds an unsigned IPA ([.github/workflows/ios.yml](.github/workflows/ios.yml)); you download it and sign it with your own Apple ID through [SideStore](https://sidestore.io) (a free certificate expires after 7 days; SideStore renews it by itself while the phone is on the same Wi-Fi).
-- The server address and the room key are not in the app. The easy way: on an Android phone that already works, open Settings > Set up another phone to show a QR code, then scan it with the iPhone's Camera (or copy the `unison://setup?…` link and paste it in Settings > Server); the app asks before using it. You can also type them in Settings > Server.
+- The server address and the room key are not in the app. The easy way: on an Android phone that already works, open Settings > Set up another phone to show a QR code, then scan it with the iPhone's Camera (or copy the `sapoche://setup?…` link and paste it in Settings > Server); the app asks before using it. You can also type them in Settings > Server.
 - There are no over-the-air updates (SideStore handles that), and battery use has not been measured on many devices.
 
 ## Notes
+
+The app was called Unison until version 1.8.6. From 1.9.0 the name is Sapoche everywhere, the package id (`app.sapoche`) and the `sapoche://` link scheme included, so it installs next to the old app instead of updating it. To bring a library over, save a backup in the old app (Settings > Backup > Save your library to a file) and add it in the new one (Settings > Backup > Add from a backup file); backups made by the old app are still read. Downloaded songs are not part of a backup.
 
 This is a personal project, written to listen to music with friends in a small group, with no commercial purpose. Getting streams from YouTube with a third-party client is not covered by YouTube's terms of service, so decide for yourself before using it, and do not use it to store or redistribute music.

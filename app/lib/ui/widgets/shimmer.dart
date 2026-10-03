@@ -55,7 +55,7 @@ class _SkeletonListState extends State<SkeletonList>
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
           child: Row(
             children: [
-              _block(54, 54, UnisonTheme.artworkRadius),
+              _block(54, 54, SapocheTheme.artworkRadius),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(

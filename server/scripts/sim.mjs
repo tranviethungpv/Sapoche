@@ -1,12 +1,12 @@
 // End-to-end simulation of the room protocol against a running server (`npm run dev`).
 // Usage: node scripts/sim.mjs [baseUrl]   (default http://127.0.0.1:8787)
-// When the server has a ROOM_KEY, pass it in UNISON_KEY (npm run sim:keyed does this against a local server).
+// When the server has a ROOM_KEY, pass it in SAPOCHE_KEY (npm run sim:keyed does this against a local server).
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:8787";
 const WS_BASE = BASE.replace(/^http/, "ws");
-const KEY = process.env.UNISON_KEY ?? "";
+const KEY = process.env.SAPOCHE_KEY ?? "";
 const keyQuery = KEY ? `?key=${encodeURIComponent(KEY)}` : "";
-const keyHeaders = KEY ? { "X-Unison-Key": KEY } : {};
+const keyHeaders = KEY ? { "X-Sapoche-Key": KEY } : {};
 
 let passed = 0;
 let failed = 0;
@@ -326,7 +326,7 @@ async function authSection() {
   console.log("Shared secret");
   const noKey = await fetch(`${BASE}/rooms`, { method: "POST" });
   check("creating a room without the key is refused", noKey.status === 401, `status=${noKey.status}`);
-  const wrongKey = await fetch(`${BASE}/rooms`, { method: "POST", headers: { "X-Unison-Key": "wrong" } });
+  const wrongKey = await fetch(`${BASE}/rooms`, { method: "POST", headers: { "X-Sapoche-Key": "wrong" } });
   check("a wrong key is refused", wrongKey.status === 401, `status=${wrongKey.status}`);
   const right = await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders });
   check("the right key in a header is accepted", right.status === 200);
@@ -438,23 +438,23 @@ async function updateSection({ apk, latest }) {
   const bytes = Buffer.from(apk, "base64");
   const url = (name) => `${BASE}/update/${name}`;
   if (KEY) check("the update info is refused without the key", (await fetch(url("latest.json"))).status === 401);
-  if (KEY) check("the apk is refused without the key", (await fetch(url("unison-9.9.9.apk"))).status === 401);
+  if (KEY) check("the apk is refused without the key", (await fetch(url("sapoche-9.9.9.apk"))).status === 401);
   const info = await fetch(url("latest.json"), { headers: keyHeaders });
   const body = await info.json();
   check("latest.json says which version is newest", info.ok && body.versionCode === latest.versionCode && body.sha256 === latest.sha256 && body.size === bytes.length);
   check("and is never cached", info.headers.get("cache-control") === "no-cache");
-  const whole = await fetch(url("unison-9.9.9.apk"), { headers: keyHeaders });
+  const whole = await fetch(url("sapoche-9.9.9.apk"), { headers: keyHeaders });
   const got = Buffer.from(await whole.arrayBuffer());
   check("the apk comes whole, as an apk", whole.status === 200 && got.equals(bytes) && whole.headers.get("content-type") === "application/vnd.android.package-archive");
   check("it says its length and that ranges work", whole.headers.get("content-length") === String(bytes.length) && whole.headers.get("accept-ranges") === "bytes");
-  const rest = await fetch(url("unison-9.9.9.apk"), { headers: { ...keyHeaders, Range: "bytes=1000-" } });
+  const rest = await fetch(url("sapoche-9.9.9.apk"), { headers: { ...keyHeaders, Range: "bytes=1000-" } });
   const tail = Buffer.from(await rest.arrayBuffer());
   check("a download that broke off goes on from where it was", rest.status === 206 && tail.equals(bytes.subarray(1000)) && rest.headers.get("content-range") === `bytes 1000-${bytes.length - 1}/${bytes.length}`, `${rest.status} ${rest.headers.get("content-range")}`);
-  const middle = await fetch(url("unison-9.9.9.apk"), { headers: { ...keyHeaders, Range: "bytes=10-19" } });
+  const middle = await fetch(url("sapoche-9.9.9.apk"), { headers: { ...keyHeaders, Range: "bytes=10-19" } });
   check("a slice of the middle comes as asked", middle.status === 206 && Buffer.from(await middle.arrayBuffer()).equals(bytes.subarray(10, 20)));
-  const head = await fetch(url("unison-9.9.9.apk"), { method: "HEAD", headers: keyHeaders });
+  const head = await fetch(url("sapoche-9.9.9.apk"), { method: "HEAD", headers: keyHeaders });
   check("HEAD gives the size without the file", head.status === 200 && head.headers.get("content-length") === String(bytes.length));
-  check("a release that was never published is not found", (await fetch(url("unison-10.0.0.apk"), { headers: keyHeaders })).status === 404);
+  check("a release that was never published is not found", (await fetch(url("sapoche-10.0.0.apk"), { headers: keyHeaders })).status === 404);
   // Apps up to 1.3.1 ask for app-<versionCode>.apk
   const old = await fetch(url("app-9.apk"), { headers: keyHeaders });
   check("an older app asking for app-<build number> gets the newest release", old.status === 200 && Buffer.from(await old.arrayBuffer()).equals(bytes));
@@ -685,7 +685,7 @@ async function inviteSection() {
   const links = await (await fetch(`${BASE}/.well-known/assetlinks.json`)).json();
   check(
     "asset links name the app and its signing keys",
-    links[0].target.package_name === "app.unison" && links[0].target.sha256_cert_fingerprints.length === 2,
+    links[0].target.package_name === "app.sapoche" && links[0].target.sha256_cert_fingerprints.length === 2,
   );
 }
 

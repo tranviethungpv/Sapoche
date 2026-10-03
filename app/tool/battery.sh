@@ -14,7 +14,7 @@ DEVICE=${1:?adb serial}
 MINUTES=${2:-10}
 LABEL=${3:-run}
 SCREEN=${4:-off}
-PACKAGE=app.unison
+PACKAGE=app.sapoche
 adb_() { adb -s "$DEVICE" "$@"; }
 
 pid=$(adb_ shell pidof "$PACKAGE" | tr -d '\r' | awk '{print $1}')
@@ -37,7 +37,7 @@ sleep $((MINUTES * 60))
 end=$(cpu_seconds)
 
 frames=$(adb_ shell dumpsys gfxinfo "$PACKAGE" | tr -d '\r' | awk -F': ' '/Total frames rendered/ {print $2}')
-adb_ logcat -d -s Unison > "/tmp/battery-$LABEL.log"
+adb_ logcat -d -s Sapoche > "/tmp/battery-$LABEL.log"
 python3 - "$start" "$end" "$MINUTES" "${frames:-0}" "$LABEL" "/tmp/battery-$LABEL.log" <<'PY'
 import re, sys
 start, end, minutes, frames, label, log = float(sys.argv[1]), float(sys.argv[2]), float(sys.argv[3]), int(sys.argv[4]), sys.argv[5], sys.argv[6]

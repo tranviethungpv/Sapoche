@@ -1,15 +1,15 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/models.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/models.dart';
 
-/// The contract with UnisonBridge.kt: what crosses the platform channels and how it is read.
+/// The contract with SapocheBridge.kt: what crosses the platform channels and how it is read.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-  const events = EventChannel('app.unison/state');
-  const control = MethodChannel('app.unison/control');
+  const events = EventChannel('app.sapoche/state');
+  const control = MethodChannel('app.sapoche/control');
 
   Future<List<BackendEvent>> receive(List<String> messages) async {
     messenger.setMockStreamHandler(

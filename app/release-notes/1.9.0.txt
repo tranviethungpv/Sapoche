@@ -1,0 +1,4 @@
+Sapoche: a new name, a new icon, sharper pictures
+- The app is now called Sapoche, and its icon and the playback notification show music notes.
+- Profile pictures are sharper: they are cut to a square and kept at 256 px instead of 160 px. Choose your picture again to get the sharper one; everyone in the room sees it right away, whatever version of the app they have.
+- Sapoche installs next to the old Unison app instead of updating it. To bring your library over, save a backup in Unison and add it in Sapoche (Settings > Backup).

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/strings.dart';
+import 'package:sapoche/strings.dart';
 
 import 'pump_app.dart';
 

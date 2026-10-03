@@ -185,7 +185,7 @@ class _Welcome extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: p.primaryContainer.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+          borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
         ),
         child: Row(
           children: [

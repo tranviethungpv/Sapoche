@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/home_model.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/data/music_models.dart';
+import 'package:sapoche/data/home_model.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/data/music_models.dart';
 
 Track t(String id, String artist, [String? title]) => Track(
   videoId: id,

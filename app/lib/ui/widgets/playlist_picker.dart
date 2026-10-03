@@ -74,7 +74,7 @@ class _Picker extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: p.primaryContainer,
                   borderRadius: BorderRadius.circular(
-                    UnisonTheme.artworkRadius,
+                    SapocheTheme.artworkRadius,
                   ),
                 ),
                 child: Icon(Icons.add_rounded, color: p.primary),

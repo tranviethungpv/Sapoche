@@ -1,9 +1,9 @@
-# Unison server
+# Sapoche server
 
 A Cloudflare Worker plus one Durable Object per room. It only keeps metadata (queue, playback state, members), never audio.
 
 - `src/index.ts`: routing (`GET /health`, `POST /rooms`, `WS /room/<CODE>`, `GET /room/<CODE>/info`, `GET /join/<CODE>`, `GET /.well-known/assetlinks.json`, `GET /update/latest.json`, `GET /update/app-<version>.apk`) and the shared-key check.
-- `src/update.ts`: updates for the app itself, read from the R2 bucket `unison-releases` (private, only readable through the Worker, needs the key). Publish a new version with `app/tool/release.sh` (`--publish` uploads it to R2).
+- `src/update.ts`: updates for the app itself, read from the R2 bucket `sapoche-releases` (private, only readable through the Worker, needs the key). Publish a new version with `app/tool/release.sh` (`--publish` uploads it to R2).
 - `src/room.ts`: the room logic (preparation barrier, play, pause, seek, queue, owner and permissions, cleanup of empty rooms and dead sockets).
 - `src/join-page.ts`: the HTML page of the invitation link and the list of signing keys for `assetlinks.json` (add a new key here when the signing key changes).
 - `src/protocol.ts`: message types, matching [../docs/PROTOCOL.md](../docs/PROTOCOL.md).
@@ -31,7 +31,7 @@ The server is reachable at `https://<worker-name>.<account>.workers.dev` (WebSoc
 
 ```bash
 npx wrangler login        # once, opens the browser
-npx wrangler r2 bucket create unison-releases   # once; the bucket must exist before deploying
+npx wrangler r2 bucket create sapoche-releases   # once; the bucket must exist before deploying
 npm run deploy
 node scripts/sim.mjs https://<worker-name>.<account>.workers.dev   # test against the real server
 ```
@@ -40,18 +40,18 @@ To try the WebSocket with curl add `--http1.1` (HTTP/2 has no Upgrade header).
 
 ## The shared key (secret)
 
-Without a key, anyone who knows the URL could create rooms and use up the Free plan's 100,000 requests per day. The Worker therefore requires the key `ROOM_KEY` for `POST /rooms` and `WS /room/<CODE>`; a wrong or missing key gets a 401. `/health` is always open, to tell "server broken" from "wrong key". The key is sent in the `X-Unison-Key` header (the app) or the `?key=` parameter (clients that cannot set headers, such as a browser). If the server has no `ROOM_KEY` (running locally) it is completely open.
+Without a key, anyone who knows the URL could create rooms and use up the Free plan's 100,000 requests per day. The Worker therefore requires the key `ROOM_KEY` for `POST /rooms` and `WS /room/<CODE>`; a wrong or missing key gets a 401. `/health` is always open, to tell "server broken" from "wrong key". The key is sent in the `X-Sapoche-Key` header (the app) or the `?key=` parameter (clients that cannot set headers, such as a browser). If the server has no `ROOM_KEY` (running locally) it is completely open.
 
 ```bash
 # set or change the key (a generated value, never stored in Git)
 openssl rand -hex 16 | tr -d '\n' | npx wrangler secret put ROOM_KEY
 ```
 
-The Android app reads the key at build time from `app/android/unison.properties` (already in `.gitignore`):
+The Android app reads the key at build time from `app/android/sapoche.properties` (already in `.gitignore`):
 
 ```properties
-unison.roomKey=<key>
-unison.serverUrl=https://<worker-name>.<account>.workers.dev
+sapoche.roomKey=<key>
+sapoche.serverUrl=https://<worker-name>.<account>.workers.dev
 ```
 
 Changing the key means building and reinstalling the app for the whole group. The key is inside the APK, so it only keeps strangers out, not people in the group.

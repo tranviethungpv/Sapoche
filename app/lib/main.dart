@@ -30,7 +30,7 @@ Future<void> main() async {
   room.shareAvatar(settings.avatar);
   final library = LibraryController(backend)..start();
   runApp(
-    UnisonApp(
+    SapocheApp(
       model: AppModel(
         room: room,
         settings: settings,

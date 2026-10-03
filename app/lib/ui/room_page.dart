@@ -354,7 +354,7 @@ class _GuestsAddOnlyBanner extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
           color: p.primaryContainer,
-          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+          borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
         ),
         child: Row(
           children: [
@@ -393,7 +393,7 @@ class _FinishedBanner extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
         decoration: BoxDecoration(
           color: p.primaryContainer,
-          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+          borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
         ),
         child: Row(
           children: [
@@ -436,7 +436,7 @@ class _SoloBanner extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 4, 6, 4),
         decoration: BoxDecoration(
           color: p.primaryContainer,
-          borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+          borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
         ),
         child: Row(
           children: [

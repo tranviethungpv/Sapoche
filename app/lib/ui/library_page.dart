@@ -339,7 +339,7 @@ class _IconTile extends StatelessWidget {
       height: 54,
       decoration: BoxDecoration(
         color: p.primaryContainer,
-        borderRadius: BorderRadius.circular(UnisonTheme.artworkRadius),
+        borderRadius: BorderRadius.circular(SapocheTheme.artworkRadius),
       ),
       child: Icon(icon, color: p.primary),
     );

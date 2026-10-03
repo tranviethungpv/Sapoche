@@ -37,7 +37,7 @@ async function sameSecret(given: string, expected: string): Promise<boolean> {
  */
 async function authorized(request: Request, url: URL, env: Env): Promise<boolean> {
   if (!env.ROOM_KEY) return true;
-  const given = request.headers.get("X-Unison-Key") ?? url.searchParams.get("key") ?? "";
+  const given = request.headers.get("X-Sapoche-Key") ?? url.searchParams.get("key") ?? "";
   return sameSecret(given, env.ROOM_KEY);
 }
 

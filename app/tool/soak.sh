@@ -20,7 +20,7 @@ sleep $((MINUTES * 60))
 
 for d in "${DEVICES[@]}"; do
   adb -s "$d" shell input keyevent KEYCODE_WAKEUP
-  adb -s "$d" logcat -d -s Unison > "$OUT/$d.log"
+  adb -s "$d" logcat -d -s Sapoche > "$OUT/$d.log"
 done
 
 python3 - "$OUT" "${DEVICES[@]}" <<'PY'

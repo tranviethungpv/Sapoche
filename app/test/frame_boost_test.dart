@@ -1,6 +1,6 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/frame_boost.dart';
+import 'package:sapoche/frame_boost.dart';
 
 void main() {
   /// Draws [count] frames [gapMs] apart by keeping something animating.

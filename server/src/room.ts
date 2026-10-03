@@ -45,7 +45,7 @@ const MAX_MEMBERS = 12;
 const MAX_ROOM_NAME = 32;
 const MAX_QUEUE = 200;
 const MAX_MESSAGE_CHARS = 32_768;
-/** A picture is sent as base64 of a small JPEG (about 160 px); anything bigger is refused. */
+/** A picture is sent as base64 of a small JPEG (about 256 px); anything bigger is refused. */
 const MAX_AVATAR_CHARS = 24_000;
 const AVATAR_PREFIX = "avatar:";
 /** Songs accepted from one queue.addMany message. */

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:unison/data/recent_rooms.dart';
+import 'package:sapoche/data/recent_rooms.dart';
 
 void main() {
   Future<RecentRooms> load([Map<String, Object> initial = const {}]) async {

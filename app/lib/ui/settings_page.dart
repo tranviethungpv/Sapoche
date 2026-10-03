@@ -399,7 +399,7 @@ class _VersionLabelState extends State<_VersionLabel> {
       return Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Text(
-          'Unison ${info.version} (${info.buildNumber})',
+          'Sapoche ${info.version} (${info.buildNumber})',
           key: const ValueKey('settings-version'),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall
@@ -1144,7 +1144,7 @@ class _Group extends StatelessWidget {
               color: p.surfaceRaised.withValues(
                 alpha: p.brightness == Brightness.dark ? 0.9 : 0.75,
               ),
-              borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+              borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
               border: Border.all(color: p.outlineSoft),
             ),
             clipBehavior: Clip.antiAlias,

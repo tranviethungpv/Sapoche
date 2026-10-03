@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The languages of the app: Android 13 and later list them under Settings > Apps > Unison > Language -->
+<!-- The languages of the app: Android 13 and later list them under Settings > Apps > Sapoche > Language -->
 <locale-config xmlns:android="http://schemas.android.com/apk/res/android">
     <locale android:name="en" />
     <locale android:name="vi" />

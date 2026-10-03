@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/library_controller.dart';
-import 'package:unison/data/models.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/library_controller.dart';
+import 'package:sapoche/data/models.dart';
 
 import 'fake_backend.dart';
 
@@ -79,10 +79,10 @@ void main() {
     expect(await library.importBackup(), isNull);
     expect(messages, isEmpty);
 
-    backend.failWith = BackendException('failed', 'Not a Unison backup');
+    backend.failWith = BackendException('failed', 'Not a Sapoche backup');
     expect(await library.importBackup(), isNull);
     await settle();
-    expect(messages, ['Not a Unison backup']);
+    expect(messages, ['Not a Sapoche backup']);
   });
 
   test('a change announced by the native side is read again', () async {

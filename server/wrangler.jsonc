@@ -1,5 +1,5 @@
 {
-	"name": "unison-app",
+	"name": "sapoche-app",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-09-01",
 	// No extra public URLs per version
@@ -12,15 +12,15 @@
 			}
 		]
 	},
-	// Releases of the app, for updates from inside it. Create it first: wrangler r2 bucket create unison-releases
+	// Releases of the app, for updates from inside it. Create it first: wrangler r2 bucket create sapoche-releases
 	"r2_buckets": [
 		{
 			"binding": "RELEASES",
-			"bucket_name": "unison-releases"
+			"bucket_name": "sapoche-releases"
 		},
 		{
-			"bucket_name": "unison-releases",
-			"binding": "unison_releases",
+			"bucket_name": "sapoche-releases",
+			"binding": "sapoche_releases",
 			"remote": true
 		}
 	],

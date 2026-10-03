@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/strings.dart';
-import 'package:unison/ui/home_shell.dart';
-import 'package:unison/ui/player/lyrics_view.dart';
-import 'package:unison/ui/player/up_next_view.dart';
-import 'package:unison/ui/player_sheet.dart';
-import 'package:unison/ui/widgets/artwork.dart';
-import 'package:unison/ui/widgets/marquee_text.dart';
-import 'package:unison/ui/widgets/mini_player.dart';
-import 'package:unison/ui/widgets/playback_bar.dart';
-import 'package:unison/ui/widgets/video_view.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/strings.dart';
+import 'package:sapoche/ui/home_shell.dart';
+import 'package:sapoche/ui/player/lyrics_view.dart';
+import 'package:sapoche/ui/player/up_next_view.dart';
+import 'package:sapoche/ui/player_sheet.dart';
+import 'package:sapoche/ui/widgets/artwork.dart';
+import 'package:sapoche/ui/widgets/marquee_text.dart';
+import 'package:sapoche/ui/widgets/mini_player.dart';
+import 'package:sapoche/ui/widgets/playback_bar.dart';
+import 'package:sapoche/ui/widgets/video_view.dart';
 
 import 'fake_backend.dart';
 import 'player_panels_test.dart' show openPanel, openPlayer;
@@ -141,19 +141,40 @@ void main() {
       expect(bar.left, greaterThan(844 * 0.45));
     });
 
-    testWidgets('a song with no picture to be had shows its cover, without a spinner', (tester) async {
-      final backend = await openPlayer(tester, snapshot: sampleRoom(video: true));
-      final spinner = find.descendant(of: find.byType(VideoView), matching: find.byType(CircularProgressIndicator));
-      expect(spinner, findsOneWidget, reason: 'waiting for the picture');
-      backend.emit(const PositionEvent(PlayerPosition(playing: true, noPicture: true)));
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(spinner, findsNothing);
-      expect(find.descendant(of: find.byType(VideoView), matching: find.byType(Artwork)), findsOneWidget);
-    });
+    testWidgets(
+      'a song with no picture to be had shows its cover, without a spinner',
+      (tester) async {
+        final backend = await openPlayer(
+          tester,
+          snapshot: sampleRoom(video: true),
+        );
+        final spinner = find.descendant(
+          of: find.byType(VideoView),
+          matching: find.byType(CircularProgressIndicator),
+        );
+        expect(spinner, findsOneWidget, reason: 'waiting for the picture');
+        backend.emit(
+          const PositionEvent(PlayerPosition(playing: true, noPicture: true)),
+        );
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(spinner, findsNothing);
+        expect(
+          find.descendant(
+            of: find.byType(VideoView),
+            matching: find.byType(Artwork),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('turning the phone keeps the picture coming', (tester) async {
-      final backend = await openPlayer(tester, snapshot: sampleRoom(video: true));
-      String lastVisible() => backend.calls.lastWhere((c) => c.startsWith('videoVisible'));
+      final backend = await openPlayer(
+        tester,
+        snapshot: sampleRoom(video: true),
+      );
+      String lastVisible() =>
+          backend.calls.lastWhere((c) => c.startsWith('videoVisible'));
       expect(lastVisible(), 'videoVisible true');
       // The new layout's picture comes before the old one's goes; the old one leaving must not hide the picture
       await resize(tester, 844, 390);
@@ -221,8 +242,8 @@ void main() {
       tester,
     ) async {
       PackageInfo.setMockInitialValues(
-        appName: 'Unison',
-        packageName: 'app.unison',
+        appName: 'Sapoche',
+        packageName: 'app.sapoche',
         version: '1.4.1',
         buildNumber: '12',
         buildSignature: '',
@@ -235,7 +256,7 @@ void main() {
         200,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text('Unison 1.4.1 (12)'), findsOneWidget);
+      expect(find.text('Sapoche 1.4.1 (12)'), findsOneWidget);
     });
   });
 }

@@ -19,7 +19,7 @@ jobs:
     container: swift:6.3-noble
     defaults:
       run:
-        working-directory: app/packages/unison_native
+        working-directory: app/packages/sapoche_native
     steps:
       - uses: actions/checkout@v4
       - run: apt-get update && apt-get install -y libsqlite3-dev
@@ -59,13 +59,13 @@ jobs:
 
       - name: Package the unsigned IPA
         run: |
-          rm -rf Payload unison-unsigned.ipa
+          rm -rf Payload sapoche-unsigned.ipa
           mkdir Payload
           cp -R build/ios/iphoneos/Runner.app Payload/
-          zip -qry unison-unsigned.ipa Payload
+          zip -qry sapoche-unsigned.ipa Payload
 
       - uses: actions/upload-artifact@v4
         with:
-          name: unison-ios-unsigned
-          path: app/unison-unsigned.ipa
+          name: sapoche-ios-unsigned
+          path: app/sapoche-unsigned.ipa
           retention-days: 14

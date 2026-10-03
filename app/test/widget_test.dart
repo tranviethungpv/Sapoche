@@ -2,16 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/data/music_models.dart';
-import 'package:unison/ui/now_playing_page.dart';
-import 'package:unison/ui/setup_dialog.dart';
-import 'package:unison/ui/widgets/qr_code_view.dart';
-import 'package:unison/ui/widgets/shimmer.dart';
-import 'package:unison/ui/widgets/mini_player.dart';
-import 'package:unison/ui/widgets/track_menu.dart';
-import 'package:unison/ui/widgets/track_tile.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/data/music_models.dart';
+import 'package:sapoche/ui/now_playing_page.dart';
+import 'package:sapoche/ui/setup_dialog.dart';
+import 'package:sapoche/ui/widgets/qr_code_view.dart';
+import 'package:sapoche/ui/widgets/shimmer.dart';
+import 'package:sapoche/ui/widgets/mini_player.dart';
+import 'package:sapoche/ui/widgets/track_menu.dart';
+import 'package:sapoche/ui/widgets/track_tile.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';
@@ -742,24 +742,27 @@ void main() {
     final (backend, _) = await pumpApp(tester);
     backend.emit(
       const SetupEvent(
-        'unison://setup?server=https%3A%2F%2Funison.example.dev&key=k3y',
+        'sapoche://setup?server=https%3A%2F%2Fsapoche.example.dev&key=k3y',
       ),
     );
     await tester.pumpAndSettle();
     expect(find.text('Use this server?'), findsOneWidget);
-    expect(find.textContaining('unison.example.dev'), findsOneWidget);
+    expect(find.textContaining('sapoche.example.dev'), findsOneWidget);
     expect(backend.calls.where((c) => c.startsWith('configure')), isEmpty);
 
     await tester.tap(find.text('Use'));
     await tester.pumpAndSettle();
-    expect(backend.calls, contains('configure https://unison.example.dev k3y'));
+    expect(
+      backend.calls,
+      contains('configure https://sapoche.example.dev k3y'),
+    );
     expect(find.text('Server set'), findsOneWidget);
   });
 
   testWidgets('saying no to a setup link sets nothing', (tester) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(
-      const SetupEvent('unison://setup?server=https://evil.example&key=k'),
+      const SetupEvent('sapoche://setup?server=https://evil.example&key=k'),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
@@ -772,7 +775,7 @@ void main() {
   ) async {
     final (backend, room) = await pumpApp(tester);
     backend.setupLinkValue =
-        'unison://setup?server=https%3A%2F%2Fa.example&key=k';
+        'sapoche://setup?server=https%3A%2F%2Fa.example&key=k';
     showSetupLinkDialog(tester.element(find.byType(Scaffold).first), room);
     await tester.pumpAndSettle();
     expect(find.byType(QrCodeView), findsOneWidget);

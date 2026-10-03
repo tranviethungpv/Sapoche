@@ -9,7 +9,7 @@ abstract final class S {
 
   static String _t(String en, String vi) => current == 'vi' ? vi : en;
 
-  static String get appName => _t('Unison', 'Unison');
+  static String get appName => _t('Sapoche', 'Sapoche');
   static String get tagline => _t(
     'Listen together, in perfect sync.',
     'Cùng nghe nhạc, đồng bộ từng nhịp.',
@@ -87,8 +87,8 @@ abstract final class S {
   static String get removed => _t('Removed from queue', 'Đã xóa khỏi hàng đợi');
   static String get invite => _t('Invite friends', 'Mời bạn bè');
   static String inviteText(String code, String link) => _t(
-    'Join my room on Unison with the code $code\n$link',
-    'Vào phòng của mình trên Unison bằng mã $code\n$link',
+    'Join my room on Sapoche with the code $code\n$link',
+    'Vào phòng của mình trên Sapoche bằng mã $code\n$link',
   );
   static String inviteSwitch(String code) => _t(
     'Leave this room and join $code?',
@@ -649,8 +649,8 @@ abstract final class S {
   static String get serverKeySet => _t('Set', 'Đã đặt');
   static String get serverKeyNotSet => _t('Not set', 'Chưa đặt');
   static String get serverHelp => _t(
-    'Where your Unison server is and the key it asks for. They stay on this phone and are not part of the app. Easiest: on a phone that already works, open Settings > Set up another phone, and point this phone’s camera at the code.',
-    'Địa chỉ máy chủ Unison của bạn và khoá nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng. Dễ nhất: trên máy đã dùng được, mở Cài đặt > Cài đặt cho máy khác, rồi đưa camera của máy này vào mã.',
+    'Where your Sapoche server is and the key it asks for. They stay on this phone and are not part of the app. Easiest: on a phone that already works, open Settings > Set up another phone, and point this phone’s camera at the code.',
+    'Địa chỉ máy chủ Sapoche của bạn và khoá nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng. Dễ nhất: trên máy đã dùng được, mở Cài đặt > Cài đặt cho máy khác, rồi đưa camera của máy này vào mã.',
   );
   static String get setupAnother =>
       _t('Set up another phone', 'Cài đặt cho máy khác');
@@ -674,8 +674,8 @@ abstract final class S {
   );
   static String get setupUse => _t('Use', 'Dùng');
   static String get setupBad => _t(
-    'That is not a Unison setup link.',
-    'Đó không phải liên kết cài đặt của Unison.',
+    'That is not a Sapoche setup link.',
+    'Đó không phải liên kết cài đặt của Sapoche.',
   );
   static String get setupDone => _t('Server set', 'Đã đặt máy chủ');
   static String get serverNotSet => _t(
@@ -684,7 +684,7 @@ abstract final class S {
   );
   static String get updateVersion => _t('Version', 'Phiên bản');
   static String get updateUpToDate =>
-      _t('Unison is up to date', 'Unison đã là bản mới nhất');
+      _t('Sapoche is up to date', 'Sapoche đã là bản mới nhất');
   static String get updateCheck => _t('Check for updates', 'Kiểm tra cập nhật');
   static String get updateChecking => _t('Checking…', 'Đang kiểm tra…');
   static String updateAvailable(String version) =>
@@ -700,18 +700,18 @@ abstract final class S {
   static String get updateRestartTitle =>
       _t('Install the update?', 'Cài bản cập nhật?');
   static String get updateRestartBody => _t(
-    'Unison closes to install it and opens again afterwards. Music stops, and a room is joined again when the app is back.',
-    'Unison sẽ đóng để cài và mở lại sau đó. Nhạc sẽ dừng, và nếu đang trong phòng thì app tự vào lại khi mở.',
+    'Sapoche closes to install it and opens again afterwards. Music stops, and a room is joined again when the app is back.',
+    'Sapoche sẽ đóng để cài và mở lại sau đó. Nhạc sẽ dừng, và nếu đang trong phòng thì app tự vào lại khi mở.',
   );
   static String get updatePermission => _t(
-    'Android asks you to allow Unison to install updates, once. Allow it on the page that opens, then come back and press Install.',
-    'Android yêu cầu bạn cho phép Unison cài cập nhật, chỉ một lần. Hãy bật ở trang sắp mở, rồi quay lại và bấm Cài đặt.',
+    'Android asks you to allow Sapoche to install updates, once. Allow it on the page that opens, then come back and press Install.',
+    'Android yêu cầu bạn cho phép Sapoche cài cập nhật, chỉ một lần. Hãy bật ở trang sắp mở, rồi quay lại và bấm Cài đặt.',
   );
   static String get updatePermissionTitle =>
       _t('Allow installing updates', 'Cho phép cài bản cập nhật');
   static String get updatePermissionBody => _t(
-    'To install an update, Android needs you to allow Unison to install apps. It asks once: turn on “Allow from this source” on the next page, then come back and press Install again.',
-    'Để cài bản cập nhật, Android cần bạn cho phép Unison cài ứng dụng. Chỉ hỏi một lần: hãy bật “Cho phép từ nguồn này” ở trang sắp mở, rồi quay lại và bấm Cài đặt lần nữa.',
+    'To install an update, Android needs you to allow Sapoche to install apps. It asks once: turn on “Allow from this source” on the next page, then come back and press Install again.',
+    'Để cài bản cập nhật, Android cần bạn cho phép Sapoche cài ứng dụng. Chỉ hỏi một lần: hãy bật “Cho phép từ nguồn này” ở trang sắp mở, rồi quay lại và bấm Cài đặt lần nữa.',
   );
   static String get updateOpenSettings => _t('Open settings', 'Mở cài đặt');
   static String get updateWhatsNew => _t('What’s new', 'Có gì mới');
@@ -734,8 +734,8 @@ abstract final class S {
       'Phiên bản đó không mới hơn bản đang cài.',
     ),
     'package' => _t(
-      'That file is not an update of Unison.',
-      'Tệp đó không phải bản cập nhật của Unison.',
+      'That file is not an update of Sapoche.',
+      'Tệp đó không phải bản cập nhật của Sapoche.',
     ),
     'aborted' => _t(
       'The installation was cancelled.',

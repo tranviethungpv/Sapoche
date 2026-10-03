@@ -24,7 +24,7 @@ class Artwork extends StatelessWidget {
     super.key,
     required this.url,
     required this.size,
-    this.radius = UnisonTheme.artworkRadius,
+    this.radius = SapocheTheme.artworkRadius,
     this.sharp = false,
   });
 

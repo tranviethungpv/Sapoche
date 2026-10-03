@@ -1,0 +1,4 @@
+Sapoche: tên mới, icon mới, ảnh đại diện nét hơn
+- App giờ tên là Sapoche, icon và thông báo phát nhạc dùng hình nốt nhạc.
+- Ảnh đại diện nét hơn: ảnh được cắt vuông và giữ ở 256 px thay vì 160 px. Hãy chọn lại ảnh của bạn để có bản nét hơn; mọi người trong phòng thấy ngay, dù đang dùng bản app nào.
+- Sapoche được cài cạnh app Unison cũ chứ không cập nhật đè lên nó. Để mang thư viện sang, hãy lưu bản sao lưu trong Unison rồi thêm vào Sapoche (Cài đặt > Sao lưu).

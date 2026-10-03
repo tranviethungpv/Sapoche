@@ -3,7 +3,7 @@
  * handed to callers that present that key (see `authorized` in index.ts). Nothing here can write to the
  * bucket: releases are put there from a computer with `app/tool/release.sh`.
  *
- * The bucket holds `latest.json` and one `unison-<version>.apk` per release (named in the `file` of
+ * The bucket holds `latest.json` and one `sapoche-<version>.apk` per release (named in the `file` of
  * `latest.json`); old ones stay, so going back is a matter of publishing an older `latest.json`.
  */
 
@@ -19,7 +19,7 @@ export interface LatestRelease {
 }
 
 /** A release file by its name, or the legacy `app-<versionCode>.apk` that apps up to 1.3.1 ask for. */
-export const UPDATE_ROUTE = /^\/update\/(latest\.json|unison-[0-9A-Za-z.-]{1,40}\.apk|app-\d{1,9}\.apk)$/;
+export const UPDATE_ROUTE = /^\/update\/(latest\.json|sapoche-[0-9A-Za-z.-]{1,40}\.apk|app-\d{1,9}\.apk)$/;
 const LEGACY = /^app-(\d+)\.apk$/;
 
 /** Serves one of the two kinds of file, with `Range` so that an interrupted download can go on. */

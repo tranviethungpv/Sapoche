@@ -50,7 +50,9 @@ class _VideoViewState extends State<VideoView> with WidgetsBindingObserver {
   /// Only an app that went to the background hides the picture. A control centre, a call coming in or the app
   /// switcher make it inactive for a moment, and taking the picture away then would cost a gap in the sound.
   static bool _seen(AppLifecycleState? state) =>
-      state == null || state == AppLifecycleState.resumed || state == AppLifecycleState.inactive;
+      state == null ||
+      state == AppLifecycleState.resumed ||
+      state == AppLifecycleState.inactive;
 
   @override
   Widget build(BuildContext context) {

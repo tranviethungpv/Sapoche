@@ -17,7 +17,7 @@ set -u
 DEVICE=${1:?adb serial (the Wi-Fi address)}
 MINUTES=${2:-30}
 LABEL=${3:-run}
-PACKAGE=app.unison
+PACKAGE=app.sapoche
 OUT=${TMPDIR:-/tmp}/drain-$LABEL
 mkdir -p "$OUT"
 adb_() { adb -s "$DEVICE" "$@"; }

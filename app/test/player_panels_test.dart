@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/data/music_models.dart';
-import 'package:unison/ui/player_sheet.dart';
-import 'package:unison/ui/widgets/mini_player.dart';
-import 'package:unison/ui/widgets/player_backdrop.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/data/music_models.dart';
+import 'package:sapoche/ui/player_sheet.dart';
+import 'package:sapoche/ui/widgets/mini_player.dart';
+import 'package:sapoche/ui/widgets/player_backdrop.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';

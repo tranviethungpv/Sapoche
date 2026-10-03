@@ -1,4 +1,4 @@
-name: unison
+name: sapoche
 description: "Private group listening app"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.8.6+22
+version: 1.9.0+23
 
 environment:
   sdk: ^3.13.4
@@ -41,10 +41,11 @@ dependencies:
   # Draws the invitation code; pure Dart, no camera
   qr: ^3.0.2
   # The iOS native side: player, room connection, YouTube access, library. It has no Dart code and no Android part.
-  unison_native:
-    path: packages/unison_native
+  sapoche_native:
+    path: packages/sapoche_native
   package_info_plus: ^10.2.2
   image_picker: ^1.2.3
+  image: ^4.10.1
 
 dev_dependencies:
   flutter_test:

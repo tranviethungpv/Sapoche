@@ -468,7 +468,7 @@ class _GuestControlCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
       decoration: BoxDecoration(
         color: restricted ? p.primaryContainer : p.surfaceRaised,
-        borderRadius: BorderRadius.circular(UnisonTheme.cardRadius),
+        borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
         border: Border.all(color: p.outlineSoft),
       ),
       child: Row(

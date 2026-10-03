@@ -37,7 +37,7 @@ function simulate(port, env) {
   return new Promise((resolve) => {
     const sim = spawn("node", ["scripts/sim.mjs", `http://127.0.0.1:${port}`], {
       stdio: "inherit",
-      env: { ...process.env, UNISON_KEY: KEY, ...env },
+      env: { ...process.env, SAPOCHE_KEY: KEY, ...env },
     });
     sim.on("exit", resolve);
   });
@@ -47,13 +47,13 @@ function simulate(port, env) {
 function seedRelease(persistTo) {
   // What an earlier run left in the bucket must not be there: a stale file under another name would pass for the new one
   rmSync(join(persistTo, "v3", "r2"), { recursive: true, force: true });
-  const dir = mkdtempSync(join(tmpdir(), "unison-release-"));
+  const dir = mkdtempSync(join(tmpdir(), "sapoche-release-"));
   const apk = randomBytes(5000);
-  const latest = { versionCode: 9, versionName: "9.9.9", sha256: createHash("sha256").update(apk).digest("hex"), size: apk.length, file: "unison-9.9.9.apk", notes: "test" };
-  writeFileSync(join(dir, "unison-9.9.9.apk"), apk);
+  const latest = { versionCode: 9, versionName: "9.9.9", sha256: createHash("sha256").update(apk).digest("hex"), size: apk.length, file: "sapoche-9.9.9.apk", notes: "test" };
+  writeFileSync(join(dir, "sapoche-9.9.9.apk"), apk);
   writeFileSync(join(dir, "latest.json"), JSON.stringify(latest));
-  for (const [key, file] of [["unison-9.9.9.apk", "unison-9.9.9.apk"], ["latest.json", "latest.json"]]) {
-    execFileSync("npx", ["wrangler", "r2", "object", "put", `unison-releases/${key}`, "--local", "--persist-to", persistTo, "--file", join(dir, file)], { stdio: "ignore" });
+  for (const [key, file] of [["sapoche-9.9.9.apk", "sapoche-9.9.9.apk"], ["latest.json", "latest.json"]]) {
+    execFileSync("npx", ["wrangler", "r2", "object", "put", `sapoche-releases/${key}`, "--local", "--persist-to", persistTo, "--file", join(dir, file)], { stdio: "ignore" });
   }
   return { apk, latest };
 }

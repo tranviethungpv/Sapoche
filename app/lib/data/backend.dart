@@ -21,13 +21,13 @@ class PositionEvent extends BackendEvent {
   final PlayerPosition position;
 }
 
-/// Someone opened a `unison://join/CODE` link.
+/// Someone opened a `sapoche://join/CODE` link.
 class InviteEvent extends BackendEvent {
   const InviteEvent(this.code);
   final String code;
 }
 
-/// Someone opened a `unison://setup?server=…&key=…` link, which another phone shows to set this one up.
+/// Someone opened a `sapoche://setup?server=…&key=…` link, which another phone shows to set this one up.
 class SetupEvent extends BackendEvent {
   const SetupEvent(this.link);
   final String link;
@@ -305,10 +305,10 @@ abstract class Backend {
   Future<void> updateAllowInstalls();
 }
 
-/// [Backend] over Flutter platform channels, see UnisonBridge.kt.
+/// [Backend] over Flutter platform channels, see SapocheBridge.kt.
 class NativeBackend implements Backend {
-  static const _control = MethodChannel('app.unison/control');
-  static const _state = EventChannel('app.unison/state');
+  static const _control = MethodChannel('app.sapoche/control');
+  static const _state = EventChannel('app.sapoche/state');
 
   /// One subscription to the platform channel, shared by everyone who listens: a second call to
   /// receiveBroadcastStream would take the stream over from the first listener.

@@ -240,7 +240,7 @@ class RoomController extends ChangeNotifier {
   /// Address that opens the app on this room from a chat message, or the app's own link when the
   /// server's address is not known.
   String inviteLink(String code) => _profile.server.isEmpty
-      ? 'unison://join/$code'
+      ? 'sapoche://join/$code'
       : '${_profile.server}/join/$code';
 
   /// What the server says about a room, for the list of recent ones.

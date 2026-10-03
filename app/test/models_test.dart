@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/format.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/format.dart';
 
 void main() {
   test('parses the state the native side sends', () {

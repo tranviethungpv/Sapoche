@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:unison/data/recent_searches.dart';
+import 'package:sapoche/data/recent_searches.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));

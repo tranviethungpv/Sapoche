@@ -66,7 +66,7 @@ class TrackTile extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: Colors.black.withValues(alpha: 0.38),
                               borderRadius: BorderRadius.circular(
-                                UnisonTheme.artworkRadius,
+                                SapocheTheme.artworkRadius,
                               ),
                             ),
                             child: Center(child: leadingOverlay),

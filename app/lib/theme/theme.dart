@@ -6,8 +6,8 @@ import 'palette.dart';
 
 /// Palette and shapes for widgets that need more than Material's colour scheme offers.
 @immutable
-class UnisonTheme extends ThemeExtension<UnisonTheme> {
-  const UnisonTheme(this.palette);
+class SapocheTheme extends ThemeExtension<SapocheTheme> {
+  const SapocheTheme(this.palette);
 
   final Palette palette;
 
@@ -15,16 +15,16 @@ class UnisonTheme extends ThemeExtension<UnisonTheme> {
   static const artworkRadius = 10.0;
 
   @override
-  UnisonTheme copyWith({Palette? palette}) =>
-      UnisonTheme(palette ?? this.palette);
+  SapocheTheme copyWith({Palette? palette}) =>
+      SapocheTheme(palette ?? this.palette);
 
   @override
-  UnisonTheme lerp(UnisonTheme? other, double t) =>
+  SapocheTheme lerp(SapocheTheme? other, double t) =>
       t < 0.5 ? this : (other ?? this);
 }
 
-extension UnisonThemeContext on BuildContext {
-  Palette get palette => Theme.of(this).extension<UnisonTheme>()!.palette;
+extension SapocheThemeContext on BuildContext {
+  Palette get palette => Theme.of(this).extension<SapocheTheme>()!.palette;
 }
 
 const fontFamily = 'Inter';
@@ -89,7 +89,7 @@ ThemeData buildTheme(Palette p) {
     canvasColor: p.base,
     splashFactory: InkSparkle.splashFactory,
     dividerColor: p.outlineSoft,
-    extensions: [UnisonTheme(p)],
+    extensions: [SapocheTheme(p)],
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,

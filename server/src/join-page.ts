@@ -1,22 +1,22 @@
-const PACKAGE = "app.unison";
+const PACKAGE = "app.sapoche";
 
 /** The words of the page; the language follows the browser's, English when it is not one of these. */
 const TEXTS = {
   en: {
-    title: "Join on Unison",
+    title: "Join on Sapoche",
     heading: "You are invited to listen together",
-    open: "Open in Unison",
+    open: "Open in Sapoche",
     copy: "Copy code",
     copied: "Copied",
-    help: "Not opening? Install Unison, then choose Room and enter this code.",
+    help: "Not opening? Install Sapoche, then choose Room and enter this code.",
   },
   vi: {
-    title: "Vào phòng trên Unison",
+    title: "Vào phòng trên Sapoche",
     heading: "Bạn được mời cùng nghe nhạc",
-    open: "Mở trong Unison",
+    open: "Mở trong Sapoche",
     copy: "Sao chép mã",
     copied: "Đã sao chép",
-    help: "Không mở được? Hãy cài Unison, rồi chọn Phòng và nhập mã này.",
+    help: "Không mở được? Hãy cài Sapoche, rồi chọn Phòng và nhập mã này.",
   },
 };
 
@@ -36,7 +36,7 @@ export function pageLanguage(header: string | null): keyof typeof TEXTS {
  */
 export function joinPage(code: string, language: keyof typeof TEXTS = "en"): string {
   const t = TEXTS[language];
-  const intent = `intent://join/${code}#Intent;scheme=unison;package=${PACKAGE};end`;
+  const intent = `intent://join/${code}#Intent;scheme=sapoche;package=${PACKAGE};end`;
   return `<!doctype html>
 <html lang="${language}">
 <head>

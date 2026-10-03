@@ -10,8 +10,8 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
-        android:label="Unison"
-        android:name=".UnisonApp"
+        android:label="Sapoche"
+        android:name=".SapocheApp"
         android:allowBackup="false"
         android:localeConfig="@xml/locales_config"
         android:icon="@mipmap/ic_launcher">
@@ -40,7 +40,7 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="unison" android:host="join"/>
+                <data android:scheme="sapoche" android:host="join"/>
             </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>

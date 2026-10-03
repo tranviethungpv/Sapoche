@@ -3,11 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/data/photo_picker.dart';
-import 'package:unison/ui/scope.dart';
-import 'package:unison/ui/widgets/avatars.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/data/photo_picker.dart';
+import 'package:sapoche/ui/scope.dart';
+import 'package:sapoche/ui/widgets/avatars.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';

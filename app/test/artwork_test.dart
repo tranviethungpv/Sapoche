@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/ui/widgets/artwork.dart';
+import 'package:sapoche/ui/widgets/artwork.dart';
 
 void main() {
   test('a YouTube video thumbnail becomes the largest one of that video', () {

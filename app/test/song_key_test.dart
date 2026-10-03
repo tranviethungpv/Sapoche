@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/models.dart';
-import 'package:unison/data/song_key.dart';
+import 'package:sapoche/data/models.dart';
+import 'package:sapoche/data/song_key.dart';
 
 Track t(String id, String title, String artist, [int seconds = 200]) =>
     Track(videoId: id, title: title, artist: artist, durMs: seconds * 1000);

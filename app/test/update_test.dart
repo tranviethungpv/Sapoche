@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/backend.dart';
-import 'package:unison/data/update_info.dart';
-import 'package:unison/ui/home_shell.dart';
+import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/update_info.dart';
+import 'package:sapoche/ui/home_shell.dart';
 
 import 'pump_app.dart';
 
@@ -115,7 +115,7 @@ void main() {
       final (backend, _) = await pumpApp(tester);
       backend.emit(news(UpdatePhase.upToDate, version: null));
       await openTopic(tester, 'updates');
-      expect(find.text('Unison is up to date'), findsOneWidget);
+      expect(find.text('Sapoche is up to date'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('update-action')));
       await tester.pump();
       expect(backend.calls, contains('updateCheck'));

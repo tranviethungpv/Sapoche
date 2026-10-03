@@ -696,7 +696,7 @@ class _ResultRow extends StatelessWidget {
             Artwork(
               url: item.thumb,
               size: size,
-              radius: round ? size / 2 : UnisonTheme.artworkRadius,
+              radius: round ? size / 2 : SapocheTheme.artworkRadius,
             ),
             const SizedBox(width: 14),
             Expanded(

@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:unison/data/calm.dart';
-import 'package:unison/ui/widgets/low_rate_timer.dart';
+import 'package:sapoche/data/calm.dart';
+import 'package:sapoche/ui/widgets/low_rate_timer.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
