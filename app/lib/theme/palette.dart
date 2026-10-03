@@ -21,7 +21,6 @@ class Palette {
     required this.outlineSoft,
     required this.error,
     required this.success,
-    required this.glass,
   });
 
   final Brightness brightness;
@@ -47,9 +46,6 @@ class Palette {
   final Color error;
   final Color success;
 
-  /// Translucent fill for bars that blur what is behind them.
-  final Color glass;
-
   static const light = Palette._(
     brightness: Brightness.light,
     base: Color(0xFFFFFFFF),
@@ -68,7 +64,6 @@ class Palette {
     outlineSoft: Color(0xFFF6E6EB),
     error: Color(0xFFB83A4B),
     success: Color(0xFF4E8F72),
-    glass: Color(0xCCFFFFFF),
   );
 
   static const dark = Palette._(
@@ -89,6 +84,5 @@ class Palette {
     outlineSoft: Color(0xFF30242A),
     error: Color(0xFFFF8FA0),
     success: Color(0xFF8FCBAE),
-    glass: Color(0xCC161014),
   );
 }

@@ -1,0 +1,4 @@
+Thanh kính, tự gập lại khi cuộn
+- Thanh tab và mini player giờ là kính nổi: làm mờ những gì cuộn phía sau và mang màu của trang bên dưới, từ ảnh bìa album, ảnh nghệ sĩ đến màu hồng của trang chủ.
+- Tìm kiếm có nút tròn riêng bên cạnh các tab.
+- Cuộn trang xuống thì thanh gập lại như Apple Music: các tab thu về tab đang mở và mini player chuyển xuống nằm cạnh nó. Cuộn lên một chút, hoặc chạm vào tab đó, để mở lại.

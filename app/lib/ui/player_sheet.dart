@@ -147,9 +147,16 @@ class PlayerSheetScope extends InheritedWidget {
 
 /// Draws the sheet over the home screen, and the cover flying between the two players.
 class PlayerSheetLayer extends StatelessWidget {
-  const PlayerSheetLayer({super.key, required this.controller});
+  const PlayerSheetLayer({
+    super.key,
+    required this.controller,
+    required this.folded,
+  });
 
   final PlayerSheetController controller;
+
+  /// How far the mini player has come down into the folded bars, which its picture has to match.
+  final Animation<double> folded;
 
   /// The sheet has taken the whole width once this much of the way is open.
   static const _settled = 0.5;
@@ -175,7 +182,7 @@ class PlayerSheetLayer extends StatelessWidget {
         0,
         screen.width - mini.left * (1 - grown),
         mini.height + (screen.height - mini.height) * open,
-        Radius.circular(22 * (1 - grown)),
+        Radius.circular(mini.height / 2 * (1 - grown)),
       );
       // The page is there, whole, from the first moment. What turns it into the mini player's capsule at first is a
       // picture of the capsule on top of it, which melts away as the page grows
@@ -200,13 +207,12 @@ class PlayerSheetLayer extends StatelessWidget {
                   child: IgnorePointer(
                     child: Opacity(
                       opacity: capsule,
-                      // The sheet is not on a sheet of material, which the capsule's buttons need
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: MiniPlayerCapsule(
-                          controller: AppScope.roomOf(context),
-                          ghost: true,
-                        ),
+                      // Its glass is in the bars' backdrop group, so opening the player takes no second reading of
+                      // the screen behind it
+                      child: MiniPlayerCapsule(
+                        controller: AppScope.roomOf(context),
+                        ghost: true,
+                        folded: folded.value,
                       ),
                     ),
                   ),
@@ -277,7 +283,9 @@ class _CoverFlight extends StatelessWidget {
     // Drawn at the full player's size and scaled down, so it is the very picture already
     // decoded there; a size that changed every frame would decode a new one each time
     final natural = pageBox.size.width;
-    final radius = 8 + (16 - 8) * t;
+    // From the mini player's round cover to the full player's rounded square
+    final round = mini.width / 2;
+    final radius = round + (16 - round) * t;
     return Positioned.fromRect(
       rect: rect,
       child: IgnorePointer(

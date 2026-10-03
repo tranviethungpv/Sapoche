@@ -166,7 +166,10 @@ void main() {
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await tester.pumpAndSettle();
       for (final tab in ['Trang chủ', 'Tìm kiếm', 'Thư viện', 'Nghe']) {
-        await tester.tap(find.text(tab));
+        // Search is a round button, named by its tooltip
+        await tester.tap(
+          tab == 'Tìm kiếm' ? find.byTooltip(tab) : find.text(tab),
+        );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: tab);
       }

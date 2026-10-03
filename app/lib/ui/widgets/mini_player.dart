@@ -12,9 +12,13 @@ import 'transport.dart';
 
 /// Floating capsule above the tab bar. Tap it, or drag it up, to open the full player.
 class MiniPlayer extends StatelessWidget {
-  const MiniPlayer({super.key, required this.controller});
+  const MiniPlayer({super.key, required this.controller, this.folded = 0});
 
   final RoomController controller;
+
+  /// How far the bars are folded away, 0 to 1. Folded, the capsule sits between the tab that is open and Search, as
+  /// low as they are, with the cover, the title and the play button only.
+  final double folded;
 
   /// Lower on a screen that is wider than it is tall, where height is what is short.
   static double heightOf(BuildContext context) =>
@@ -39,16 +43,14 @@ class MiniPlayer extends StatelessWidget {
           ),
           child: current == null
               ? const SizedBox(key: ValueKey('none'), width: double.infinity)
-              : Padding(
+              : PlayerOpenDrag(
                   key: const ValueKey('player'),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: PlayerOpenDrag(
-                    child: KeyedSubtree(
-                      key: sheet.miniBar,
-                      child: MiniPlayerCapsule(
-                        controller: controller,
-                        onTap: sheet.open,
-                      ),
+                  child: KeyedSubtree(
+                    key: sheet.miniBar,
+                    child: MiniPlayerCapsule(
+                      controller: controller,
+                      onTap: sheet.open,
+                      folded: folded,
                     ),
                   ),
                 ),
@@ -66,11 +68,15 @@ class MiniPlayerCapsule extends StatelessWidget {
     required this.controller,
     this.onTap,
     this.ghost = false,
+    this.folded = 0,
   });
 
   final RoomController controller;
   final VoidCallback? onTap;
   final bool ghost;
+
+  /// See [MiniPlayer.folded].
+  final double folded;
 
   @override
   Widget build(BuildContext context) {
@@ -79,24 +85,30 @@ class MiniPlayerCapsule extends StatelessWidget {
     final sheet = PlayerSheetScope.of(context);
     final current = controller.snapshot.current;
     if (current == null) return const SizedBox.shrink();
+    final open = MiniPlayer.heightOf(context);
+    final height = open + (HomeShell.tabHeightOf(context) - open) * folded;
+    final cover = (height - 8).clamp(0.0, 44.0);
+    // What folding takes away is gone half way
+    final fading = (1 - 2 * folded).clamp(0.0, 1.0);
     return Glass(
-      borderRadius: BorderRadius.circular(22),
-      border: true,
+      borderRadius: BorderRadius.circular(height / 2),
       child: InkWell(
         onTap: onTap,
         child: SizedBox(
-          height: MiniPlayer.heightOf(context),
+          height: height,
           child: Row(
             children: [
-              const SizedBox(width: 10),
+              // The cover is round and as far from the edge on the left as from the top and bottom, so its curve
+              // follows the capsule's end
+              SizedBox(width: (height - cover) / 2),
               if (ghost)
-                const SizedBox(width: 44, height: 44)
+                SizedBox.square(dimension: cover)
               else
                 Artwork(
                   key: sheet.miniCover,
                   url: current.thumb,
-                  size: 44,
-                  radius: 8,
+                  size: cover,
+                  radius: cover / 2,
                 ),
               const SizedBox(width: 12),
               Expanded(
@@ -105,12 +117,22 @@ class MiniPlayerCapsule extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     MarqueeText(current.title, style: theme.titleSmall),
-                    MarqueeText(
-                      controller.snapshot.solo
-                          ? '${current.artist} · ${S.onYourOwn}'
-                          : current.artist,
-                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                    ),
+                    if (fading > 0)
+                      Align(
+                        alignment: Alignment.topLeft,
+                        heightFactor: 1 - folded,
+                        child: Opacity(
+                          opacity: fading,
+                          child: MarqueeText(
+                            controller.snapshot.solo
+                                ? '${current.artist} · ${S.onYourOwn}'
+                                : current.artist,
+                            style: theme.bodySmall?.copyWith(
+                              color: p.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -120,11 +142,23 @@ class MiniPlayerCapsule extends StatelessWidget {
                   playing: controller.isPlaying,
                   starting: controller.isStarting,
                   onPressed: controller.togglePlay,
-                  size: 48,
+                  size: height < 48 ? height : 48,
                   filled: false,
                 ),
               ),
-              SkipButton(forward: true, onPressed: controller.next, size: 34),
+              if (fading > 0)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: 1 - folded,
+                  child: Opacity(
+                    opacity: fading,
+                    child: SkipButton(
+                      forward: true,
+                      onPressed: controller.next,
+                      size: 34,
+                    ),
+                  ),
+                ),
               const SizedBox(width: 4),
             ],
           ),

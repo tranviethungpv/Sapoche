@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderBackdropFilter;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
@@ -160,7 +161,7 @@ void main() {
         ],
       );
 
-      await tester.tap(find.text('Search'));
+      await tester.tap(find.byTooltip('Search'));
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
       await tester.enterText(
@@ -831,6 +832,141 @@ void main() {
     expect(find.byType(NowPlayingPage), findsNothing);
   });
 
+  testWidgets('the bars are glass that reads the screen once for them all', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    Set<BackdropKey?> keys() => tester
+        .renderObjectList<RenderBackdropFilter>(find.byType(BackdropFilter))
+        .map((filter) => filter.backdropKey)
+        .toSet();
+    // The tabs, the search button and the mini player
+    expect(find.byType(BackdropFilter), findsNWidgets(3));
+    expect(keys().single, isNotNull);
+
+    // The picture of the mini player that the opening player draws is one of them too
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(MiniPlayer)),
+    );
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.byType(BackdropFilter), findsNWidgets(4));
+    expect(keys().single, isNotNull);
+    await gesture.up();
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  });
+
+  testWidgets('search is a round button apart from the tabs', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(const StateEvent(RoomSnapshot()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search'), findsNothing);
+    final tabs = tester.getRect(find.text('Home'));
+    final search = tester.getRect(find.byTooltip('Search'));
+    // At the right end, level with the tabs
+    final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    expect(search.right, closeTo(width - 12, 1));
+    expect(search.left, greaterThan(tabs.right));
+    expect(search.top, lessThan(tabs.top));
+    expect(search.bottom, greaterThan(tabs.bottom));
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.byTooltip('Search'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  group('the bars fold away', () {
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    /// The Listen tab with a long queue and a song in the mini player.
+    Future<FakeBackend> longQueue(WidgetTester tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(songs: 40)));
+      await settle(tester);
+      return backend;
+    }
+
+    Future<void> scroll(WidgetTester tester, double dy) async {
+      await tester.dragFrom(const Offset(270, 600), Offset(0, dy));
+      await settle(tester);
+    }
+
+    Rect mini(WidgetTester tester) =>
+        tester.getRect(find.byType(MiniPlayerCapsule));
+    Rect search(WidgetTester tester) =>
+        tester.getRect(find.byTooltip('Search'));
+
+    testWidgets('when a page is scrolled down, and come back on scrolling up', (
+      tester,
+    ) async {
+      await longQueue(tester);
+      // Open: the mini player above the tabs, the tabs with their names
+      expect(mini(tester).bottom, lessThan(search(tester).top));
+      expect(find.text('Library'), findsOneWidget);
+
+      await scroll(tester, -300);
+      // Folded: the mini player is level with Search, between it and the tab that is open, the only one left
+      expect(mini(tester).center.dy, closeTo(search(tester).center.dy, 1));
+      expect(mini(tester).right, lessThan(search(tester).left));
+      expect(find.text('Library'), findsNothing);
+      expect(find.byTooltip('Listen'), findsOneWidget);
+      expect(
+        mini(tester).left,
+        greaterThan(tester.getRect(find.byTooltip('Listen')).right),
+      );
+
+      // A little way back up is enough
+      await scroll(tester, 60);
+      expect(mini(tester).bottom, lessThan(search(tester).top));
+      expect(find.text('Library'), findsOneWidget);
+    });
+
+    testWidgets(
+      'and come back at a touch of the tab that is left, or another',
+      (tester) async {
+        await longQueue(tester);
+        await scroll(tester, -300);
+        await tester.tap(find.byTooltip('Listen'));
+        await settle(tester);
+        expect(find.text('Library'), findsOneWidget);
+        expect(mini(tester).bottom, lessThan(search(tester).top));
+
+        await scroll(tester, -300);
+        await tester.tap(find.byTooltip('Search'));
+        await settle(tester);
+        expect(find.text('Library'), findsOneWidget);
+        expect(find.byType(TextField), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'and the player opens from the folded mini player and goes back into it',
+      (tester) async {
+        await longQueue(tester);
+        await scroll(tester, -300);
+        await tester.tap(find.byType(MiniPlayer));
+        await settle(tester);
+        expect(find.byType(NowPlayingPage), findsOneWidget);
+
+        await tester.binding.handlePopRoute();
+        await settle(tester);
+        expect(find.byType(NowPlayingPage), findsNothing);
+        expect(mini(tester).center.dy, closeTo(search(tester).center.dy, 1));
+      },
+    );
+  });
+
   testWidgets(
     'tapping who is here lists the members and offers to listen alone',
     (tester) async {
@@ -977,7 +1113,7 @@ void main() {
         ),
       ],
     );
-    await tester.tap(find.text('Search'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
 
     // Typing finds things at once, with no filters yet
@@ -1042,7 +1178,7 @@ void main() {
     backend.searchPageResult = const SearchResults(
       items: [SearchItem(kind: 'artist', id: 'UCx', title: 'Lofi Artist')],
     );
-    await tester.tap(find.text('Search'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'lofi');
     await tester.pump(const Duration(milliseconds: 300));
@@ -1092,7 +1228,7 @@ void main() {
         ),
       ],
     );
-    await tester.tap(find.text('Search'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'top');
     await tester.testTextInput.receiveAction(TextInputAction.search);
@@ -1144,7 +1280,7 @@ void main() {
     backend.searchMoreResults['NEXT'] = const SearchResults(
       items: [SearchItem(kind: 'artist', id: 'UCtail', title: 'Tail Artist')],
     );
-    await tester.tap(find.text('Search'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'many');
     await tester.testTextInput.receiveAction(TextInputAction.search);
@@ -1172,7 +1308,7 @@ void main() {
       ),
       Track(videoId: 'fresh', title: 'Fresh song', artist: 'x', durMs: 1000),
     ];
-    await tester.tap(find.text('Search'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'song');
     await tester.pump(const Duration(milliseconds: 600));
@@ -1198,7 +1334,7 @@ void main() {
       backend.searchResults = const [
         Track(videoId: 'aaaaaaaaaaa', title: 'Found', artist: 'x', durMs: 1000),
       ];
-      await tester.tap(find.text('Search'));
+      await tester.tap(find.byTooltip('Search'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'found');
       await tester.pump(const Duration(milliseconds: 600));
@@ -1255,7 +1391,7 @@ void main() {
       kind: 'Playlist',
       tracks: songs,
     );
-    await tester.tap(find.text('Search'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextField),
@@ -1428,7 +1564,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     backend.searchGate = Completer<void>();
-    await tester.tap(find.text('Search'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.enterText(find.byType(TextField), 'hello');
@@ -1720,7 +1856,7 @@ void main() {
       await tester.pumpAndSettle();
       backend.emit(const LibraryEvent());
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Search'));
+      await tester.tap(find.byTooltip('Search'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'alpha');
       await tester.testTextInput.receiveAction(TextInputAction.search);
@@ -1827,7 +1963,7 @@ void main() {
       backend.searchResults = [songA];
       backend.emit(const StateEvent(RoomSnapshot()));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Search'));
+      await tester.tap(find.byTooltip('Search'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'alpha');
       await tester.testTextInput.receiveAction(TextInputAction.search);
@@ -1898,7 +2034,7 @@ void main() {
       backend.emit(const LibraryEvent());
       backend.emit(const StateEvent(RoomSnapshot()));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Search'));
+      await tester.tap(find.byTooltip('Search'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'alpha');
       await tester.testTextInput.receiveAction(TextInputAction.search);
@@ -2070,7 +2206,7 @@ void main() {
     Future<void> openSearch(WidgetTester tester, FakeBackend backend) async {
       backend.emit(const StateEvent(RoomSnapshot()));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Search'));
+      await tester.tap(find.byTooltip('Search'));
       await tester.pumpAndSettle();
     }
 

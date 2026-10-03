@@ -1,0 +1,4 @@
+Glass bars that fold away as you scroll
+- The tab bar and the mini player are now floating glass: they blur what scrolls behind them and take the colours of the page they are over, from an album cover or an artist's picture to the pink of the home page.
+- Search has a round button of its own beside the tabs.
+- Scroll a page down and the bars fold away, as in Apple Music: the tabs shrink to the one that is open and the mini player moves down beside it. Scroll up a little, or touch that tab, to bring them back.
