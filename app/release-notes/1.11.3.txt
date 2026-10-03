@@ -1,0 +1,2 @@
+A gentler glow
+- The colour along the top of the home page and the other main pages is softer and a little shorter, so titles and text stay easy to read over it.

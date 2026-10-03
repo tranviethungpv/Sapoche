@@ -225,13 +225,14 @@ extension on _PlayerBackdropState {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             stops: [0, 0.5, 1],
-            colors: [Color(0xFFFFFFFF), Color(0xB3FFFFFF), Color(0x00FFFFFF)],
+            // Soft even at its strongest, so that the titles over it stay easy to read
+            colors: [Color(0x99FFFFFF), Color(0x52FFFFFF), Color(0x00FFFFFF)],
           ).createShader(rect),
           child: ColorFiltered(
             // The dark theme's picture is deep so that white text reads on all of the full player; as a glow it is
-            // brought up to the colours of the cover
+            // only brought up a little
             colorFilter: ColorFilter.matrix(
-              light ? _bright(1, 1.6) : _bright(1.5, 1.2),
+              light ? _bright(1, 1.15) : _bright(1.15, 1.0),
             ),
             child: SizedBox.expand(
               child: glow == null
