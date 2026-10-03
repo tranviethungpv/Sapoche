@@ -123,7 +123,14 @@ class _BodyState extends State<_Body> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        PlayerBackdrop(coverUrl: widget.current.thumb),
+        // The colours drift while the song plays, as Apple Music's do
+        ListenableBuilder(
+          listenable: _c.player,
+          builder: (context, _) => PlayerBackdrop(
+            coverUrl: widget.current.thumb,
+            moving: _c.isPlaying,
+          ),
+        ),
         // On its side the phone has no height for one column: the cover goes beside the controls instead. The
         // safe area also keeps both clear of a notch at the side.
         SafeArea(

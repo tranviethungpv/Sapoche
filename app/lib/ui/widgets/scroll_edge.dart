@@ -3,9 +3,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
+import '../home_shell.dart';
 import 'glass.dart';
 
-/// The top edge of a page that scrolls up under the status bar, in the manner of iOS. While the page is at its top
+/// The top edge of a page that scrolls up under the status bar, in the manner of iOS (on a tablet or a wide screen;
+/// a phone's page ends below the status bar). While the page is at its top
 /// its own large title is all there is; once it has scrolled past [after], a strip of the bars' glass comes in under
 /// the status bar with the title small in it, so what goes up is blurred away instead of being cut off by the edge
 /// of the screen.
@@ -45,8 +47,19 @@ class _ScrollEdgeState extends State<ScrollEdge> {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final top = MediaQuery.paddingOf(context).top;
+    // On a phone the page simply ends below the status bar, as it did before the strip: it looked heavy there
+    if (HomeShell.layoutOf(context) == ShellLayout.bars) {
+      return Padding(
+        padding: EdgeInsets.only(top: top),
+        child: MediaQuery.removePadding(
+          context: context,
+          removeTop: true,
+          child: widget.child,
+        ),
+      );
+    }
+    final p = context.palette;
     final tint = Glass.tintOf(p);
     return NotificationListener<ScrollNotification>(
       onNotification: _onScroll,

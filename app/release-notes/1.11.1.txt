@@ -1,0 +1,5 @@
+A livelier home, and a way into a Room from the first screen
+- The home page and the other main pages are lit from the top by the colours of the song that is playing, and plain below, so the covers stand out instead of everything sharing one tint. On a phone the bar that came in under the status bar as you scroll is gone.
+- A Room button on the home page, beside Settings: it says Room, or Rejoin once you have been in a room (a touch goes straight back into the last one, holding it shows your rooms), and shows the room's code while you are in one. The app never goes into a room by itself when it opens.
+- Mixes of the artists you play most are wide cards you swipe along; on a tablet or a big window the first ones are laid across the top.
+- The background of the full player now drifts slowly while a song plays, and stays still when paused or when you have asked your phone for less motion.

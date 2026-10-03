@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
+import 'package:sapoche/strings.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';
@@ -24,8 +27,9 @@ Future<FakeBackend> openHome(
   WidgetTester tester, {
   void Function(FakeBackend backend)? prepare,
   bool inRoom = false,
+  Map<String, Object> prefs = const {},
 }) async {
-  final (backend, _) = await pumpApp(tester, listen: false);
+  final (backend, _) = await pumpApp(tester, listen: false, prefs: prefs);
   prepare?.call(backend);
   backend.emit(
     StateEvent(
@@ -95,7 +99,18 @@ void main() {
     expect(find.text('Brand New'), findsOneWidget);
     expect(find.text('Listen again'), findsOneWidget);
     expect(find.text('Mixed for you'), findsOneWidget);
+    // The mix of the artist heard most is the card at the top
     expect(find.text('Adele Mix'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Because you listened to Hello'),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byType(RefreshIndicator),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('Because you listened to Hello'), findsOneWidget);
   });
 
@@ -392,5 +407,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.calls, contains('unblock artist adele'));
     expect(find.textContaining('Nothing here'), findsOneWidget);
+  });
+
+  group('the Room chip', () {
+    final recent = {
+      'recent_rooms': jsonEncode([
+        {
+          'code': 'XYZ234',
+          'name': 'Home',
+          'at': DateTime.now().millisecondsSinceEpoch,
+        },
+      ]),
+    };
+
+    testWidgets(
+      'says Room, and opens the sheet, when there is nothing to go back to',
+      (tester) async {
+        await openHome(tester);
+        expect(find.text(S.tabRoom), findsOneWidget);
+        await tester.tap(find.text(S.tabRoom));
+        await tester.pumpAndSettle();
+        expect(find.text(S.listenTogether), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'says Rejoin, and a touch goes straight back into the last room',
+      (tester) async {
+        final backend = await openHome(tester, prefs: recent);
+        // Opening the app does not go into a room by itself
+        expect(backend.calls.where((c) => c.startsWith('join')), isEmpty);
+        expect(find.text(S.rejoinChip), findsOneWidget);
+        await tester.tap(find.text(S.rejoinChip));
+        await tester.pumpAndSettle();
+        expect(backend.calls, contains(startsWith('join XYZ234 ')));
+        // No sheet in between
+        expect(find.text(S.listenTogether), findsNothing);
+      },
+    );
+
+    testWidgets('holding it opens the list of rooms instead', (tester) async {
+      final backend = await openHome(tester, prefs: recent);
+      await tester.longPress(find.text(S.rejoinChip));
+      await tester.pumpAndSettle();
+      expect(find.text(S.recentRooms), findsOneWidget);
+      expect(backend.calls.where((c) => c.startsWith('join')), isEmpty);
+    });
+
+    testWidgets('shows the code while in a room, and a touch opens the room', (
+      tester,
+    ) async {
+      await openHome(tester, inRoom: true, prefs: recent);
+      expect(find.text('ABC234'), findsOneWidget);
+      expect(find.text(S.rejoinChip), findsNothing);
+      await tester.tap(find.text('ABC234'));
+      await tester.pumpAndSettle();
+      expect(find.text(S.listenTogether), findsNothing);
+      expect(find.text(S.leaveRoom), findsOneWidget);
+    });
   });
 }

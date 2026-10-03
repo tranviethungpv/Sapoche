@@ -1,0 +1,5 @@
+Trang chủ sống động hơn, và lối vào Room ngay từ màn hình đầu
+- Trang chủ và các trang chính được tô sáng từ phía trên bằng màu của bài đang phát, phía dưới để trơn, nên ảnh bìa nổi bật thay vì cả app chung một tông. Trên điện thoại, dải hiện dưới thanh trạng thái khi cuộn đã bỏ.
+- Nút Room ngay trên trang chủ, cạnh Cài đặt: ghi Room, hoặc Vào lại khi bạn từng ở trong một phòng (chạm là vào thẳng phòng gần nhất, nhấn giữ để xem các phòng), và hiện mã phòng khi bạn đang ở trong phòng. App không bao giờ tự vào phòng khi mở lên.
+- Mix của các nghệ sĩ bạn nghe nhiều là những thẻ rộng vuốt ngang; trên máy tính bảng hoặc cửa sổ lớn, vài thẻ đầu được trải ngang đầu trang.
+- Nền của trình phát đầy đủ giờ trôi chậm khi bài đang phát, và đứng yên khi tạm dừng hoặc khi bạn đã đặt điện thoại giảm chuyển động.

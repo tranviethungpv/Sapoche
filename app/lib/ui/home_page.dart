@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../data/home_model.dart';
@@ -10,6 +13,7 @@ import 'artist_page.dart';
 import 'home_shell.dart';
 import 'collection_screen.dart';
 import 'player/track_section.dart';
+import 'rooms_sheet.dart';
 import 'scope.dart';
 import 'settings_page.dart';
 import 'widgets/artwork.dart';
@@ -42,95 +46,116 @@ class HomePage extends StatelessWidget {
             context: library.context,
             blocked: library.blocked,
           );
-          return RefreshIndicator(
-            onRefresh: library.refreshForYou,
-            edgeOffset: top,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.only(
-                top: top,
-                bottom: HomeShell.bottomInsetOf(context),
-              ),
-              children: [
-                const _Header(),
-                if (home.isEmpty) const _Welcome(),
-                _QuickPicks(tracks: home.quickPicks),
-                CardShelf(
-                  title: S.listenAgain,
-                  cards: [
-                    for (final t in home.listenAgain)
-                      SongCard.track(
-                        context,
-                        t,
-                        onTap: () => playNow(context, t),
-                      ),
-                  ],
-                ),
-                CardShelf(
-                  title: S.contextMix(home.contextBucket),
-                  cards: [
-                    for (final t in home.context)
-                      SongCard.track(
-                        context,
-                        t,
-                        onTap: () => playNow(context, t),
-                      ),
-                  ],
-                ),
-                CardShelf(
-                  title: S.mixedForYou,
-                  cards: [
-                    for (final mix in home.mixes)
-                      SongCard(
-                        title: S.mixOf(mix.artist),
-                        subtitle: '',
-                        thumb: mix.seed.thumb,
-                        onTap: () => startMix(context, mix.seed),
-                      ),
-                  ],
-                ),
-                CardShelf(
-                  title: S.discoverShelf,
-                  cards: [
-                    for (final t in home.discover)
-                      SongCard.track(
-                        context,
-                        t,
-                        onTap: () => playNow(context, t),
-                      ),
-                  ],
-                ),
-                CardShelf(
-                  title: S.forgottenFavorites,
-                  cards: [
-                    for (final t in home.forgotten)
-                      SongCard.track(
-                        context,
-                        t,
-                        onTap: () => playNow(context, t),
-                      ),
-                  ],
-                ),
-                for (final b in home.becauseOf)
-                  CardShelf(
-                    title: S.becauseYouListened(b.seed.title),
-                    cards: [
-                      for (final t in b.tracks)
-                        SongCard.track(
-                          context,
-                          t,
-                          onTap: () => playNow(context, t),
-                        ),
-                    ],
+          return LayoutBuilder(
+            builder: (context, box) {
+              final heroes = _heroCount(box.maxWidth, home.mixes.length);
+              return RefreshIndicator(
+                onRefresh: library.refreshForYou,
+                edgeOffset: top,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    top: top,
+                    bottom: HomeShell.bottomInsetOf(context),
                   ),
-                if (home.topSeed != null) _SimilarArtists(seed: home.topSeed!),
-                const _Trending(),
-              ],
-            ),
+                  children: [
+                    const _Header(),
+                    if (home.isEmpty) const _Welcome(),
+                    if (heroes > 0)
+                      _Heroes(mixes: home.mixes.take(heroes).toList()),
+                    _QuickPicks(tracks: home.quickPicks),
+                    CardShelf(
+                      title: S.listenAgain,
+                      cards: [
+                        for (final t in home.listenAgain)
+                          SongCard.track(
+                            context,
+                            t,
+                            onTap: () => playNow(context, t),
+                          ),
+                      ],
+                    ),
+                    CardShelf(
+                      title: S.contextMix(home.contextBucket),
+                      cards: [
+                        for (final t in home.context)
+                          SongCard.track(
+                            context,
+                            t,
+                            onTap: () => playNow(context, t),
+                          ),
+                      ],
+                    ),
+                    // A phone swipes along wide cards, as Apple Music does for its picks; a wide window has shown the
+                    // first ones across the top already
+                    if (heroes == 0)
+                      _MixRow(mixes: home.mixes)
+                    else
+                      CardShelf(
+                        title: S.mixedForYou,
+                        cards: [
+                          // The first are the cards at the top
+                          for (final mix in home.mixes.skip(heroes))
+                            SongCard(
+                              title: S.mixOf(mix.artist),
+                              subtitle: '',
+                              thumb: mix.seed.thumb,
+                              onTap: () => startMix(context, mix.seed),
+                            ),
+                        ],
+                      ),
+                    CardShelf(
+                      title: S.discoverShelf,
+                      cards: [
+                        for (final t in home.discover)
+                          SongCard.track(
+                            context,
+                            t,
+                            onTap: () => playNow(context, t),
+                          ),
+                      ],
+                    ),
+                    CardShelf(
+                      title: S.forgottenFavorites,
+                      cards: [
+                        for (final t in home.forgotten)
+                          SongCard.track(
+                            context,
+                            t,
+                            onTap: () => playNow(context, t),
+                          ),
+                      ],
+                    ),
+                    for (final b in home.becauseOf)
+                      CardShelf(
+                        title: S.becauseYouListened(b.seed.title),
+                        cards: [
+                          for (final t in b.tracks)
+                            SongCard.track(
+                              context,
+                              t,
+                              onTap: () => playNow(context, t),
+                            ),
+                        ],
+                      ),
+                    if (home.topSeed != null)
+                      _SimilarArtists(seed: home.topSeed!),
+                    const _Trending(),
+                  ],
+                ),
+              );
+            },
           );
         },
       ),
     );
+  }
+
+  /// How many mixes go across the top: none on a phone, which swipes through them further down, more where the page
+  /// is wide.
+  static int _heroCount(double width, int mixes) {
+    final fit = width >= 1000 ? 3 : (width >= 640 ? 2 : 0);
+    return math.min(fit, mixes);
   }
 }
 
@@ -150,12 +175,21 @@ class _Header extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 18, 16, 6),
       child: Row(
         children: [
+          // The greeting gives way to the buttons on a narrow phone rather than being cut off
           Expanded(
-            child: Text(
-              greeting(DateTime.now().hour),
-              style: Theme.of(context).textTheme.headlineLarge,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                greeting(DateTime.now().hour),
+                maxLines: 1,
+                style: Theme.of(context).textTheme.headlineLarge,
+              ),
             ),
           ),
+          const SizedBox(width: 8),
+          const _RoomChip(),
+          const SizedBox(width: 8),
           IconButton(
             onPressed: () => openSettings(context),
             tooltip: S.settingsTitle,
@@ -174,6 +208,296 @@ class _Header extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Mixes of the artists the person plays, as wide cards that scroll sideways: part of the next one shows, which says
+/// there is more.
+class _MixRow extends StatelessWidget {
+  const _MixRow({required this.mixes});
+
+  final List<ArtistMix> mixes;
+
+  @override
+  Widget build(BuildContext context) {
+    if (mixes.isEmpty) return const SizedBox.shrink();
+    final width = (MediaQuery.sizeOf(context).width * 0.78).clamp(240.0, 320.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeading(S.mixedForYou),
+        SizedBox(
+          height: 168,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: mixes.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            itemBuilder: (_, i) => SizedBox(
+              width: width,
+              child: _Hero(mix: mixes[i], height: 168, label: false),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The way into a room from the home page, so that it is not a trip to another tab: it says "Room" when there is
+/// nothing to go back to, "Rejoin" when this device has been in a room (a touch goes straight back into the last one),
+/// and the room's code while this device is in one (a touch opens the room's panel). Holding it opens the list of
+/// rooms. It never enters a room by itself: only a touch does.
+class _RoomChip extends StatefulWidget {
+  const _RoomChip();
+
+  @override
+  State<_RoomChip> createState() => _RoomChipState();
+}
+
+class _RoomChipState extends State<_RoomChip> {
+  bool _busy = false;
+
+  Future<void> _touch() async {
+    final model = AppScope.of(context);
+    final room = model.room;
+    final last = model.recents.rooms.firstOrNull;
+    final name = room.snapshot.me?.name ?? room.profile.name ?? '';
+    // Without a room to go back to, or a name to go in with, the sheet is the way
+    if (room.snapshot.inRoom || last == null || name.isEmpty) {
+      return showRoomSheet(context);
+    }
+    setState(() => _busy = true);
+    final error = await room.join(last.code, name);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    // The room may be gone or the server out of reach: the sheet shows the rooms there are, and says what went wrong
+    if (error != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error)));
+      await showRoomSheet(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final model = AppScope.of(context);
+    return ListenableBuilder(
+      listenable: Listenable.merge([model.room, model.recents]),
+      builder: (context, _) {
+        final snapshot = model.room.snapshot;
+        final last = model.recents.rooms.firstOrNull;
+        final inRoom = snapshot.inRoom;
+        final label = inRoom
+            ? snapshot.room ?? S.tabRoom
+            : last == null
+            ? S.tabRoom
+            : S.rejoinChip;
+        final color = inRoom ? p.onPrimary : p.text;
+        return Tooltip(
+          message: inRoom || last == null ? S.tabRoom : last.title,
+          child: Material(
+            color: inRoom ? p.primary : p.text.withValues(alpha: 0.14),
+            shape: const StadiumBorder(),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: _busy ? null : _touch,
+              onLongPress: () => showRoomSheet(context),
+              child: SizedBox(
+                height: 40,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _busy
+                          ? SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: color,
+                              ),
+                            )
+                          : Icon(Icons.groups_rounded, size: 18, color: color),
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: color,
+                          letterSpacing: inRoom ? 1.5 : 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The mixes of the artists the person plays most as large cards across the top of a wide page, a picture on each and
+/// the words on a veil of dark glass.
+class _Heroes extends StatelessWidget {
+  const _Heroes({required this.mixes});
+
+  final List<ArtistMix> mixes;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+    child: Row(
+      children: [
+        for (final (i, mix) in mixes.indexed) ...[
+          if (i > 0) const SizedBox(width: 14),
+          Expanded(
+            child: _Hero(mix: mix, height: mixes.length == 1 ? 216 : 240),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+class _Hero extends StatelessWidget {
+  const _Hero({required this.mix, required this.height, this.label = true});
+
+  final ArtistMix mix;
+  final double height;
+
+  /// Says "Mixed for you" over the title; a row that has that for its heading leaves it out.
+  final bool label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context).textTheme;
+    return LayoutBuilder(
+      builder: (context, box) {
+        return Container(
+          height: height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.28),
+                blurRadius: 28,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: InkWell(
+              onTap: () => startMix(context, mix.seed),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // The picture is square, so a wide card shows a band of it
+                  OverflowBox(
+                    minWidth: box.maxWidth,
+                    maxWidth: box.maxWidth,
+                    minHeight: box.maxWidth,
+                    maxHeight: box.maxWidth,
+                    child: Artwork(
+                      url: mix.seed.thumb,
+                      size: box.maxWidth,
+                      radius: 0,
+                      sharp: true,
+                    ),
+                  ),
+                  Positioned(
+                    left: 10,
+                    right: 10,
+                    bottom: 10,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                        child: ColoredBox(
+                          color: Colors.black.withValues(alpha: 0.42),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (label)
+                                        Text(
+                                          S.mixedForYou.toUpperCase(),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.labelSmall?.copyWith(
+                                            color: Colors.white70,
+                                            letterSpacing: 0.8,
+                                          ),
+                                        ),
+                                      Text(
+                                        S.mixOf(mix.artist),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.titleLarge?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                // Not a button of its own: the whole card is
+                                DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 7,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.play_arrow_rounded,
+                                          size: 18,
+                                          color: Color(0xFF22161A),
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          S.play,
+                                          style: theme.labelLarge?.copyWith(
+                                            color: const Color(0xFF22161A),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -231,10 +231,14 @@ void main() {
       tester,
     ) async {
       await pumpAt(tester, 1280, 800);
-      // Tab goes to the gear at the top of the page, then to the sidebar's first row; the arrows walk down its column
-      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-      await tester.pump();
+      // Tab goes through the buttons at the top of the page (the Room chip, the gear), then to the sidebar's first row;
+      // the arrows then walk down its column
+      for (var i = 0; i < 6; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        if ((FocusManager.instance.primaryFocus?.rect.left ?? 999) < 300) break;
+      }
+      expect(FocusManager.instance.primaryFocus?.rect.left, lessThan(300));
       final seen = <FocusNode?>{FocusManager.instance.primaryFocus};
       for (var i = 0; i < 4; i++) {
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);

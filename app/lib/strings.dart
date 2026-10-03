@@ -36,6 +36,9 @@ abstract final class S {
   static String get tabHome => _t('Home', 'Trang chủ');
   static String get tabListen => _t('Listen', 'Nghe');
   static String get tabRoom => _t('Room', 'Phòng');
+
+  /// On the chip of the home page that goes back into the last room.
+  static String get rejoinChip => _t('Rejoin', 'Vào lại');
   static String get tabSearch => _t('Search', 'Tìm kiếm');
   static String get tabLibrary => _t('Library', 'Thư viện');
   static String get tabSettings => _t('Settings', 'Cài đặt');
