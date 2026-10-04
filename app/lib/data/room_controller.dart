@@ -9,6 +9,7 @@ import 'calm.dart';
 import 'models.dart';
 import 'recent_rooms.dart';
 import 'setup_link.dart';
+import 'song_key.dart';
 
 /// Something another member did that moved this device: worth a snackbar, sometimes with a way out.
 class Notice {
@@ -61,6 +62,9 @@ class RoomController extends ChangeNotifier {
   /// While the user's seek is in flight the bar stays where they dropped it.
   int? _seekTarget;
   Timer? _seekTimer;
+
+  /// The last [playTracks] outside a room; the next one waits for it.
+  Future<void> _replacing = Future.value();
 
   /// A room code from an invitation link that the UI has not dealt with yet.
   final ValueNotifier<String?> invite = ValueNotifier(null);
@@ -359,9 +363,15 @@ class RoomController extends ChangeNotifier {
 
   /// Outside a room: replaces the queue with [tracks] and starts them. In a room the queue belongs
   /// to everybody, so they are only added to it.
-  Future<void> playTracks(List<Track> tracks) async {
-    if (!_snapshot.inRoom) await _run(_backend.clear);
-    await addMany(tracks);
+  Future<void> playTracks(List<Track> tracks) {
+    if (_snapshot.inRoom) return addMany(tracks);
+    // Taps in quick succession are taken in turn, so that each empties the queue before its songs go in and the
+    // last one is what plays. The songs are not checked against the queue here: until the native side reports
+    // the emptied queue, the snapshot still holds the old one, and every song in it would be left out
+    return _replacing = _replacing.then((_) async {
+      await _run(_backend.clear);
+      await _run(() => _backend.addMany(uniqueSongs(tracks)));
+    });
   }
 
   /// Outside a room: plays [track] in place of the queue and lets songs like it follow, as YouTube Music does

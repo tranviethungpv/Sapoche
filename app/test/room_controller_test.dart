@@ -284,6 +284,43 @@ void main() {
     expect(backend.calls.last, 'addMany aaaaaaaaaaa,bbbbbbbbbbb next=true');
   });
 
+  group('playing a list outside a room', () {
+    Track song(int i) =>
+        Track(videoId: 'video$i', title: 'Song $i', artist: 'x', durMs: 1);
+
+    test(
+      'sends every song, even those the queue being emptied holds',
+      () async {
+        // The state that says the queue was emptied has not arrived yet
+        backend.emit(StateEvent(sampleRoom(local: true)));
+        await settle();
+        await controller.playTracks([song(1), song(2)]);
+        expect(backend.calls.sublist(backend.calls.length - 2), [
+          'clear',
+          'addMany video1,video2 next=false',
+        ]);
+      },
+    );
+
+    test('quick taps are taken in turn, so the last one plays', () async {
+      backend.emit(StateEvent(sampleRoom(local: true)));
+      await settle();
+      await Future.wait([
+        controller.playTracks([song(0), song(1)]),
+        controller.playTracks([song(2)]),
+      ]);
+      expect(
+        backend.calls.where((c) => c == 'clear' || c.startsWith('addMany')),
+        [
+          'clear',
+          'addMany video0,video1 next=false',
+          'clear',
+          'addMany video2 next=false',
+        ],
+      );
+    });
+  });
+
   group('listening alone', () {
     test(
       'a pause by someone else offers to keep playing, a skip does not',

@@ -49,6 +49,10 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
                 when (playbackState) {
                     Player.STATE_READY -> resumeWaiting()
                     Player.STATE_ENDED -> onEnded?.invoke()
+                    // Whoever stops the player on purpose cancels the load first, so a load still waiting was
+                    // stopped by something else: try again now rather than wait out LOAD_TIMEOUT_MS. An error
+                    // goes to onPlayerError instead
+                    Player.STATE_IDLE -> if (player.playerError == null) failWaiting()
                 }
             }
 
@@ -208,6 +212,15 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
             waiting = null
             throw IOException("Player was not ready after ${timeoutMs}ms")
         }
+    }
+
+    private fun failWaiting() {
+        val pending = waiting ?: return
+        waiting = null
+        val from = Throwable().stackTrace.filter { it.className.startsWith("app.sapoche") }.drop(2).take(3)
+            .joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}" }
+            .ifEmpty { "the player itself" }
+        pending.resumeWithException(IOException("Player stopped while loading (from $from)"))
     }
 
     private fun resumeWaiting() {

@@ -1,0 +1,4 @@
+Bấm nhanh liên tiếp vào các bài không còn làm nhạc dừng hẳn
+- Bấm liên tiếp từng bài trong danh sách có thể khiến không bài nào phát cho đến khi bấm thêm lần nữa. Giờ bài bấm cuối cùng luôn được phát.
+- Sau một loạt bấm nhanh, bài bắt đầu phát sớm hơn: một bài được gọi hai lần dùng chung một lần tra cứu thay vì chờ lần trước bị bỏ.
+- Bài đang tải mà bị dừng ngoài ý muốn sẽ được tải lại ngay thay vì sau 20 giây.

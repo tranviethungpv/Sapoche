@@ -6,8 +6,16 @@ import app.sapoche.core.Probe
 import app.sapoche.core.StreamResolver
 import app.sapoche.core.VideoPicker
 import app.sapoche.core.VideoSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -17,7 +25,9 @@ import java.util.concurrent.ConcurrentHashMap
  * the middle of the file returns 403. Each fresh URL is therefore probed and re-resolved
  * a few times before we give it to the player.
  *
- * All methods block; they are meant to run on the player's loader thread.
+ * All methods block; they are meant to run on the player's loader thread. A resolve itself runs apart from the thread
+ * that asked for it and is shared by everyone who wants the same video, so a load the player gives up on (another song
+ * was tapped) does not throw away a resolve that the next load of that song can use.
  */
 class StreamCache(
     private val resolver: StreamResolver,
@@ -39,6 +49,8 @@ class StreamCache(
     private val entries = ConcurrentHashMap<String, Entry>()
     private val videoEntries = ConcurrentHashMap<String, VideoEntry>()
     private val locks = ConcurrentHashMap<String, Any>()
+    private val resolving = ConcurrentHashMap<String, Deferred<Entry>>()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Returns a validated stream URL for [videoId], resolving if needed. */
     fun get(videoId: String): String = getAudio(videoId, null).url
@@ -48,15 +60,7 @@ class StreamCache(
      * kept on disk belong to) that stream is used as long as the video offers it and it works; see [AudioPicker].
      */
     fun getAudio(videoId: String, pinnedItag: Int?): AudioPick {
-        val entry = entries[videoId]?.takeIf { isFresh(it) } ?: run {
-            // One resolve per video at a time, so preload and playback do not race
-            synchronized(locks.getOrPut(videoId) { Any() }) {
-                entries[videoId]?.takeIf { isFresh(it) } ?: run {
-                    resolveValidated(videoId)
-                    entries.getValue(videoId)
-                }
-            }
-        }
+        val entry = entry(videoId)
         val pick = AudioPicker.pick(entry.audio, pinnedItag) ?: throw IOException("$videoId has no audio stream")
         // The best stream was probed when it was resolved; another one has not been looked at yet
         if (pick.source.itag == entry.best.itag) return AudioPick(pick.source.url, pick.source.itag, pick.honoursPin)
@@ -80,10 +84,7 @@ class StreamCache(
             videoEntries[key]?.takeIf { System.currentTimeMillis() - it.resolvedAtMs < MAX_AGE_MS }?.let { return it.url }
             var lastProblem = "unknown"
             for (attempt in 1..MAX_ATTEMPTS) {
-                val entry = entries[videoId]?.takeIf { isFresh(it) } ?: run {
-                    resolveValidated(videoId)
-                    entries.getValue(videoId)
-                }
+                val entry = entry(videoId)
                 val pick = VideoPicker.pick(entry.videos, maxHeight)
                     ?: throw IOException("$videoId has no video stream")
                 val probed = runBlocking { probe.check(pick.url, pick.contentLength) }
@@ -110,7 +111,29 @@ class StreamCache(
         videoEntries.keys.removeIf { it.startsWith("$videoId@") }
     }
 
-    private fun resolveValidated(videoId: String): String = runBlocking {
+    /**
+     * The kept streams of [videoId], or those of a resolve: the one already running for it if there is one (preload,
+     * or a load the player gave up on), else a new one. Waiting stops when the player cancels the load, the resolve
+     * carries on.
+     */
+    private fun entry(videoId: String): Entry {
+        entries[videoId]?.takeIf { isFresh(it) }?.let { return it }
+        val shared = resolving.computeIfAbsent(videoId) { id ->
+            // Started only once it is in the map, so that finishing at once cannot leave it there
+            scope.async(start = CoroutineStart.LAZY) { resolveValidated(id) }
+                .also { resolve -> resolve.invokeOnCompletion { resolving.remove(id, resolve) } }
+        }
+        shared.start()
+        return try {
+            runBlocking { shared.await() }
+        } catch (e: InterruptedException) {
+            throw InterruptedIOException("Waiting for $videoId was cancelled")
+        } catch (e: CancellationException) {
+            throw InterruptedIOException("Waiting for $videoId was cancelled")
+        }
+    }
+
+    private suspend fun resolveValidated(videoId: String): Entry {
         var lastProblem = "unknown"
         for (attempt in 1..MAX_ATTEMPTS) {
             try {
@@ -124,10 +147,12 @@ class StreamCache(
                         "firstByte=${probed.firstByteMs}ms ${if (probed.ok) "OK" else "POISONED"}",
                 )
                 if (probed.ok) {
-                    entries[videoId] = Entry(resolved.best, resolved.all, resolved.videos, System.currentTimeMillis())
-                    return@runBlocking resolved.best.url
+                    return Entry(resolved.best, resolved.all, resolved.videos, System.currentTimeMillis())
+                        .also { entries[videoId] = it }
                 }
                 lastProblem = "probe ${probed.headStatus}/${probed.midStatus}/${probed.tailStatus}"
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 lastProblem = "${e.javaClass.simpleName}: ${e.message?.lineSequence()?.firstOrNull()}"
                 EventLog.d("resolve", "$videoId attempt=$attempt failed: $lastProblem")

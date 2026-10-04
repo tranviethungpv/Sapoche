@@ -1,0 +1,4 @@
+Tapping songs quickly no longer leaves the music stopped
+- Tapping one song after another in a list could leave nothing playing until you tapped again. The last song you tap now always plays.
+- After a run of quick taps the song starts sooner: a song asked for twice shares the one look-up instead of waiting for the first to be thrown away.
+- A song whose loading was stopped by something else is tried again at once instead of after 20 seconds.
