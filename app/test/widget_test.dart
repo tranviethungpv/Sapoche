@@ -1681,11 +1681,11 @@ void main() {
       await tester.tap(find.text('Liked songs'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Play'), findsNothing);
-      await tester.tap(find.text('Add all'));
+      await tester.tap(find.text('Play'));
       await tester.pumpAndSettle();
       expect(backend.calls, isNot(contains('clear')));
       expect(backend.calls.last, 'addMany aaaaaaaaaaa next=false');
+      expect(find.text('Playlist added'), findsOneWidget);
     });
 
     testWidgets('an unliked song leaves the liked list', (tester) async {
@@ -1711,6 +1711,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Ben · 5 min ago'), findsOneWidget);
 
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Clear history'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Clear'));
@@ -2091,6 +2093,8 @@ void main() {
       final backend = await openLibrary(tester);
       await tester.tap(find.text('Downloaded'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Delete all'));
       await tester.pumpAndSettle();
       expect(
@@ -2108,7 +2112,9 @@ void main() {
       final backend = await openLibrary(tester);
       await tester.tap(find.text('Liked songs'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Download all'));
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Download all'));
       await tester.pumpAndSettle();
       expect(
         backend.calls,

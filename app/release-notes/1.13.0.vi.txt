@@ -1,0 +1,5 @@
+Bài đã thích, Đã tải về và playlist có giao diện như trang album
+- Bài đã thích, Đã tải về, Nghe gần đây và từng playlist giờ mở thành một trang giống trang album: ảnh bìa lớn, nút Phát và Xáo trộn, các bài bên dưới, màu nền lấy từ ảnh bìa và nút quay lại hình tròn.
+- Ảnh bìa playlist được ghép từ ảnh của bốn bài đầu như YouTube Music; dưới bốn bài thì hiện ảnh của bài đầu tiên. Ảnh ghép hiện ở Thư viện, thanh bên và khi chọn playlist để thêm bài.
+- Đổi tên, xóa, tải tất cả, xóa các bài đã tải và xóa lịch sử nằm trong nút tròn "..." cạnh nút Phát.
+- Trong phòng, nút Phát giờ thêm các bài vào hàng đợi, giống trang album.

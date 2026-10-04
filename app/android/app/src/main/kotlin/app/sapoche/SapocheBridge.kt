@@ -464,7 +464,7 @@ class SapocheBridge(
                 return null
             }
             "playlists" -> return SapocheApp.library.playlists().map {
-                mapOf("id" to it.id, "name" to it.name, "count" to it.count, "thumb" to it.thumb, "updatedAt" to it.updatedAt)
+                mapOf("id" to it.id, "name" to it.name, "count" to it.count, "thumbs" to it.thumbs, "updatedAt" to it.updatedAt)
             }
             "playlistTracks" -> return SapocheApp.library.playlistTracks(playlistId(call)).map { it.toMap() }
             "playlistCreate" -> return SapocheApp.library.createPlaylist(

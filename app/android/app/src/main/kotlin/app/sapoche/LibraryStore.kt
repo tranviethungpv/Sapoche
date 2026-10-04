@@ -38,8 +38,8 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** Songs YouTube suggested for a seed, and when they were fetched. */
     data class Cached(val tracks: List<TrackRef>, val fetchedAt: Long)
 
-    /** A playlist as listed: its cover is the first song's picture. */
-    data class Playlist(val id: Long, val name: String, val count: Int, val thumb: String?, val updatedAt: Long)
+    /** A playlist as listed: its cover is made of the pictures of its first songs, [COVER_PARTS] at most, each once. */
+    data class Playlist(val id: Long, val name: String, val count: Int, val thumbs: List<String>, val updatedAt: Long)
 
     /** A playlist as kept in a backup: what it is called, when, and its songs in order. */
     data class SavedPlaylist(val name: String, val createdAt: Long, val updatedAt: Long, val tracks: List<TrackRef>)
@@ -238,17 +238,25 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** Playlists, the one changed last first. */
     suspend fun playlists(): List<Playlist> = withContext(io) {
         readableDatabase.rawQuery(
-            "SELECT p.id, p.name, p.updated_at, COUNT(i.video_id), " +
-                "(SELECT t.thumb FROM playlist_items f JOIN tracks t ON t.video_id = f.video_id " +
-                "WHERE f.playlist_id = p.id ORDER BY f.position LIMIT 1) " +
+            "SELECT p.id, p.name, p.updated_at, COUNT(i.video_id) " +
                 "FROM playlists p LEFT JOIN playlist_items i ON i.playlist_id = p.id " +
                 "GROUP BY p.id ORDER BY p.updated_at DESC, p.id DESC",
             null,
         ).use { c ->
             val list = ArrayList<Playlist>(c.count)
-            while (c.moveToNext()) list += Playlist(c.getLong(0), c.getString(1), c.getInt(3), c.getString(4), c.getLong(2))
+            while (c.moveToNext()) list += Playlist(c.getLong(0), c.getString(1), c.getInt(3), coverThumbs(c.getLong(0)), c.getLong(2))
             list
         }
+    }
+
+    private fun coverThumbs(playlistId: Long): List<String> = readableDatabase.rawQuery(
+        "SELECT t.thumb FROM playlist_items f JOIN tracks t ON t.video_id = f.video_id " +
+            "WHERE f.playlist_id = ? AND t.thumb IS NOT NULL GROUP BY t.thumb ORDER BY MIN(f.position) LIMIT $COVER_PARTS",
+        arrayOf(playlistId.toString()),
+    ).use { c ->
+        val thumbs = ArrayList<String>(c.count)
+        while (c.moveToNext()) thumbs += c.getString(0)
+        thumbs
     }
 
     /** The songs of a playlist in order; empty when there is no such playlist. */
@@ -722,6 +730,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         const val HISTORY_KEEP = 2000
         const val MAX_PLAYLIST = 500
         const val MAX_NAME = 60
+        const val COVER_PARTS = 4
         const val SKIPS_KEEP = 300
         const val QUEUED = "queued"
         const val WAITING = "waiting"

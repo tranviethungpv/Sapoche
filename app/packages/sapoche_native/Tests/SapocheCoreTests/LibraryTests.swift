@@ -123,16 +123,24 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(tracks[1], song("a"))
     }
 
-    func testTheListShowsNameCountAndTheFirstCover() async throws {
+    func testTheListShowsNameCountAndTheFirstCovers() async throws {
         let id = try await store.createPlaylist("Road trip", [song("c"), song("a")], at: 10)
         _ = try await store.createPlaylist("Empty", [], at: 20)
         let lists = try await store.playlists()
         XCTAssertEqual(lists.map(\.name), ["Empty", "Road trip"], "the one changed last first")
         let trip = try XCTUnwrap(lists.first { $0.id == id })
         XCTAssertEqual(trip.count, 2)
-        XCTAssertEqual(trip.thumb, "https://img/c")
+        XCTAssertEqual(trip.thumbs, ["https://img/c", "https://img/a"])
         XCTAssertEqual(lists[0].count, 0)
-        XCTAssertNil(lists[0].thumb)
+        XCTAssertEqual(lists[0].thumbs, [])
+    }
+
+    func testTheCoverHoldsFourDifferentPicturesAtMost() async throws {
+        let shared = TrackRef(videoId: "d", title: "Title d", artist: "Artist", thumb: "https://img/c", durMs: 0)
+        let id = try await store.createPlaylist("Mix", [song("c"), shared, song("a"), song("b"), song("e"), song("f")])
+        let lists = try await store.playlists()
+        XCTAssertEqual(try XCTUnwrap(lists.first { $0.id == id }).thumbs,
+                       ["https://img/c", "https://img/a", "https://img/b", "https://img/e"])
     }
 
     func testAddingKeepsWhatIsThereAndSkipsRepeats() async throws {

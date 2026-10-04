@@ -9,15 +9,27 @@ import 'cached_cover.dart';
 String sharpThumbnail(String url) {
   final uri = Uri.tryParse(url);
   final host = uri?.host ?? '';
-  if (host.endsWith('ytimg.com')) {
-    final id = RegExp(r'^/vi(?:_webp)?/([\w-]{11})/').firstMatch(uri!.path)?[1];
-    if (id != null) return 'https://i.ytimg.com/vi/$id/maxresdefault.jpg';
+  if (_videoId(uri) case final id?) {
+    return 'https://i.ytimg.com/vi/$id/maxresdefault.jpg';
   }
   if (host.endsWith('googleusercontent.com') || host.endsWith('ggpht.com')) {
     return url.replaceFirst(RegExp(r'=w\d+-h\d+'), '=w1200-h1200');
   }
   return url;
 }
+
+/// The id of the video a YouTube thumbnail address is of, or null for any other address.
+String? _videoId(Uri? uri) {
+  if (uri == null || !uri.host.endsWith('ytimg.com')) return null;
+  return RegExp(r'^/vi(?:_webp)?/([\w-]{11})/').firstMatch(uri.path)?[1];
+}
+
+/// A video's thumbnail in the one size that has no black bars above and below the picture (the larger ones do), so
+/// that cropping it square leaves only picture. Any other address is left as it is.
+String barlessThumbnail(String url) => switch (_videoId(Uri.tryParse(url))) {
+  final id? => 'https://i.ytimg.com/vi/$id/mqdefault.jpg',
+  _ => url,
+};
 
 /// Cover image with rounded corners; shows a soft pink tile while loading or when there is none.
 class Artwork extends StatelessWidget {
@@ -27,6 +39,7 @@ class Artwork extends StatelessWidget {
     required this.size,
     this.radius = SapocheTheme.artworkRadius,
     this.sharp = false,
+    this.wide = false,
   });
 
   final String? url;
@@ -36,6 +49,10 @@ class Artwork extends StatelessWidget {
   /// Fetch the largest picture available and decode it whole, for covers shown big. Small covers
   /// are decoded at their own size to save memory.
   final bool sharp;
+
+  /// The picture is wide and is cropped square: it is decoded by its height, as a decode by width would leave it
+  /// too few pixels tall. For small covers; [sharp] ones are decoded whole.
+  final bool wide;
 
   @override
   Widget build(BuildContext context) {
@@ -75,8 +92,10 @@ class Artwork extends StatelessWidget {
   }) => Image(
     image: ResizeImage.resizeIfNeeded(
       // A wide picture cropped square would come out short of pixels if it were decoded by width
-      sharp ? null : (size * MediaQuery.devicePixelRatioOf(context)).round(),
-      null,
+      sharp || wide
+          ? null
+          : (size * MediaQuery.devicePixelRatioOf(context)).round(),
+      wide ? (size * MediaQuery.devicePixelRatioOf(context)).round() : null,
       CachedCover(address),
     ),
     fit: BoxFit.cover,

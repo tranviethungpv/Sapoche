@@ -4,7 +4,7 @@ import '../../data/models.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
-import 'artwork.dart';
+import 'playlist_cover.dart';
 import 'text_dialog.dart';
 
 /// Asks which playlist [tracks] go into, or offers to make one, and says what happened.
@@ -84,7 +84,7 @@ class _Picker extends StatelessWidget {
             ),
             for (final playlist in playlists)
               ListTile(
-                leading: Artwork(url: playlist.thumb, size: 46),
+                leading: PlaylistCover(thumbs: playlist.thumbs, size: 46),
                 title: Text(
                   playlist.name,
                   maxLines: 1,

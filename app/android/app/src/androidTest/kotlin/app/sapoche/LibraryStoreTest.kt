@@ -134,16 +134,26 @@ class LibraryStoreTest {
     }
 
     @Test
-    fun theListShowsNameCountAndTheFirstCover() = runTest {
+    fun theListShowsNameCountAndTheFirstCovers() = runTest {
         val id = store.createPlaylist("Road trip", listOf(song("c"), song("a")), at = 10)
         store.createPlaylist("Empty", at = 20)
         val lists = store.playlists()
         assertEquals("the one changed last first", listOf("Empty", "Road trip"), lists.map { it.name })
         val trip = lists.single { it.id == id }
         assertEquals(2, trip.count)
-        assertEquals("https://img/c", trip.thumb)
+        assertEquals(listOf("https://img/c", "https://img/a"), trip.thumbs)
         assertEquals(0, lists.first().count)
-        assertEquals(null, lists.first().thumb)
+        assertEquals(emptyList<String>(), lists.first().thumbs)
+    }
+
+    @Test
+    fun theCoverHoldsFourDifferentPicturesAtMost() = runTest {
+        val shared = song("d").copy(thumb = "https://img/c")
+        val id = store.createPlaylist("Mix", listOf(song("c"), shared, song("a"), song("b"), song("e"), song("f")))
+        assertEquals(
+            listOf("https://img/c", "https://img/a", "https://img/b", "https://img/e"),
+            store.playlists().single { it.id == id }.thumbs,
+        )
     }
 
     @Test

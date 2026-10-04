@@ -21,6 +21,7 @@ import 'widgets/cached_cover.dart';
 import 'widgets/glass.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/page_width.dart';
+import 'widgets/playlist_cover.dart';
 import 'widgets/player_bar.dart';
 
 /// How the home screen is laid out for the size of its window, after Material's window size classes: by the width
@@ -774,8 +775,8 @@ class _Sidebar extends StatelessWidget {
                     ),
                     for (final playlist in library.playlists)
                       _SideRow(
-                        leading: Artwork(
-                          url: playlist.thumb,
+                        leading: PlaylistCover(
+                          thumbs: playlist.thumbs,
                           size: 32,
                           radius: 7,
                         ),

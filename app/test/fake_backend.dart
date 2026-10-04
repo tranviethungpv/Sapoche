@@ -466,7 +466,10 @@ class FakeBackend implements Backend {
           id: id,
           name: playlistNames[id]!,
           count: playlistSongs[id]!.length,
-          thumb: playlistSongs[id]!.firstOrNull?.thumb,
+          thumbs: {
+            for (final track in playlistSongs[id]!)
+              if (track.thumb != null) track.thumb!,
+          }.take(4).toList(),
         ),
     ];
   }

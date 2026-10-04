@@ -209,7 +209,6 @@ abstract final class S {
     'Search failed. Check your connection.',
     'Tìm kiếm không được. Hãy kiểm tra kết nối.',
   );
-  static String get addAll => _t('Add all', 'Thêm tất cả');
   static String get playlistAdded =>
       _t('Playlist added', 'Đã thêm danh sách phát');
   static String get playNext => _t('Play next', 'Phát tiếp theo');
@@ -292,7 +291,6 @@ abstract final class S {
   static String get like => _t('Like', 'Thích');
   static String get unlike => _t('Unlike', 'Bỏ thích');
   static String get play => _t('Play', 'Phát');
-  static String get backToLibrary => _t('Library', 'Thư viện');
   static String get clearHistory => _t('Clear history', 'Xóa lịch sử');
   static String get clearHistoryQuestion => _t(
     'Remove everything from your listening history? Liked songs are kept.',

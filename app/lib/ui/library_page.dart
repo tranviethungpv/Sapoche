@@ -6,20 +6,23 @@ import '../format.dart';
 import '../data/models.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'collection_screen.dart';
 import 'home_shell.dart';
 import 'scope.dart';
 import 'settings_page.dart';
-import 'widgets/artwork.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
+import 'widgets/page_width.dart';
 import 'widgets/play_row.dart';
+import 'widgets/player_backdrop.dart';
+import 'widgets/playlist_cover.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/text_dialog.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 
-/// What a person keeps: liked songs, what they heard lately, and their playlists. Opening one shows its
-/// songs in place, so the mini player and the tabs stay where they are.
+/// What a person keeps: liked songs, what they heard lately, and their playlists. Opening one puts its page
+/// over the tab, as the page of an album is, with a way back.
 /// What the sidebar of a wide screen asks the library to open: [liked], [downloaded] or the id of a playlist (never
 /// negative). Set to a value to ask, and the page forgets it once it has been shown.
 class LibraryRequests extends ValueNotifier<int?> {
@@ -60,8 +63,6 @@ class _Playlist extends _Open {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
-  _Open? _open;
-
   @override
   void initState() {
     super.initState();
@@ -94,106 +95,112 @@ class _LibraryPageState extends State<LibraryPage> {
     });
   }
 
-  void _show(_Open? value) {
+  void _show(_Open value) {
+    if (!mounted) return;
     if (value is _Playlist) AppScope.of(context).library.openPlaylist(value.id);
-    setState(() => _open = value);
+    // A message still showing would be drawn by the new page too, and the two would fight over it
+    ScaffoldMessenger.of(context).removeCurrentSnackBar();
+    TabNavigation.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => _LibraryScreen(open: value)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final library = AppScope.of(context).library;
-    // Each list starts below the status bar and scrolls up under it, to its glass edge
+    // The list starts below the status bar and scrolls up under it, to its glass edge
     return SafeArea(
       top: false,
       bottom: false,
       child: ListenableBuilder(
         listenable: library,
-        builder: (context, _) {
-          final open = _open;
-          // A playlist that was deleted takes its page with it
-          if (open is _Playlist &&
-              !library.playlists.any((p) => p.id == open.id)) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) setState(() => _open = null);
-            });
-          }
-          return AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: switch (open) {
-              null => _Overview(
-                key: const ValueKey('overview'),
-                library: library,
-                onOpen: _show,
-              ),
-              _Liked() => _TrackList(
-                key: const ValueKey('liked'),
-                title: S.likedSongs,
-                tracks: library.liked,
-                onBack: () => _show(null),
-                actions: [
-                  if (library.liked.isNotEmpty)
-                    IconButton(
-                      onPressed: () => startDownload(context, library.liked),
-                      tooltip: S.downloadAll,
-                      icon: Icon(
-                        Icons.download_rounded,
-                        color: context.palette.primary,
-                      ),
-                    ),
-                ],
-              ),
-              _Downloaded() => _TrackList(
-                key: const ValueKey('downloaded'),
-                title: S.downloadedSongs,
-                tracks: [for (final d in library.downloads) d.track],
-                subtitles: [
-                  for (final d in library.downloads)
-                    '${d.track.artist} · ${switch (d.state) {
-                      DownloadState.done => formatBytes(d.bytes),
-                      DownloadState.queued => S.queuedToDownload,
-                      DownloadState.waiting => S.waitingToDownload,
-                      DownloadState.failed => S.downloadFailed,
-                    }}',
-                ],
-                onBack: () => _show(null),
-                emptyTitle: S.noDownloadsTitle,
-                emptyBody: S.noDownloadsBody,
-                actions: [
-                  if (library.downloads.isNotEmpty)
-                    TextButton(
-                      onPressed: () =>
-                          _confirmDeleteDownloads(context, library),
-                      child: Text(S.deleteAll),
-                    ),
-                ],
-              ),
-              _Recent() => _TrackList(
-                key: const ValueKey('recent'),
-                title: S.recentlyPlayed,
-                tracks: [for (final e in library.recent) e.track],
-                subtitles: [
-                  for (final e in library.recent)
-                    '${e.track.artist} · ${S.ago(DateTime.now().difference(e.at))}',
-                ],
-                onBack: () => _show(null),
-                actions: [
-                  if (library.recent.isNotEmpty)
-                    TextButton(
-                      onPressed: () => _confirmClear(context, library),
-                      child: Text(S.clearHistory),
-                    ),
-                ],
-              ),
-              _Playlist(:final id) => _PlaylistPage(
-                key: ValueKey('playlist$id'),
-                library: library,
-                id: id,
-                onBack: () => _show(null),
-              ),
-            },
-          );
-        },
+        builder: (context, _) => _Overview(library: library, onOpen: _show),
       ),
+    );
+  }
+}
+
+/// The page of one list of the library.
+class _LibraryScreen extends StatelessWidget {
+  const _LibraryScreen({required this.open});
+
+  final _Open open;
+
+  @override
+  Widget build(BuildContext context) {
+    final library = AppScope.of(context).library;
+    return ListenableBuilder(
+      listenable: library,
+      builder: (context, _) => switch (open) {
+        _Liked() => _TrackList(
+          title: S.likedSongs,
+          tracks: library.liked,
+          cover: (side) => _IconTile(
+            Icons.favorite_rounded,
+            size: side,
+            radius: 16,
+            iconSize: side * 0.4,
+          ),
+          menu: [
+            if (library.liked.isNotEmpty)
+              _MenuAction(
+                S.downloadAll,
+                () => startDownload(context, library.liked),
+              ),
+          ],
+        ),
+        _Downloaded() => _TrackList(
+          title: S.downloadedSongs,
+          tracks: [for (final d in library.downloads) d.track],
+          subtitles: [
+            for (final d in library.downloads)
+              '${d.track.artist} · ${switch (d.state) {
+                DownloadState.done => formatBytes(d.bytes),
+                DownloadState.queued => S.queuedToDownload,
+                DownloadState.waiting => S.waitingToDownload,
+                DownloadState.failed => S.downloadFailed,
+              }}',
+          ],
+          cover: (side) => _IconTile(
+            Icons.download_done_rounded,
+            size: side,
+            radius: 16,
+            iconSize: side * 0.4,
+          ),
+          emptyTitle: S.noDownloadsTitle,
+          emptyBody: S.noDownloadsBody,
+          menu: [
+            if (library.downloads.isNotEmpty)
+              _MenuAction(
+                S.deleteAll,
+                () => _confirmDeleteDownloads(context, library),
+              ),
+          ],
+        ),
+        _Recent() => _TrackList(
+          title: S.recentlyPlayed,
+          tracks: [for (final e in library.recent) e.track],
+          subtitles: [
+            for (final e in library.recent)
+              '${e.track.artist} · ${S.ago(DateTime.now().difference(e.at))}',
+          ],
+          cover: (side) => _IconTile(
+            Icons.history_rounded,
+            size: side,
+            radius: 16,
+            iconSize: side * 0.4,
+          ),
+          menu: [
+            if (library.recent.isNotEmpty)
+              _MenuAction(
+                S.clearHistory,
+                () => _confirmClear(context, library),
+              ),
+          ],
+        ),
+        _Playlist(:final id) => _PlaylistPage(library: library, id: id),
+      },
     );
   }
 
@@ -245,7 +252,7 @@ class _LibraryPageState extends State<LibraryPage> {
 }
 
 class _Overview extends StatelessWidget {
-  const _Overview({super.key, required this.library, required this.onOpen});
+  const _Overview({required this.library, required this.onOpen});
 
   final LibraryController library;
   final ValueChanged<_Open> onOpen;
@@ -331,7 +338,7 @@ class _Overview extends StatelessWidget {
           ),
           for (final playlist in library.playlists)
             _CollectionRow(
-              leading: Artwork(url: playlist.thumb, size: 54),
+              leading: PlaylistCover(thumbs: playlist.thumbs, size: 54),
               title: playlist.name,
               subtitle: S.songCount(playlist.count),
               onTap: () => onOpen(_Playlist(playlist.id)),
@@ -385,21 +392,29 @@ class _Overview extends StatelessWidget {
 }
 
 class _IconTile extends StatelessWidget {
-  const _IconTile(this.icon);
+  const _IconTile(
+    this.icon, {
+    this.size = 54,
+    this.radius = SapocheTheme.artworkRadius,
+    this.iconSize = 24,
+  });
 
   final IconData icon;
+  final double size;
+  final double radius;
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     return Container(
-      width: 54,
-      height: 54,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: p.primaryContainer,
-        borderRadius: BorderRadius.circular(SapocheTheme.artworkRadius),
+        borderRadius: BorderRadius.circular(radius),
       ),
-      child: Icon(icon, color: p.primary),
+      child: Icon(icon, size: iconSize, color: p.primary),
     );
   }
 }
@@ -457,16 +472,10 @@ class _CollectionRow extends StatelessWidget {
 
 /// A playlist: its songs can be dragged into another order and swiped away, and it can be renamed or deleted.
 class _PlaylistPage extends StatelessWidget {
-  const _PlaylistPage({
-    super.key,
-    required this.library,
-    required this.id,
-    required this.onBack,
-  });
+  const _PlaylistPage({required this.library, required this.id});
 
   final LibraryController library;
   final int id;
-  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -475,32 +484,21 @@ class _PlaylistPage extends StatelessWidget {
     return _TrackList(
       title: playlist?.name ?? '',
       tracks: tracks,
-      onBack: onBack,
+      cover: (side) => PlaylistCover(
+        thumbs: playlist?.thumbs ?? const [],
+        size: side,
+        radius: 16,
+        sharp: true,
+      ),
       emptyTitle: S.emptyPlaylistTitle,
       emptyBody: S.emptyPlaylistBody,
       onRemove: (track) => library.removeFromPlaylist(id, track),
       onMove: (track, to) => library.movePlaylistItem(id, track, to),
-      actions: [
+      menu: [
         if (tracks.isNotEmpty)
-          IconButton(
-            onPressed: () => startDownload(context, tracks),
-            tooltip: S.downloadAll,
-            icon: Icon(Icons.download_rounded, color: context.palette.primary),
-          ),
-        PopupMenuButton<String>(
-          useRootNavigator: true,
-          icon: Icon(
-            Icons.more_horiz_rounded,
-            color: context.palette.textSecondary,
-          ),
-          onSelected: (value) => value == 'rename'
-              ? _rename(context, playlist)
-              : _delete(context, playlist),
-          itemBuilder: (context) => [
-            PopupMenuItem(value: 'rename', child: Text(S.rename)),
-            PopupMenuItem(value: 'delete', child: Text(S.deletePlaylist)),
-          ],
-        ),
+          _MenuAction(S.downloadAll, () => startDownload(context, tracks)),
+        _MenuAction(S.rename, () => _rename(context, playlist)),
+        _MenuAction(S.deletePlaylist, () => _delete(context, playlist)),
       ],
     );
   }
@@ -533,20 +531,33 @@ class _PlaylistPage extends StatelessWidget {
         ],
       ),
     );
-    if (ok == true) library.deletePlaylist(id);
+    if (ok != true || !context.mounted) return;
+    // The page leaves first and the playlist goes once it has, so that the page is not seen empty on its way out
+    final route = ModalRoute.of(context)! as TransitionRoute<void>;
+    Navigator.pop(context);
+    await route.completed;
+    library.deletePlaylist(id);
   }
 }
 
-/// The songs of one collection, with the ways to play them. With [onMove] the rows can be dragged into
-/// another order, with [onRemove] they can be swiped away.
+/// One thing the "…" button of a list offers.
+class _MenuAction {
+  const _MenuAction(this.label, this.run);
+
+  final String label;
+  final VoidCallback run;
+}
+
+/// The songs of one collection, laid out as the page of an album is: the cover, what the collection is called, play
+/// and shuffle, then the songs. With [onMove] the rows can be dragged into another order, with [onRemove] they can be
+/// swiped away.
 class _TrackList extends StatelessWidget {
   const _TrackList({
-    super.key,
     required this.title,
     required this.tracks,
-    required this.onBack,
+    required this.cover,
     this.subtitles,
-    this.actions = const [],
+    this.menu = const [],
     this.emptyTitle,
     this.emptyBody,
     this.onRemove,
@@ -556,12 +567,14 @@ class _TrackList extends StatelessWidget {
   final String title;
   final List<Track> tracks;
 
+  /// Draws the cover at the side the page gives it.
+  final Widget Function(double side) cover;
+
   /// Replaces the artist line of each row, when given.
   final List<String>? subtitles;
-  final VoidCallback onBack;
 
-  /// Next to the title.
-  final List<Widget> actions;
+  /// What the "…" button beside Play offers; no button when there is nothing.
+  final List<_MenuAction> menu;
   final String? emptyTitle;
   final String? emptyBody;
   final ValueChanged<Track>? onRemove;
@@ -596,6 +609,13 @@ class _TrackList extends StatelessWidget {
       builder: (context, _) {
         final inRoom = room.snapshot.inRoom;
 
+        Future<void> playAll({required bool shuffle}) async {
+          HapticFeedback.selectionClick();
+          await room.playTracks(shuffle ? ([...tracks]..shuffle()) : tracks);
+          // In a room the songs are only put on the queue: say so
+          if (inRoom) confirm(S.playlistAdded);
+        }
+
         Widget row(int i) {
           final track = tracks[i];
           final tile = TrackTile(
@@ -624,153 +644,203 @@ class _TrackList extends StatelessWidget {
           );
         }
 
-        return ScrollEdge(
-          title: title,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    ScrollEdge.topOf(context) + 8,
-                    20,
-                    10,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextButton.icon(
-                        onPressed: onBack,
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 36),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        icon: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          size: 14,
-                        ),
-                        label: Text(S.backToLibrary),
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.headlineMedium,
-                            ),
-                          ),
-                          ...actions,
-                        ],
-                      ),
-                      Text(
-                        S.songCount(tracks.length),
-                        style: theme.bodyMedium?.copyWith(
-                          color: p.textSecondary,
-                        ),
-                      ),
-                      if (tracks.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: () {
-                                  room.playTracks(tracks);
-                                  confirm(
-                                    inRoom ? S.playlistAdded : S.addedToQueue,
-                                  );
-                                },
-                                icon: Icon(
-                                  inRoom
-                                      ? Icons.playlist_add_rounded
-                                      : Icons.play_arrow_rounded,
-                                ),
-                                label: Text(inRoom ? S.addAll : S.play),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  room.playTracks([...tracks]..shuffle());
-                                  confirm(
-                                    inRoom ? S.playlistAdded : S.addedToQueue,
-                                  );
-                                },
-                                child: Text(S.shuffle),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              if (tracks.isEmpty && emptyTitle != null)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(36, 48, 36, 0),
-                    child: Column(
+        // The page takes its colours from the first cover, as the page of an album does
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            PlayerBackdrop(coverUrl: tracks.firstOrNull?.thumb),
+            Padding(
+              padding: EdgeInsets.only(left: SideInset.of(context)),
+              child: Scaffold(
+                appBar: AppBar(leading: const RoundBackButton()),
+                body: LayoutBuilder(
+                  builder: (context, box) {
+                    // Wide, the cover goes beside what is said of it, and the songs keep to a readable width
+                    final wide = box.maxWidth >= 720;
+                    final gutter = ((box.maxWidth - 1100) / 2).clamp(
+                      0.0,
+                      double.infinity,
+                    );
+                    final info = Column(
+                      crossAxisAlignment: wide
+                          ? CrossAxisAlignment.start
+                          : CrossAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.queue_music_rounded,
-                          size: 44,
-                          color: p.primary.withValues(alpha: 0.55),
+                        Padding(
+                          padding: wide
+                              ? EdgeInsets.zero
+                              : const EdgeInsets.fromLTRB(24, 18, 24, 0),
+                          child: Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: wide
+                                ? TextAlign.start
+                                : TextAlign.center,
+                            style: wide
+                                ? theme.headlineLarge
+                                : theme.headlineSmall,
+                          ),
                         ),
-                        const SizedBox(height: 14),
-                        Text(emptyTitle!, style: theme.titleMedium),
-                        if (emptyBody != null) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            emptyBody!,
-                            textAlign: TextAlign.center,
-                            style: theme.bodyMedium?.copyWith(
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            S.songCount(tracks.length),
+                            style: theme.bodySmall?.copyWith(
                               color: p.textSecondary,
                             ),
                           ),
-                        ],
+                        ),
+                        if (tracks.isNotEmpty)
+                          PlayRow(
+                            inline: wide,
+                            onPlay: () => playAll(shuffle: false),
+                            onShuffle: () => playAll(shuffle: true),
+                            more: menu.isEmpty ? null : _moreButton(context),
+                          ),
                       ],
-                    ),
-                  ),
-                )
-              else if (onMove != null)
-                SliverReorderableList(
-                  itemCount: tracks.length,
-                  onReorderItem: (from, to) => onMove!(tracks[from], to),
-                  proxyDecorator: (child, _, animation) => Material(
-                    color: Colors.transparent,
-                    elevation: 0,
-                    child: ScaleTransition(
-                      scale: Tween(begin: 1.0, end: 1.02).animate(animation),
-                      child: child,
-                    ),
-                  ),
-                  itemBuilder: (context, i) =>
-                      ReorderableDelayedDragStartListener(
-                        key: ValueKey('row ${tracks[i].videoId}'),
-                        index: i,
-                        child: row(i),
+                    );
+                    return CustomScrollView(
+                      physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
                       ),
-                )
-              else
-                SliverList.builder(
-                  itemCount: tracks.length,
-                  itemBuilder: (context, i) => row(i),
+                      slivers: [
+                        SliverPadding(
+                          padding: EdgeInsets.symmetric(horizontal: gutter),
+                          sliver: SliverMainAxisGroup(
+                            slivers: [
+                              SliverToBoxAdapter(
+                                child: wide
+                                    ? Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          20,
+                                          4,
+                                          20,
+                                          6,
+                                        ),
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            CollectionCover(
+                                              side: 232,
+                                              picture: cover,
+                                            ),
+                                            const SizedBox(width: 32),
+                                            Expanded(child: info),
+                                          ],
+                                        ),
+                                      )
+                                    : Column(
+                                        children: [
+                                          Center(
+                                            child: CollectionCover(
+                                              picture: cover,
+                                            ),
+                                          ),
+                                          info,
+                                          const SizedBox(height: 6),
+                                        ],
+                                      ),
+                              ),
+                              if (tracks.isEmpty && emptyTitle != null)
+                                SliverToBoxAdapter(child: _empty(context))
+                              else if (onMove != null)
+                                SliverReorderableList(
+                                  itemCount: tracks.length,
+                                  onReorderItem: (from, to) =>
+                                      onMove!(tracks[from], to),
+                                  proxyDecorator: (child, _, animation) =>
+                                      Material(
+                                        color: Colors.transparent,
+                                        elevation: 0,
+                                        child: ScaleTransition(
+                                          scale: Tween(
+                                            begin: 1.0,
+                                            end: 1.02,
+                                          ).animate(animation),
+                                          child: child,
+                                        ),
+                                      ),
+                                  itemBuilder: (context, i) =>
+                                      ReorderableDelayedDragStartListener(
+                                        key: ValueKey(
+                                          'row ${tracks[i].videoId}',
+                                        ),
+                                        index: i,
+                                        child: row(i),
+                                      ),
+                                )
+                              else
+                                SliverList.builder(
+                                  itemCount: tracks.length,
+                                  itemBuilder: (context, i) => row(i),
+                                ),
+                              SliverToBoxAdapter(
+                                child: SizedBox(
+                                  height: HomeShell.bottomInsetOf(context) + 8,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
-              SliverToBoxAdapter(
-                child: SizedBox(height: HomeShell.bottomInsetOf(context)),
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  /// The round "…" beside Play, with what the list offers.
+  Widget _moreButton(BuildContext context) {
+    final p = context.palette;
+    return PopupMenuButton<VoidCallback>(
+      tooltip: S.showMore,
+      icon: const Icon(Icons.more_horiz_rounded),
+      style: roundButtonStyle(context),
+      color: p.brightness == Brightness.light
+          ? const Color(0xFFFFF7F9)
+          : const Color(0xFF2B1F25),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      onSelected: (run) => run(),
+      itemBuilder: (context) => [
+        for (final action in menu)
+          PopupMenuItem(value: action.run, child: Text(action.label)),
+      ],
+    );
+  }
+
+  Widget _empty(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(36, 48, 36, 0),
+      child: Column(
+        children: [
+          Icon(
+            Icons.queue_music_rounded,
+            size: 44,
+            color: p.primary.withValues(alpha: 0.55),
+          ),
+          const SizedBox(height: 14),
+          Text(emptyTitle!, style: theme.titleMedium),
+          if (emptyBody != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              emptyBody!,
+              textAlign: TextAlign.center,
+              style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

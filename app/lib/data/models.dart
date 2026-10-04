@@ -110,19 +110,21 @@ class SavedPlaylist {
     required this.id,
     required this.name,
     this.count = 0,
-    this.thumb,
+    this.thumbs = const [],
   });
 
   final int id;
   final String name;
   final int count;
-  final String? thumb;
+
+  /// Pictures of the first songs, up to four, each once: what the cover of the playlist is made of.
+  final List<String> thumbs;
 
   factory SavedPlaylist.fromMap(Map<Object?, Object?> map) => SavedPlaylist(
     id: (map['id'] as num).toInt(),
     name: map['name'] as String,
     count: (map['count'] as num?)?.toInt() ?? 0,
-    thumb: map['thumb'] as String?,
+    thumbs: [...?(map['thumbs'] as List?)?.cast<String>()],
   );
 }
 

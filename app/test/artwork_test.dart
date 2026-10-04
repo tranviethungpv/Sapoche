@@ -22,6 +22,17 @@ void main() {
     );
   });
 
+  test('a thumbnail without black bars is the one sized 320 by 180', () {
+    expect(
+      barlessThumbnail('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg'),
+      'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg',
+    );
+    expect(
+      barlessThumbnail('https://lh3.googleusercontent.com/abc=w544-h544'),
+      'https://lh3.googleusercontent.com/abc=w544-h544',
+    );
+  });
+
   test('any other address is left alone', () {
     for (final url in [
       'http://t/1.jpg',

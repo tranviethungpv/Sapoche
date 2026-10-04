@@ -107,7 +107,7 @@ class _Waiting extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _Cover(url: thumb),
+        CollectionCover(url: thumb),
         if (title != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
@@ -128,13 +128,16 @@ class _Waiting extends StatelessWidget {
 }
 
 /// The cover, large and with a soft shadow.
-class _Cover extends StatelessWidget {
-  const _Cover({this.url, this.side});
+class CollectionCover extends StatelessWidget {
+  const CollectionCover({super.key, this.url, this.side, this.picture});
 
   final String? url;
 
   /// Side of the cover; by default what the width of the screen gives.
   final double? side;
+
+  /// Draws what is not one picture of [url] (a playlist's grid, an icon), at the side it is given.
+  final Widget Function(double side)? picture;
 
   @override
   Widget build(BuildContext context) {
@@ -153,7 +156,9 @@ class _Cover extends StatelessWidget {
             ),
           ],
         ),
-        child: Artwork(url: url, size: size, radius: 16, sharp: true),
+        child:
+            picture?.call(size) ??
+            Artwork(url: url, size: size, radius: 16, sharp: true),
       ),
     );
   }
@@ -408,7 +413,7 @@ class _ContentState extends State<_Content> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  _Cover(url: _page.thumb, side: 232),
+                                  CollectionCover(url: _page.thumb, side: 232),
                                   const SizedBox(width: 32),
                                   Expanded(child: info),
                                 ],
@@ -416,7 +421,9 @@ class _ContentState extends State<_Content> {
                             )
                           : Column(
                               children: [
-                                Center(child: _Cover(url: _page.thumb)),
+                                Center(
+                                  child: CollectionCover(url: _page.thumb),
+                                ),
                                 info,
                                 const SizedBox(height: 6),
                               ],

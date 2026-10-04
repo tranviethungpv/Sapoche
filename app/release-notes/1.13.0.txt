@@ -1,0 +1,5 @@
+Liked songs, Downloaded and your playlists look like albums
+- Liked songs, Downloaded, Recently played and each of your playlists now open as a page like an album's: a large cover, Play and Shuffle, and the songs below, with colours taken from the cover and a round back button.
+- A playlist's cover is made of the pictures of its first four songs, as in YouTube Music; with fewer than four it shows the first one. It shows in the Library, in the sidebar and when you pick a playlist to add a song to.
+- Rename, delete, download all, delete all downloads and clear history moved into the round "..." button next to Play.
+- In a room, Play now adds the songs to the queue, as it does on an album page.

@@ -33,12 +33,12 @@ actor LibraryStore {
         let fetchedAt: Int64
     }
 
-    /// A playlist as listed: its cover is the first song's picture.
+    /// A playlist as listed: its cover is made of the pictures of its first songs, `coverParts` at most, each once.
     struct Playlist: Equatable {
         let id: Int64
         let name: String
         let count: Int
-        let thumb: String?
+        let thumbs: [String]
         let updatedAt: Int64
     }
 
@@ -68,6 +68,7 @@ actor LibraryStore {
     static let historyKeep = 2000
     static let maxPlaylist = 500
     static let maxName = 60
+    static let coverParts = 4
     static let skipsKeep = 300
     static let queued = "queued"
     static let waiting = "waiting"
@@ -212,12 +213,17 @@ actor LibraryStore {
     /// Playlists, the one changed last first.
     func playlists() throws -> [Playlist] {
         try db.rows("""
-            SELECT p.id, p.name, p.updated_at, COUNT(i.video_id),
-                   (SELECT t.thumb FROM playlist_items f JOIN tracks t ON t.video_id = f.video_id
-                    WHERE f.playlist_id = p.id ORDER BY f.position LIMIT 1)
+            SELECT p.id, p.name, p.updated_at, COUNT(i.video_id)
             FROM playlists p LEFT JOIN playlist_items i ON i.playlist_id = p.id
             GROUP BY p.id ORDER BY p.updated_at DESC, p.id DESC
-            """).map { Playlist(id: $0[0].int, name: $0[1].text ?? "", count: Int($0[3].int), thumb: $0[4].text, updatedAt: $0[2].int) }
+            """).map { Playlist(id: $0[0].int, name: $0[1].text ?? "", count: Int($0[3].int), thumbs: try coverThumbs($0[0].int), updatedAt: $0[2].int) }
+    }
+
+    private func coverThumbs(_ playlistId: Int64) throws -> [String] {
+        try db.rows("""
+            SELECT t.thumb FROM playlist_items f JOIN tracks t ON t.video_id = f.video_id
+            WHERE f.playlist_id = ? AND t.thumb IS NOT NULL GROUP BY t.thumb ORDER BY MIN(f.position) LIMIT \(LibraryStore.coverParts)
+            """, [.int(playlistId)]).compactMap { $0[0].text }
     }
 
     /// The songs of a playlist in order; empty when there is no such playlist.

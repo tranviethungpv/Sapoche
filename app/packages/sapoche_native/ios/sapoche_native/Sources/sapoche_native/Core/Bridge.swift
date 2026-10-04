@@ -410,7 +410,7 @@ final class Bridge {
             return nil
         case "playlists":
             return try await store.playlists().map {
-                ["id": $0.id, "name": $0.name, "count": $0.count, "thumb": $0.thumb ?? NSNull(), "updatedAt": $0.updatedAt] as [String: Any]
+                ["id": $0.id, "name": $0.name, "count": $0.count, "thumbs": $0.thumbs, "updatedAt": $0.updatedAt] as [String: Any]
             }
         case "playlistTracks":
             return try await store.playlistTracks(int64("id")).map { $0.toMap() }
