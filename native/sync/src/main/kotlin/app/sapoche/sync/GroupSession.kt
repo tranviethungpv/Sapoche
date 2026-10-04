@@ -19,11 +19,14 @@ import kotlin.math.abs
 interface PlayerPort {
     /**
      * Load [item] paused at [seekToMs]. Returns once playback can start instantly, and throws if
-     * the item cannot be loaded.
+     * the item cannot be loaded: a [LoadFailure] when the player knows why.
      */
     suspend fun prepare(item: QueueItem, seekToMs: Long)
 
-    /** Seek and return once the player is ready at the new position. */
+    /**
+     * Seek and return once the player is ready at the new position, or once it gave up waiting. Never throws but to
+     * be cancelled: a stream that breaks meanwhile goes to [onError].
+     */
     suspend fun seekTo(positionMs: Long)
 
     fun play()
@@ -48,6 +51,22 @@ interface PlayerPort {
 
     /** Called when playback fails after it started, e.g. the stream URL stopped working mid-track. */
     var onError: ((Exception) -> Unit)?
+}
+
+/** Why [PlayerPort.prepare] could not load an item. Trying again at once does not help with either. */
+class LoadFailure(val reason: Reason, message: String, cause: Throwable? = null) : java.io.IOException(message, cause) {
+    enum class Reason {
+        /** The device has no network, and the song is not on it. */
+        OFFLINE,
+
+        /** YouTube will not play this video: removed, private, blocked here, age restricted, live. */
+        UNPLAYABLE,
+    }
+
+    companion object {
+        /** The [LoadFailure] behind [error], however deep the player wrapped it. */
+        fun of(error: Throwable?): LoadFailure? = generateSequence(error) { it.cause }.take(8).firstOrNull { it is LoadFailure } as LoadFailure?
+    }
 }
 
 /**
@@ -78,12 +97,17 @@ class GroupSession(
         val solo: Boolean = false,
         /** Queue item this device is on while [solo]; the room's own current item is in [state]. */
         val soloItemId: String? = null,
+        /** While [solo], a song is on its way to play on this device. */
+        val loading: Boolean = false,
     )
 
-    /** Something another member did that moved this device, worth telling the person about. */
+    /** Something that happened to this device, worth telling the person about: mostly what another member did. */
     sealed interface RoomEvent {
         data class Paused(val byId: String) : RoomEvent
         data class Skipped(val byId: String, val title: String) : RoomEvent
+
+        /** This device could not load [title], while the room may well be playing it; [reason] when it is known. */
+        data class LoadFailed(val title: String, val reason: LoadFailure.Reason?) : RoomEvent
     }
 
     private val _events = MutableSharedFlow<RoomEvent>(extraBufferCapacity = 8)
@@ -104,6 +128,9 @@ class GroupSession(
     /** Listening alone: the player keeps to this device's own choices while the room's messages only update the view. */
     private var solo = false
     private var soloJob: Job? = null
+
+    /** Whether the song loading while alone plays once it is there; play and pause during the load only flip this. */
+    private var soloPlayOnLoad = false
 
     private var prepareJob: Job? = null
     private var startJob: Job? = null
@@ -140,6 +167,9 @@ class GroupSession(
 
     /** Recoveries used since the last epoch change; stops endless retry loops on a broken stream. */
     private var recoveries = 0
+
+    /** The item whose failed load the person was told about, so that retrying it does not tell them again and again. */
+    private var reportedFailure: String? = null
 
     init {
         player.onEnded = {
@@ -232,7 +262,7 @@ class GroupSession(
             soloJob?.cancel()
             handledEpoch = -1 // whatever the room says next counts, even if its epoch looks familiar
             preloaded = null
-            _snapshot.update { it.copy(solo = false, soloItemId = null) }
+            _snapshot.update { it.copy(solo = false, soloItemId = null, loading = false) }
             send(Protocol.solo(false))
             send(Protocol.resync())
             log("following the room again")
@@ -246,7 +276,11 @@ class GroupSession(
 
     fun soloPlay() {
         scope.launch {
-            if (loadedItemId != null) {
+            if (soloJob?.isActive == true) {
+                // The song is on its way: it plays once it is there
+                soloPlayOnLoad = true
+                _snapshot.update { it.copy(loading = true) }
+            } else if (loadedItemId != null) {
                 player.play()
             } else {
                 // After a restart the song this device was on, else wherever the room is
@@ -257,7 +291,12 @@ class GroupSession(
     }
 
     fun soloPause() {
-        scope.launch { player.pause() }
+        scope.launch {
+            // A song still on its way stays paused when it gets there
+            soloPlayOnLoad = false
+            _snapshot.update { it.copy(loading = false) }
+            player.pause()
+        }
     }
 
     fun soloSeek(positionMs: Long) {
@@ -300,18 +339,22 @@ class GroupSession(
     private fun soloLoad(item: QueueItem, positionMs: Long, play: Boolean) {
         soloJob?.cancel()
         preloaded = null
+        soloPlayOnLoad = play
+        _snapshot.update { it.copy(loading = play) }
         soloJob = scope.launch {
             try {
                 player.prepare(item, positionMs)
-                loadedItemId = item.id
-                _snapshot.update { it.copy(soloItemId = item.id) }
-                if (play) player.play()
+                loaded(item)
+                _snapshot.update { it.copy(soloItemId = item.id, loading = false) }
+                if (soloPlayOnLoad) player.play()
                 soloPreload()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 log("could not load '${item.title}' while alone: ${e.message}")
                 loadedItemId = null
+                _snapshot.update { it.copy(loading = false) }
+                loadFailed(item, e)
             }
         }
     }
@@ -417,7 +460,7 @@ class GroupSession(
             try {
                 val t0 = nowMs()
                 player.prepare(msg.item, msg.seekToMs)
-                loadedItemId = msg.item.id
+                loaded(msg.item)
                 log("prepared '${msg.item.title}' in ${nowMs() - t0}ms, reporting ready (epoch $epoch)")
                 send(Protocol.ready(epoch))
             } catch (e: CancellationException) {
@@ -425,6 +468,7 @@ class GroupSession(
             } catch (e: Exception) {
                 log("prepare failed: ${e.message}")
                 send(Protocol.resolveFailed(epoch, e.message))
+                loadFailed(msg.item, e)
             }
         }
     }
@@ -594,6 +638,10 @@ class GroupSession(
         val item = state?.current ?: return
         if (++recoveries > MAX_RECOVERIES_PER_EPOCH) {
             log("player error, giving up after $MAX_RECOVERIES_PER_EPOCH recoveries: ${error.message}")
+            // Silent while the room plays on: play tries again (see catchUp)
+            startedAtServer = null
+            loadedItemId = null
+            loadFailed(item, error)
             return
         }
         log("player error, recovering (#$recoveries): ${error.message}")
@@ -607,13 +655,45 @@ class GroupSession(
         try {
             preloaded = null // preparing replaces the whole playlist
             player.prepare(item, positionMs)
-            loadedItemId = item.id
+            loaded(item)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log("load failed: ${e.message}")
             loadedItemId = null
+            loadFailed(item, e)
         }
+    }
+
+    private fun loaded(item: QueueItem) {
+        loadedItemId = item.id
+        reportedFailure = null
+    }
+
+    /** Tells the person, once for each item, that this device could not load it: the room may play on without it. */
+    private fun loadFailed(item: QueueItem, error: Exception) {
+        if (reportedFailure == item.id) return
+        reportedFailure = item.id
+        _events.tryEmit(RoomEvent.LoadFailed(item.title, LoadFailure.of(error)?.reason))
+    }
+
+    /**
+     * Play was pressed while the room plays a song this device does not have (it could not load it, or gave up on a
+     * broken stream): load it again and join in where the room is, instead of pressing play on an empty player.
+     * Returns false when this device has the song, so that play just resumes it.
+     */
+    fun catchUp(): Boolean {
+        if (solo || loadedItemId != null) return false
+        val s = state ?: return false
+        val item = s.current ?: return false
+        if (s.phase != "playing") return false
+        scope.launch {
+            if (solo || loadedItemId != null || startJob?.isActive == true || prepareJob?.isActive == true) return@launch
+            reportedFailure = null // a new try by hand is told about again if it fails
+            log("play pressed with nothing loaded, catching up with the room")
+            startJob = scope.launch { catchUpPlaying(item, s.startedAt) }
+        }
+        return true
     }
 
     /** The item is already loaded (e.g. after a reconnect): realign to the room's clock and make sure it plays. */

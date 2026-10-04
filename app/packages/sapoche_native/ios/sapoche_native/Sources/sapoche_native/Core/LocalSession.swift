@@ -75,18 +75,44 @@ final class LocalSession {
         var repeatMode = "off"
         /// The queue ran out: nothing is playing, and play starts it again from the top.
         var finished = false
+        /// The current song is on its way to play: the screen shows that something is happening before it is heard.
+        var loading = false
 
         var current: QueueItem? { queue.indices.contains(index) ? queue[index] : nil }
+    }
+
+    /// Something the person should be told about a song: what happened ([kind]), to which ([title]), and what went
+    /// wrong ([detail]), for whoever fixes the app.
+    struct Problem: Equatable {
+        /// The raw value is how the screen knows it.
+        enum Kind: String {
+            /// Still loading after a while: the network is slow.
+            case slow = "load_slow"
+            /// Could not load it: the device has no network. Play tries again.
+            case offline = "load_offline"
+            /// It cannot be played, or it kept breaking: the next song plays instead.
+            case skipped = "load_skipped"
+            /// YouTube will not play it, and nothing was skipped to (too many such songs in a row).
+            case unplayable = "load_unplayable"
+            /// Could not load it, for some other reason (a very slow network, a broken stream). Play tries again.
+            case failed = "load_failed"
+            case queueFull = "queue_full"
+        }
+
+        let kind: Kind
+        var title = ""
+        var detail = ""
     }
 
     let snapshot: StateFlow<Snapshot>
 
     private let scope: Scope
     private let player: PlayerPort
+    private let time: TimeSource
     /// Called whenever what should be remembered changed.
     private let persist: (SavedQueue) -> Void
     /// Something the person should be told, e.g. a song that would not load.
-    private let problem: (String) -> Void
+    private let problem: (Problem) -> Void
     private let log: (String) -> Void
     /// The queue ran out of songs after the item given (it played through, or next was pressed on the last one).
     private let onQueueEnd: (QueueItem) -> Void
@@ -106,15 +132,22 @@ final class LocalSession {
     /// Reloads used on the current item; stops endless retry loops on a broken stream.
     private var recoveries = 0
 
+    /// Songs skipped in a row because they cannot be played; when YouTube breaks for every song, skipping stops.
+    private var skippedInARow = 0
+
     /// Whether the item being loaded starts playing once it is ready; play and pause during a load only flip this.
     private var playOnLoad = false
 
+    /// Says the load is slow once it has taken a while.
+    private var slowJob: Job?
+
     init(scope: Scope, player: PlayerPort, saved: SavedQueue?, persist: @escaping (SavedQueue) -> Void,
-         problem: @escaping (String) -> Void = { _ in }, log: @escaping (String) -> Void = { _ in },
+         problem: @escaping (Problem) -> Void = { _ in }, log: @escaping (String) -> Void = { _ in },
          onQueueEnd: @escaping (QueueItem) -> Void = { _ in }, newId: @escaping () -> String = { UUID().uuidString },
-         random: AnyRandom = AnyRandom()) {
+         random: AnyRandom = AnyRandom(), time: TimeSource? = nil) {
         self.scope = scope
         self.player = player
+        self.time = time ?? SystemTime.shared
         self.persist = persist
         self.problem = problem
         self.log = log
@@ -155,10 +188,12 @@ final class LocalSession {
     /// A room takes the player: silence it, but remember where this queue stood so it can be picked up again.
     func detach() {
         job?.cancel()
+        slowJob?.cancel()
         if loadedId != nil { pendingPositionMs = player.positionMs() }
         loadedId = nil
         preloaded = nil
         player.stop()
+        snapshot.update { $0.loading = false }
         save()
     }
 
@@ -169,6 +204,7 @@ final class LocalSession {
         if loadedId == nil && job?.isActive == true {
             // Asked twice (a button and the lock screen both do): the item is on its way, do not start over
             playOnLoad = true
+            snapshot.update { $0.loading = true }
         } else if loadedId != nil {
             player.play()
         } else if s.queue.isEmpty {
@@ -184,6 +220,7 @@ final class LocalSession {
     func pause() {
         playOnLoad = false
         player.pause()
+        snapshot.update { $0.loading = false }
         save()
     }
 
@@ -216,7 +253,7 @@ final class LocalSession {
         let startNow = s.queue.isEmpty || s.finished
         let fresh = Queues.fresh(tracks, queue: s.queue, index: s.finished ? s.queue.count : s.index)
         let room = Self.maxQueue - s.queue.count
-        if !fresh.isEmpty && room <= 0 { return problem("The queue is full") }
+        if !fresh.isEmpty && room <= 0 { return problem(Problem(kind: .queueFull)) }
         let items = fresh.prefix(max(room, 0)).map {
             QueueItem(id: newId(), videoId: $0.videoId, title: $0.title, artist: $0.artist, thumb: $0.thumb, durMs: $0.durMs, addedBy: "")
         }
@@ -293,6 +330,7 @@ final class LocalSession {
 
     func clear() {
         stopPlayer()
+        skippedInARow = 0 // a new list is a new start
         let repeatMode = snapshot.value.repeatMode
         snapshot.set(Snapshot(repeatMode: repeatMode))
         save()
@@ -360,38 +398,75 @@ final class LocalSession {
 
     private func stopPlayer() {
         job?.cancel()
+        slowJob?.cancel()
         player.stop()
         loadedId = nil
         preloaded = nil
         pendingPositionMs = 0
+        snapshot.update { $0.loading = false }
     }
 
     private func load(_ item: QueueItem, _ positionMs: Int64, play: Bool) {
         // The tries are counted for the song, not its place: a new song where the last one was starts from none
         if item.id != loadedId { recoveries = 0 }
         job?.cancel()
+        slowJob?.cancel()
         preloaded = nil
         loadedId = nil
         guard let at = snapshot.value.queue.firstIndex(where: { $0.id == item.id }) else { return }
-        // The person sees the new song at once, not when it has loaded
-        snapshot.update { $0.index = at; $0.finished = false }
+        // The person sees the new song at once, and that it is on its way, not only when it has loaded
+        snapshot.update { $0.index = at; $0.finished = false; $0.loading = play }
         playOnLoad = play
+        // A load that takes long is said to be slow, so that waiting does not look like nothing happening
+        slowJob = scope.launch { [weak self] in
+            try await self?.time.sleep(ms: Self.slowLoadMs)
+            guard let self, self.playOnLoad else { return }
+            self.problem(Problem(kind: .slow, title: item.title))
+        }
         job = scope.launch { [weak self] in
             guard let self else { return }
             do {
                 try await self.player.prepare(item, seekToMs: positionMs)
+                self.slowJob?.cancel()
                 self.loadedId = item.id
                 self.pendingPositionMs = 0
+                self.skippedInARow = 0
+                self.snapshot.update { $0.loading = false }
                 if self.playOnLoad { self.player.play() }
                 self.preload()
                 self.save()
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                self.slowJob?.cancel()
                 self.log("could not load '\(item.title)': \(error.localizedDescription)")
+                // Nothing goes on loading in the background, and nothing starts later by itself
+                self.player.stop()
                 self.pendingPositionMs = positionMs
-                self.problem("Could not load: \(item.title)\n\(Self.cause(error))")
+                self.snapshot.update { $0.loading = false }
+                self.loadFailed(item, error)
             }
+        }
+    }
+
+    /// Tells the person why [item] did not load. A song YouTube will not play is skipped, as music apps do, but only a
+    /// few in a row: when every song fails, YouTube changed something, and running through the queue would not help.
+    private func loadFailed(_ item: QueueItem, _ error: Error) {
+        let detail = Self.cause(error)
+        switch (error as? LoadFailure)?.reason {
+        case .offline:
+            problem(Problem(kind: .offline, title: item.title, detail: detail))
+        case .unplayable:
+            skippedInARow += 1
+            if skippedInARow < Self.maxSkippedInARow {
+                problem(Problem(kind: .skipped, title: item.title, detail: detail))
+                step(+1, auto: false)
+            } else {
+                skippedInARow = 0
+                problem(Problem(kind: .unplayable, title: item.title, detail: detail))
+            }
+        case nil:
+            problem(Problem(kind: .failed, title: item.title, detail: detail))
         }
     }
 
@@ -431,9 +506,10 @@ final class LocalSession {
         recoveries += 1
         if recoveries > Self.maxRecoveries {
             log("player error, giving up on '\(item.title)' after \(Self.maxRecoveries) tries: \(error.localizedDescription)")
-            problem("Could not play: \(item.title)\n\(Self.cause(error))")
+            problem(Problem(kind: .skipped, title: item.title, detail: Self.cause(error)))
             recoveries = 0
-            return step(+1, auto: true)
+            // Not "auto": repeating this one song would load the broken stream again and again
+            return step(+1, auto: false)
         }
         log("player error, loading '\(item.title)' again (#\(recoveries)): \(error.localizedDescription)")
         load(item, player.positionMs(), play: true)
@@ -452,5 +528,8 @@ final class LocalSession {
 
     private static let maxQueue = 200
     private static let maxRecoveries = 3
+    private static let maxSkippedInARow = 3
     private static let prevRestartsAfterMs: Int64 = 3000
+    /// A load that takes longer than this is said to be slow.
+    private static let slowLoadMs: Int64 = 8000
 }

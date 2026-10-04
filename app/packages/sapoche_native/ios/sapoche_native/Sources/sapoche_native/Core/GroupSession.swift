@@ -3,10 +3,11 @@ import Foundation
 /// What the session needs from a local audio player. Everything is called on the main thread.
 @MainActor
 protocol PlayerPort: AnyObject {
-    /// Load [item] paused at [seekToMs]. Returns once playback can start instantly, and throws if the item cannot be loaded.
+    /// Load [item] paused at [seekToMs]. Returns once playback can start instantly, and throws if the item cannot be
+    /// loaded: a [LoadFailure] when the player knows why.
     func prepare(_ item: QueueItem, seekToMs: Int64) async throws
 
-    /// Seek and return once the player is ready at the new position.
+    /// Seek and return once the player is ready at the new position. Throws only when cancelled.
     func seekTo(_ positionMs: Int64) async throws
 
     func play()
@@ -31,6 +32,21 @@ protocol PlayerPort: AnyObject {
     var onError: ((Error) -> Void)? { get set }
 }
 
+/// Why [PlayerPort.prepare] could not load an item. Trying again at once does not help with either.
+struct LoadFailure: Error, LocalizedError, Equatable {
+    enum Reason: Equatable {
+        /// The device has no network, and the song is not on it.
+        case offline
+        /// YouTube will not play this video: removed, private, blocked here, age restricted, live.
+        case unplayable
+    }
+
+    let reason: Reason
+    let message: String
+
+    var errorDescription: String? { message }
+}
+
 /// Follows the room: turns server messages into player actions so that every device plays the same position at the
 /// same moment. Everything runs on the main thread; message handlers only mutate state and launch jobs, and the jobs
 /// interleave with handlers only at suspension points.
@@ -47,12 +63,16 @@ final class GroupSession {
         var solo = false
         /// Queue item this device is on while [solo]; the room's own current item is in [state].
         var soloItemId: String?
+        /// While [solo], a song is on its way to play on this device.
+        var loading = false
     }
 
-    /// Something another member did that moved this device, worth telling the person about.
+    /// Something that happened to this device, worth telling the person about: mostly what another member did.
     enum RoomEvent: Equatable {
         case paused(byId: String)
         case skipped(byId: String, title: String)
+        /// This device could not load [title], while the room may well be playing it; [reason] when it is known.
+        case loadFailed(title: String, reason: LoadFailure.Reason?)
     }
 
     let events = SharedFlow<RoomEvent>()
@@ -78,6 +98,9 @@ final class GroupSession {
     /// Listening alone: the player keeps to this device's own choices while the room's messages only update the view.
     private var solo = false
     private var soloJob: Job?
+
+    /// Whether the song loading while alone plays once it is there; play and pause during the load only flip this.
+    private var soloPlayOnLoad = false
 
     private var prepareJob: Job?
     private var startJob: Job?
@@ -114,6 +137,9 @@ final class GroupSession {
 
     /// Recoveries used since the last epoch change; stops endless retry loops on a broken stream.
     private var recoveries = 0
+
+    /// The item whose failed load the person was told about, so that retrying it does not tell them again and again.
+    private var reportedFailure: String?
 
     init(scope: Scope, player: PlayerPort, clock: ClockSync, time: TimeSource? = nil,
          send: @escaping (String) -> Void, log: @escaping (String) -> Void = { _ in }, drift: DriftController = DriftController()) {
@@ -219,7 +245,7 @@ final class GroupSession {
             self.soloJob?.cancel()
             self.handledEpoch = -1 // whatever the room says next counts, even if its epoch looks familiar
             self.preloaded = nil
-            self.snapshot.update { $0.solo = false; $0.soloItemId = nil }
+            self.snapshot.update { $0.solo = false; $0.soloItemId = nil; $0.loading = false }
             self.send(Wire.solo(false))
             self.send(Wire.resync())
             self.log("following the room again")
@@ -237,7 +263,11 @@ final class GroupSession {
     func soloPlay() {
         scope.launch { [weak self] in
             guard let self else { return }
-            if self.loadedItemId != nil {
+            if self.soloJob?.isActive == true {
+                // The song is on its way: it plays once it is there
+                self.soloPlayOnLoad = true
+                self.snapshot.update { $0.loading = true }
+            } else if self.loadedItemId != nil {
                 self.player.play()
             } else {
                 // After a restart the song this device was on, else wherever the room is
@@ -248,7 +278,13 @@ final class GroupSession {
     }
 
     func soloPause() {
-        scope.launch { [weak self] in self?.player.pause() }
+        scope.launch { [weak self] in
+            guard let self else { return }
+            // A song still on its way stays paused when it gets there
+            self.soloPlayOnLoad = false
+            self.snapshot.update { $0.loading = false }
+            self.player.pause()
+        }
     }
 
     func soloSeek(_ positionMs: Int64) {
@@ -304,19 +340,23 @@ final class GroupSession {
     private func soloLoad(_ item: QueueItem, _ positionMs: Int64, play: Bool) {
         soloJob?.cancel()
         preloaded = nil
+        soloPlayOnLoad = play
+        snapshot.update { $0.loading = play }
         soloJob = scope.launch { [weak self] in
             guard let self else { return }
             do {
                 try await self.player.prepare(item, seekToMs: positionMs)
-                self.loadedItemId = item.id
-                self.snapshot.update { $0.soloItemId = item.id }
-                if play { self.player.play() }
+                self.loaded(item)
+                self.snapshot.update { $0.soloItemId = item.id; $0.loading = false }
+                if self.soloPlayOnLoad { self.player.play() }
                 self.soloPreload()
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 self.log("could not load '\(item.title)' while alone: \(error.localizedDescription)")
                 self.loadedItemId = nil
+                self.snapshot.update { $0.loading = false }
+                self.loadFailed(item, error)
             }
         }
     }
@@ -419,7 +459,7 @@ final class GroupSession {
             do {
                 let t0 = self.time.nowMs()
                 try await self.player.prepare(item, seekToMs: seekToMs)
-                self.loadedItemId = item.id
+                self.loaded(item)
                 self.log("prepared '\(item.title)' in \(self.time.nowMs() - t0)ms, reporting ready (epoch \(epoch))")
                 self.send(Wire.ready(epoch))
             } catch is CancellationError {
@@ -427,6 +467,7 @@ final class GroupSession {
             } catch {
                 self.log("prepare failed: \(error.localizedDescription)")
                 self.send(Wire.resolveFailed(epoch, reason: error.localizedDescription))
+                self.loadFailed(item, error)
             }
         }
     }
@@ -599,6 +640,10 @@ final class GroupSession {
         recoveries += 1
         if recoveries > Self.maxRecoveriesPerEpoch {
             log("player error, giving up after \(Self.maxRecoveriesPerEpoch) recoveries: \(error.localizedDescription)")
+            // Silent while the room plays on: play tries again (see catchUp)
+            startedAtServer = nil
+            loadedItemId = nil
+            loadFailed(item, error)
             return
         }
         log("player error, recovering (#\(recoveries)): \(error.localizedDescription)")
@@ -612,13 +657,41 @@ final class GroupSession {
         do {
             preloaded = nil // preparing replaces the whole playlist
             try await player.prepare(item, seekToMs: positionMs)
-            loadedItemId = item.id
+            loaded(item)
         } catch is CancellationError {
             // Replaced by something newer
         } catch {
             log("load failed: \(error.localizedDescription)")
             loadedItemId = nil
+            loadFailed(item, error)
         }
+    }
+
+    private func loaded(_ item: QueueItem) {
+        loadedItemId = item.id
+        reportedFailure = nil
+    }
+
+    /// Tells the person, once for each item, that this device could not load it: the room may play on without it.
+    private func loadFailed(_ item: QueueItem, _ error: Error) {
+        if reportedFailure == item.id { return }
+        reportedFailure = item.id
+        events.emit(.loadFailed(title: item.title, reason: (error as? LoadFailure)?.reason))
+    }
+
+    /// Play was pressed while the room plays a song this device does not have (it could not load it, or gave up on a
+    /// broken stream): load it again and join in where the room is, instead of pressing play on an empty player.
+    /// Returns false when this device has the song, so that play just resumes it.
+    func catchUp() -> Bool {
+        guard !solo, loadedItemId == nil, let s = state, let item = s.current, s.phase == "playing" else { return false }
+        scope.launch { [weak self] in
+            guard let self, !self.solo, self.loadedItemId == nil, self.startJob?.isActive != true,
+                  self.prepareJob?.isActive != true else { return }
+            self.reportedFailure = nil // a new try by hand is told about again if it fails
+            self.log("play pressed with nothing loaded, catching up with the room")
+            self.startJob = self.scope.launch { [weak self] in try await self?.catchUpPlaying(item, s.startedAt) }
+        }
+        return true
     }
 
     /// The item is already loaded (e.g. after a reconnect): realign to the room's clock and make sure it plays.

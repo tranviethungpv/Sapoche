@@ -6,6 +6,7 @@ import app.sapoche.core.Probe
 import app.sapoche.core.StreamResolver
 import app.sapoche.core.VideoPicker
 import app.sapoche.core.VideoSource
+import app.sapoche.sync.LoadFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -13,9 +14,15 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
+import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException
 import java.io.IOException
 import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -135,6 +142,7 @@ class StreamCache(
 
     private suspend fun resolveValidated(videoId: String): Entry {
         var lastProblem = "unknown"
+        var lastError: Exception? = null
         for (attempt in 1..MAX_ATTEMPTS) {
             try {
                 val resolved = resolver.resolve(videoId)
@@ -151,15 +159,31 @@ class StreamCache(
                         .also { entries[videoId] = it }
                 }
                 lastProblem = "probe ${probed.headStatus}/${probed.midStatus}/${probed.tailStatus}"
+                lastError = null
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 lastProblem = "${e.javaClass.simpleName}: ${e.message?.lineSequence()?.firstOrNull()}"
+                lastError = e
                 EventLog.d("resolve", "$videoId attempt=$attempt failed: $lastProblem")
+                // Removed, private, blocked in this country, age restricted, live: no try will play it
+                if (e is ContentNotAvailableException || e is ContentNotSupportedException) {
+                    throw LoadFailure(LoadFailure.Reason.UNPLAYABLE, "$videoId cannot be played ($lastProblem)", e)
+                }
+                // Without a network every try fails at once: a network that is only changing gets a moment
+                if (isOffline(e) && attempt < MAX_ATTEMPTS) delay(OFFLINE_RETRY_MS)
             }
         }
-        throw IOException("Could not get a working stream for $videoId after $MAX_ATTEMPTS attempts ($lastProblem)")
+        if (isOffline(lastError)) throw LoadFailure(LoadFailure.Reason.OFFLINE, "No network to get $videoId ($lastProblem)", lastError)
+        throw ResolveFailed("Could not get a working stream for $videoId after $MAX_ATTEMPTS attempts ($lastProblem)")
     }
+
+    /** The tries to get a working stream were all used up; the player does not try again by itself, see [PatientLoadErrorPolicy]. */
+    class ResolveFailed(message: String) : IOException(message)
+
+    /** YouTube could not even be reached: no network, or none that goes anywhere. */
+    private fun isOffline(error: Throwable?) = generateSequence(error) { it.cause }.take(8)
+        .any { it is UnknownHostException || it is ConnectException || it is NoRouteToHostException }
 
     // Stream URLs expire after about 6 hours; stay well inside that
     private fun isFresh(entry: Entry) = System.currentTimeMillis() - entry.resolvedAtMs < MAX_AGE_MS
@@ -167,5 +191,6 @@ class StreamCache(
     private companion object {
         const val MAX_ATTEMPTS = 3
         const val MAX_AGE_MS = 4 * 60 * 60 * 1000L
+        const val OFFLINE_RETRY_MS = 500L
     }
 }

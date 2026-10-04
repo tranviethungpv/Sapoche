@@ -377,6 +377,56 @@ void main() {
   });
 
   test(
+    'a song on its way to play on this device shows progress, not a paused player',
+    () async {
+      backend.emit(StateEvent(sampleRoom(local: true, phase: 'paused', loading: true)));
+      await settle();
+      expect(controller.isPlaying, isTrue);
+      expect(controller.isStarting, isTrue);
+      expect(controller.playState.value, (true, true));
+
+      // It could not load: the native side stopped and says so
+      backend.emit(StateEvent(sampleRoom(local: true, phase: 'paused')));
+      await settle();
+      expect(controller.isPlaying, isFalse);
+      expect(controller.isStarting, isFalse);
+    },
+  );
+
+  test('every reason a song did not start here has its own words', () async {
+    final messages = <String>[];
+    controller.messages.listen(messages.add);
+    for (final code in [
+      'load_slow',
+      'load_offline',
+      'load_skipped',
+      'load_unplayable',
+      'load_failed',
+    ]) {
+      backend.emit(ErrorEvent(ServerError(code, 'Blinding Lights')));
+    }
+    backend.emit(
+      const ErrorEvent(
+        ServerError(
+          'load_failed',
+          'Blinding Lights\nThe file is damaged (AVFoundationErrorDomain -11829)',
+        ),
+      ),
+    );
+    backend.emit(const ErrorEvent(ServerError('queue_full', '')));
+    await settle();
+    expect(messages, [
+      'Slow connection, still loading “Blinding Lights”…',
+      'No internet connection. Press play to hear “Blinding Lights” once you’re back online.',
+      '“Blinding Lights” can’t be played. Skipped to the next song.',
+      'YouTube won’t play “Blinding Lights”.',
+      'Couldn’t load “Blinding Lights”. Press play to try again.',
+      'Couldn’t load “Blinding Lights”. Press play to try again.\nThe file is damaged (AVFoundationErrorDomain -11829)',
+      'The queue is full',
+    ]);
+  });
+
+  test(
     'outside a room the play button follows this device\'s own player',
     () async {
       backend.emit(const StateEvent(RoomSnapshot()));

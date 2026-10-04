@@ -29,6 +29,8 @@ enum UiJson {
             "videoHeight": videoHeight,
             "solo": snap.solo,
             "soloItemId": snap.soloItemId ?? NSNull(),
+            // A song is on its way to play on this device: outside a room, or while listening alone in one
+            "loading": inRoom ? snap.loading : local.loading,
             "queue": queue.map(item),
             "members": snap.members.map {
                 ["id": $0.id, "name": $0.name, "ready": $0.ready, "solo": $0.solo, "away": $0.away, "owner": $0.owner] as [String: Any]

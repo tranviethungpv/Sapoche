@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import app.sapoche.sync.LoadFailure
 
 /**
  * Keeps retrying network failures for minutes instead of a few seconds. With a large buffer the
@@ -11,7 +12,8 @@ import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
  * surface as a playback error that throws that audio away.
  *
  * A rejected stream URL (expired, or bound to an address the device no longer has) will not fix
- * itself: those fail at once so the caller can resolve a fresh URL.
+ * itself: those fail at once so the caller can resolve a fresh URL. So does a stream that could not be
+ * had at all: [StreamCache] has made its own tries by then, and the player's owner decides what is next.
  */
 class PatientLoadErrorPolicy : DefaultLoadErrorHandlingPolicy() {
 
@@ -20,6 +22,9 @@ class PatientLoadErrorPolicy : DefaultLoadErrorHandlingPolicy() {
     override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
         val error = loadErrorInfo.exception
         if (error is HttpDataSource.InvalidResponseCodeException && error.responseCode in URL_REJECTED_CODES) {
+            return C.TIME_UNSET
+        }
+        if (generateSequence<Throwable>(error) { it.cause }.take(8).any { it is LoadFailure || it is StreamCache.ResolveFailed }) {
             return C.TIME_UNSET
         }
         return super.getRetryDelayMsFor(loadErrorInfo)

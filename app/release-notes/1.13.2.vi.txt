@@ -1,0 +1,8 @@
+Nhạc luôn phát, hoặc nói rõ vì sao không
+- Bấm một bài là thấy ngay đang tải; mạng chậm thì có thông báo.
+- Không có mạng, hoặc YouTube không cho phát một bài, app báo ngay. Bài không phát được sẽ được bỏ qua.
+- Tua khi mạng yếu hay mất mạng không còn làm app tự đóng.
+- Sau khi bấm STOP trên tai nghe, xe hơi hay đồng hồ, bấm Phát là nhạc chạy lại.
+- Thanh phát nhạc ở dưới không còn bị hỏng khi bấm bài liên tục.
+- Mạng chậm thì bài bắt đầu phát sớm hơn.
+- Trong phòng, app báo khi máy này không tải được bài, và bấm Phát sẽ tải lại.

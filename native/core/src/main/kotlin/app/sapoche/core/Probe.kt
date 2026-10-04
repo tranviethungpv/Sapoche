@@ -21,7 +21,8 @@ data class ProbeResult(
 /**
  * Some YouTube clients only serve the first ~60 seconds and then return 403
  * when a PO token is missing. So we probe the middle and end of the file too,
- * not just the first bytes.
+ * not just the first bytes. A broken part shows in the status of the answer, so
+ * each part is small: on a slow network the probe comes before the first sound.
  */
 class Probe(private val client: OkHttpClient = OkHttpDownloader.defaultClient()) {
 
@@ -31,11 +32,11 @@ class Probe(private val client: OkHttpClient = OkHttpDownloader.defaultClient())
     suspend fun check(url: String, contentLength: Long, userAgent: String = OkHttpDownloader.USER_AGENT): ProbeResult =
         withContext(Dispatchers.IO) {
             val t0 = System.nanoTime()
-            val head = async { range(url, 0, 65_535, userAgent) to (System.nanoTime() - t0) / 1_000_000 }
+            val head = async { range(url, 0, PART_BYTES - 1, userAgent) to (System.nanoTime() - t0) / 1_000_000 }
             // The size is nearly always known from the resolve, and then the three parts are asked for at once
             val size = if (contentLength > 0) contentLength else head.await().first.second
-            val mid = async { if (size > 0) range(url, size / 2, size / 2 + 65_535, userAgent).first else -1 }
-            val tail = async { if (size > 0) range(url, size - 65_536, size - 1, userAgent).first else -1 }
+            val mid = async { if (size > 0) range(url, size / 2, size / 2 + PART_BYTES - 1, userAgent).first else -1 }
+            val tail = async { if (size > 0) range(url, size - PART_BYTES, size - 1, userAgent).first else -1 }
             val (headAnswer, firstByteMs) = head.await()
             ProbeResult(headAnswer.first, mid.await(), tail.await(), size, firstByteMs)
         }
@@ -53,5 +54,9 @@ class Probe(private val client: OkHttpClient = OkHttpDownloader.defaultClient())
             val total = response.header("Content-Range")?.substringAfter('/')?.toLongOrNull() ?: -1
             response.code to total
         }
+    }
+
+    private companion object {
+        const val PART_BYTES = 8_192L
     }
 }

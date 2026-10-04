@@ -28,6 +28,14 @@ class PlayerBar extends StatelessWidget {
       builder: (context, _) => AnimatedSwitcher(
         duration: const Duration(milliseconds: 280),
         switchInCurve: Curves.easeOutCubic,
+        // The bar that was leaving is dropped as a new one comes, see MiniPlayer
+        layoutBuilder: (shown, leaving) => Stack(
+          alignment: Alignment.center,
+          children: [
+            if (controller.snapshot.current == null) ...leaving,
+            ?shown,
+          ],
+        ),
         transitionBuilder: (child, animation) => SlideTransition(
           position: Tween(
             begin: const Offset(0, 0.6),

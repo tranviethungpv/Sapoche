@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
@@ -68,8 +69,9 @@ class NewPipeResolver(
         val info = StreamInfo.getInfo(youtube, "https://www.youtube.com/watch?v=$videoId")
         val ms = (System.nanoTime() - t0) / 1_000_000
 
+        // A live stream will not play however often it is tried, like a removed video
         if (info.streamType != StreamType.VIDEO_STREAM && info.streamType != StreamType.AUDIO_STREAM) {
-            error("Unsupported stream type: ${info.streamType}")
+            throw ContentNotAvailableException("Unsupported stream type: ${info.streamType}")
         }
 
         val sources = info.audioStreams

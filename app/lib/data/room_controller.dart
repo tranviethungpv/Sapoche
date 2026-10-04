@@ -170,6 +170,19 @@ class RoomController extends ChangeNotifier {
   Future<void> setLanguage(String code) => _backend.setLanguage(code);
 
   String? _describe(ServerError error) {
+    // This device's own player: the message is the song's title, and from the iPhone a second line says what went wrong
+    final lines = error.message.split('\n');
+    final song = lines.first.isEmpty ? S.thisSong : lines.first;
+    final cause = lines.skip(1).join(' ').trim();
+    final own = switch (error.code) {
+      'load_slow' => S.loadSlow(song),
+      'load_offline' => S.loadOffline(song),
+      'load_skipped' => S.loadSkipped(song),
+      'load_unplayable' => S.loadUnplayable(song),
+      'load_failed' => S.loadFailed(song),
+      _ => null,
+    };
+    if (own != null) return cause.isEmpty ? own : '$own\n$cause';
     if (error.code == 'unplayable') {
       // The message reads "Nobody could load: <title>", and from the iPhone a second line says what went wrong
       final lines = error.message.split('\n');
@@ -204,12 +217,16 @@ class RoomController extends ChangeNotifier {
   /// Sound is coming or is already playing (used for the play/pause glyph). Outside a room, and while
   /// listening alone, this is about this device's own player, not the room.
   bool get isPlaying => _snapshot.ownPlayback
-      ? (_soloPlaying ?? (player.value.playing || player.value.buffering))
+      ? (_soloPlaying ??
+            (player.value.playing ||
+                player.value.buffering ||
+                _snapshot.loading))
       : _snapshot.wantsPlaying;
 
-  /// The room started something but nothing is audible yet: everyone is still loading.
+  /// The room started something but nothing is audible yet: everyone is still loading. On this device's own player,
+  /// the song is being found or buffered.
   bool get isStarting => _snapshot.ownPlayback
-      ? isPlaying && player.value.buffering
+      ? isPlaying && (player.value.buffering || _snapshot.loading)
       : _snapshot.phase == 'preparing' || (isPlaying && player.value.buffering);
 
   // ------------------------------------------------------------------ room

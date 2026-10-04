@@ -507,6 +507,28 @@ abstract final class S {
     'Không ai phát được “$title”. Đã bỏ qua.',
   );
 
+  // Why this device's own player has not started a song yet
+  static String loadSlow(String title) => _t(
+    'Slow connection, still loading “$title”…',
+    'Mạng chậm, vẫn đang tải “$title”…',
+  );
+  static String loadOffline(String title) => _t(
+    'No internet connection. Press play to hear “$title” once you’re back online.',
+    'Không có kết nối mạng. Khi có mạng, bấm phát để nghe “$title”.',
+  );
+  static String loadSkipped(String title) => _t(
+    '“$title” can’t be played. Skipped to the next song.',
+    'Không phát được “$title”. Đã chuyển sang bài tiếp.',
+  );
+  static String loadUnplayable(String title) => _t(
+    'YouTube won’t play “$title”.',
+    'YouTube không cho phát “$title”.',
+  );
+  static String loadFailed(String title) => _t(
+    'Couldn’t load “$title”. Press play to try again.',
+    'Không tải được “$title”. Bấm phát để thử lại.',
+  );
+
   // Settings
   static String get settingsTitle => _t('Settings', 'Cài đặt');
   static String get appearance => _t('Appearance', 'Giao diện');

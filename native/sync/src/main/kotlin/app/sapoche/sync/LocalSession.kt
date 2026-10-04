@@ -3,6 +3,7 @@ package app.sapoche.sync
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,7 +65,7 @@ class LocalSession(
     /** Called whenever what should be remembered changed. */
     private val persist: (SavedQueue) -> Unit,
     /** Something the person should be told, e.g. a song that would not load. */
-    private val problem: (String) -> Unit = {},
+    private val problem: (Problem) -> Unit = {},
     private val log: (String) -> Unit = {},
     /** The queue ran out of songs after [QueueItem] (it played through, or next was pressed on the last one). */
     private val onQueueEnd: (QueueItem) -> Unit = {},
@@ -78,8 +79,32 @@ class LocalSession(
         val repeat: String = "off",
         /** The queue ran out: nothing is playing, and play starts it again from the top. */
         val finished: Boolean = false,
+        /** The current song is on its way to play: the screen shows that something is happening before it is heard. */
+        val loading: Boolean = false,
     ) {
         val current: QueueItem? get() = queue.getOrNull(index)
+    }
+
+    /** Something the person should be told about a song: what happened ([kind]) and to which ([title]). */
+    data class Problem(val kind: Kind, val title: String = "") {
+        /** [code] is how the screen knows it. */
+        enum class Kind(val code: String) {
+            /** Still loading after a while: the network is slow. */
+            SLOW("load_slow"),
+
+            /** Could not load it: the device has no network. Play tries again. */
+            OFFLINE("load_offline"),
+
+            /** It cannot be played, or it kept breaking: the next song plays instead. */
+            SKIPPED("load_skipped"),
+
+            /** YouTube will not play it, and nothing was skipped to (too many such songs in a row). */
+            UNPLAYABLE("load_unplayable"),
+
+            /** Could not load it, for some other reason (a very slow network, a broken stream). Play tries again. */
+            FAILED("load_failed"),
+            QUEUE_FULL("queue_full"),
+        }
     }
 
     private val _snapshot = MutableStateFlow(restore(saved))
@@ -97,6 +122,9 @@ class LocalSession(
 
     /** Reloads used on the current item; stops endless retry loops on a broken stream. */
     private var recoveries = 0
+
+    /** Songs skipped in a row because they cannot be played; when YouTube breaks for every song, skipping stops. */
+    private var skippedInARow = 0
 
     /** Whether the item being loaded starts playing once it is ready; play and pause during a load only flip this. */
     private var playOnLoad = false
@@ -123,6 +151,7 @@ class LocalSession(
         loadedId = null
         preloaded = null
         player.stop()
+        _snapshot.update { it.copy(loading = false) }
         save()
     }
 
@@ -132,7 +161,10 @@ class LocalSession(
         val s = snapshot.value
         when {
             // Asked twice (a button and the media session both do): the item is on its way, do not start over
-            loadedId == null && job?.isActive == true -> playOnLoad = true
+            loadedId == null && job?.isActive == true -> {
+                playOnLoad = true
+                _snapshot.update { it.copy(loading = true) }
+            }
             loadedId != null -> player.play()
             s.queue.isEmpty() -> Unit
             // After the last song, play means "again": from the top of the list
@@ -144,6 +176,7 @@ class LocalSession(
     fun pause() {
         playOnLoad = false
         player.pause()
+        _snapshot.update { it.copy(loading = false) }
         save()
     }
 
@@ -178,7 +211,7 @@ class LocalSession(
         val startNow = s.queue.isEmpty() || s.finished
         val fresh = Queues.fresh(tracks, s.queue, if (s.finished) s.queue.size else s.index)
         val room = MAX_QUEUE - s.queue.size
-        if (fresh.isNotEmpty() && room <= 0) return problem("The queue is full")
+        if (fresh.isNotEmpty() && room <= 0) return problem(Problem(Problem.Kind.QUEUE_FULL))
         val items = fresh.take(room).map { QueueItem(newId(), it.videoId, it.title, it.artist, it.thumb, it.durMs, addedBy = "") }
         if (items.isEmpty()) return
 
@@ -251,6 +284,7 @@ class LocalSession(
 
     fun clear() {
         stopPlayer()
+        skippedInARow = 0 // a new list is a new start
         _snapshot.update { Snapshot(repeat = it.repeat) }
         save()
     }
@@ -320,6 +354,7 @@ class LocalSession(
         loadedId = null
         preloaded = null
         pendingPositionMs = 0
+        _snapshot.update { it.copy(loading = false) }
     }
 
     private fun load(item: QueueItem, positionMs: Long, play: Boolean) {
@@ -330,24 +365,54 @@ class LocalSession(
         loadedId = null
         val at = snapshot.value.queue.indexOfFirst { it.id == item.id }
         if (at < 0) return
-        // The person sees the new song at once, not when it has loaded
-        _snapshot.update { it.copy(index = at, finished = false) }
+        // The person sees the new song at once, and that it is on its way, not only when it has loaded
+        _snapshot.update { it.copy(index = at, finished = false, loading = play) }
         playOnLoad = play
         job = scope.launch {
+            // A load that takes long is said to be slow, so that waiting does not look like nothing happening
+            val slow = launch {
+                delay(SLOW_LOAD_MS)
+                if (playOnLoad) problem(Problem(Problem.Kind.SLOW, item.title))
+            }
             try {
                 player.prepare(item, positionMs)
+                slow.cancel()
                 loadedId = item.id
                 pendingPositionMs = 0
+                skippedInARow = 0
+                _snapshot.update { it.copy(loading = false) }
                 if (playOnLoad) player.play()
                 preload()
                 save()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                slow.cancel()
                 log("could not load '${item.title}': ${e.message}")
+                // Nothing goes on loading in the background, and nothing starts later by itself
+                player.stop()
                 pendingPositionMs = positionMs
-                problem("Could not load: ${item.title}")
+                _snapshot.update { it.copy(loading = false) }
+                loadFailed(item, e)
             }
+        }
+    }
+
+    /**
+     * Tells the person why [item] did not load. A song YouTube will not play is skipped, as music apps do, but only a
+     * few in a row: when every song fails, YouTube changed something, and running through the queue would not help.
+     */
+    private fun loadFailed(item: QueueItem, error: Exception) {
+        when (LoadFailure.of(error)?.reason) {
+            LoadFailure.Reason.OFFLINE -> problem(Problem(Problem.Kind.OFFLINE, item.title))
+            LoadFailure.Reason.UNPLAYABLE -> if (++skippedInARow < MAX_SKIPPED_IN_A_ROW) {
+                problem(Problem(Problem.Kind.SKIPPED, item.title))
+                step(+1, auto = false)
+            } else {
+                skippedInARow = 0
+                problem(Problem(Problem.Kind.UNPLAYABLE, item.title))
+            }
+            null -> problem(Problem(Problem.Kind.FAILED, item.title))
         }
     }
 
@@ -379,9 +444,10 @@ class LocalSession(
         val item = snapshot.value.current?.takeIf { it.id == loadedId } ?: return
         if (++recoveries > MAX_RECOVERIES) {
             log("player error, giving up on '${item.title}' after $MAX_RECOVERIES tries: ${error.message}")
-            problem("Could not play: ${item.title}")
+            problem(Problem(Problem.Kind.SKIPPED, item.title))
             recoveries = 0
-            return step(+1, auto = true)
+            // Not "auto": repeating this one song would load the broken stream again and again
+            return step(+1, auto = false)
         }
         log("player error, loading '${item.title}' again (#$recoveries): ${error.message}")
         load(item, player.positionMs(), play = true)
@@ -401,6 +467,10 @@ class LocalSession(
     private companion object {
         const val MAX_QUEUE = 200
         const val MAX_RECOVERIES = 3
+        const val MAX_SKIPPED_IN_A_ROW = 3
         const val PREV_RESTARTS_AFTER_MS = 3000L
+
+        /** A load that takes longer than this is said to be slow. */
+        const val SLOW_LOAD_MS = 8_000L
     }
 }

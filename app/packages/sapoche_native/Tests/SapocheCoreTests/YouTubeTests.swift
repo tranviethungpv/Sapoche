@@ -119,6 +119,40 @@ final class YouTubeTests: XCTestCase {
         }
     }
 
+    func testAVideoEveryClientIsToldDoesNotPlayIsNotTriedAgain() async throws {
+        let http = FakeHTTP()
+        http.answer("visitor_id", text: visitorAnswer())
+        http.answer("/player", text: #"{"playabilityStatus":{"status":"ERROR","reason":"Video unavailable"}}"#)
+        do {
+            _ = try await resolver(http).resolve("x")
+            XCTFail("expected a failure")
+        } catch {
+            XCTAssertEqual((error as? LoadFailure)?.reason, .unplayable, "\(error)")
+        }
+    }
+
+    func testWithoutANetworkTheResolveSaysSo() async throws {
+        let http = FakeHTTP() // answers nothing: every request fails as with no network
+        do {
+            _ = try await resolver(http).resolve("x")
+            XCTFail("expected a failure")
+        } catch {
+            XCTAssertEqual((error as? LoadFailure)?.reason, .offline, "\(error)")
+        }
+    }
+
+    func testAServerThatFailsIsNeitherOfflineNorUnplayable() async throws {
+        let http = FakeHTTP()
+        http.answer("visitor_id", text: visitorAnswer())
+        http.answer("/player", status: 500, text: "oops")
+        do {
+            _ = try await resolver(http).resolve("x")
+            XCTFail("expected a failure")
+        } catch {
+            XCTAssertNil(error as? LoadFailure, "a server error may pass: trying again is worth it")
+        }
+    }
+
     func testAWebSearchGivesVideosWithALengthAndNoLiveStreams() throws {
         let answer = try XCTUnwrap(JSON.parse(data: fixture("web_search_videos")))
         let found = YouTubeResolver.videos(answer)

@@ -296,6 +296,7 @@ class RoomSnapshot {
     this.trimMs = 0,
     this.solo = false,
     this.soloItemId,
+    this.loading = false,
     this.video = false,
     this.videoHeight = 720,
     this.name,
@@ -322,6 +323,10 @@ class RoomSnapshot {
 
   /// The song this device is on while [solo].
   final String? soloItemId;
+
+  /// A song is on its way to play on this device (outside a room, or while listening alone): nothing is heard yet,
+  /// but something is happening.
+  final bool loading;
 
   /// Songs are played with their picture on this device.
   final bool video;
@@ -406,6 +411,7 @@ class RoomSnapshot {
     trimMs: (json['trimMs'] as num?)?.toInt() ?? 0,
     solo: json['solo'] as bool? ?? false,
     soloItemId: json['soloItemId'] as String?,
+    loading: json['loading'] as bool? ?? false,
     video: json['video'] as bool? ?? false,
     videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 720,
     name: json['name'] as String?,

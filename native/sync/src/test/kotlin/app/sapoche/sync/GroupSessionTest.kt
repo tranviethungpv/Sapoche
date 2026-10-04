@@ -26,6 +26,9 @@ internal class FakePlayer(private val now: () -> Long) : PlayerPort {
     var prepareCount = 0
     var prepareDelayMs = 0L
     var failPrepare = false
+
+    /** What loading an item throws, when it fails in a particular way; null lets it load. */
+    var failWith: ((QueueItem) -> Exception?)? = null
     val seeks = mutableListOf<Long>()
     private var lastUpdate = now()
 
@@ -50,6 +53,7 @@ internal class FakePlayer(private val now: () -> Long) : PlayerPort {
     override suspend fun prepare(item: QueueItem, seekToMs: Long) {
         delay(prepareDelayMs)
         if (failPrepare) error("cannot load")
+        failWith?.invoke(item)?.let { throw it }
         prepareCount++
         advance()
         loaded = item
@@ -825,6 +829,74 @@ class GroupSessionTest {
         h.session.onMessage(ServerMessage.Prepare(epoch = 2, index = 1, item = item2, seekToMs = 0, by = "dev-b"))
         step(100)
         assertEquals(listOf<GroupSession.RoomEvent>(GroupSession.RoomEvent.Skipped("dev-b", "Song 2")), seen)
+    }
+
+    @Test
+    fun `this device failing to load the room's song is told, once however often it retries`() = runTest {
+        val h = harness()
+        val seen = mutableListOf<GroupSession.RoomEvent>()
+        backgroundScope.launch { h.session.events.collect { seen += it } }
+        h.player.failWith = { LoadFailure(LoadFailure.Reason.OFFLINE, "no network") }
+        h.session.onMessage(twoItemState("playing", epoch = 1, startedAt = h.serverNow() - 10_000))
+        step(30_000) // the catch-up load is tried every few seconds
+        assertEquals(listOf<GroupSession.RoomEvent>(GroupSession.RoomEvent.LoadFailed("Song", LoadFailure.Reason.OFFLINE)), seen)
+    }
+
+    @Test
+    fun `a failed preparation is told to the person too`() = runTest {
+        val h = harness()
+        val seen = mutableListOf<GroupSession.RoomEvent>()
+        backgroundScope.launch { h.session.events.collect { seen += it } }
+        h.player.failPrepare = true
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        assertEquals(listOf<GroupSession.RoomEvent>(GroupSession.RoomEvent.LoadFailed("Song", null)), seen)
+    }
+
+    @Test
+    fun `play after giving up on a broken stream loads the room's song again`() = runTest {
+        val h = harness()
+        val seen = mutableListOf<GroupSession.RoomEvent>()
+        backgroundScope.launch { h.session.events.collect { seen += it } }
+        h.session.onMessage(state("preparing", epoch = 1))
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        val startAt = h.serverNow() + 1500
+        h.session.onMessage(ServerMessage.Start(1, startAt, 0))
+        step(3000)
+        repeat(6) {
+            h.player.playing = false
+            h.player.loaded = null
+            h.player.onError?.invoke(RuntimeException("403"))
+            step(2500)
+        }
+        assertFalse(h.player.playing, "given up")
+        assertEquals(1, seen.count { it is GroupSession.RoomEvent.LoadFailed }, "the person is told it stopped")
+
+        assertTrue(h.session.catchUp())
+        step(3000)
+        assertEquals(item, h.player.loaded)
+        assertTrue(h.player.playing)
+        val expected = h.serverNow() - startAt
+        assertTrue(abs(h.player.positionMs() - expected) < 400, "position ${h.player.positionMs()} vs $expected")
+        assertFalse(h.session.catchUp(), "with the song there, play only resumes it")
+    }
+
+    @Test
+    fun `alone, pausing while a song loads leaves it paused when it is there`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        h.player.prepareDelayMs = 3000
+        h.session.soloNext()
+        step(500)
+        assertTrue(h.session.snapshot.value.loading)
+        h.session.soloPause()
+        step(500)
+        assertFalse(h.session.snapshot.value.loading)
+        step(3000)
+        assertEquals(item2, h.player.loaded)
+        assertFalse(h.player.playing, "pause was pressed while it loaded")
     }
 
     @Test

@@ -176,9 +176,14 @@ final class GroupController {
             player: engine,
             saved: queueFile.read(),
             persist: { [writer, queueFile] saved in writer.async { queueFile.write(saved) } },
-            problem: { [weak self] text in self?.errors.emit(ControllerError(code: "unplayable", message: text)) },
+            problem: { [weak self] problem in
+                // The title, and on a second line what went wrong, for whoever fixes the app
+                let text = problem.detail.isEmpty ? problem.title : "\(problem.title)\n\(problem.detail)"
+                self?.errors.emit(ControllerError(code: problem.kind.rawValue, message: text))
+            },
             log: { EventLog.d("local", $0) },
-            onQueueEnd: { [weak self] last in self?.autoplay(after: last) }
+            onQueueEnd: { [weak self] last in self?.autoplay(after: last) },
+            time: self.time
         )
         sleep = SleepTimer(
             scope: ownScope,
@@ -267,6 +272,10 @@ final class GroupController {
         radioJob = ownScope.launch { [weak self] in
             guard let self else { return }
             do {
+                // The song that was tapped comes first: on a slow network the two would share it
+                while self.local.snapshot.value.loading {
+                    try await self.time.sleep(ms: Self.radioWaitStepMs)
+                }
                 let more = try await self.moreLike(videoId, [videoId], Self.radioCount)
                 let queue = self.local.snapshot.value.queue
                 if more.isEmpty || self.session != nil || queue.count != 1 || queue[0].videoId != videoId { return }
@@ -368,6 +377,8 @@ final class GroupController {
             switch event {
             case let .paused(byId): self.notices.emit(Notice(kind: "paused", by: nameOf(byId)))
             case let .skipped(byId, title): self.notices.emit(Notice(kind: "skipped", by: nameOf(byId), title: title))
+            // Told as the personal queue tells it: the person may be the only one not hearing the song
+            case let .loadFailed(title, reason): self.errors.emit(ControllerError(code: Self.loadFailureCode(reason), message: title))
             }
         }
         scope.collect(newClient.connection) { [weak self] connection in
@@ -487,6 +498,8 @@ final class GroupController {
     /// just this device and let the drift correction catch it up; restarting the whole room would interrupt everyone else.
     @discardableResult
     func requestPlay(resumeLocally: Bool = true) -> Bool {
+        // This device could not load the room's song: load it again rather than press play on nothing
+        if phase() == "playing", session?.catchUp() == true { return true }
         if resumeLocally && phase() == "playing" && !engine.wantsSound && !isSolo {
             engine.resumeLocally()
             return true
@@ -496,6 +509,15 @@ final class GroupController {
 
     /// Listening on this device alone: the room does not move it, and its buttons do not move the room.
     var isSolo: Bool { session?.isSolo == true }
+
+    /// How the screen knows why this device could not load a song, see [LocalSession.Problem.Kind].
+    private static func loadFailureCode(_ reason: LoadFailure.Reason?) -> String {
+        switch reason {
+        case .offline: return LocalSession.Problem.Kind.offline.rawValue
+        case .unplayable: return LocalSession.Problem.Kind.unplayable.rawValue
+        case nil: return LocalSession.Problem.Kind.failed.rawValue
+        }
+    }
 
     /// Stop following the room and carry on alone.
     func goSolo() { session?.goSolo() }
@@ -615,6 +637,8 @@ final class GroupController {
 
     /// Songs that follow one that was played on its own.
     private static let radioCount = 20
+    /// How often the radio looks whether the song it follows has loaded.
+    private static let radioWaitStepMs: Int64 = 250
     private static let keyTrimMs = "trim_ms"
     private static let keyStartBiasMs = "start_bias_ms"
     private static let maxTrimMs: Int64 = 1000

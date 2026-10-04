@@ -7,6 +7,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import app.sapoche.sync.LoadFailure
 import app.sapoche.sync.PlayerPort
 import app.sapoche.sync.QueueItem
 import kotlinx.coroutines.CancellableContinuation
@@ -32,6 +33,9 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
     /** Set while a prepare or seek is waiting for the player to become ready. */
     private var waiting: CancellableContinuation<Unit>? = null
 
+    /** The wait is a prepare's, whose failures are its caller's; a seek's are [onError]'s, see [seekTo]. */
+    private var waitingToLoad = false
+
     /** The song the player is on and the one queued behind it, so either can be rebuilt with or without the picture. */
     private var loaded: QueueItem? = null
     private var queuedNext: QueueItem? = null
@@ -46,6 +50,9 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         applyVideoSelection()
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                // Told late, after the player moved on: a stop and the next load made within one callback deliver the
+                // stop's IDLE once the next load waits, which would fail it for nothing
+                if (playbackState != player.playbackState) return
                 when (playbackState) {
                     Player.STATE_READY -> resumeWaiting()
                     Player.STATE_ENDED -> onEnded?.invoke()
@@ -66,11 +73,15 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                // Told late, after the player was stopped or loaded again: it is about a song that is not there any more
+                if (player.playerError == null) return
                 val pending = waiting
-                if (pending != null) {
+                if (pending != null && waitingToLoad) {
                     waiting = null
                     pending.resumeWithException(error)
                 } else {
+                    // A seek waiting for it ends, and whoever owns the queue loads the song again
+                    resumeWaiting()
                     onError?.invoke(error)
                 }
             }
@@ -87,10 +98,17 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Often a stream URL that stopped working: resolve again once before giving up
+                // No network, or a video YouTube will not play: another try would end the same way
+                LoadFailure.of(e)?.let { throw it }
                 if (++attempt >= MAX_LOAD_ATTEMPTS) throw e
-                EventLog.d("port", "load of ${item.videoId} failed (${e.message}), resolving again")
-                SapocheApp.streams.invalidate(item.videoId)
+                if (e is NotReady) {
+                    // Only slow: the address is fine, and the next try reads what came so far from the disk
+                    EventLog.d("port", "load of ${item.videoId} is slow (${e.message}), trying again")
+                } else {
+                    // Often a stream URL that stopped working: resolve again once before giving up
+                    EventLog.d("port", "load of ${item.videoId} failed (${e.message}), resolving again")
+                    SapocheApp.streams.invalidate(item.videoId)
+                }
                 // Bytes that do not read as a song will not read any better the next time: fetch them again
                 if (e is PlaybackException && e.errorCode in PARSING_ERRORS) {
                     EventLog.d("port", "what was kept of ${item.videoId} does not read, dropping it")
@@ -106,15 +124,30 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         queuedNext = null
         player.setMediaItem(mediaItem(item, withVideo), seekToMs)
         player.prepare()
-        awaitReady(LOAD_TIMEOUT_MS)
+        waitingToLoad = true
+        try {
+            awaitReady(LOAD_TIMEOUT_MS)
+        } finally {
+            waitingToLoad = false
+        }
     }
 
     override suspend fun seekTo(positionMs: Long) {
         player.seekTo(positionMs) // masks the state as buffering until the seek completes
-        awaitReady(SEEK_TIMEOUT_MS)
+        try {
+            awaitReady(SEEK_TIMEOUT_MS)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A slow network or none: the player goes on buffering at the new place, and tells of a failure by itself
+            EventLog.d("port", "seek to ${positionMs}ms not ready yet: ${e.message}")
+        }
     }
 
     override fun play() {
+        // Stopped from outside (a STOP button, a car, a watch) or after a failure: the song is still there, it only needs
+        // loading again, or play would do nothing at all
+        if (player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0) player.prepare()
         player.play()
     }
 
@@ -210,11 +243,16 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         }
         if (result == null) {
             waiting = null
-            throw IOException("Player was not ready after ${timeoutMs}ms")
+            throw NotReady("Player was not ready after ${timeoutMs}ms")
         }
     }
 
+    /** The player is still buffering, without having failed. */
+    private class NotReady(message: String) : IOException(message)
+
     private fun failWaiting() {
+        // A seek has nothing more to wait for
+        if (!waitingToLoad) return resumeWaiting()
         val pending = waiting ?: return
         waiting = null
         val from = Throwable().stackTrace.filter { it.className.startsWith("app.sapoche") }.drop(2).take(3)

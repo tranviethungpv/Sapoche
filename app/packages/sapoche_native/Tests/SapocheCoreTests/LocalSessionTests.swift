@@ -18,7 +18,7 @@ final class LocalSessionTests: XCTestCase {
         let player: FakePlayer
         var ended: [String] = []
         var saved: [SavedQueue] = []
-        var problems: [String] = []
+        var problems: [LocalSession.Problem] = []
         private var counter = 0
         var session: LocalSession!
 
@@ -34,7 +34,8 @@ final class LocalSessionTests: XCTestCase {
                     self?.counter += 1
                     return "id\(self?.counter ?? 0)"
                 },
-                random: AnyRandom { generator.next() }
+                random: AnyRandom { generator.next() },
+                time: time
             )
             session.attach()
         }
@@ -491,7 +492,7 @@ final class LocalSessionTests: XCTestCase {
         h.player.onError?(NSError(domain: "t", code: 403))
         await h.step()
         XCTAssertEqual(h.player.loaded?.title, "Song 2")
-        XCTAssertTrue(h.problems.contains { $0.contains("Song 1") })
+        XCTAssertTrue(h.problems.contains { $0.title == "Song 1" })
     }
 
     func testANewSongInThePlaceOfOneThatBrokeGetsAllItsTries() async {
@@ -509,7 +510,7 @@ final class LocalSessionTests: XCTestCase {
             await h.step()
         }
         XCTAssertEqual(h.player.loaded?.title, "Song 2")
-        XCTAssertFalse(h.problems.contains { $0.contains("Song 2") }, "the tries of Song 1 are not counted for it")
+        XCTAssertFalse(h.problems.contains { $0.title == "Song 2" }, "the tries of Song 1 are not counted for it")
     }
 
     func testAskingToPlayTwiceWhileTheSongIsLoadingLoadsItOnce() async {
@@ -544,9 +545,117 @@ final class LocalSessionTests: XCTestCase {
         h.player.failPrepare = true
         h.session.add([track(1)], next: false)
         await h.step()
-        XCTAssertTrue(h.problems.contains { $0.contains("Song 1") })
+        XCTAssertTrue(h.problems.contains { $0.title == "Song 1" })
         XCTAssertFalse(h.player.playing)
         XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 1", "it stays in the queue to try again")
+    }
+
+    func testASongIsShownAsOnItsWayUntilItPlays() async {
+        let h = harness()
+        h.player.prepareDelayMs = 3000
+        h.session.add([track(1)], next: false)
+        await h.step(1000)
+        XCTAssertTrue(h.session.snapshot.value.loading, "the screen must show something is happening")
+        XCTAssertFalse(h.player.playing)
+        await h.step(2500)
+        XCTAssertFalse(h.session.snapshot.value.loading)
+        XCTAssertTrue(h.player.playing)
+    }
+
+    func testPausingWhileASongLoadsNoLongerShowsItAsOnItsWay() async {
+        let h = harness()
+        h.player.prepareDelayMs = 3000
+        h.session.add([track(1)], next: false)
+        await h.step(1000)
+        h.session.pause()
+        XCTAssertFalse(h.session.snapshot.value.loading)
+        h.session.play()
+        XCTAssertTrue(h.session.snapshot.value.loading)
+    }
+
+    func testASlowLoadIsSaidToBeSlowOnce() async {
+        let h = harness()
+        h.player.prepareDelayMs = 20_000
+        h.session.add([track(1)], next: false)
+        await h.step(7000)
+        XCTAssertTrue(h.problems.isEmpty, "not slow yet")
+        await h.step(2000)
+        XCTAssertEqual(h.problems, [LocalSession.Problem(kind: .slow, title: "Song 1")])
+        await h.step(15_000)
+        XCTAssertTrue(h.player.playing)
+        XCTAssertEqual(h.problems.count, 1)
+    }
+
+    func testALoadThatIsReplacedIsNotCalledSlow() async {
+        let h = harness()
+        h.player.prepareDelayMs = 5000
+        h.session.add([track(1), track(2)], next: false)
+        await h.step(4000)
+        h.session.next() // the first load is dropped before it gets slow
+        await h.step(10_000)
+        XCTAssertTrue(h.problems.isEmpty, "was \(h.problems)")
+        XCTAssertEqual(h.player.loaded?.title, "Song 2")
+    }
+
+    func testASongYouTubeWillNotPlayIsSkippedAndThePersonTold() async {
+        let h = harness()
+        h.player.failWith = { $0.title == "Song 1" ? LoadFailure(reason: .unplayable, message: "removed") : nil }
+        h.session.add([track(1), track(2)], next: false)
+        await h.step()
+        XCTAssertEqual(h.player.loaded?.title, "Song 2")
+        XCTAssertTrue(h.player.playing)
+        XCTAssertEqual(h.problems.map(\.kind), [.skipped])
+        XCTAssertEqual(h.problems.first?.title, "Song 1")
+    }
+
+    func testSkippingStopsAfterAFewSongsInARowThatWillNotPlay() async {
+        let h = harness()
+        h.player.failWith = { _ in LoadFailure(reason: .unplayable, message: "YouTube changed") }
+        h.session.add((1...6).map(track), next: false)
+        await h.step()
+        XCTAssertEqual(h.problems.map(\.kind), [.skipped, .skipped, .unplayable])
+        XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 3", "it stops instead of running through the queue")
+        XCTAssertFalse(h.player.playing)
+        XCTAssertFalse(h.session.snapshot.value.loading)
+    }
+
+    func testWithoutANetworkTheSongIsKeptNothingLoadsOnAndPlayTriesAgain() async {
+        let h = harness()
+        h.player.failWith = { _ in LoadFailure(reason: .offline, message: "no network") }
+        h.session.add([track(1), track(2)], next: false)
+        await h.step()
+        XCTAssertEqual(h.problems.map(\.kind), [.offline])
+        XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 1", "not skipped: the next song would fail as well")
+        XCTAssertNil(h.player.loaded, "the player was stopped, so nothing starts by itself later")
+        XCTAssertFalse(h.session.snapshot.value.loading)
+
+        h.player.failWith = nil
+        h.session.play()
+        await h.step()
+        XCTAssertEqual(h.player.loaded?.title, "Song 1")
+        XCTAssertTrue(h.player.playing)
+    }
+
+    func testAnyOtherFailureToLoadSaysSoWithWhatWentWrong() async {
+        let h = harness()
+        h.player.failPrepare = true
+        h.session.add([track(1), track(2)], next: false)
+        await h.step()
+        XCTAssertEqual(h.problems.map(\.kind), [.failed])
+        XCTAssertTrue(h.problems.first?.detail.contains("cannot load") == true, "was \(h.problems)")
+        XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 1")
+    }
+
+    func testAStreamThatKeepsBreakingIsSkippedEvenWhileRepeatingThatSong() async {
+        let h = harness()
+        h.session.add([track(1), track(2)], next: false)
+        await h.step(1000)
+        h.session.setRepeat("one")
+        for _ in 0..<4 {
+            h.player.onError?(URLError(.badServerResponse))
+            await h.step()
+        }
+        XCTAssertEqual(h.player.loaded?.title, "Song 2", "repeating must not load the broken stream for ever")
     }
 
     func testTheQueueIsCappedLikeTheRooms() async {
@@ -557,7 +666,7 @@ final class LocalSessionTests: XCTestCase {
         await h.step()
         XCTAssertEqual(h.session.snapshot.value.queue.count, 200)
         h.session.add([track(301)], next: false)
-        XCTAssertTrue(h.problems.contains { $0.contains("full") })
+        XCTAssertTrue(h.problems.contains { $0.kind == .queueFull })
     }
 
     func testTheQueueSurvivesARoundTripThroughItsFile() throws {

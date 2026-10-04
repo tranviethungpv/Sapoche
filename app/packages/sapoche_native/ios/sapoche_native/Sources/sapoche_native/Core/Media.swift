@@ -397,6 +397,9 @@ actor MediaLibrary {
                 if let file = files.file(videoId) { return Playable(url: file, isFile: true, headers: [:]) }
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let failure as LoadFailure {
+                // No network, or a video YouTube will not play: no other try or way of playing it will do better
+                throw failure
             } catch {
                 // A transfer that was stopped because nobody wants the song any more is not a failure to try again
                 if Task.isCancelled { throw CancellationError() }
@@ -477,6 +480,8 @@ actor MediaLibrary {
                 return Playable(url: sound.url, isFile: false, headers: ["User-Agent": sound.pick.userAgent])
             } catch is NoIndex {
                 return nil
+            } catch let failure as LoadFailure {
+                throw failure
             } catch {
                 if error is CancellationError || Task.isCancelled { throw CancellationError() }
                 log("\(videoId) could not be laid out in pieces (attempt \(attempt)): \(error.localizedDescription)")
@@ -522,6 +527,8 @@ actor MediaLibrary {
                 return try await fetch(videoId, pick, download: true)
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let failure as LoadFailure {
+                throw failure
             } catch {
                 if Task.isCancelled { throw CancellationError() }
                 problem = error

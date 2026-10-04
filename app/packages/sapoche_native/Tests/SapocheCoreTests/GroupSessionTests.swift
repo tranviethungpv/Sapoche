@@ -694,6 +694,73 @@ final class GroupSessionTests: XCTestCase {
         XCTAssertEqual(seen, [.skipped(byId: "dev-b", title: "Song 2")])
     }
 
+    func testThisDeviceFailingToLoadTheRoomsSongIsToldOnceHoweverOftenItRetries() async {
+        let h = harness()
+        var seen: [GroupSession.RoomEvent] = []
+        let subscription = h.session.events.observe { seen.append($0) }
+        defer { subscription.cancel() }
+        h.player.failWith = { _ in LoadFailure(reason: .offline, message: "no network") }
+        h.message(twoItemState("playing", epoch: 1, startedAt: h.serverNow() - 10_000))
+        await h.step(30_000) // the catch-up load is tried every few seconds
+        XCTAssertEqual(seen, [.loadFailed(title: "Song", reason: .offline)])
+    }
+
+    func testAFailedPreparationIsToldToThePersonToo() async {
+        let h = harness()
+        var seen: [GroupSession.RoomEvent] = []
+        let subscription = h.session.events.observe { seen.append($0) }
+        defer { subscription.cancel() }
+        h.player.failPrepare = true
+        h.message(prepare(1, item))
+        await h.run()
+        XCTAssertEqual(seen, [.loadFailed(title: "Song", reason: nil)])
+    }
+
+    func testPlayAfterGivingUpOnABrokenStreamLoadsTheRoomsSongAgain() async {
+        let h = harness()
+        var seen: [GroupSession.RoomEvent] = []
+        let subscription = h.session.events.observe { seen.append($0) }
+        defer { subscription.cancel() }
+        h.message(state("preparing", epoch: 1))
+        h.message(prepare(1, item))
+        await h.run()
+        let startAt = h.serverNow() + 1500
+        h.message(start(1, startAt))
+        await h.step(3000)
+        for _ in 0..<6 {
+            h.player.playing = false
+            h.player.loaded = nil
+            h.player.onError?(NSError(domain: "t", code: 403))
+            await h.step(2500)
+        }
+        XCTAssertFalse(h.player.playing, "given up")
+        XCTAssertEqual(seen.filter { if case .loadFailed = $0 { return true } else { return false } }.count, 1, "the person is told it stopped")
+
+        XCTAssertTrue(h.session.catchUp())
+        await h.step(3000)
+        XCTAssertEqual(h.player.loaded, item)
+        XCTAssertTrue(h.player.playing)
+        let expected = h.serverNow() - startAt
+        XCTAssertLessThan(abs(h.player.positionMs() - expected), 400, "position \(h.player.positionMs()) vs \(expected)")
+        XCTAssertFalse(h.session.catchUp(), "with the song there, play only resumes it")
+    }
+
+    func testAlonePausingWhileASongLoadsLeavesItPausedWhenItIsThere() async {
+        let h = await playingFirstOfTwo()
+        h.session.goSolo()
+        await h.step(500)
+        h.player.prepareDelayMs = 3000
+        h.session.soloNext()
+        await h.step(500)
+        XCTAssertTrue(h.session.snapshot.value.loading)
+        h.session.soloPause()
+        await h.step(500)
+        XCTAssertFalse(h.session.snapshot.value.loading)
+        await h.step(3000)
+        XCTAssertEqual(h.player.loaded, item2)
+        XCTAssertFalse(h.player.playing, "pause was pressed while it loaded")
+    }
+
     func testAfterAReconnectTheRoomIsToldAgainThatThisDeviceIsAlone() async {
         let h = await playingFirstOfTwo()
         h.session.goSolo()

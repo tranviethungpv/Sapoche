@@ -113,6 +113,8 @@ protocol StreamResolver {
 
 struct ResolveFailure: Error, LocalizedError {
     let message: String
+    /// YouTube said the video does not play (removed, private, blocked here, live), as opposed to failing to answer.
+    var unplayable = false
 
     var errorDescription: String? { message }
 }
@@ -204,6 +206,9 @@ actor YouTubeResolver: StreamResolver {
 
     func resolve(_ videoId: String) async throws -> Resolved {
         var lastProblem = "no answer"
+        var lastError: Error?
+        // Every client was told the video does not play: no other try will play it
+        var unplayable = true
         for client in clients + [clients[0]] {
             do {
                 let visitorData = try await visitorData(for: client)
@@ -224,9 +229,20 @@ actor YouTubeResolver: StreamResolver {
             } catch {
                 if Task.isCancelled { throw CancellationError() }
                 lastProblem = error.localizedDescription
+                lastError = error
+                if (error as? ResolveFailure)?.unplayable != true { unplayable = false }
             }
         }
+        if unplayable { throw LoadFailure(reason: .unplayable, message: "\(videoId) cannot be played: \(lastProblem)") }
+        if let lastError, Self.isOffline(lastError) { throw LoadFailure(reason: .offline, message: "No network to get \(videoId): \(lastProblem)") }
         throw ResolveFailure(message: "Could not get a stream for \(videoId): \(lastProblem)")
+    }
+
+    /// Whether [error] says YouTube cannot be reached at all, as opposed to being slow or refusing.
+    static func isOffline(_ error: Error) -> Bool {
+        guard let error = error as? URLError else { return false }
+        return [.notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed, .dataNotAllowed,
+                .internationalRoamingOff].contains(error.code)
     }
 
     /// An identity YouTube gives to a visitor; asking for streams with one is what keeps it from calling us a robot. A
@@ -247,11 +263,12 @@ actor YouTubeResolver: StreamResolver {
     static func resolved(_ answer: JSON, videoId: String) throws -> Resolved {
         let status = answer.at("playabilityStatus", "status").string
         guard status == "OK" else {
-            throw ResolveFailure(message: answer.at("playabilityStatus", "reason").string ?? "The video is not available (\(status ?? "no status"))")
+            throw ResolveFailure(message: answer.at("playabilityStatus", "reason").string ?? "The video is not available (\(status ?? "no status"))",
+                                 unplayable: true)
         }
         let details = answer.at("videoDetails")
         let length = details.at("lengthSeconds").int64 ?? 0
-        if details.at("isLive").bool == true || length <= 0 { throw ResolveFailure(message: "Live streams cannot be played") }
+        if details.at("isLive").bool == true || length <= 0 { throw ResolveFailure(message: "Live streams cannot be played", unplayable: true) }
 
         let sources: [AudioSource] = answer.at("streamingData", "adaptiveFormats").array.compactMap { format in
             guard let mime = format.at("mimeType").string, mime.hasPrefix("audio/mp4"), let url = format.at("url").string else { return nil }
@@ -259,7 +276,7 @@ actor YouTubeResolver: StreamResolver {
             return AudioSource(url: url, mimeType: mime, bitrateKbps: bitrate / 1000, contentLength: format.at("contentLength").int64 ?? -1,
                                itag: format.at("itag").int ?? -1, index: DashRanges.of(format))
         }.sorted { $0.bitrateKbps > $1.bitrateKbps }
-        guard let best = sources.first else { throw ResolveFailure(message: "No audio stream available for \(videoId)") }
+        guard let best = sources.first else { throw ResolveFailure(message: "No audio stream available for \(videoId)", unplayable: true) }
 
         let thumbs = details.at("thumbnail", "thumbnails").array
         let thumb = thumbs.max { ($0.at("width").int ?? 0) < ($1.at("width").int ?? 0) }?.at("url").string

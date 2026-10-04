@@ -68,6 +68,30 @@ void main() {
     }
   });
 
+  // A song tapped in a list replaces the queue: the native side reports it empty, then full, a moment apart
+  for (final (width, height) in [(390.0, 844.0), (1280.0, 800.0)]) {
+    testWidgets(
+      'at ${width}x$height a queue that empties and fills at once keeps the player bar whole',
+      (tester) async {
+        final backend = await pumpAt(tester, width, height);
+        for (var i = 0; i < 3; i++) {
+          backend.emit(
+            StateEvent(sampleRoom(local: true, songs: 0, phase: 'idle')),
+          );
+          // One frame apart: the capsule that leaves is still in the tree when the next one comes
+          await tester.pump();
+          backend.emit(
+            StateEvent(sampleRoom(local: true, phase: 'paused', loading: true)),
+          );
+          await tester.pump();
+        }
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(tester.takeException(), isNull);
+        expect(find.text('Song 0'), findsWidgets);
+      },
+    );
+  }
+
   group('beside a rail', () {
     testWidgets('the tabs are in a column on the left and open pages', (
       tester,

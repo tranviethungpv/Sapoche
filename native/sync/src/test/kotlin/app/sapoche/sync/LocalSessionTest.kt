@@ -24,7 +24,7 @@ class LocalSessionTest {
         val now: () -> Long = { scope.currentTime }
         val player = FakePlayer(now)
         val saved = mutableListOf<SavedQueue>()
-        val problems = mutableListOf<String>()
+        val problems = mutableListOf<LocalSession.Problem>()
         private var counter = 0
         val session = LocalSession(
             scope.backgroundScope,
@@ -517,7 +517,7 @@ class LocalSessionTest {
         h.player.onError?.invoke(RuntimeException("403"))
         step()
         assertEquals("Song 2", h.player.loaded?.title)
-        assertTrue(h.problems.any { it.contains("Song 1") })
+        assertTrue(h.problems.any { it.title == "Song 1" })
     }
 
     @Test
@@ -536,7 +536,7 @@ class LocalSessionTest {
             step()
         }
         assertEquals("Song 2", h.player.loaded?.title)
-        assertFalse(h.problems.any { it.contains("Song 2") }, "the tries of Song 1 are not counted for it")
+        assertFalse(h.problems.any { it.title == "Song 2" }, "the tries of Song 1 are not counted for it")
     }
 
     @Test
@@ -575,9 +575,127 @@ class LocalSessionTest {
         h.player.failPrepare = true
         h.session.add(listOf(track(1)), next = false)
         step()
-        assertTrue(h.problems.any { it.contains("Song 1") })
+        assertTrue(h.problems.any { it.title == "Song 1" })
         assertFalse(h.player.playing)
         assertEquals("Song 1", h.session.snapshot.value.current?.title, "it stays in the queue to try again")
+    }
+
+    @Test
+    fun `a song is shown as on its way until it plays`() = runTest {
+        val h = harness()
+        h.player.prepareDelayMs = 3000
+        h.session.add(listOf(track(1)), next = false)
+        step(1000)
+        assertTrue(h.session.snapshot.value.loading, "the screen must show something is happening")
+        assertFalse(h.player.playing)
+        step(2500)
+        assertFalse(h.session.snapshot.value.loading)
+        assertTrue(h.player.playing)
+    }
+
+    @Test
+    fun `pausing while a song loads no longer shows it as on its way`() = runTest {
+        val h = harness()
+        h.player.prepareDelayMs = 3000
+        h.session.add(listOf(track(1)), next = false)
+        step(1000)
+        h.session.pause()
+        assertFalse(h.session.snapshot.value.loading)
+        h.session.play()
+        assertTrue(h.session.snapshot.value.loading)
+    }
+
+    @Test
+    fun `a slow load is said to be slow, once`() = runTest {
+        val h = harness()
+        h.player.prepareDelayMs = 20_000
+        h.session.add(listOf(track(1)), next = false)
+        step(7000)
+        assertTrue(h.problems.isEmpty(), "not slow yet")
+        step(2000)
+        assertEquals(listOf(LocalSession.Problem(LocalSession.Problem.Kind.SLOW, "Song 1")), h.problems)
+        step(15_000)
+        assertTrue(h.player.playing)
+        assertEquals(1, h.problems.size)
+    }
+
+    @Test
+    fun `a load that ends quickly or is replaced is not called slow`() = runTest {
+        val h = harness()
+        h.player.prepareDelayMs = 5000
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step(4000)
+        h.session.next() // the first load is dropped before it gets slow
+        step(10_000)
+        assertTrue(h.problems.isEmpty(), "was ${h.problems}")
+        assertEquals("Song 2", h.player.loaded?.title)
+    }
+
+    @Test
+    fun `a song YouTube will not play is skipped and the person told`() = runTest {
+        val h = harness()
+        h.player.failWith = { if (it.title == "Song 1") LoadFailure(LoadFailure.Reason.UNPLAYABLE, "removed") else null }
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        assertEquals("Song 2", h.player.loaded?.title)
+        assertTrue(h.player.playing)
+        assertEquals(listOf(LocalSession.Problem(LocalSession.Problem.Kind.SKIPPED, "Song 1")), h.problems)
+    }
+
+    @Test
+    fun `skipping stops after a few songs in a row that will not play`() = runTest {
+        val h = harness()
+        h.player.failWith = { LoadFailure(LoadFailure.Reason.UNPLAYABLE, "YouTube changed") }
+        h.session.add((1..6).map(::track), next = false)
+        step()
+        assertEquals(
+            listOf(LocalSession.Problem.Kind.SKIPPED, LocalSession.Problem.Kind.SKIPPED, LocalSession.Problem.Kind.UNPLAYABLE),
+            h.problems.map { it.kind },
+        )
+        assertEquals("Song 3", h.session.snapshot.value.current?.title, "it stops instead of running through the queue")
+        assertFalse(h.player.playing)
+        assertFalse(h.session.snapshot.value.loading)
+    }
+
+    @Test
+    fun `without a network the song is kept, nothing loads on, and play tries again`() = runTest {
+        val h = harness()
+        h.player.failWith = { LoadFailure(LoadFailure.Reason.OFFLINE, "no network") }
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        assertEquals(listOf(LocalSession.Problem(LocalSession.Problem.Kind.OFFLINE, "Song 1")), h.problems)
+        assertEquals("Song 1", h.session.snapshot.value.current?.title, "not skipped: the next song would fail as well")
+        assertNull(h.player.loaded, "the player was stopped, so nothing starts by itself later")
+        assertFalse(h.session.snapshot.value.loading)
+
+        h.player.failWith = null
+        h.session.play()
+        step()
+        assertEquals("Song 1", h.player.loaded?.title)
+        assertTrue(h.player.playing)
+    }
+
+    @Test
+    fun `any other failure to load says so and keeps the song`() = runTest {
+        val h = harness()
+        h.player.failPrepare = true
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        assertEquals(listOf(LocalSession.Problem(LocalSession.Problem.Kind.FAILED, "Song 1")), h.problems)
+        assertEquals("Song 1", h.session.snapshot.value.current?.title)
+    }
+
+    @Test
+    fun `a stream that keeps breaking is skipped even while repeating that song`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step(1000)
+        h.session.setRepeat("one")
+        repeat(4) {
+            h.player.onError?.invoke(RuntimeException("403"))
+            step()
+        }
+        assertEquals("Song 2", h.player.loaded?.title, "repeating must not load the broken stream for ever")
     }
 
     @Test
@@ -589,7 +707,7 @@ class LocalSessionTest {
         step()
         assertEquals(200, h.session.snapshot.value.queue.size)
         h.session.add(listOf(track(301)), next = false)
-        assertTrue(h.problems.any { it.contains("full") })
+        assertTrue(h.problems.any { it.kind == LocalSession.Problem.Kind.QUEUE_FULL })
     }
 
     @Test

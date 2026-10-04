@@ -13,6 +13,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import app.sapoche.sync.ClockSync
 import app.sapoche.sync.Connection
 import app.sapoche.sync.GroupSession
+import app.sapoche.sync.LoadFailure
 import app.sapoche.sync.LocalSession
 import app.sapoche.sync.QueueItem
 import app.sapoche.sync.Protocol
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -72,7 +74,7 @@ class GroupController(
         port,
         queueFile.read(),
         persist = { saved -> writer.execute { runCatching { queueFile.write(saved) } } },
-        problem = { text -> _errors.tryEmit(ServerMessage.Error("unplayable", text)) },
+        problem = { problem -> _errors.tryEmit(ServerMessage.Error(problem.kind.code, problem.title)) },
         log = { EventLog.d("local", it) },
         onQueueEnd = ::autoplay,
     )
@@ -195,6 +197,8 @@ class GroupController(
         if (!autoplayOn || session != null) return
         radioJob = ownScope.launch {
             try {
+                // The song that was tapped comes first: on a slow network the two would share it
+                local.snapshot.first { !it.loading }
                 val more = moreLike(videoId, setOf(videoId), RADIO_COUNT)
                 val queue = local.snapshot.value.queue
                 if (more.isEmpty() || session != null || queue.singleOrNull()?.videoId != videoId) return@launch
@@ -293,12 +297,12 @@ class GroupController(
             newSession.events.collect { event ->
                 val members = newSession.snapshot.value.members
                 val name = { id: String -> members.firstOrNull { it.id == id }?.name.orEmpty() }
-                _notices.tryEmit(
-                    when (event) {
-                        is GroupSession.RoomEvent.Paused -> Notice("paused", name(event.byId))
-                        is GroupSession.RoomEvent.Skipped -> Notice("skipped", name(event.byId), event.title)
-                    },
-                )
+                when (event) {
+                    is GroupSession.RoomEvent.Paused -> _notices.tryEmit(Notice("paused", name(event.byId)))
+                    is GroupSession.RoomEvent.Skipped -> _notices.tryEmit(Notice("skipped", name(event.byId), event.title))
+                    // Told as the personal queue tells it: the person may be the only one not hearing the song
+                    is GroupSession.RoomEvent.LoadFailed -> _errors.tryEmit(ServerMessage.Error(loadFailureCode(event.reason), event.title))
+                }
             }
         }
         scope.launch {
@@ -444,7 +448,18 @@ class GroupController(
      * whole room would interrupt everyone else.
      */
     fun requestPlay(resumeLocally: () -> Unit) {
+        // This device could not load the room's song: load it again rather than press play on nothing
+        if (phase() == "playing" && session?.catchUp() == true) return
         if (phase() == "playing" && !exo.playWhenReady) resumeLocally() else requestPlay()
+    }
+
+    /**
+     * A controller asked to stop (a STOP button on a headset, a car, a watch): this device pauses, and in a room only
+     * this device, as when a call takes the sound. Stopping the player under the queue would leave play doing nothing.
+     */
+    fun requestStop() {
+        val s = session
+        if (s == null || s.isSolo) requestPause() else exo.pause()
     }
 
     /** Listening on this device alone: the room does not move it, and its buttons do not move the room. */
@@ -601,6 +616,13 @@ class GroupController(
         }
 
     private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** How the screen knows why this device could not load a song, see [LocalSession.Problem.Kind]. */
+    private fun loadFailureCode(reason: LoadFailure.Reason?): String = when (reason) {
+        LoadFailure.Reason.OFFLINE -> LocalSession.Problem.Kind.OFFLINE.code
+        LoadFailure.Reason.UNPLAYABLE -> LocalSession.Problem.Kind.UNPLAYABLE.code
+        null -> LocalSession.Problem.Kind.FAILED.code
+    }
 
     private companion object {
         const val KEY_DEVICE_ID = "device_id"

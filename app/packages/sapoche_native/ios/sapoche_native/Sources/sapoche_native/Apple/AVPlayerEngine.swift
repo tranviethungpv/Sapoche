@@ -50,6 +50,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var pauseAtEnd = false
     private var pausedAtEnd = false
     private var wasPlayingBeforeInterruption = false
+    /// Sound is wanted: set by play, cleared by pause and stop. A call pauses the player before the app is told of it,
+    /// so the player's own state cannot say whether to go on once the call is over; this does.
+    private var soundWanted = false
     private var cancellables: Set<AnyCancellable> = []
     private var itemCancellables: [ObjectIdentifier: AnyCancellable] = [:]
     private var outputs: [ObjectIdentifier: AVPlayerItemVideoOutput] = [:]
@@ -138,6 +141,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     func play() {
         guard current != nil else { return }
+        soundWanted = true
         activateSession()
         if pausedAtEnd {
             // The song ended with the sleep timer waiting for it; the person wants to go on, so the next one starts
@@ -156,6 +160,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     }
 
     func pause() {
+        soundWanted = false
         player.pause()
         onChange?()
     }
@@ -164,6 +169,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         cancelNext()
         rebuildTask?.cancel()
         keepTask?.cancel()
+        soundWanted = false
         player.pause()
         player.removeAllItems()
         forgetItems()
@@ -594,6 +600,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             if pauseAtEnd {
                 // The sleep timer waits for the end of this song: stay here, and go on when asked
                 pausedAtEnd = true
+                soundWanted = false
                 player.pause()
                 onSongEndPause?()
             }
@@ -636,7 +643,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         guard let rawType, let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
         switch type {
         case .began:
-            wasPlayingBeforeInterruption = player.timeControlStatus != .paused
+            wasPlayingBeforeInterruption = soundWanted
             onChange?()
         case .ended:
             let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions ?? 0)

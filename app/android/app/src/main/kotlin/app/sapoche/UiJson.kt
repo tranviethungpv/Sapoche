@@ -35,6 +35,8 @@ object UiJson {
             .put("videoHeight", videoHeight)
             .put("solo", snap.solo)
             .put("soloItemId", snap.soloItemId ?: JSONObject.NULL)
+            // A song is on its way to play on this device: outside a room, or while listening alone in one
+            .put("loading", if (inRoom) snap.loading else local.loading)
             .put("queue", JSONArray().also { array -> (if (inRoom) state?.queue else local.queue)?.forEach { array.put(item(it)) } })
             .put(
                 "members",

@@ -34,6 +34,12 @@ class MiniPlayer extends StatelessWidget {
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 280),
           switchInCurve: Curves.easeOutCubic,
+          // A new list empties the queue and fills it again at once: the capsule that was leaving is dropped as the
+          // new one comes, as the two cannot share the keys the opening player finds the capsule and its cover by
+          layoutBuilder: (shown, leaving) => Stack(
+            alignment: Alignment.center,
+            children: [if (current == null) ...leaving, ?shown],
+          ),
           transitionBuilder: (child, animation) => SlideTransition(
             position: Tween(
               begin: const Offset(0, 0.6),

@@ -596,6 +596,7 @@ RoomSnapshot sampleRoom({
 
   /// Outside a room: the personal queue.
   bool local = false,
+  bool loading = false,
 }) => RoomSnapshot(
   room: local ? null : 'ABC234',
   link: Link.connected,
@@ -606,6 +607,7 @@ RoomSnapshot sampleRoom({
   solo: solo,
   video: video,
   soloItemId: soloItemId,
+  loading: loading,
   name: name,
   ownerId: ownerId,
   guestControl: guestControl,

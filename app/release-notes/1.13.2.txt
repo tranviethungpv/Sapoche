@@ -1,0 +1,8 @@
+Music that starts, or says why it does not
+- A song you tap shows at once that it is loading, and you are told when the network is slow.
+- With no network, or a song YouTube will not play, you are told right away. A song that cannot be played is skipped.
+- Seeking on a weak or lost connection no longer closes the app.
+- After a STOP button on headphones, a car or a watch, Play starts the music again.
+- The player at the bottom no longer breaks when you tap songs quickly.
+- On a slow network songs start sooner.
+- In a room you are told when this phone could not load the song, and Play loads it again.

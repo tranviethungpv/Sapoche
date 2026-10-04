@@ -66,6 +66,8 @@ final class FakePlayer: PlayerEngine {
     var prepareCount = 0
     var prepareDelayMs: Int64 = 0
     var failPrepare = false
+    /// What loading an item throws, when it fails in a particular way; nil lets it load.
+    var failWith: ((QueueItem) -> Error?)?
     var seeks: [Int64] = []
     var queuedNext: QueueItem?
 
@@ -95,6 +97,7 @@ final class FakePlayer: PlayerEngine {
     func prepare(_ item: QueueItem, seekToMs: Int64) async throws {
         try await time.sleep(ms: prepareDelayMs)
         if failPrepare { throw NSError(domain: "FakePlayer", code: 1, userInfo: [NSLocalizedDescriptionKey: "cannot load"]) }
+        if let error = failWith?(item) { throw error }
         prepareCount += 1
         advance()
         loaded = item
