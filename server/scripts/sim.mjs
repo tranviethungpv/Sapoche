@@ -106,6 +106,11 @@ async function main() {
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);
   }
+  if (process.env.SIM_ONLY === "crossfire") {
+    await crossfireSection();
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+  }
   console.log("Health and room creation");
   const health = await fetch(`${BASE}/health`);
   const healthBody = await health.json();
@@ -243,6 +248,8 @@ async function main() {
   await ghostSection(Number(process.env.SIM_STALE_MS) || 0);
   if (process.env.SIM_RELEASE) await updateSection(JSON.parse(process.env.SIM_RELEASE));
   await playlistAndRepeatSection();
+  await autoplaySection();
+  await crossfireSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
   await shuffleSection();
   await existenceSection();
@@ -960,6 +967,222 @@ async function playlistAndRepeatSection() {
   a.send({ t: "repeat", mode: "sideways" });
   check("an unknown repeat mode is ignored", await a.stays((m) => m.t === "state", 300));
   [a, b].forEach((x) => x.close());
+}
+
+/** Autoplay: when the queue runs out one device is asked for more songs; the setting belongs to the room. */
+async function autoplaySection() {
+  console.log("Autoplay");
+  const [a, b] = await freshRoom(["Ua", "Ub"]); // Ua came first, so it owns the room
+  const track = (videoId, title) => ({ videoId, title, artist: "x", durMs: 200000 });
+  const quiet = () => [a, b].forEach((x) => (x.inbox.length = 0));
+  /** Everybody who follows the room has the item loaded and the room plays. */
+  const playing = async (followers) => {
+    const p = await all(followers, (x) => x.waitFor((m) => m.t === "prepare"));
+    await all(followers, (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    await all(followers, (x) => x.waitFor((m) => m.t === "start"));
+    return p[0];
+  };
+
+  a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+  await playing([a, b]);
+  quiet();
+  b.send({ t: "next" });
+  const idle = await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  check("autoplay is on in a new room", idle.state.autoplay === true);
+  const ask = await a.waitFor((m) => m.t === "autoplay.fill");
+  check("when the queue runs out the owner's device is asked for songs like the last one", ask.videoId === VIDEO_A && ask.title === "One" && ask.epoch === idle.state.epoch);
+  check("and nobody else is", await b.stays((m) => m.t === "autoplay.fill", 300));
+
+  a.send({ t: "queue.addMany", tracks: [track(VIDEO_B, "Two"), track(VIDEO_C, "Three")] });
+  const filled = await playing([a, b]);
+  check("the songs it sends start playing after the ones already there", filled.item.title === "Two" && filled.index === 1);
+
+  // The setting is the room's: a guest turns it off as they would repeat, and then nobody is asked
+  quiet();
+  b.send({ t: "autoplay", on: false });
+  const off = await a.waitFor((m) => m.t === "state" && m.state.autoplay === false);
+  check("a guest can turn autoplay off for the room", off.state.autoplay === false);
+  a.send({ t: "autoplay", on: "yes" });
+  check("anything but true or false is ignored", await a.stays((m) => m.t === "state", 300));
+  a.send({ t: "next" });
+  await playing([a, b]);
+  quiet();
+  a.send({ t: "next" });
+  await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  check("with autoplay off nobody is asked", (await a.stays((m) => m.t === "autoplay.fill", 400)) && (await b.stays((m) => m.t === "autoplay.fill", 100)));
+
+  // A device listening on its own is asked only when nobody else is here to ask
+  b.send({ t: "autoplay", on: true });
+  await a.waitFor((m) => m.t === "state" && m.state.autoplay === true);
+  a.send({ t: "solo", on: true });
+  b.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "Four")] });
+  await playing([b]);
+  quiet();
+  b.send({ t: "next" });
+  await b.waitFor((m) => m.t === "autoplay.fill");
+  check("a device listening alone is passed over for one that follows the room", await a.stays((m) => m.t === "autoplay.fill", 300));
+
+  // A song nobody could play does not ask for more, or a run of broken songs would never end
+  b.send({ t: "queue.addMany", tracks: [track(VIDEO_B, "Five")] });
+  const five = await b.waitFor((m) => m.t === "prepare");
+  quiet();
+  b.send({ t: "resolveFailed", epoch: five.epoch });
+  await b.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  check("a song nobody could play does not ask for more", await b.stays((m) => m.t === "autoplay.fill", 400));
+
+  // Like repeat, it is the owner's alone once guests may only add songs
+  a.send({ t: "solo", on: false });
+  a.send({ t: "room.settings", guestControl: "add" });
+  await b.waitFor((m) => m.t === "state" && m.state.guestControl === "add");
+  quiet();
+  b.send({ t: "autoplay", on: false });
+  const refused = await b.waitFor((m) => m.t === "error");
+  check("guests that may only add songs cannot change it", refused.code === "forbidden");
+  [a, b].forEach((x) => x.close());
+}
+
+/**
+ * Things happening at the same time or at awkward moments, the way public sync suites sweep them (Syncplay's "crossfire",
+ * pause during a song change, peers joining and leaving mid-barrier): the room must end up in one state that everybody agrees on.
+ */
+async function crossfireSection() {
+  console.log("Crossfire and awkward moments");
+  const track = (videoId, title, extra = {}) => ({ videoId, title, artist: "x", durMs: 200000, ...extra });
+  const quiet = (clients) => clients.forEach((x) => (x.inbox.length = 0));
+  /** What every device would be told if it asked now. */
+  const views = async (clients) => {
+    quiet(clients);
+    clients.forEach((x) => x.send({ t: "resync" }));
+    return all(clients, (x) => x.waitFor((m) => m.t === "state"));
+  };
+  const agree = (states) => states.every((m) => m.state.phase === states[0].state.phase && m.state.epoch === states[0].state.epoch && m.state.index === states[0].state.index);
+
+  // Pause while the room is still loading the song: it must not start behind the person's back
+  {
+    const [a, b] = await freshRoom(["Xa", "Xb"]);
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One"), track(VIDEO_B, "Two")] });
+    const p = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+    quiet([a, b]);
+    b.send({ t: "pause" });
+    const paused = await a.waitFor((m) => m.t === "pause" || (m.t === "state" && m.state.phase === "paused"), 1500).catch(() => null);
+    check("pausing while the song is still loading pauses the room", !!paused);
+    await all([a, b], (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    check("and the song does not start once everybody is ready", await a.stays((m) => m.t === "start", 700));
+    a.send({ t: "play" });
+    const start = await all([a, b], (x) => x.waitFor((m) => m.t === "start", 3000)).catch(() => null);
+    check("play then starts it for everybody, from where it was", !!start && start[0].startAt === start[1].startAt && start[0].positionMs === 0);
+    [a, b].forEach((x) => x.close());
+  }
+
+  // A pause and a play at the same moment: whoever the server heard last wins, and everybody is told the same
+  {
+    const [a, b, c] = await freshRoom(["Ya", "Yb", "Yc"]);
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+    const p = await all([a, b, c], (x) => x.waitFor((m) => m.t === "prepare"));
+    await all([a, b, c], (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    await all([a, b, c], (x) => x.waitFor((m) => m.t === "start"));
+    for (const gap of [0, 5, 40, 150]) {
+      a.send({ t: "pause" });
+      if (gap) await sleep(gap);
+      b.send({ t: "play" });
+      await sleep(400);
+      const seen = await views([a, b, c]);
+      check(`pause and play ${gap} ms apart leave the three devices in one state`, agree(seen), JSON.stringify(seen.map((m) => [m.state.phase, m.state.epoch])));
+      // Put the room back to playing for the next round
+      if (seen[0].state.phase === "paused") {
+        a.send({ t: "play" });
+        await sleep(200);
+      }
+    }
+    [a, b, c].forEach((x) => x.close());
+  }
+
+  // Twelve devices through one barrier, each ready at its own pace
+  {
+    const names = Array.from({ length: 12 }, (_, i) => `Z${i}`);
+    const clients = await freshRoom(names);
+    clients[0].send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+    const p = await all(clients, (x) => x.waitFor((m) => m.t === "prepare"));
+    await Promise.all(clients.map(async (x, i) => { await sleep((i * 37) % 400); x.send({ t: "ready", epoch: p[0].epoch }); }));
+    const starts = await all(clients, (x) => x.waitFor((m) => m.t === "start", 3000));
+    check("twelve devices with different loading times get one and the same start", starts.every((st) => st.startAt === starts[0].startAt && st.epoch === starts[0].epoch));
+    clients.forEach((x) => x.close());
+  }
+
+  // A device that joins in the middle of a barrier is waited for
+  {
+    const [a, b] = await freshRoom(["Wa", "Wb"]);
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+    const p = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+    const late = new Client(p[0] && a.ws.url.split("/room/")[1].split("?")[0], "Wc-id", "Wc");
+    await late.join();
+    const again = await late.waitFor((m) => m.t === "prepare");
+    check("a device joining mid-barrier is told to prepare the same song", again.epoch === p[0].epoch && again.item.title === "One");
+    await all([a, b], (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    check("and the barrier waits for it", await a.stays((m) => m.t === "start", 500));
+    late.send({ t: "ready", epoch: p[0].epoch });
+    const go = await all([a, b, late], (x) => x.waitFor((m) => m.t === "start", 2000));
+    check("then starts for all three together", go.every((st) => st.startAt === go[0].startAt));
+    [a, b, late].forEach((x) => x.close());
+  }
+
+  // A ready for an earlier song must not release the barrier of the next
+  {
+    const [a, b] = await freshRoom(["Va", "Vb"]);
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One"), track(VIDEO_B, "Two")] });
+    const first = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+    a.send({ t: "next" });
+    const second = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare" && m.epoch !== first[0].epoch));
+    quiet([a, b]);
+    await all([a, b], (x) => x.send({ t: "ready", epoch: first[0].epoch }));
+    check("a ready for the song before does not start the next one", await a.stays((m) => m.t === "start", 600));
+    await all([a, b], (x) => x.send({ t: "ready", epoch: second[0].epoch }));
+    check("the ready for the right song does", !!(await a.waitFor((m) => m.t === "start", 2000).catch(() => null)));
+    [a, b].forEach((x) => x.close());
+  }
+
+  // Everybody leaves in the middle of a song: nothing keeps running, and the room waits where it was
+  {
+    const [a, b] = await freshRoom(["Ua2", "Ub2"]);
+    const code = a.ws.url.split("/room/")[1].split("?")[0];
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+    const p = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+    await all([a, b], (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+    await sleep(1800);
+    [a, b].forEach((x) => x.close());
+    await sleep(300);
+    const back = new Client(code, "Ua2-id", "Ua2");
+    const st = await back.join(false);
+    check("a room left in the middle of a song is paused when somebody comes back", st.state.phase === "paused" && st.state.positionMs > 0 && st.state.queue.length === 1, JSON.stringify([st.state.phase, st.state.positionMs]));
+    back.close();
+  }
+
+  // The queue has a limit, and a flood of messages is slowed without hurting the room
+  {
+    const [a, b] = await freshRoom(["Qa2", "Qb2"]);
+    const hundred = Array.from({ length: 100 }, (_, i) => track(VIDEO_A, `Song ${i}`));
+    a.send({ t: "queue.addMany", tracks: hundred });
+    await a.waitFor((m) => m.t === "state" && m.state.queue.length === 100);
+    await sleep(300);
+    a.send({ t: "queue.addMany", tracks: hundred });
+    await a.waitFor((m) => m.t === "state" && m.state.queue.length === 200);
+    quiet([a, b]);
+    a.send({ t: "queue.add", ...track(VIDEO_B, "One too many") });
+    const full = await a.waitFor((m) => m.t === "error" && m.code === "queue_full");
+    check("the 201st song is refused", !!full);
+
+    quiet([a, b]);
+    for (let i = 0; i < 80; i++) b.send({ t: "ping", c0: Date.now() });
+    const limited = await b.waitFor((m) => m.t === "error" && m.code === "rate_limited", 2000).catch(() => null);
+    check("a flood from one device is answered with rate_limited", !!limited);
+    await sleep(1200);
+    quiet([a, b]);
+    b.send({ t: "ping", c0: Date.now() });
+    check("and that device is served again a moment later", !!(await b.waitFor((m) => m.t === "pong", 1500).catch(() => null)));
+    check("the other device was never held up", !!(await (async () => { a.send({ t: "ping", c0: Date.now() }); return a.waitFor((m) => m.t === "pong", 1500).catch(() => null); })()));
+    [a, b].forEach((x) => x.close());
+  }
 }
 
 main().catch((error) => {

@@ -155,6 +155,13 @@ class GroupController(
         exo.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) sleep.songEnded()
+                // Another app took the sound for good, or the headphones went: in a room this device stays quiet
+                // until its person presses play, whatever the room does meanwhile
+                if (!playWhenReady && (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS ||
+                        reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY)
+                ) {
+                    session?.hold()
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -183,6 +190,25 @@ class GroupController(
                 throw e
             } catch (e: Exception) {
                 EventLog.d("local", "autoplay found nothing: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * The room's queue ran out and the server asked this device for songs like the last one, as [autoplay] does for the
+     * personal queue. Nothing is sent when the room has moved on by the time they arrive, or when none were found.
+     */
+    private fun fillRoom(ask: ServerMessage.AutoplayFill) {
+        scope.launch {
+            try {
+                val more = moreLike(ask.videoId, queue().map { it.videoId }.toSet(), AUTOPLAY_COUNT)
+                if (more.isEmpty() || session?.snapshot?.value?.state?.epoch != ask.epoch) return@launch
+                EventLog.d("sync", "autoplay adds ${more.size} songs like '${ask.title}' to the room")
+                send(Protocol.queueAddMany(more))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                EventLog.d("sync", "autoplay found nothing for the room: ${e.javaClass.simpleName}: ${e.message}")
             }
         }
     }
@@ -262,6 +288,7 @@ class GroupController(
         val newClient = RoomClient(baseUrl, code, id, name, scope, clock, now, log, Config.authHeaders, create)
         newClient.onMessage = {
             if (it is ServerMessage.Error) _errors.tryEmit(it)
+            if (it is ServerMessage.AutoplayFill) fillRoom(it)
             newSession.onMessage(it)
         }
         newClient.onAvatar = { memberId, _, data ->
@@ -450,16 +477,39 @@ class GroupController(
     fun requestPlay(resumeLocally: () -> Unit) {
         // This device could not load the room's song: load it again rather than press play on nothing
         if (phase() == "playing" && session?.catchUp() == true) return
+        val s = session
+        // Held back from outside while the room plays on: join the room where it is, not where the sound was lost
+        if (s != null && !s.isSolo && phase() == "playing" && (s.isHeld || !exo.playWhenReady)) {
+            s.resumeHere()
+            return
+        }
         if (phase() == "playing" && !exo.playWhenReady) resumeLocally() else requestPlay()
     }
 
     /**
-     * A controller asked to stop (a STOP button on a headset, a car, a watch): this device pauses, and in a room only
-     * this device, as when a call takes the sound. Stopping the player under the queue would leave play doing nothing.
+     * Something outside the app asked this device to pause or stop: a headset button, AirPods taken out, a watch, the
+     * notification. In a room it pauses only this device, as when a call takes the sound, because the room is everybody's
+     * and such a command cannot tell a person's choice from an ear coming out. Pausing the room is what the buttons in the
+     * app do. Stopping the player under the queue would leave play doing nothing, so a stop pauses too.
      */
-    fun requestStop() {
+    fun pauseFromOutside() {
         val s = session
-        if (s == null || s.isSolo) requestPause() else exo.pause()
+        if (s == null || s.isSolo) {
+            requestPause()
+        } else {
+            s.hold()
+            exo.pause()
+        }
+    }
+
+    /**
+     * This device follows a room that is playing but its own player is paused: a headset, a call or an app that took the
+     * sound did that here and the room plays on. The play button then shows play, and resumes only this device.
+     */
+    private fun heldBack(): Boolean {
+        val s = session ?: return false
+        val silent = !exo.playWhenReady || exo.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE
+        return !s.isSolo && phase() == "playing" && (s.isHeld || (s.isInSync && silent))
     }
 
     /** Listening on this device alone: the room does not move it, and its buttons do not move the room. */
@@ -483,7 +533,10 @@ class GroupController(
     }
 
     // Outside a room the buttons drive the personal queue; in a room they act on the room, or on this device alone
-    fun requestPlay(): Boolean = act({ it.play() }, { it.soloPlay() }) { send(Protocol.play()) }
+    fun requestPlay(): Boolean {
+        session?.unhold()
+        return act({ it.play() }, { it.soloPlay() }) { send(Protocol.play()) }
+    }
     fun requestPause(): Boolean = act({ it.pause() }, { it.soloPause() }) { send(Protocol.pause()) }
     fun requestNext(): Boolean = act({ it.next() }, { it.soloNext() }) { send(Protocol.next()) }
     fun requestPrev(): Boolean = act({ it.prev() }, { it.soloPrev() }) { send(Protocol.prev()) }
@@ -515,6 +568,7 @@ class GroupController(
     fun requestKick(memberId: String) = send(Protocol.kick(memberId))
     fun requestRoomName(name: String) = send(Protocol.roomName(name))
     fun requestRoomSettings(guestControl: String) = send(Protocol.roomSettings(guestControl))
+    fun requestRoomAutoplay(on: Boolean) = send(Protocol.autoplay(on))
 
     /** Runs the action for wherever the buttons act: outside a room, alone in a room, or on the room itself. */
     private inline fun act(onLocal: (LocalSession) -> Unit, onSolo: (GroupSession) -> Unit, onRoom: () -> Boolean): Boolean {
@@ -557,6 +611,8 @@ class GroupController(
         val videoHeight: Int = 0,
         /** The picture is wanted but this song plays without one. */
         val noPicture: Boolean = false,
+        /** Paused on this device while the room plays on, see [heldBack]. */
+        val heldBack: Boolean = false,
     )
 
     /** Snapshot of the local player for the UI; call on the main thread. */
@@ -574,6 +630,7 @@ class GroupController(
             videoWidth = exo.videoSize.width,
             videoHeight = exo.videoSize.height,
             noPicture = port.pictureMissing(),
+            heldBack = heldBack(),
         )
     }
 

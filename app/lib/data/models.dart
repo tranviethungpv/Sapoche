@@ -302,6 +302,7 @@ class RoomSnapshot {
     this.name,
     this.ownerId,
     this.guestControl = GuestControl.all,
+    this.roomAutoplay,
   });
 
   /// Room code, or null when this device is not in a room. Outside a room this describes the
@@ -340,6 +341,10 @@ class RoomSnapshot {
   /// The member who owns the room, when it has an owner.
   final String? ownerId;
   final GuestControl guestControl;
+
+  /// The room carries on with similar songs when its queue runs out. Null outside a room and when the server is too
+  /// old to say, in which case nothing carries on.
+  final bool? roomAutoplay;
 
   bool get inRoom => room != null;
 
@@ -417,6 +422,7 @@ class RoomSnapshot {
     name: json['name'] as String?,
     ownerId: json['ownerId'] as String?,
     guestControl: GuestControl.parse(json['guestControl'] as String?),
+    roomAutoplay: json['roomAutoplay'] as bool?,
     queue: [
       for (final e in json['queue'] as List<dynamic>? ?? const [])
         QueueEntry.fromJson(e as Map<String, dynamic>),
@@ -449,6 +455,7 @@ class PlayerPosition {
     this.videoWidth = 0,
     this.videoHeight = 0,
     this.noPicture = false,
+    this.heldBack = false,
   });
 
   final bool playing;
@@ -467,6 +474,10 @@ class PlayerPosition {
   /// The picture is wanted but this song plays without one: none could be had.
   final bool noPicture;
 
+  /// This device follows a room that plays on, but its own player is paused: a headset, a call or another app did it
+  /// here. The room's phase says playing, this device is silent.
+  final bool heldBack;
+
   factory PlayerPosition.fromJson(Map<String, dynamic> json) => PlayerPosition(
     playing: json['playing'] as bool? ?? false,
     buffering: json['buffering'] as bool? ?? false,
@@ -477,6 +488,7 @@ class PlayerPosition {
     videoWidth: (json['videoWidth'] as num?)?.toInt() ?? 0,
     videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 0,
     noPicture: json['noPicture'] as bool? ?? false,
+    heldBack: json['heldBack'] as bool? ?? false,
   );
 }
 

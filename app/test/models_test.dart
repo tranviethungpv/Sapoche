@@ -35,6 +35,23 @@ void main() {
     expect(snapshot.upNext, isEmpty);
   });
 
+  test(
+    'the room autoplay is the room\'s, and unknown to a server that is too old',
+    () {
+      expect(
+        RoomSnapshot.fromJson({'room': 'X', 'roomAutoplay': false})
+            .roomAutoplay,
+        isFalse,
+      );
+      expect(RoomSnapshot.fromJson({'room': 'X'}).roomAutoplay, isNull);
+    },
+  );
+
+  test('a position says whether this device was paused from outside', () {
+    expect(PlayerPosition.fromJson({'heldBack': true}).heldBack, isTrue);
+    expect(PlayerPosition.fromJson({'playing': true}).heldBack, isFalse);
+  });
+
   test('an index past the end of the queue has no current song', () {
     final snapshot = RoomSnapshot.fromJson({
       'room': 'X',

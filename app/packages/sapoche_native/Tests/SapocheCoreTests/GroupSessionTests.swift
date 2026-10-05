@@ -194,6 +194,80 @@ final class GroupSessionTests: XCTestCase {
         XCTAssertEqual(h.session.snapshot.value.state?.positionMs, 2400)
     }
 
+    func testItPlaysInStepFromTheMomentTheRoomStartsUntilTheRoomPauses() async {
+        let h = harness()
+        h.message(state("preparing", epoch: 1))
+        h.message(prepare(1, item))
+        await h.run()
+        XCTAssertFalse(h.session.isInSync, "loaded, not started")
+
+        h.message(start(1, h.serverNow() + 1500))
+        await h.step(1600)
+        XCTAssertTrue(h.session.isInSync)
+
+        h.message(.pause(epoch: 2, positionMs: 2400, by: nil))
+        await h.run()
+        XCTAssertFalse(h.session.isInSync)
+    }
+
+    func testAPauseDuringTheBarrierHoldsTheLoadedSongAndTheStartAfterItPlaysIt() async {
+        let h = harness()
+        h.message(state("preparing", epoch: 1))
+        h.message(prepare(1, item))
+        await h.run()
+        h.message(.pause(epoch: 2, positionMs: 0, by: "dev-b"))
+        await h.step(3000)
+        XCTAssertFalse(h.player.playing, "nothing starts behind the pause")
+        XCTAssertEqual(h.session.snapshot.value.state?.phase, "paused")
+
+        h.message(start(3, h.serverNow() + 1500))
+        await h.step(1600)
+        XCTAssertTrue(h.player.playing)
+    }
+
+    func testADeviceHeldFromOutsideLoadsWhatTheRoomDoesButStaysQuietUntilItsPersonPressesPlay() async {
+        let h = harness()
+        h.message(state("preparing", epoch: 1))
+        h.message(prepare(1, item))
+        await h.run()
+        h.session.hold() // another app took the sound
+        h.message(start(1, h.serverNow() + 1500))
+        await h.step(1600)
+        XCTAssertFalse(h.player.playing, "the room's start does not take the sound back")
+        XCTAssertTrue(h.session.isInSync)
+        XCTAssertTrue(h.session.isHeld)
+
+        // The room plays on; the person comes back 20 seconds later and presses play
+        await h.step(20_000)
+        h.player.seeks.removeAll()
+        h.session.resumeHere()
+        await h.run()
+        XCTAssertTrue(h.player.playing)
+        XCTAssertFalse(h.session.isHeld)
+        let landed = h.player.seeks.last ?? -1
+        XCTAssertTrue((19_500...21_000).contains(landed), "it went to where the room is (\(landed) ms), not back to where the sound was lost")
+    }
+
+    func testASongTheRoomMovesToWhileTheDeviceIsHeldIsLoadedAndLeftPaused() async {
+        let h = harness()
+        h.message(twoItemState("preparing", epoch: 1))
+        h.message(prepare(1, item))
+        await h.run()
+        h.message(start(1, h.serverNow() + 1500))
+        await h.step(2000)
+        XCTAssertTrue(h.player.playing)
+        h.session.hold()
+        h.player.pause()
+
+        h.message(twoItemState("preparing", epoch: 2, index: 1))
+        h.message(prepare(2, item2, index: 1))
+        await h.run()
+        h.message(start(2, h.serverNow() + 1500))
+        await h.step(2000)
+        XCTAssertEqual(h.player.loaded?.title, "Song 2")
+        XCTAssertFalse(h.player.playing, "someone else's skip does not start the sound here")
+    }
+
     func testPauseStopsPlaybackAtTheGivenPosition() async {
         let h = harness()
         h.message(prepare(1, item))

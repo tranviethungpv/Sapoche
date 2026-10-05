@@ -203,6 +203,7 @@ class GroupSession(
                 is ServerMessage.Advance -> onAdvance(message)
                 is ServerMessage.Pong -> Unit // consumed by the connection layer
                 is ServerMessage.Avatar -> Unit // consumed by the connection layer too
+                is ServerMessage.AutoplayFill -> Unit // answered by the controller, which can look for songs
                 is ServerMessage.Error -> log("server error ${message.code}: ${message.message}")
             }
         }
@@ -213,6 +214,7 @@ class GroupSession(
      * right after, and work still waiting in it would never run and leave the room's song playing.
      */
     fun close() {
+        held = false
         cancelPlayback()
         player.stop()
         loadedItemId = null
@@ -224,6 +226,52 @@ class GroupSession(
     val isSolo: Boolean get() = solo
 
     /**
+     * Something outside the room stopped this device: another app took the sound, a headset or AirPods asked to pause.
+     * While held, what the room does (the next song, a start) loads here but does not play, so that this device does
+     * not take the sound back by itself; its person presses play, see [resumeHere].
+     */
+    private var held = false
+    val isHeld: Boolean get() = held
+
+    fun hold() {
+        held = true
+    }
+
+    fun unhold() {
+        held = false
+    }
+
+    /**
+     * The person pressed play on a held device while the room plays on: go to where the room is now and play from there,
+     * rather than play on from where the sound was lost and be corrected a moment later.
+     */
+    fun resumeHere() {
+        scope.launch {
+            held = false
+            val started = startedAtServer
+            val item = state?.current
+            if (solo || item == null || state?.phase != "playing") return@launch
+            if (started == null || loadedItemId != item.id) {
+                // Not in step yet (the song came while held): load it and start where the room is
+                cancelPlayback()
+                startJob = scope.launch { catchUpPlaying(item, state?.startedAt ?: return@launch) }
+                return@launch
+            }
+            val target = clock.toServer(nowMs()) - started + trimMs + seekCostMs + startBiasMs
+            player.seekTo(target.coerceAtLeast(0))
+            player.play()
+            drift.reset()
+            player.setSpeed(1f)
+            filter.reset(nowMs())
+            learnBias = false // a start after being held says nothing about this device's output delay
+            log("resumed here at ${target}ms after being held")
+        }
+    }
+
+    /** The device plays in step with the room: the song is loaded, started, and the drift is being watched. */
+    val isInSync: Boolean get() = startedAtServer != null
+
+    /**
      * Stop following the room and keep playing on this device alone. Whatever is playing goes on
      * exactly as it is; from now on the room's play, pause and skip only update what is shown, and
      * this device's own buttons act on this device only.
@@ -232,6 +280,7 @@ class GroupSession(
         scope.launch {
             if (solo) return@launch
             solo = true
+            held = false
             prepareJob?.cancel()
             startJob?.cancel()
             driftJob?.cancel()
@@ -265,6 +314,7 @@ class GroupSession(
         scope.launch {
             if (!solo) return@launch
             solo = false
+            held = false
             soloJob?.cancel()
             handledEpoch = -1 // whatever the room says next counts, even if its epoch looks familiar
             preloaded = null
@@ -704,7 +754,7 @@ class GroupSession(
 
     /** The item is already loaded (e.g. after a reconnect): realign to the room's clock and make sure it plays. */
     private suspend fun resumeLoaded(item: QueueItem, startedAt: Long) {
-        if (!player.isPlaying()) {
+        if (!player.isPlaying() && !held) {
             val target = clock.toServer(nowMs()) - startedAt + seekCostMs
             player.seekTo(target.coerceAtLeast(0))
             player.play()
@@ -741,19 +791,19 @@ class GroupSession(
             player.seekTo(positionMs + startBiasMs)
             val wait = startLocal - nowMs()
             if (wait > 0) delay(wait)
-            player.play()
-            log("play() at scheduled time, position $positionMs")
+            if (!held) player.play()
+            log("${if (held) "held, not playing" else "play()"} at scheduled time, position $positionMs")
         } else {
             val late = nowMs() - startLocal
             val target = positionMs + late.coerceAtLeast(0) + seekCostMs + startBiasMs
             player.seekTo(target)
-            player.play()
-            log("play() late by ${late}ms, skipped to $target")
+            if (!held) player.play()
+            log("${if (held) "held, not playing" else "play()"} late by ${late}ms, skipped to $target")
         }
         drift.reset()
         player.setSpeed(1f)
         startedAtServer = startAtServer - positionMs
-        learnBias = true
+        learnBias = !held
         startDriftLoop()
         syncPreload()
     }

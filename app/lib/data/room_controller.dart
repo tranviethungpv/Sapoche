@@ -215,13 +215,14 @@ class RoomController extends ChangeNotifier {
   }
 
   /// Sound is coming or is already playing (used for the play/pause glyph). Outside a room, and while
-  /// listening alone, this is about this device's own player, not the room.
+  /// listening alone, this is about this device's own player, not the room; in a room it is the room's, unless
+  /// this device was paused by itself ([PlayerPosition.heldBack]) and the room plays on without it.
   bool get isPlaying => _snapshot.ownPlayback
       ? (_soloPlaying ??
             (player.value.playing ||
                 player.value.buffering ||
                 _snapshot.loading))
-      : _snapshot.wantsPlaying;
+      : _snapshot.wantsPlaying && !player.value.heldBack;
 
   /// The room started something but nothing is audible yet: everyone is still loading. On this device's own player,
   /// the song is being found or buffered.
@@ -284,6 +285,9 @@ class RoomController extends ChangeNotifier {
 
   Future<void> setGuestControl(GuestControl mode) =>
       _run(() => _backend.setGuestControl(mode));
+
+  Future<void> setRoomAutoplay(bool on) =>
+      _run(() => _backend.setRoomAutoplay(on));
 
   /// Owner only: remove a member from the room.
   Future<void> kick(Member member) => _run(() => _backend.kick(member.id));

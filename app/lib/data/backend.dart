@@ -172,6 +172,9 @@ abstract class Backend {
   /// Owner only.
   Future<void> setGuestControl(GuestControl mode);
 
+  /// Whether the room carries on with similar songs when its queue runs out. Restricted like repeat.
+  Future<void> setRoomAutoplay(bool on);
+
   Future<void> rename(String name);
 
   /// Opens the system share sheet with [text].
@@ -500,6 +503,9 @@ class NativeBackend implements Backend {
   @override
   Future<void> setGuestControl(GuestControl mode) =>
       _call('roomSettings', {'guestControl': mode.name});
+
+  @override
+  Future<void> setRoomAutoplay(bool on) => _call('roomAutoplay', {'on': on});
 
   @override
   Future<void> rename(String name) => _call('rename', {'name': name});

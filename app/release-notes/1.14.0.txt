@@ -1,0 +1,5 @@
+Rooms play on by themselves, and your phone's own controls stay yours
+- When a room runs out of songs it now carries on with similar songs, like listening on your own. The switch is in Up Next and belongs to the room.
+- Taking out your AirPods or pressing pause on a headset now pauses only your phone. The room plays on for everybody else.
+- When a call or another app takes the sound, the play button now shows play and says "Paused here · room plays on". Your phone stays quiet until you press play, then it joins the room where it is.
+- Pressing pause while a song is still loading now holds the room instead of being ignored.

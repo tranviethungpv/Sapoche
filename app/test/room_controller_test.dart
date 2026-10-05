@@ -73,6 +73,33 @@ void main() {
     expect(backend.calls.last, 'pause');
   });
 
+  test('a device paused from outside while the room plays on shows play, and play resumes it', () async {
+    backend.emit(StateEvent(sampleRoom(phase: 'playing')));
+    backend.emit(
+      const PositionEvent(PlayerPosition(playing: true, positionMs: 5000)),
+    );
+    await settle();
+    expect(controller.isPlaying, isTrue);
+
+    // A headset, AirPods taken out, a call: this device is silent, the room is not
+    backend.emit(
+      const PositionEvent(PlayerPosition(positionMs: 5000, heldBack: true)),
+    );
+    await settle();
+    expect(controller.snapshot.phase, 'playing');
+    expect(controller.isPlaying, isFalse);
+    expect(controller.playState.value.$1, isFalse);
+    await controller.togglePlay();
+    expect(backend.calls.last, 'play');
+
+    // Back in step: the button follows the room again
+    backend.emit(
+      const PositionEvent(PlayerPosition(playing: true, positionMs: 6000)),
+    );
+    await settle();
+    expect(controller.isPlaying, isTrue);
+  });
+
   test('preparing counts as starting, so the button shows progress', () async {
     backend.emit(StateEvent(sampleRoom(phase: 'preparing')));
     await settle();
@@ -507,6 +534,8 @@ void main() {
     expect(backend.calls.last, 'roomName Weekend');
     await controller.setGuestControl(GuestControl.add);
     expect(backend.calls.last, 'guestControl add');
+    await controller.setRoomAutoplay(false);
+    expect(backend.calls.last, 'roomAutoplay false');
     await controller.kick(const Member(id: 'b', name: 'Binh', ready: true));
     expect(backend.calls.last, 'kick b');
   });

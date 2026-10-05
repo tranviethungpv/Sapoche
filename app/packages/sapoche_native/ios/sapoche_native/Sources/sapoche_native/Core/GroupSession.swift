@@ -189,6 +189,7 @@ final class GroupSession {
             case let .advance(epoch, index, startedAt): self.onAdvance(epoch: epoch, index: index, startedAt: startedAt)
             case .pong: break // consumed by the connection layer
             case .avatar: break // consumed by the connection layer too
+            case .autoplayFill: break // answered by the controller, which can look for songs
             case let .error(code, message): self.log("server error \(code): \(message)")
             }
         }
@@ -197,6 +198,7 @@ final class GroupSession {
     /// Stop everything and silence the player. Done at once, not through [scope]: the caller cancels the scope right
     /// after, and work still waiting in it would never run and leave the room's song playing.
     func close() {
+        held = false
         cancelPlayback()
         player.stop()
         loadedItemId = nil
@@ -207,6 +209,43 @@ final class GroupSession {
 
     var isSolo: Bool { solo }
 
+    /// Something outside the room stopped this device: another app took the sound, a headset or AirPods asked to pause.
+    /// While held, what the room does (the next song, a start) loads here but does not play, so that this device does not
+    /// take the sound back by itself; its person presses play, see `resumeHere`.
+    private var held = false
+    var isHeld: Bool { held }
+
+    func hold() { held = true }
+
+    func unhold() { held = false }
+
+    /// The person pressed play on a held device while the room plays on: go to where the room is now and play from there,
+    /// rather than play on from where the sound was lost and be corrected a moment later.
+    func resumeHere() {
+        scope.launch { [weak self] in
+            guard let self else { return }
+            self.held = false
+            guard !self.solo, let s = self.state, let item = s.current, s.phase == "playing" else { return }
+            guard let started = self.startedAtServer, self.loadedItemId == item.id else {
+                // Not in step yet (the song came while held): load it and start where the room is
+                self.cancelPlayback()
+                self.startJob = self.scope.launch { [weak self] in try await self?.catchUpPlaying(item, s.startedAt) }
+                return
+            }
+            let target = self.clock.toServer(self.time.nowMs()) - started + self.trimMs + self.seekCostMs + self.startBiasMs
+            try await self.player.seekTo(max(target, 0))
+            self.player.play()
+            self.drift.reset()
+            self.player.setSpeed(1)
+            self.filter.reset(self.time.nowMs())
+            self.learnBias = false // a start after being held says nothing about this device's output delay
+            self.log("resumed here at \(target)ms after being held")
+        }
+    }
+
+    /// The device plays in step with the room: the song is loaded, started, and the drift is being watched.
+    var isInSync: Bool { startedAtServer != nil }
+
     /// Stop following the room and keep playing on this device alone. Whatever is playing goes on exactly as it is;
     /// from now on the room's play, pause and skip only update what is shown, and this device's own buttons act on
     /// this device only.
@@ -214,6 +253,7 @@ final class GroupSession {
         scope.launch { [weak self] in
             guard let self, !self.solo else { return }
             self.solo = true
+            self.held = false
             self.prepareJob?.cancel()
             self.startJob?.cancel()
             self.driftJob?.cancel()
@@ -246,6 +286,7 @@ final class GroupSession {
         scope.launch { [weak self] in
             guard let self, self.solo else { return }
             self.solo = false
+            self.held = false
             self.soloJob?.cancel()
             self.handledEpoch = -1 // whatever the room says next counts, even if its epoch looks familiar
             self.preloaded = nil
@@ -700,7 +741,7 @@ final class GroupSession {
 
     /// The item is already loaded (e.g. after a reconnect): realign to the room's clock and make sure it plays.
     private func resumeLoaded(_ item: QueueItem, _ startedAt: Int64) async throws {
-        if !player.isPlaying() {
+        if !player.isPlaying() && !held {
             let target = clock.toServer(time.nowMs()) - startedAt + seekCostMs
             try await player.seekTo(max(target, 0))
             player.play()
@@ -736,19 +777,19 @@ final class GroupSession {
             try await player.seekTo(positionMs + startBiasMs)
             let wait = startLocal - time.nowMs()
             if wait > 0 { try await time.sleep(ms: wait) }
-            player.play()
-            log("play() at scheduled time, position \(positionMs)")
+            if !held { player.play() }
+            log("\(held ? "held, not playing" : "play()") at scheduled time, position \(positionMs)")
         } else {
             let late = time.nowMs() - startLocal
             let target = positionMs + max(late, 0) + seekCostMs + startBiasMs
             try await player.seekTo(target)
-            player.play()
-            log("play() late by \(late)ms, skipped to \(target)")
+            if !held { player.play() }
+            log("\(held ? "held, not playing" : "play()") late by \(late)ms, skipped to \(target)")
         }
         drift.reset()
         player.setSpeed(1)
         startedAtServer = startAtServer - positionMs
-        learnBias = true
+        learnBias = !held
         startDriftLoop()
         syncPreload()
     }

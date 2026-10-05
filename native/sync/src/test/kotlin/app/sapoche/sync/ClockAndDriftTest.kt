@@ -189,6 +189,20 @@ class ProtocolTest {
     }
 
     @Test
+    fun `builds the autoplay message and parses the room's setting and the request to fill the queue`() {
+        assertEquals("""{"t":"autoplay","on":false}""", Protocol.autoplay(false))
+
+        val text = """{"t":"state","serverNow":1,"you":"a","state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0,"autoplay":true},"members":[]}"""
+        assertEquals(true, (Protocol.parse(text) as ServerMessage.State).state.autoplay)
+        // A server older than protocol 9 does not say, which is not the same as saying it is off
+        val older = Protocol.parse(text.replace(""","autoplay":true""", "")) as ServerMessage.State
+        assertEquals(null, older.state.autoplay)
+
+        val fill = Protocol.parse("""{"t":"autoplay.fill","epoch":5,"videoId":"bNp9pn0ni3I","title":"Song"}""")
+        assertEquals(ServerMessage.AutoplayFill(5, "bNp9pn0ni3I", "Song"), fill)
+    }
+
+    @Test
     fun `builds an advanced report`() {
         val text = Protocol.advanced(epoch = 4, itemId = "q2", startedAt = 1790660600123)
         assertEquals("""{"t":"advanced","epoch":4,"itemId":"q2","startedAt":1790660600123}""", text)

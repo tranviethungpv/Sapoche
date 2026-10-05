@@ -170,6 +170,9 @@ class FakeBackend implements Backend {
   Future<void> setGuestControl(GuestControl mode) =>
       _record('guestControl ${mode.name}');
 
+  @override
+  Future<void> setRoomAutoplay(bool on) => _record('roomAutoplay $on');
+
   List<Track> likedSongs = [];
   List<HistoryEntry> recentSongs = [];
 
@@ -593,6 +596,7 @@ RoomSnapshot sampleRoom({
   String? name,
   String? ownerId,
   GuestControl guestControl = GuestControl.all,
+  bool? roomAutoplay,
 
   /// Outside a room: the personal queue.
   bool local = false,
@@ -611,6 +615,7 @@ RoomSnapshot sampleRoom({
   name: name,
   ownerId: ownerId,
   guestControl: guestControl,
+  roomAutoplay: roomAutoplay,
   members:
       members ??
       const [

@@ -555,6 +555,19 @@ final class WireTests: XCTestCase {
         XCTAssertEqual(state.repeatMode, "off")
         XCTAssertEqual(state.guestControl, "all")
         XCTAssertNil(state.name)
+        XCTAssertNil(state.autoplay, "an older server not saying is not the same as saying it is off")
+    }
+
+    func testTheRoomsAutoplayIsReadSentAndAsked() throws {
+        guard case let .state(_, _, state, _, _)? = Wire.parse(
+            #"{"t":"state","serverNow":0,"you":"me","protocol":9,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0,"autoplay":true},"members":[]}"#
+        ) else { return XCTFail("not a state") }
+        XCTAssertEqual(state.autoplay, true)
+        XCTAssertEqual(Wire.parse(#"{"t":"autoplay.fill","epoch":5,"videoId":"v","title":"Song"}"#), .autoplayFill(epoch: 5, videoId: "v", title: "Song"))
+        XCTAssertNil(Wire.parse(#"{"t":"autoplay.fill","epoch":5}"#))
+        let sent = try XCTUnwrap(JSON.parse(Wire.autoplay(false))?.object)
+        XCTAssertEqual(sent["t"] as? String, "autoplay")
+        XCTAssertEqual(sent["on"] as? Bool, false)
     }
 
     func testTheOtherMessages() {

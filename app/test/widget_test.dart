@@ -2502,5 +2502,16 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.textContaining('In sync'), findsOneWidget);
+
+    // Stopped on this device from outside while the room plays on: not "syncing", and the button says play
+    backend.emit(
+      const PositionEvent(
+        PlayerPosition(positionMs: 5000, durationMs: 200000, heldBack: true),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('Paused here'), findsOneWidget);
+    expect(find.textContaining('Syncing'), findsNothing);
+    expect(find.textContaining('In sync'), findsNothing);
   });
 }

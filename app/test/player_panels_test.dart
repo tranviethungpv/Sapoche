@@ -440,6 +440,52 @@ void main() {
       },
     );
 
+    testWidgets(
+      'in a room the autoplay is the room\'s, and a switch turns it off',
+      (tester) async {
+        final backend = await openPlayer(
+          tester,
+          snapshot: sampleRoom(roomAutoplay: true),
+        );
+        backend.radioResult = const SongRadio(tracks: [song]);
+        await openPanel(tester, 'Up Next');
+
+        expect(find.text('Autoplay'), findsOneWidget);
+        expect(
+          find.text(
+            'The room keeps playing similar songs when the queue runs out.',
+          ),
+          findsOneWidget,
+        );
+        expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+        await tester.tap(find.byType(Switch));
+        await tester.pump();
+        expect(backend.calls.last, 'roomAutoplay false');
+      },
+    );
+
+    testWidgets(
+      'guests that may only add songs see the room\'s autoplay but cannot change it',
+      (tester) async {
+        final backend = await openPlayer(
+          tester,
+          snapshot: sampleRoom(
+            roomAutoplay: true,
+            guestControl: GuestControl.add,
+            ownerId: 'b',
+            members: const [
+              Member(id: 'me', name: 'Anna', ready: true),
+              Member(id: 'b', name: 'Binh', ready: true, owner: true),
+            ],
+          ),
+        );
+        backend.radioResult = const SongRadio(tracks: [song]);
+        await openPanel(tester, 'Up Next');
+
+        expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+      },
+    );
+
     testWidgets('say so when YouTube Music cannot be reached', (tester) async {
       final backend = await openPlayer(tester);
       backend.failWith = StateError('offline');

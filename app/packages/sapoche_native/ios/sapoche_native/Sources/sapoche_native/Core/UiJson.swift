@@ -24,6 +24,7 @@ enum UiJson {
             "name": (inRoom ? state?.name : nil) ?? NSNull(),
             "ownerId": (inRoom ? state?.ownerId : nil) ?? NSNull(),
             "guestControl": inRoom ? state?.guestControl ?? "all" : "all",
+            "roomAutoplay": (inRoom ? state?.autoplay : nil) ?? NSNull(),
             "trimMs": trimMs,
             "video": video,
             "videoHeight": videoHeight,
@@ -65,6 +66,7 @@ enum UiJson {
             "videoWidth": player.videoWidth,
             "videoHeight": player.videoHeight,
             "noPicture": player.noPicture,
+            "heldBack": player.heldBack,
         ] as [String: Any])
     }
 

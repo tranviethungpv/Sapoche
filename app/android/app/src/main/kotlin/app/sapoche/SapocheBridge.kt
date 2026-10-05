@@ -260,6 +260,7 @@ class SapocheBridge(
                     // Play, pause and seek should show at once instead of at the next tick
                     val listener = object : Player.Listener {
                         override fun onIsPlayingChanged(isPlaying: Boolean) = pushPosition()
+                        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = pushPosition()
                         override fun onPlaybackStateChanged(playbackState: Int) = pushPosition()
                         override fun onPositionDiscontinuity(
                             oldPosition: Player.PositionInfo,
@@ -574,6 +575,10 @@ class SapocheBridge(
                     "roomSettings" -> {
                         requireRoom(group)
                         group.requestRoomSettings(call.argument<String>("guestControl").orEmpty())
+                    }
+                    "roomAutoplay" -> {
+                        requireRoom(group)
+                        group.requestRoomAutoplay(call.argument<Boolean>("on") == true)
                     }
                     "play" -> group.requestPlay { group.playLocally() }
                     "pause" -> group.requestPause()

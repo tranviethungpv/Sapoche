@@ -30,6 +30,7 @@ object UiJson {
             .put("name", state?.name.takeIf { inRoom } ?: JSONObject.NULL)
             .put("ownerId", state?.ownerId.takeIf { inRoom } ?: JSONObject.NULL)
             .put("guestControl", if (inRoom) state?.guestControl ?: "all" else "all")
+            .put("roomAutoplay", state?.autoplay.takeIf { inRoom } ?: JSONObject.NULL)
             .put("trimMs", trimMs)
             .put("video", video)
             .put("videoHeight", videoHeight)
@@ -107,6 +108,7 @@ object UiJson {
             .put("videoWidth", player.videoWidth)
             .put("videoHeight", player.videoHeight)
             .put("noPicture", player.noPicture)
+            .put("heldBack", player.heldBack)
             .toString()
 
     /** The sleep timer was set, ran out or was turned off. */

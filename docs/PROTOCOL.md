@@ -16,11 +16,12 @@ Connection: a WebSocket to `wss://<worker>/room/<CODE>`. Every room is a Durable
   "name": "Family",
   "ownerId": "u1",
   "guestControl": "all | add",
+  "autoplay": true,
   "members": [{ "id": "u1", "name": "Ann", "ready": true, "solo": false, "away": false, "owner": true, "av": "3fa9c01e" }]
 }
 ```
 
-`name` and `ownerId` may be absent. See section 5c for the owner and the room name. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d.
+`name` and `ownerId` may be absent. See section 5c for the owner and the room name. `autoplay` says whether the room carries on by itself when its queue runs out (section 5e); it is absent when the server is older than protocol 9. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d.
 
 - `phase=playing`: the current position is `serverNow - startedAt`.
 - `phase=paused`: the position is `positionMs`.
@@ -36,7 +37,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 ## 2b. Authentication
 
-`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Sapoche-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":8}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
+`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Sapoche-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":9}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
 
 `GET /room/<CODE>/info` is read-only and creates nothing: `{"exists":true,"name":"Family","members":2,"playing":true,"title":"..."}`; `exists:false` when the room never existed or has expired. The app uses it for the list of recent rooms.
 
@@ -60,9 +61,10 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 | `queue.shuffle` | | Shuffle the **upcoming** songs, the current one keeps its place. When the room is `idle` (the queue has run out) it shuffles everything and plays from the first song. With fewer than 2 songs it does nothing |
 | `jump` | `id` | Play this song from the start now (through the barrier) |
 | `queue.move` | `id`, `toIndex` | Change the position |
-| `play` / `pause` | | Control. `play` when the room is `idle` at the last song (the queue has run out) plays again **from the first song**, not only the last one |
+| `play` / `pause` | | Control. `play` when the room is `idle` at the last song (the queue has run out) plays again **from the first song**, not only the last one. `pause` while the room is `preparing` (the song is still loading) holds it there: the phase becomes `paused`, the barrier is dropped, and a later `play` starts it |
 | `seek` | `positionMs` | Seek |
 | `next` / `prev` | | Change song; `next` at the last song with `repeat=all` goes back to the first |
+| `autoplay` | `on` | Turn the room's autoplay on or off (section 5e). Restricted like `repeat`: once the owner lets guests only add songs, only the owner may. Anything but `true` or `false` is ignored. Only servers of protocol 9 or newer know it, and an older one answers with `unknown_type`, so a client sends it only after a `state` that carries `autoplay` |
 | `repeat` | `mode` | `off`: stop after the last song. `all`: when the queue ends, play it again from the start. `one`: when the current song ends, play it again (the `next` button still goes to the next song). Unknown values are ignored |
 | `solo` | `on` | Start (`true`) or stop (`false`) listening alone: the room's commands no longer steer this device and the room does not wait for it at the barrier. The server forgets this flag when the socket drops, so the client sends it again after every reconnect |
 | `resync` | | Ask the server to send `state` again (and `prepare` if the room is preparing) to this socket only; used when coming back to the room after listening alone |
@@ -76,12 +78,13 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 | `t` | Fields | Meaning |
 |---|---|---|
-| `state` | the whole state, `protocol` | Sent on joining and on big changes; `protocol` is the server's protocol version (currently 8) |
+| `state` | the whole state, `protocol` | Sent on joining and on big changes; `protocol` is the server's protocol version (currently 9) |
 | `prepare` | `epoch`, song, `seekToMs`, `by?` | Prepare the song: resolve, buffer, then send `ready`. `by` is the `clientId` of whoever just changed the song; absent when the room moves on by itself |
 | `start` | `epoch`, `startAt` (server time), `by?` | Start playing at this moment |
 | `pause` | `epoch`, `positionMs`, `by?` | Stop at the position |
 | `advance` | `epoch`, `index`, `startedAt` | The whole room moves to the next song without the barrier, position 0 heard at `startedAt` |
 | `pong` | `c0`, `s1` | Answer to a ping |
+| `autoplay.fill` | `epoch`, `videoId`, `title` | Sent to one device only, when autoplay is on and the queue has run out (section 5e): find songs like `videoId` and answer with `queue.addMany` |
 | `avatar` | `id`, `av?`, `data?` | The picture of `id` and its fingerprint; both absent when that member has none |
 | `members` | `members[]` | The member list, sent when someone joins, leaves, renames, changes solo mode, the owner changes, or someone switches between present and `away` |
 | `error` | `code`, `message` | Codes today: `not_joined`, `bad_message`, `bad_json`, `rate_limited`, `unknown_type`, `bad_video`, `queue_full`, `unplayable`, `room_not_found` (with close 4004), `room_full` (with close 1008), `forbidden` (a command only the owner may give), `removed` (with close 4001) |
@@ -130,6 +133,12 @@ A member's picture is not part of the member list: that list is sent whenever so
 
 The server keeps the pictures in storage, one per client id (a socket attachment holds only 2 KiB), and drops those of members who are no longer here. A device sends `avatar.set` once per connection, right after the first `state`; a device that comes back within the lifetime of the room keeps the picture it had, so it does not disappear from the others' screens for the moment of a reconnect. Setting the same picture again changes nothing for the others.
 
+## 5e. Autoplay
+
+When the queue runs out, a personal queue carries on with songs like the last one, and so can a room. The server cannot find the songs itself (YouTube blocks it), so it asks one device. `autoplay` in the state is the room's own setting, on in a new room, and any member may change it with `autoplay` as they may change `repeat`.
+
+The server asks when the room goes `idle` because the last item ended or because somebody pressed next at the last item, `autoplay` is on and a device is here. It does not ask after an item that nobody could load (a run of broken songs would never end), when an item is removed or the queue is cleared, or when `repeat` keeps the room going. It sends `autoplay.fill` to a single device: one that follows the room before one listening on its own, the owner's before the others', then whoever has been here longest. A device that is `away` is not asked. The device finds songs like `videoId`, leaves out what is in the queue, and sends them with `queue.addMany`; an idle room that gets songs plays the first of them. A device drops the answer when the room's `epoch` is no longer the one in the request, since somebody has already started something else. If the device finds nothing (no network, no result) the room simply stays idle, as it did before.
+
 ## 6. Correcting drift while playing
 
 Every 500 ms the client computes `drift = playerPosition - expectedPosition`:
@@ -156,6 +165,7 @@ Measurements on a real phone show that the position ExoPlayer reports has a sawt
 - A long pause: in a room, not playing and with the screen not shown for more than 20 minutes, the client closes the WebSocket (a ping every 30 seconds keeps the radio awake all day); it reconnects when the screen is shown or when a command arrives from the notification (the command is held until the connection is up). The server sees a member leaving, and the room lets everybody steer if that member was the owner.
 - A connection that died without closing: the client uses exactly one ping (30 seconds) and treats the connection as dead if there is no `pong` for 45 seconds, then reconnects; there is no OkHttp protocol-level ping any more.
 - The device stops by itself (a call, another app taking the audio) while the room is playing: the play button only resumes on that device, the room is not restarted; a large drift is handled with one seek.
+- Pause from outside the app (a headset button, AirPods taken out, a watch, the notification or lock screen) is the same: it pauses only this device and sends nothing to the room, because such a command cannot tell a person's choice from an ear coming out. The buttons inside the app are the room's. The app shows play on a device in that state (with "Paused here · room plays on"), and such a device is **held**: what the room does meanwhile (the next song, a start) loads there but does not play, so it never takes the sound back from the other app by itself. Its person presses play, and the device goes to where the room is now and plays from there. The same holds when another app takes the audio for good or the headphones go away (a call that ends and says the sound may go on resumes by itself). A device that goes solo, or follows the room again, is no longer held.
 - The Durable Object sleeps (Hibernation): the state is in storage and is not lost when it wakes up.
 - Messages with an old `epoch` are ignored.
 

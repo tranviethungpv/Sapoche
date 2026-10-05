@@ -80,6 +80,7 @@ const CONTROL_MESSAGES = new Set([
   "next",
   "prev",
   "repeat",
+  "autoplay",
   "room.name",
 ]);
 
@@ -111,6 +112,7 @@ function defaultState(): RoomState {
     readyIds: [],
     failedIds: [],
     guestControl: "all",
+    autoplay: true,
     alarms: {},
   };
 }
@@ -199,6 +201,7 @@ export class Room extends DurableObject<Env> {
       case "next": return this.onNext(me.clientId);
       case "prev": return this.onPrev(me.clientId);
       case "repeat": return this.onRepeat(msg.mode);
+      case "autoplay": return this.onAutoplay(msg.on);
       case "solo": return this.onSolo(me, msg.on === true);
       case "avatar.set": return this.onAvatarSet(me, msg.data);
       case "avatar.get": return this.onAvatarGet(ws, msg.id);
@@ -600,7 +603,8 @@ export class Room extends DurableObject<Env> {
     if (members.every((m) => this.s.failedIds.includes(m.id))) {
       const item = this.s.queue[this.s.index];
       this.broadcast({ t: "error", code: "unplayable", message: `Nobody could load: ${item?.title ?? "item"}` });
-      return this.onNext();
+      // No autoplay after a song nobody could play: if its successors were broken too it would never end
+      return this.onNext(undefined, false);
     }
     await this.startPlayback();
   }
@@ -629,6 +633,18 @@ export class Room extends DurableObject<Env> {
   }
 
   private async onPause(by: string): Promise<void> {
+    if (this.s.phase === "preparing") {
+      // Pressed while the song is still loading: hold it there, or it would start behind the person's back
+      this.s.phase = "paused";
+      this.s.epoch++;
+      this.s.readyIds = [];
+      this.s.failedIds = [];
+      delete this.s.alarms.barrier;
+      await this.armAlarm();
+      this.broadcastMembers();
+      this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs, by });
+      return;
+    }
     if (this.s.phase !== "playing") return;
     this.s.positionMs = this.currentPositionMs();
     this.s.phase = "paused";
@@ -648,18 +664,48 @@ export class Room extends DurableObject<Env> {
     this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs, by });
   }
 
-  /** [by] is set when a person asked for it; when the queue simply reaches the next item it is left out. */
-  private async onNext(by?: string): Promise<void> {
+  /**
+   * [by] is set when a person asked for it; when the queue simply reaches the next item it is left out. When this
+   * runs the queue out, autoplay asks for more unless [askForMore] is false.
+   */
+  private async onNext(by?: string, askForMore = true): Promise<void> {
     if (this.s.phase === "idle") return;
     if (this.s.index + 1 < this.s.queue.length) return this.begin(this.s.index + 1, 0, by);
     if (this.s.repeat === "all") return this.begin(0, 0, by);
-    return this.goIdle();
+    await this.goIdle();
+    if (askForMore) this.askForMoreSongs();
   }
 
   /** The current item played to its end: repeat it, or move on like the next button does. */
   private async onFinished(): Promise<void> {
     if (this.s.repeat === "one" && this.s.queue[this.s.index]) return this.begin(this.s.index, 0);
     return this.onNext();
+  }
+
+  private async onAutoplay(on: unknown): Promise<void> {
+    if (typeof on !== "boolean" || on === this.s.autoplay) return;
+    this.s.autoplay = on;
+    await this.save();
+    this.broadcastState();
+  }
+
+  /**
+   * The queue ran out. The server cannot fetch songs itself (YouTube blocks it), so one device that is here is asked to:
+   * the owner's if it is a device following the room, else whoever has been here longest.
+   */
+  private askForMoreSongs(): void {
+    const last = this.s.queue[this.s.index];
+    if (!this.s.autoplay || !last) return;
+    const limit = Number(this.env.STALE_MS) || AWAY_AFTER_MS;
+    const now = Date.now();
+    const rank = (att: Attachment) => (att.solo ? 2 : 0) + (att.clientId === this.s.ownerId ? 0 : 1);
+    const asked = this.ctx
+      .getWebSockets()
+      .filter((ws) => ws.readyState === WebSocket.OPEN)
+      .map((ws) => ({ ws, att: ws.deserializeAttachment() as Attachment | null }))
+      .filter((c): c is { ws: WebSocket; att: Attachment } => c.att !== null && now - c.att.lastSeen <= limit)
+      .sort((x, y) => rank(x.att) - rank(y.att) || (x.att.joinedAt ?? 0) - (y.att.joinedAt ?? 0))[0];
+    if (asked) this.send(asked.ws, { t: "autoplay.fill", epoch: this.s.epoch, videoId: last.videoId, title: last.title });
   }
 
   private async onRepeat(mode: Repeat): Promise<void> {

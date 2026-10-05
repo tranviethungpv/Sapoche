@@ -47,6 +47,8 @@ data class RoomState(
     val ownerId: String? = null,
     /** While the owner is here: `all` lets every member control the room, `add` lets guests only add songs. */
     val guestControl: String = "all",
+    /** Whether the room carries on with songs like the last one when its queue runs out; null when the server is older than protocol 9. */
+    val autoplay: Boolean? = null,
 ) {
     val current: QueueItem? get() = queue.getOrNull(index)
 }
@@ -98,6 +100,10 @@ sealed interface ServerMessage {
     @Serializable
     data class Pong(val c0: Long, val s1: Long) : ServerMessage
 
+    /** The room's queue ran out and this device is asked to find songs like [videoId] and send them with [Protocol.queueAddMany]. */
+    @Serializable
+    data class AutoplayFill(val epoch: Long, val videoId: String, val title: String) : ServerMessage
+
     /** The picture of member [id] as base64, with its fingerprint [av]; both are null when the member has none. */
     @Serializable
     data class Avatar(val id: String, val av: String? = null, val data: String? = null) : ServerMessage
@@ -121,6 +127,7 @@ object Protocol {
                 "pause" -> json.decodeFromJsonElement<ServerMessage.Pause>(obj)
                 "advance" -> json.decodeFromJsonElement<ServerMessage.Advance>(obj)
                 "pong" -> json.decodeFromJsonElement<ServerMessage.Pong>(obj)
+                "autoplay.fill" -> json.decodeFromJsonElement<ServerMessage.AutoplayFill>(obj)
                 "avatar" -> json.decodeFromJsonElement<ServerMessage.Avatar>(obj)
                 "error" -> json.decodeFromJsonElement<ServerMessage.Error>(obj)
                 else -> null
@@ -191,6 +198,9 @@ object Protocol {
     }
 
     fun repeat(mode: String) = msg("repeat") { put("mode", mode) }
+
+    /** The room's autoplay, on or off. Only servers of protocol 9 or newer know it. */
+    fun autoplay(on: Boolean) = msg("autoplay") { put("on", on) }
 
     fun queueRemove(id: String) = msg("queue.remove") { put("id", id) }
 

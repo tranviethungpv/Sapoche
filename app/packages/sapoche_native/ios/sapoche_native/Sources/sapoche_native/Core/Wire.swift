@@ -86,11 +86,13 @@ struct RoomState: Equatable {
     var ownerId: String?
     /// While the owner is here: `all` lets every member control the room, `add` lets guests only add songs.
     var guestControl: String = "all"
+    /// Whether the room carries on with songs like the last one when its queue runs out; nil when the server is older than protocol 9.
+    var autoplay: Bool?
 
     var current: QueueItem? { queue.indices.contains(index) ? queue[index] : nil }
 
     init(queue: [QueueItem], index: Int, phase: String, startedAt: Int64, positionMs: Int64, epoch: Int64,
-         repeatMode: String = "off", name: String? = nil, ownerId: String? = nil, guestControl: String = "all") {
+         repeatMode: String = "off", name: String? = nil, ownerId: String? = nil, guestControl: String = "all", autoplay: Bool? = nil) {
         self.queue = queue
         self.index = index
         self.phase = phase
@@ -101,6 +103,7 @@ struct RoomState: Equatable {
         self.name = name
         self.ownerId = ownerId
         self.guestControl = guestControl
+        self.autoplay = autoplay
     }
 
     init?(_ json: JSON) {
@@ -115,7 +118,8 @@ struct RoomState: Equatable {
             repeatMode: json["repeat"].string ?? "off",
             name: json["name"].string,
             ownerId: json["ownerId"].string,
-            guestControl: json["guestControl"].string ?? "all"
+            guestControl: json["guestControl"].string ?? "all",
+            autoplay: json["autoplay"].bool
         )
     }
 }
@@ -168,6 +172,8 @@ enum ServerMessage: Equatable {
     /// The room moved on to the item at [index]; position 0 of it was heard at server time [startedAt].
     case advance(epoch: Int64, index: Int, startedAt: Int64)
     case pong(c0: Int64, s1: Int64)
+    /// The room's queue ran out and this device is asked to find songs like [videoId] and send them with `Wire.queueAddMany`.
+    case autoplayFill(epoch: Int64, videoId: String, title: String)
     /// The picture of member [id] as base64, with its fingerprint [av]; both are nil when the member has none.
     case avatar(id: String, av: String?, data: String?)
     case error(code: String, message: String)
@@ -205,6 +211,9 @@ enum Wire {
         case "pong":
             guard let c0 = json["c0"].int64, let s1 = json["s1"].int64 else { return nil }
             return .pong(c0: c0, s1: s1)
+        case "autoplay.fill":
+            guard let epoch = json["epoch"].int64, let videoId = json["videoId"].string, let title = json["title"].string else { return nil }
+            return .autoplayFill(epoch: epoch, videoId: videoId, title: title)
         case "avatar":
             guard let id = json["id"].string else { return nil }
             return .avatar(id: id, av: json["av"].string, data: json["data"].string)
@@ -258,6 +267,9 @@ enum Wire {
     }
 
     static func repeatMode(_ mode: String) -> String { msg("repeat", ["mode": mode]) }
+
+    /// The room's autoplay, on or off. Only servers of protocol 9 or newer know it.
+    static func autoplay(_ on: Bool) -> String { msg("autoplay", ["on": on]) }
 
     static func queueRemove(_ id: String) -> String { msg("queue.remove", ["id": id]) }
 

@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 export interface QueueItem {
   id: string;
@@ -55,6 +55,8 @@ export interface RoomState {
   /** Client id of the owner; absent while nobody owns the room (it is empty, or predates owners). */
   ownerId?: string;
   guestControl: GuestControl;
+  /** Whether the room carries on with songs like the last one when its queue runs out. */
+  autoplay: boolean;
   /** When each pending job is due, in server time. */
   alarms: Partial<Record<AlarmKind, number>>;
 }
@@ -115,6 +117,8 @@ export type ClientMessage =
   | { t: "next" }
   | { t: "prev" }
   | { t: "repeat"; mode: Repeat }
+  /** Turns the room's autoplay on or off, restricted like [repeat]. Protocol 9. */
+  | { t: "autoplay"; on: boolean }
   /** Start or stop listening on one's own. A solo device never holds the room back. */
   | { t: "solo"; on: boolean }
   /** Ask for the room's current state again, e.g. when rejoining after listening alone. */
@@ -142,6 +146,11 @@ export type ServerMessage =
   /** The room moved on to the next item without a barrier; devices that already did the same keep playing. */
   | { t: "advance"; epoch: number; index: number; startedAt: number }
   | { t: "pong"; c0: number; s1: number }
+  /**
+   * The queue ran out and autoplay is on: sent to one device that is here, which answers with `queue.addMany` of songs
+   * like [videoId]. Protocol 9.
+   */
+  | { t: "autoplay.fill"; epoch: number; videoId: string; title: string }
   /** The picture of [id] ([av] is its fingerprint); both are absent when that member has none. */
   | { t: "avatar"; id: string; av?: string; data?: string }
   | { t: "error"; code: string; message: string };

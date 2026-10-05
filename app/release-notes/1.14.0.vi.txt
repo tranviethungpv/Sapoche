@@ -1,0 +1,5 @@
+Phòng tự phát tiếp, và điều khiển của máy bạn chỉ là của máy bạn
+- Khi phòng hết bài, phòng sẽ tiếp tục phát những bài tương tự, như khi nghe một mình. Công tắc nằm ở Up Next và là của cả phòng.
+- Tháo AirPods hoặc bấm tạm dừng trên tai nghe giờ chỉ dừng máy của bạn. Mọi người trong phòng vẫn nghe tiếp.
+- Khi cuộc gọi hoặc app khác chiếm âm thanh, nút phát hiện đúng là phát và ghi "Đã dừng ở máy này · phòng vẫn phát". Máy bạn im cho tới khi bạn bấm phát, rồi vào lại phòng ở đúng chỗ đang phát.
+- Bấm tạm dừng lúc bài còn đang tải giờ giữ phòng lại thay vì bị bỏ qua.

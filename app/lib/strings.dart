@@ -461,6 +461,8 @@ abstract final class S {
   static String get buffering => _t('Loading…', 'Đang tải…');
   static String get inSync => _t('In sync', 'Đã đồng bộ');
   static String get syncing => _t('Syncing…', 'Đang đồng bộ…');
+  static String get pausedHere =>
+      _t('Paused here · room plays on', 'Đã dừng ở máy này · phòng vẫn phát');
   static String get catchingUp => _t('Catching up', 'Đang bắt kịp');
   static String get soloOut => _t('Waiting for others', 'Đang đợi người khác');
   static String get onYourOwn => _t('On your own', 'Nghe riêng');
@@ -588,6 +590,10 @@ abstract final class S {
   static String get autoplayNote => _t(
     'Similar songs keep playing when the queue runs out.',
     'Những bài tương tự sẽ tiếp tục phát khi hàng đợi hết.',
+  );
+  static String get roomAutoplayNote => _t(
+    'The room keeps playing similar songs when the queue runs out.',
+    'Phòng sẽ tiếp tục phát những bài tương tự khi hàng đợi hết.',
   );
   static String get nothingAfter =>
       _t('Nothing is queued after this song.', 'Không có bài nào sau bài này.');

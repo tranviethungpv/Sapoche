@@ -165,6 +165,8 @@ final class FakePlayer: PlayerEngine {
 
     var onChange: (() -> Void)?
     var onSongEndPause: (() -> Void)?
+    var onHold: (() -> Void)?
+    var onResumeAfterInterruption: (() -> Void)?
     var volume: Float = 1
     var pauseAtSongEnd = false
     var resumedLocally = 0

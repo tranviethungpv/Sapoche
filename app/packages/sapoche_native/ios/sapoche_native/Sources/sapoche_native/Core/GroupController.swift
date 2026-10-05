@@ -10,6 +10,8 @@ struct PlayerInfo: Equatable {
     var videoHeight = 0
     /// The picture is wanted but this song plays without one.
     var noPicture = false
+    /// Paused on this device while the room plays on, see `GroupController.heldBack`.
+    var heldBack = false
 }
 
 /// A [PlayerPort] with what the controller needs beyond the session's needs: volume for the sleep timer's fade, a way to
@@ -37,6 +39,12 @@ protocol PlayerEngine: PlayerPort {
 
     /// Called when the player paused at the end of a song because of [setPauseAtSongEnd], or the queue ran out.
     var onSongEndPause: (() -> Void)? { get set }
+
+    /// Called when something outside the app stopped the sound: a call, another app, the headphones going away.
+    var onHold: (() -> Void)? { get set }
+
+    /// Called when the system says an interruption is over and the sound may go on; without it the engine plays by itself.
+    var onResumeAfterInterruption: (() -> Void)? { get set }
 
     /// Play songs with their picture ([on]) or sound only.
     func setVideoMode(_ on: Bool)
@@ -204,6 +212,10 @@ final class GroupController {
         engine.onSongEndPause = { [weak self] in
             self?.ownScope.launch { [weak self] in self?.sleep.songEnded() }
         }
+        // A call, another app or the headphones stopped the sound: in a room this device stays quiet until its person
+        // presses play (or the system says the interruption is over), whatever the room does meanwhile
+        engine.onHold = { [weak self] in self?.session?.hold() }
+        engine.onResumeAfterInterruption = { [weak self] in self?.requestPlay() }
         engine.onChange = { [weak self] in
             guard let self else { return }
             self.recorder?.changed()
@@ -259,6 +271,24 @@ final class GroupController {
                 throw CancellationError()
             } catch {
                 EventLog.d("local", "autoplay found nothing: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// The room's queue ran out and the server asked this device for songs like the last one, as [autoplay] does for the
+    /// personal queue. Nothing is sent when the room has moved on by the time they arrive, or when none were found.
+    private func fillRoom(epoch: Int64, videoId: String, title: String) {
+        scope.launch { [weak self] in
+            guard let self else { return }
+            do {
+                let more = try await self.moreLike(videoId, Set(self.queue().map(\.videoId)), Self.autoplayCount)
+                if more.isEmpty || self.session?.snapshot.value.state?.epoch != epoch { return }
+                EventLog.d("sync", "autoplay adds \(more.count) songs like '\(title)' to the room")
+                self.send(Wire.queueAddMany(more))
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                EventLog.d("sync", "autoplay found nothing for the room: \(error.localizedDescription)")
             }
         }
     }
@@ -336,6 +366,7 @@ final class GroupController {
                                    time: time, log: log, headers: settings.authHeaders, create: create, sockets: sockets)
         newClient.onMessage = { [weak self] message in
             if case let .error(code, text) = message { self?.errors.emit(ControllerError(code: code, message: text)) }
+            if case let .autoplayFill(epoch, videoId, title) = message { self?.fillRoom(epoch: epoch, videoId: videoId, title: title) }
             newSession.onMessage(message)
         }
         newClient.onAvatar = { [weak self] memberId, _, data in
@@ -500,11 +531,31 @@ final class GroupController {
     func requestPlay(resumeLocally: Bool = true) -> Bool {
         // This device could not load the room's song: load it again rather than press play on nothing
         if phase() == "playing", session?.catchUp() == true { return true }
-        if resumeLocally && phase() == "playing" && !engine.wantsSound && !isSolo {
-            engine.resumeLocally()
+        // Held back from outside while the room plays on: join the room where it is, not where the sound was lost
+        if let session, !session.isSolo, phase() == "playing", session.isHeld || (resumeLocally && !engine.wantsSound) {
+            session.resumeHere()
             return true
         }
+        session?.unhold()
         return act({ $0.play() }, { $0.soloPlay() }) { send(Wire.play()) }
+    }
+
+    /// Something outside the app asked this device to pause: a headset button, AirPods taken out, the lock screen. In a
+    /// room it pauses only this device, as when a call takes the sound, because the room is everybody's and such a command
+    /// cannot tell a person's choice from an ear coming out. Pausing the room is what the buttons in the app do.
+    @discardableResult
+    func pauseFromOutside() -> Bool {
+        guard let session, !session.isSolo else { return requestPause() }
+        session.hold()
+        engine.pause()
+        return true
+    }
+
+    /// This device follows a room that is playing but its own player is paused: a headset, a call or an app that took the
+    /// sound did that here and the room plays on. The play button then shows play, and resumes only this device.
+    private var heldBack: Bool {
+        guard let session else { return false }
+        return !session.isSolo && phase() == "playing" && (session.isHeld || (session.isInSync && !engine.wantsSound))
     }
 
     /// Listening on this device alone: the room does not move it, and its buttons do not move the room.
@@ -566,6 +617,7 @@ final class GroupController {
     @discardableResult func requestKick(_ memberId: String) -> Bool { send(Wire.kick(memberId)) }
     @discardableResult func requestRoomName(_ name: String) -> Bool { send(Wire.roomName(name)) }
     @discardableResult func requestRoomSettings(_ guestControl: String) -> Bool { send(Wire.roomSettings(guestControl: guestControl)) }
+    @discardableResult func requestRoomAutoplay(_ on: Bool) -> Bool { send(Wire.autoplay(on)) }
 
     /// Runs the action for wherever the buttons act: outside a room, alone in a room, or on the room itself.
     private func act(_ onLocal: (LocalSession) -> Void, _ onSolo: (GroupSession) -> Void, _ onRoom: () -> Bool) -> Bool {
@@ -596,7 +648,9 @@ final class GroupController {
         if roomCode == nil, let restored = local.restoredPositionMs {
             return PlayerInfo(playing: false, buffering: false, positionMs: restored, durationMs: local.snapshot.value.current?.durMs ?? 0)
         }
-        return engine.playerInfo()
+        var info = engine.playerInfo()
+        info.heldBack = heldBack
+        return info
     }
 
     /// Phase of the room as last announced by the server, or nil when not joined.

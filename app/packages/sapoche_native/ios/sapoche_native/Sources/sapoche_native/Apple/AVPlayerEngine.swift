@@ -17,6 +17,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     var onError: ((Error) -> Void)?
     var onChange: (() -> Void)?
     var onSongEndPause: (() -> Void)?
+    var onHold: (() -> Void)?
+    var onResumeAfterInterruption: (() -> Void)?
 
     /// Where textures are made for the picture; given by the plugin once Flutter is up.
     var textures: FlutterTextureRegistry?
@@ -648,12 +650,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         switch type {
         case .began:
             wasPlayingBeforeInterruption = soundWanted
+            onHold?()
             onChange?()
         case .ended:
             let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions ?? 0)
             if wasPlayingBeforeInterruption && options.contains(.shouldResume) {
                 log("the interruption is over, playing again")
-                play()
+                if let onResumeAfterInterruption { onResumeAfterInterruption() } else { play() }
             }
             wasPlayingBeforeInterruption = false
         @unknown default:
@@ -665,6 +668,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private func routeChanged(_ rawReason: UInt?) {
         guard let rawReason, AVAudioSession.RouteChangeReason(rawValue: rawReason) == .oldDeviceUnavailable else { return }
         log("the output went away, pausing")
+        onHold?()
         pause()
     }
 

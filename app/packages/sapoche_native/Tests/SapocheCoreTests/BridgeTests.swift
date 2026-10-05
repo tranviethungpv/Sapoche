@@ -416,7 +416,7 @@ final class BridgeTests: XCTestCase {
         let room = #"""
         {"t":"state","serverNow":1000,"you":"dev-a","protocol":6,
          "state":{"queue":[{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":200000,"addedBy":"dev-a"}],
-                  "index":0,"phase":"paused","startedAt":0,"positionMs":0,"epoch":2,"repeat":"off","name":"Party","ownerId":"dev-a","guestControl":"all"},
+                  "index":0,"phase":"paused","startedAt":0,"positionMs":0,"epoch":2,"repeat":"off","name":"Party","ownerId":"dev-a","guestControl":"all","autoplay":true},
          "members":[{"id":"dev-a","name":"Me","ready":true,"owner":true}]}
         """#
         socket.receive(room.replacingOccurrences(of: "\n", with: ""))
@@ -425,6 +425,7 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(state["room"] as? String, "ABC234")
         XCTAssertEqual(state["name"] as? String, "Party")
         XCTAssertEqual(state["ownerId"] as? String, "dev-a")
+        XCTAssertEqual(state["roomAutoplay"] as? Bool, true)
         XCTAssertEqual(state["connection"] as? String, "connected")
         XCTAssertEqual((state["queue"] as? [[String: Any]])?.first?["id"] as? String, "q1")
         XCTAssertEqual((state["members"] as? [[String: Any]])?.first?["owner"] as? Bool, true)
@@ -434,7 +435,8 @@ final class BridgeTests: XCTestCase {
         _ = try await call("play")
         _ = try await call("seek", ["ms": 5000])
         _ = try await call("roomName", ["name": "New"])
-        XCTAssertEqual(socket.sent.compactMap { JSON.parse($0)?.at("t").string }, ["play", "seek", "room.name"])
+        _ = try await call("roomAutoplay", ["on": false])
+        XCTAssertEqual(socket.sent.compactMap { JSON.parse($0)?.at("t").string }, ["play", "seek", "room.name", "autoplay"])
 
         // The room tells this phone to get ready, then to start
         socket.receive(#"{"t":"prepare","epoch":3,"index":0,"item":{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":200000,"addedBy":"dev-a"},"seekToMs":0}"#)
@@ -573,6 +575,103 @@ final class GroupControllerTests: XCTestCase {
         await time.advance(100)
         XCTAssertFalse(engine.playing)
         XCTAssertEqual(controller.local.snapshot.value.index, 0, "the next song waits for the person to press play")
+    }
+
+    func testWhenTheRoomsQueueRunsOutTheDeviceAskedSendsSongsLikeTheLastOne() async throws {
+        let sockets = FakeSockets()
+        let more = TrackRef(videoId: "more0000001", title: "More", artist: "A", thumb: nil, durMs: 200_000)
+        let room = GroupController(
+            engine: FakePlayer(time: time), prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("r.json")),
+            config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets,
+            moreLike: { [unowned self] id, _, _ in
+                self.asked.append(id)
+                try await self.time.sleep(ms: 50) // finding songs takes a while
+                return [more]
+            }
+        )
+        room.join(code: "ABC234", name: "Me", create: false)
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        socket.receive(#"{"t":"state","serverNow":1,"you":"me","protocol":9,"state":{"queue":[{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":9,"addedBy":"me"}],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":4,"autoplay":true},"members":[]}"#)
+        await time.advance(10)
+        socket.sent.removeAll()
+
+        socket.receive(#"{"t":"autoplay.fill","epoch":4,"videoId":"video000001","title":"Song 1"}"#)
+        await time.advance(100)
+        XCTAssertEqual(asked, ["video000001"])
+        let many = try XCTUnwrap(socket.sent.compactMap { JSON.parse($0)?.object }.first { $0["t"] as? String == "queue.addMany" })
+        XCTAssertEqual((many["tracks"] as? [[String: Any]])?.first?["videoId"] as? String, "more0000001")
+
+        // The room moved on while the songs were being found: they are not sent
+        socket.sent.removeAll()
+        socket.receive(#"{"t":"autoplay.fill","epoch":4,"videoId":"video000001","title":"Song 1"}"#)
+        socket.receive(#"{"t":"state","serverNow":2,"you":"me","protocol":9,"state":{"queue":[{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":9,"addedBy":"me"}],"index":0,"phase":"preparing","startedAt":0,"positionMs":0,"epoch":5,"autoplay":true},"members":[]}"#)
+        await time.advance(100)
+        XCTAssertFalse(socket.sent.contains { $0.contains("queue.addMany") })
+        room.release()
+    }
+
+    /// A headset button, AirPods taken out, the lock screen: they pause this device, and the room plays on.
+    func testAPauseFromOutsideStopsOnlyThisDeviceWhileTheRoomPlaysOn() async throws {
+        let sockets = FakeSockets()
+        let player = FakePlayer(time: time)
+        let room = GroupController(
+            engine: player, prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("t.json")),
+            config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets
+        )
+        room.join(code: "ABC234", name: "Me", create: false)
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        let item = #"{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":200000,"addedBy":"me"}"#
+        socket.receive(#"{"t":"state","serverNow":0,"you":"me","protocol":9,"state":{"queue":[\#(item)],"index":0,"phase":"playing","startedAt":0,"positionMs":0,"epoch":3},"members":[]}"#)
+        await time.advance(3000)
+        XCTAssertTrue(player.playing)
+        XCTAssertFalse(room.playerInfo().heldBack)
+
+        socket.sent.removeAll()
+        room.pauseFromOutside()
+        XCTAssertFalse(player.playing, "this device went quiet")
+        XCTAssertFalse(socket.sent.contains { $0.contains(#""t":"pause""#) }, "and nobody else was told to")
+        XCTAssertTrue(room.playerInfo().heldBack, "so the button can say play")
+
+        // Play resumes this device alone, again without moving the room
+        room.requestPlay()
+        await time.advance(100)
+        XCTAssertTrue(player.playing)
+        XCTAssertFalse(socket.sent.contains { $0.contains(#""t":"play""#) })
+        XCTAssertFalse(room.playerInfo().heldBack)
+
+        // The buttons of the app are the room's: they pause everybody
+        room.requestPause()
+        XCTAssertTrue(socket.sent.contains { $0.contains(#""t":"pause""#) })
+        room.release()
+    }
+
+    func testAPauseFromOutsideOutsideARoomPausesThePersonalQueue() async {
+        controller.requestAddMany([song(1)], playNext: false)
+        await time.advance(100)
+        XCTAssertTrue(engine.playing)
+        controller.pauseFromOutside()
+        XCTAssertFalse(engine.playing)
+        XCTAssertFalse(controller.playerInfo().heldBack, "there is no room to be held back from")
+    }
+
+    func testTheRoomsAutoplayIsAskedAboutOnlyInARoom() async throws {
+        let sockets = FakeSockets()
+        let room = GroupController(
+            engine: FakePlayer(time: time), prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("s.json")),
+            config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets
+        )
+        XCTAssertFalse(room.requestRoomAutoplay(false), "outside a room there is nobody to tell")
+        room.join(code: "ABC234", name: "Me", create: false)
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        XCTAssertTrue(room.requestRoomAutoplay(false))
+        XCTAssertTrue(socket.sent.contains { $0.contains(#""t":"autoplay""#) && $0.contains(#""on":false"#) })
+        room.release()
     }
 
     func testTheRoomIsNotRejoinedLongAfterTheAppWasLeft() {

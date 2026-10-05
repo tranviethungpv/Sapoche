@@ -187,16 +187,19 @@ void main() {
     await backend.kick('b');
     await backend.setRoomName('Weekend');
     await backend.setGuestControl(GuestControl.add);
+    await backend.setRoomAutoplay(false);
     expect(seen.map((c) => c.method), [
       'roomInfo',
       'kick',
       'roomName',
       'roomSettings',
+      'roomAutoplay',
     ]);
     expect(seen[0].arguments, {'code': 'K2A5RF'});
     expect(seen[1].arguments, {'id': 'b'});
     expect(seen[2].arguments, {'name': 'Weekend'});
     expect(seen[3].arguments, {'guestControl': 'add'});
+    expect(seen[4].arguments, {'on': false});
   });
 
   test('room info is null when the server cannot be reached', () async {

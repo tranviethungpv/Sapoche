@@ -88,8 +88,9 @@ class UpNextView extends StatelessWidget {
   }
 }
 
-/// Songs like the one playing, from its radio. Outside a room they are what plays when the queue ends, and a
-/// switch turns that off; in a room nothing plays by itself, so they are only there to pick from.
+/// Songs like the one playing, from its radio. They are what plays when the queue ends, and a switch turns that off:
+/// this device's own choice outside a room, the room's in one (a server too old for that has nothing play by itself,
+/// so they are only there to pick from).
 class _Suggestions extends StatefulWidget {
   const _Suggestions({required this.controller, required this.current});
 
@@ -129,6 +130,7 @@ class _SuggestionsState extends State<_Suggestions> {
     final snapshot = c.snapshot;
     final p = context.palette;
     final alone = !snapshot.inRoom;
+    final roomAutoplay = snapshot.roomAutoplay;
     return FutureBuilder<SongRadio>(
       key: ValueKey(_for),
       future: _radio,
@@ -160,16 +162,21 @@ class _SuggestionsState extends State<_Suggestions> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionHeading(
-              alone ? S.autoplay : S.suggested,
+              alone || roomAutoplay != null ? S.autoplay : S.suggested,
               action: alone
                   ? Switch(value: c.autoplay, onChanged: c.setAutoplay)
-                  : null,
+                  : roomAutoplay == null
+                  ? null
+                  : Switch(
+                      value: roomAutoplay,
+                      onChanged: snapshot.canControl ? c.setRoomAutoplay : null,
+                    ),
             ),
-            if (alone)
+            if (alone || roomAutoplay != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
                 child: Text(
-                  S.autoplayNote,
+                  alone ? S.autoplayNote : S.roomAutoplayNote,
                   style: Theme.of(context).textTheme.bodySmall
                       ?.copyWith(color: p.textSecondary),
                 ),

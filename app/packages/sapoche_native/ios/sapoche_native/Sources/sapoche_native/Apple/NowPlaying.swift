@@ -34,13 +34,13 @@ final class NowPlaying {
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.controller.requestPause() }
+            Task { @MainActor in self?.controller.pauseFromOutside() }
             return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.engine.wantsSound { self.controller.requestPause() } else { self.controller.requestPlay() }
+                if self.engine.wantsSound { self.controller.pauseFromOutside() } else { self.controller.requestPlay() }
             }
             return .success
         }

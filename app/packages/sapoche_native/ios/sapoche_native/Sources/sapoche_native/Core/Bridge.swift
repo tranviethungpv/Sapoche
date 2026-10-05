@@ -503,6 +503,9 @@ final class Bridge {
         case "roomSettings":
             try requireRoom()
             controller.requestRoomSettings(string("guestControl"))
+        case "roomAutoplay":
+            try requireRoom()
+            controller.requestRoomAutoplay(bool("on"))
         case "play": controller.requestPlay()
         case "pause": controller.requestPause()
         case "next": controller.requestNext()

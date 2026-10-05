@@ -1094,7 +1094,12 @@ class _SyncChip extends StatelessWidget {
       label = S.onYourOwn;
       color = p.primary;
     } else if (!controller.isPlaying) {
-      return const SizedBox.shrink();
+      // Stopped on this device by something outside the app while the room plays on: say so, and play catches up
+      if (!(controller.snapshot.wantsPlaying && player.heldBack)) {
+        return const SizedBox.shrink();
+      }
+      label = S.pausedHere;
+      color = p.textSecondary;
     } else if (controller.isStarting) {
       label = S.buffering;
       color = p.textSecondary;

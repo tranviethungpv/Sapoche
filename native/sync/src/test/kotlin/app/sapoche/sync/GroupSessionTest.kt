@@ -292,6 +292,89 @@ class GroupSessionTest {
     }
 
     @Test
+    fun `it plays in step from the moment the room starts until the room pauses`() = runTest {
+        val h = harness()
+        h.session.onMessage(state("preparing", epoch = 1))
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        assertEquals(false, h.session.isInSync, "loaded, not started")
+
+        h.session.onMessage(ServerMessage.Start(1, h.serverNow() + 1500, 0))
+        advanceTimeBy(1600)
+        runCurrent()
+        assertEquals(true, h.session.isInSync)
+
+        h.session.onMessage(ServerMessage.Pause(epoch = 2, positionMs = 2400))
+        runCurrent()
+        assertEquals(false, h.session.isInSync)
+    }
+
+    @Test
+    fun `a pause during the barrier holds the loaded song, and the start after it plays it`() = runTest {
+        val h = harness()
+        h.session.onMessage(state("preparing", epoch = 1))
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Pause(epoch = 2, positionMs = 0))
+        advanceTimeBy(3000)
+        runCurrent()
+        assertEquals(false, h.player.playing, "nothing starts behind the pause")
+        assertEquals("paused", h.session.snapshot.value.state?.phase)
+
+        h.session.onMessage(ServerMessage.Start(3, h.serverNow() + 1500, 0))
+        advanceTimeBy(1600)
+        runCurrent()
+        assertEquals(true, h.player.playing)
+    }
+
+    @Test
+    fun `a device held from outside loads what the room does but stays quiet until its person presses play`() = runTest {
+        val h = harness()
+        h.session.onMessage(state("preparing", epoch = 1))
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.hold() // another app took the sound
+        h.session.onMessage(ServerMessage.Start(1, h.serverNow() + 1500, 0))
+        step(1600)
+        assertEquals(false, h.player.playing, "the room's start does not take the sound back")
+        assertEquals(true, h.session.isInSync)
+        assertEquals(true, h.session.isHeld)
+
+        // The room plays on; the person comes back 20 seconds later and presses play
+        step(20_000)
+        h.player.seeks.clear()
+        h.session.resumeHere()
+        runCurrent()
+        assertEquals(true, h.player.playing)
+        assertEquals(false, h.session.isHeld)
+        val landed = h.player.seeks.single()
+        assertEquals(true, landed in 19_500L..21_000L, "it went to where the room is ($landed ms), not back to where the sound was lost")
+    }
+
+    @Test
+    fun `a song the room moves to while the device is held is loaded and left paused`() = runTest {
+        val h = harness()
+        h.session.onMessage(state("preparing", epoch = 1))
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Start(1, h.serverNow() + 1500, 0))
+        step(2000)
+        assertEquals(true, h.player.playing)
+        h.session.hold()
+        h.player.pause()
+
+        h.session.onMessage(
+            ServerMessage.State(0, "dev-a", RoomState(listOf(item, item2), 1, "preparing", 0, 0, 2), emptyList()),
+        )
+        h.session.onMessage(ServerMessage.Prepare(2, 1, item2, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Start(2, h.serverNow() + 1500, 0))
+        step(2000)
+        assertEquals("Song 2", h.player.loaded?.title)
+        assertEquals(false, h.player.playing, "someone else's skip does not start the sound here")
+    }
+
+    @Test
     fun `pause stops playback at the given position`() = runTest {
         val h = harness()
         h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))

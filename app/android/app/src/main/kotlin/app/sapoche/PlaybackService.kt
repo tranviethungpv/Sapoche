@@ -406,17 +406,17 @@ class PlaybackService : MediaSessionService() {
 
         override fun pause() {
             EventLog.d("session", "pause asked by a controller")
-            group.requestPause()
+            group.pauseFromOutside()
         }
 
         override fun setPlayWhenReady(playWhenReady: Boolean) {
             EventLog.d("session", "playWhenReady=$playWhenReady asked by a controller")
-            if (playWhenReady) group.requestPlay { super.setPlayWhenReady(true) } else group.requestPause()
+            if (playWhenReady) group.requestPlay { super.setPlayWhenReady(true) } else group.pauseFromOutside()
         }
 
         override fun stop() {
             EventLog.d("session", "stop asked by a controller")
-            group.requestStop()
+            group.pauseFromOutside()
         }
 
         override fun seekToNext() {
