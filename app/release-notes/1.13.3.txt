@@ -1,0 +1,3 @@
+A song that got stuck tries again properly
+- When a song was slow or would not load, tapping it again now fetches it afresh, so a bad link no longer needs the app to be closed and opened.
+- On short pages such as Settings the last rows are no longer hidden behind the player: pull the page up and the bars fold away.

@@ -950,6 +950,33 @@ void main() {
       },
     );
 
+    testWidgets('and a page too short to scroll folds them when pulled on, so its end can be seen', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      // The size of a phone, where the settings barely fit: the list cannot scroll, yet its end lies under the mini player
+      tester.view.devicePixelRatio = 2.625;
+      backend.emit(StateEvent(sampleRoom(songs: 5)));
+      await settle(tester);
+      await openSettingsList(tester);
+      final list = find.byType(ListView).last;
+      double end() => find
+          .descendant(of: list, matching: find.byType(Text))
+          .evaluate()
+          .map((e) => tester.getRect(find.byElementPredicate((x) => x == e)).bottom)
+          .reduce((a, b) => a > b ? a : b);
+
+      expect(find.text('Library'), findsOneWidget);
+      expect(end(), greaterThan(mini(tester).top), reason: 'covered while open');
+
+      await scroll(tester, -100);
+      expect(find.text('Library'), findsNothing);
+      expect(end(), lessThan(mini(tester).top), reason: 'clear once folded');
+
+      await scroll(tester, 100);
+      expect(find.text('Library'), findsOneWidget);
+    });
+
     testWidgets(
       'and the player opens from the folded mini player and goes back into it',
       (tester) async {

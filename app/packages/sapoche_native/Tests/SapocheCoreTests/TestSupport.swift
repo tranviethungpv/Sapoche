@@ -69,6 +69,7 @@ final class FakePlayer: PlayerEngine {
     /// What loading an item throws, when it fails in a particular way; nil lets it load.
     var failWith: ((QueueItem) -> Error?)?
     var seeks: [Int64] = []
+    var refreshed: [String] = []
     var queuedNext: QueueItem?
 
     var onEnded: (() -> Void)?
@@ -92,6 +93,10 @@ final class FakePlayer: PlayerEngine {
             if t > from { position += Int64(Float(t - from) * currentSpeed) }
         }
         lastUpdate = t
+    }
+
+    func refresh(_ videoId: String) async {
+        refreshed.append(videoId)
     }
 
     func prepare(_ item: QueueItem, seekToMs: Int64) async throws {

@@ -129,6 +129,9 @@ class LocalSession(
     /** Whether the item being loaded starts playing once it is ready; play and pause during a load only flip this. */
     private var playOnLoad = false
 
+    /** Songs whose last load was said to be slow or failed: loading one again starts from a new stream address. */
+    private val stuckVideoIds = mutableSetOf<String>()
+
     /**
      * Position to show for the current item while nothing is loaded (after a restart), else null: the
      * player knows better then.
@@ -368,15 +371,21 @@ class LocalSession(
         // The person sees the new song at once, and that it is on its way, not only when it has loaded
         _snapshot.update { it.copy(index = at, finished = false, loading = play) }
         playOnLoad = play
+        val again = item.videoId in stuckVideoIds
         job = scope.launch {
             // A load that takes long is said to be slow, so that waiting does not look like nothing happening
             val slow = launch {
                 delay(SLOW_LOAD_MS)
-                if (playOnLoad) problem(Problem(Problem.Kind.SLOW, item.title))
+                if (playOnLoad) {
+                    stuckVideoIds += item.videoId
+                    problem(Problem(Problem.Kind.SLOW, item.title))
+                }
             }
             try {
+                if (again) player.refresh(item.videoId)
                 player.prepare(item, positionMs)
                 slow.cancel()
+                stuckVideoIds -= item.videoId
                 loadedId = item.id
                 pendingPositionMs = 0
                 skippedInARow = 0
@@ -388,6 +397,7 @@ class LocalSession(
                 throw e
             } catch (e: Exception) {
                 slow.cancel()
+                stuckVideoIds += item.videoId
                 log("could not load '${item.title}': ${e.message}")
                 // Nothing goes on loading in the background, and nothing starts later by itself
                 player.stop()

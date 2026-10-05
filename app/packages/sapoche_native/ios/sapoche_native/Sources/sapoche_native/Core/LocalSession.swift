@@ -141,6 +141,9 @@ final class LocalSession {
     /// Says the load is slow once it has taken a while.
     private var slowJob: Job?
 
+    /// Songs whose last load was said to be slow or failed: loading one again starts from a new stream address.
+    private var stuckVideoIds = Set<String>()
+
     init(scope: Scope, player: PlayerPort, saved: SavedQueue?, persist: @escaping (SavedQueue) -> Void,
          problem: @escaping (Problem) -> Void = { _ in }, log: @escaping (String) -> Void = { _ in },
          onQueueEnd: @escaping (QueueItem) -> Void = { _ in }, newId: @escaping () -> String = { UUID().uuidString },
@@ -417,17 +420,21 @@ final class LocalSession {
         // The person sees the new song at once, and that it is on its way, not only when it has loaded
         snapshot.update { $0.index = at; $0.finished = false; $0.loading = play }
         playOnLoad = play
+        let again = stuckVideoIds.contains(item.videoId)
         // A load that takes long is said to be slow, so that waiting does not look like nothing happening
         slowJob = scope.launch { [weak self] in
             try await self?.time.sleep(ms: Self.slowLoadMs)
             guard let self, self.playOnLoad else { return }
+            self.stuckVideoIds.insert(item.videoId)
             self.problem(Problem(kind: .slow, title: item.title))
         }
         job = scope.launch { [weak self] in
             guard let self else { return }
             do {
+                if again { await self.player.refresh(item.videoId) }
                 try await self.player.prepare(item, seekToMs: positionMs)
                 self.slowJob?.cancel()
+                self.stuckVideoIds.remove(item.videoId)
                 self.loadedId = item.id
                 self.pendingPositionMs = 0
                 self.skippedInARow = 0
@@ -439,6 +446,7 @@ final class LocalSession {
                 throw CancellationError()
             } catch {
                 self.slowJob?.cancel()
+                self.stuckVideoIds.insert(item.videoId)
                 self.log("could not load '\(item.title)': \(error.localizedDescription)")
                 // Nothing goes on loading in the background, and nothing starts later by itself
                 self.player.stop()

@@ -118,6 +118,8 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         }
     }
 
+    override fun refresh(videoId: String) = SapocheApp.streams.invalidate(videoId)
+
     private suspend fun load(item: QueueItem, seekToMs: Long, withVideo: Boolean) {
         player.playWhenReady = false
         loaded = item

@@ -586,6 +586,39 @@ final class LocalSessionTests: XCTestCase {
         XCTAssertEqual(h.problems.count, 1)
     }
 
+    func testTryingASlowSongAgainStartsFromANewStreamAddress() async {
+        let h = harness()
+        h.player.prepareDelayMs = 20_000
+        h.session.add([track(1), track(2)], next: false)
+        await h.step(9000)
+        XCTAssertEqual(h.problems.count, 1, "said to be slow")
+        XCTAssertTrue(h.player.refreshed.isEmpty, "waiting alone keeps the address")
+        h.session.jump(h.session.snapshot.value.queue[0].id)
+        await h.step()
+        XCTAssertEqual(h.player.refreshed, [track(1).videoId])
+    }
+
+    func testASongTappedAgainAfterAFailureStartsFromANewStreamAddressAlsoFromANewQueue() async {
+        let h = harness()
+        h.player.failPrepare = true
+        h.session.add([track(1)], next: false)
+        await h.step()
+        XCTAssertEqual(h.problems.map(\.kind), [.failed])
+        h.player.failPrepare = false
+        h.session.clear()
+        h.session.add([track(1)], next: false) // the list was tapped: the same song with another queue id
+        await h.step()
+        XCTAssertEqual(h.player.refreshed, [track(1).videoId])
+        XCTAssertTrue(h.player.playing)
+
+        // It played: the next time is an ordinary load
+        h.session.add([track(2)], next: false)
+        h.session.jump(h.session.snapshot.value.queue[1].id)
+        h.session.jump(h.session.snapshot.value.queue[0].id)
+        await h.step()
+        XCTAssertEqual(h.player.refreshed.count, 1)
+    }
+
     func testALoadThatIsReplacedIsNotCalledSlow() async {
         let h = harness()
         h.player.prepareDelayMs = 5000

@@ -1,0 +1,3 @@
+Bài bị kẹt giờ thử lại đúng cách
+- Khi một bài tải chậm hoặc không tải được, bấm lại bài đó sẽ lấy link mới, không cần thoát app rồi vào lại nữa.
+- Ở các trang ngắn như Cài đặt, những dòng cuối không còn bị thanh phát nhạc che: kéo trang lên là thanh dưới thu lại.

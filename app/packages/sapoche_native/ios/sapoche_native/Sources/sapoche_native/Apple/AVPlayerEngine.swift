@@ -132,6 +132,10 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         onChange?()
     }
 
+    func refresh(_ videoId: String) async {
+        await library.refresh(videoId)
+    }
+
     func seekTo(_ positionMs: Int64) async throws {
         pausedAtEnd = false
         _ = await seek(to: positionMs)

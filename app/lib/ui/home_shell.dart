@@ -375,6 +375,14 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
         _travel += scrollDelta;
         if (_travel > 24) _fold(true);
         if (_travel < -8) _fold(false);
+      // A page with too little to scroll cannot fold the bars by scrolling, yet its last rows may lie under the open
+      // ones: pulling it on past its end folds them, and pulling it back the other way brings them back
+      case ScrollUpdateNotification(:final scrollDelta?, :final metrics)
+          when _touched && metrics.outOfRange:
+        if (metrics.extentAfter == 0 && scrollDelta > 0) _fold(true);
+        if (metrics.extentBefore == 0 && scrollDelta < 0) _fold(false);
+      case OverscrollNotification(:final overscroll) when _touched:
+        _fold(overscroll > 0);
       default:
     }
     return false;

@@ -620,6 +620,41 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `trying a slow song again starts from a new stream address`() = runTest {
+        val h = harness()
+        h.player.prepareDelayMs = 20_000
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step(9000)
+        assertEquals(1, h.problems.size, "said to be slow")
+        assertTrue(h.player.refreshed.isEmpty(), "waiting alone keeps the address")
+        h.session.jump(h.session.snapshot.value.queue[0].id)
+        step()
+        assertEquals(listOf(track(1).videoId), h.player.refreshed)
+    }
+
+    @Test
+    fun `a song tapped again after a failure starts from a new stream address, also from a new queue`() = runTest {
+        val h = harness()
+        h.player.failPrepare = true
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        assertEquals(LocalSession.Problem.Kind.FAILED, h.problems.single().kind)
+        h.player.failPrepare = false
+        h.session.clear()
+        h.session.add(listOf(track(1)), next = false) // the list was tapped: the same song with another queue id
+        step()
+        assertEquals(listOf(track(1).videoId), h.player.refreshed)
+        assertTrue(h.player.playing)
+
+        // It played: the next time is an ordinary load
+        h.session.add(listOf(track(2)), next = false)
+        h.session.jump(h.session.snapshot.value.queue[1].id)
+        h.session.jump(h.session.snapshot.value.queue[0].id)
+        step()
+        assertEquals(1, h.player.refreshed.size)
+    }
+
+    @Test
     fun `a load that ends quickly or is replaced is not called slow`() = runTest {
         val h = harness()
         h.player.prepareDelayMs = 5000

@@ -7,6 +7,10 @@ protocol PlayerPort: AnyObject {
     /// loaded: a [LoadFailure] when the player knows why.
     func prepare(_ item: QueueItem, seekToMs: Int64) async throws
 
+    /// Forget where [videoId] streams from, so that the next [prepare] of it asks for a new address. Someone trying
+    /// again a song that stalled or failed wants that: the old address may be what is wrong, and it is kept for hours.
+    func refresh(_ videoId: String) async
+
     /// Seek and return once the player is ready at the new position. Throws only when cancelled.
     func seekTo(_ positionMs: Int64) async throws
 

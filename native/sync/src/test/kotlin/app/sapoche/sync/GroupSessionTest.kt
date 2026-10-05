@@ -30,6 +30,7 @@ internal class FakePlayer(private val now: () -> Long) : PlayerPort {
     /** What loading an item throws, when it fails in a particular way; null lets it load. */
     var failWith: ((QueueItem) -> Exception?)? = null
     val seeks = mutableListOf<Long>()
+    val refreshed = mutableListOf<String>()
     private var lastUpdate = now()
 
     override var onEnded: (() -> Unit)? = null
@@ -48,6 +49,10 @@ internal class FakePlayer(private val now: () -> Long) : PlayerPort {
             if (t > from) position += ((t - from) * currentSpeed).toLong()
         }
         lastUpdate = t
+    }
+
+    override fun refresh(videoId: String) {
+        refreshed += videoId
     }
 
     override suspend fun prepare(item: QueueItem, seekToMs: Long) {

@@ -24,6 +24,12 @@ interface PlayerPort {
     suspend fun prepare(item: QueueItem, seekToMs: Long)
 
     /**
+     * Forget where [videoId] streams from, so that the next [prepare] of it asks for a new address. Someone trying
+     * again a song that stalled or failed wants that: the old address may be what is wrong, and it is kept for hours.
+     */
+    fun refresh(videoId: String)
+
+    /**
      * Seek and return once the player is ready at the new position, or once it gave up waiting. Never throws but to
      * be cancelled: a stream that breaks meanwhile goes to [onError].
      */
