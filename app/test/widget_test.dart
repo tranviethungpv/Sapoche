@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderBackdropFilter;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
+import 'package:sapoche/ui/home_shell.dart';
 import 'package:sapoche/ui/now_playing_page.dart';
 import 'package:sapoche/ui/setup_dialog.dart';
 import 'package:sapoche/ui/widgets/qr_code_view.dart';
@@ -975,6 +977,60 @@ void main() {
 
       await scroll(tester, 100);
       expect(find.text('Library'), findsOneWidget);
+    });
+
+    testWidgets('and a page scrolled to its end clears the folded bars above the home indicator', (
+      tester,
+    ) async {
+      PackageInfo.setMockInitialValues(
+        appName: 'Sapoche',
+        packageName: 'app.sapoche',
+        version: '1.13.3',
+        buildNumber: '35',
+        buildSignature: '',
+      );
+      final (backend, _) = await pumpApp(tester);
+      // An iPhone: the system keeps a bar under the app, and the pages are below the scaffold that takes it off their media
+      tester.view.physicalSize = const Size(1179, 2556);
+      tester.view.devicePixelRatio = 3;
+      tester.view.padding = const FakeViewPadding(top: 177, bottom: 102);
+      tester.view.viewPadding = const FakeViewPadding(top: 177, bottom: 102);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
+      backend.emit(StateEvent(sampleRoom(songs: 5)));
+      await settle(tester);
+      await openSettingsList(tester);
+
+      await scroll(tester, -600);
+      await tester.pumpAndSettle(); // the glide of the drag, to the very end
+      expect(find.text('Library'), findsNothing, reason: 'folded');
+      expect(
+        tester.getRect(find.byKey(const ValueKey('settings-version'))).bottom,
+        lessThan(mini(tester).top),
+      );
+      // Every page asks the same question, from under the scaffold: the home indicator, the tabs, and a little room
+      final page = tester.element(find.byType(ListView).last);
+      expect(HomeShell.bottomInsetOf(page), 34 + 60 + 16);
+    });
+
+    testWidgets('and the end of a long queue clears them too', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      tester.view.physicalSize = const Size(1179, 2556);
+      tester.view.devicePixelRatio = 3;
+      tester.view.padding = const FakeViewPadding(top: 177, bottom: 102);
+      tester.view.viewPadding = const FakeViewPadding(top: 177, bottom: 102);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
+      backend.emit(StateEvent(sampleRoom(songs: 40)));
+      await settle(tester);
+
+      await tester.fling(find.byType(TrackTile).first, const Offset(0, -6000), 6000);
+      await tester.pumpAndSettle();
+      expect(find.text('Library'), findsNothing, reason: 'folded');
+      expect(
+        tester.getRect(find.byType(TrackTile).last).bottom,
+        lessThan(mini(tester).top),
+      );
     });
 
     testWidgets(

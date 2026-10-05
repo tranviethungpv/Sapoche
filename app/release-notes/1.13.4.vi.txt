@@ -1,0 +1,2 @@
+Cuối mỗi trang không còn bị che
+- Trên iPhone và các máy có thanh ở đáy màn hình, những dòng cuối của trang, như số phiên bản trong Cài đặt, không còn bị thanh phát nhạc che khi cuộn đến cuối.

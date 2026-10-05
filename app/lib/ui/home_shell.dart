@@ -63,12 +63,19 @@ class HomeShell extends StatefulWidget {
   static double bottomInsetOf(BuildContext context) =>
       switch (layoutOf(context)) {
         ShellLayout.bars =>
-          math.max(MediaQuery.viewPaddingOf(context).bottom, _barsBottom) +
+          math.max(_systemBottomOf(context), _barsBottom) +
               tabHeightOf(context) +
               16,
         ShellLayout.rail => 120,
         ShellLayout.sidebar => 112,
       };
+
+  /// The system's own bar under the pages (the home indicator, the navigation bar). Read from the view: the bars are
+  /// drawn by the scaffold around the pages, which takes that room off the media a page sees, so a page would find none.
+  static double _systemBottomOf(BuildContext context) {
+    final view = View.of(context);
+    return view.viewPadding.bottom / view.devicePixelRatio;
+  }
 
   /// The least room under a phone's bars, where the system has no bar of its own.
   static const _barsBottom = 10.0;

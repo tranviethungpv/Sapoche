@@ -1,0 +1,2 @@
+The end of every page is no longer hidden
+- On iPhone and on phones with a bar at the bottom, the last rows of a page, such as the version number in Settings, are no longer covered by the player when you scroll to the end.
