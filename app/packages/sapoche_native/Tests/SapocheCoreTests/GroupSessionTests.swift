@@ -812,6 +812,7 @@ final class GroupSessionTests: XCTestCase {
 
         XCTAssertTrue(h.session.catchUp())
         await h.step(3000)
+        XCTAssertEqual(h.player.refreshed, [item.videoId], "trying again by hand asks for a new address")
         XCTAssertEqual(h.player.loaded, item)
         XCTAssertTrue(h.player.playing)
         let expected = h.serverNow() - startAt

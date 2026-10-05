@@ -191,6 +191,20 @@ class RoomClientTest {
         client.close()
     }
 
+    @Test
+    fun `its own picture is not asked for when the room lists it by a public id`() {
+        val members = """[{"id":"a1b2c3d4e5f60718","name":"Me","ready":false,"av":"ffff0000"},{"id":"you","name":"You","ready":false,"av":"abcd1234"}]"""
+        val state = """{"t":"state","serverNow":0,"you":"a1b2c3d4e5f60718","protocol":9,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":$members}"""
+        accept(room { socket, text -> if (text.contains("\"join\"")) socket.send(state) })
+        val c = client(create = false)
+        c.start()
+        assertTrue(waitFor { received.any { it.contains("\"avatar.get\"") } })
+        Thread.sleep(200)
+        assertEquals(1, received.count { it.contains("\"avatar.get\"") && it.contains("\"you\"") })
+        assertTrue(received.none { it.contains("\"avatar.get\"") && it.contains("a1b2c3d4e5f60718") }, "its own picture is not asked for")
+        c.close()
+    }
+
     private fun stateWith(protocol: Int, members: String) =
         """{"t":"state","serverNow":0,"you":"me","protocol":$protocol,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":$members}"""
 

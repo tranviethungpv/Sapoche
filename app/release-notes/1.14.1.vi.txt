@@ -1,0 +1,8 @@
+Phòng bắt đầu nhanh hơn, giữ nhịp tốt hơn và an toàn hơn
+- Bấm phát hoặc tua trong phòng giờ phản hồi sau khoảng nửa giây khi mạng tốt, thay vì luôn chờ một giây rưỡi.
+- Máy lần đầu vào phòng giờ khớp với mọi người trong vài giây, thay vì chậm một nhịp suốt khoảng mười giây đầu.
+- Các máy giữ nhịp sát nhau hơn khi nghe lâu, kể cả khi đồng hồ của chúng trôi.
+- Khi hai người bấm next cùng lúc, phòng chỉ chuyển một bài, không phải hai.
+- Tua lúc bài còn đang tải không còn bị bỏ qua.
+- Phòng mọi người đã rời không còn tự phát nhạc khi có người quay lại.
+- Không ai còn chiếm được quyền chủ phòng bằng cách chép id của chủ nữa.

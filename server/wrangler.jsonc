@@ -17,11 +17,6 @@
 		{
 			"binding": "RELEASES",
 			"bucket_name": "sapoche-releases"
-		},
-		{
-			"bucket_name": "sapoche-releases",
-			"binding": "sapoche_releases",
-			"remote": true
 		}
 	],
 	// Free plan only supports SQLite-backed Durable Objects

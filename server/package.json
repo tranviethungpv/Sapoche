@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "sim": "node scripts/sim.mjs",
     "sim:keyed": "node scripts/sim-keyed.mjs",
-    "test": "node scripts/sim-keyed.mjs"
+    "test": "node scripts/sim-keyed.mjs",
+    "stress": "SIM_STRESS=1 node scripts/sim-keyed.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260929.1",

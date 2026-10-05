@@ -1,0 +1,8 @@
+Rooms start sooner, stay in time, and are safer
+- Play and seek in a room now answer in about half a second on a good network, instead of always waiting a second and a half.
+- A phone that joins a room for the first time now lines up with the others within a few seconds, instead of being a beat behind for the first ten.
+- Phones stay closer together over a long listen, even when their clocks drift.
+- When two people press next at the same moment, the room moves one song, not two.
+- Seeking while a song is still loading is no longer ignored.
+- A room everybody has left no longer starts playing by itself when someone comes back.
+- Nobody can take over a room by copying the owner's id any more.

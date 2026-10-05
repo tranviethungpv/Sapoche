@@ -162,7 +162,14 @@ object Protocol {
     /** Owner only: `all` or `add`. */
     fun roomSettings(guestControl: String) = msg("room.settings") { put("guestControl", guestControl) }
 
-    fun ping(c0: Long) = msg("ping") { put("c0", c0) }
+    /**
+     * [rttMs] is the best round trip this device has measured; the room uses the slowest of its devices to decide how
+     * far ahead to schedule a start. Null leaves it out, as older apps do.
+     */
+    fun ping(c0: Long, rttMs: Double? = null) = msg("ping") {
+        put("c0", c0)
+        if (rttMs != null) put("rtt", rttMs.toLong())
+    }
 
     /** The device's own picture as base64 of a small JPEG; null takes it away. Only servers of protocol 8 or newer know it. */
     fun avatarSet(data: String?) = msg("avatar.set") { put("data", data) }
@@ -233,9 +240,13 @@ object Protocol {
 
     fun seek(positionMs: Long) = msg("seek") { put("positionMs", positionMs) }
 
-    fun next() = msg("next")
+    /**
+     * [from] is the queue item the button was pressed on; the room ignores the press once it has left that item, so
+     * two people skipping at the same moment move it one song, not two. Null leaves it out, as older apps do.
+     */
+    fun next(from: String? = null) = msg("next") { if (from != null) put("from", from) }
 
-    fun prev() = msg("prev")
+    fun prev(from: String? = null) = msg("prev") { if (from != null) put("from", from) }
 
     /** Start or stop listening on one's own; a solo device never holds the room back. */
     fun solo(on: Boolean) = msg("solo") { put("on", on) }

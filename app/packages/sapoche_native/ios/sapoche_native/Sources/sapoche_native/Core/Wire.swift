@@ -244,7 +244,9 @@ enum Wire {
     /// Owner only: `all` or `add`.
     static func roomSettings(guestControl: String) -> String { msg("room.settings", ["guestControl": guestControl]) }
 
-    static func ping(_ c0: Int64) -> String { msg("ping", ["c0": c0]) }
+    /// [rttMs] is the best round trip this device has measured; the room uses the slowest of its devices to decide how
+    /// far ahead to schedule a start. Nil leaves it out, as older apps do.
+    static func ping(_ c0: Int64, rttMs: Double? = nil) -> String { msg("ping", ["c0": c0], optional: rttMs.map { ["rtt": Int64($0)] }) }
 
     /// The device's own picture as base64 of a small JPEG; nil takes it away. Only servers of protocol 8 or newer know it.
     static func avatarSet(_ data: String?) -> String { msg("avatar.set", ["data": data ?? NSNull()]) }
@@ -292,8 +294,10 @@ enum Wire {
     static func play() -> String { msg("play") }
     static func pause() -> String { msg("pause") }
     static func seek(_ positionMs: Int64) -> String { msg("seek", ["positionMs": positionMs]) }
-    static func next() -> String { msg("next") }
-    static func prev() -> String { msg("prev") }
+    /// [from] is the queue item the button was pressed on; the room ignores the press once it has left that item, so
+    /// two people skipping at the same moment move it one song, not two. Nil leaves it out, as older apps do.
+    static func next(from: String? = nil) -> String { msg("next", optional: from.map { ["from": $0] }) }
+    static func prev(from: String? = nil) -> String { msg("prev", optional: from.map { ["from": $0] }) }
 
     /// Start or stop listening on one's own; a solo device never holds the room back.
     static func solo(_ on: Bool) -> String { msg("solo", ["on": on]) }

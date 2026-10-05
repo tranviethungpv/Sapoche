@@ -1,6 +1,7 @@
 // End-to-end simulation of the room protocol against a running server (`npm run dev`).
 // Usage: node scripts/sim.mjs [baseUrl]   (default http://127.0.0.1:8787)
 // When the server has a ROOM_KEY, pass it in SAPOCHE_KEY (npm run sim:keyed does this against a local server).
+import { createHash } from "node:crypto";
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:8787";
 const WS_BASE = BASE.replace(/^http/, "ws");
@@ -11,6 +12,8 @@ const keyHeaders = KEY ? { "X-Sapoche-Key": KEY } : {};
 let passed = 0;
 let failed = 0;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** The id the room shows for the device whose secret id is [clientId], as the server derives it. */
+const pid = (clientId) => createHash("sha256").update(`sapoche-member:${clientId}`).digest("hex").slice(0, 16);
 
 function check(name, condition, detail = "") {
   if (condition) {
@@ -106,6 +109,11 @@ async function main() {
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);
   }
+  if (process.env.SIM_ONLY === "conformance") {
+    await conformanceSection();
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+  }
   if (process.env.SIM_ONLY === "crossfire") {
     await crossfireSection();
     console.log(`\n${passed} passed, ${failed} failed`);
@@ -125,7 +133,7 @@ async function main() {
   const b = new Client(code, "dev-b", "Ben");
   const c = new Client(code, "dev-c", "Cara");
   const [sa] = await all([a, b, c], (x) => x.join());
-  check("join returns state with idle phase", sa.state.phase === "idle" && sa.you === "dev-a");
+  check("join returns state with idle phase", sa.state.phase === "idle" && sa.you === pid("dev-a"));
 
   const c0 = Date.now();
   a.send({ t: "ping", c0 });
@@ -190,7 +198,7 @@ async function main() {
   const expected = 60000 + (sd.serverNow - seeks[0].startAt);
   check("late joiner can compute the current position", sd.state.phase === "playing" && Math.abs(heard - expected) < 5, `heard=${heard} expected=${expected}`);
   const members = await a.waitFor((m) => m.t === "members" && m.members.length === 4);
-  check("existing members are told about the new member", members.members.some((m) => m.id === "dev-d"));
+  check("existing members are told about the new member", members.members.some((m) => m.id === pid("dev-d")));
 
   console.log("Queue and next");
   a.send({ t: "queue.add", videoId: VIDEO_B, title: "Song B", artist: "Artist", durMs: 180000 });
@@ -250,6 +258,7 @@ async function main() {
   await playlistAndRepeatSection();
   await autoplaySection();
   await crossfireSection();
+  await conformanceSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
   await shuffleSection();
   await existenceSection();
@@ -413,14 +422,14 @@ async function swapSection() {
   // An item still to come changes quietly, in its place
   a.send({ t: "queue.swap", id: queued[1].id, track: { ...video, title: "Later (Video)" } });
   const later = await b.waitFor((m) => m.t === "state" && m.state.queue[1]?.videoId === VIDEO_C);
-  check("a song still to come is replaced in its place, keeping its id and who added it", later.state.queue[1].id === queued[1].id && later.state.queue[1].addedBy === "Sa-id" && later.state.queue[1].durMs === 210000);
+  check("a song still to come is replaced in its place, keeping its id and who added it", later.state.queue[1].id === queued[1].id && later.state.queue[1].addedBy === pid("Sa-id") && later.state.queue[1].durMs === 210000);
   check("replacing a song to come does not disturb playback", later.state.phase === "playing" && later.state.index === 0 && await b.stays((m) => m.t === "prepare", 400));
 
   // The current one is prepared again for everyone, from about where it was
   await sleep(3200); // the start is 1.5 s ahead, then the song plays for a while
   a.send({ t: "queue.swap", id: queued[0].id, track: video });
   const again = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
-  check("swapping the current song prepares the other release for everyone", again.every((p) => p.item.videoId === VIDEO_C && p.index === 0 && p.item.id === queued[0].id && p.by === "Sa-id"));
+  check("swapping the current song prepares the other release for everyone", again.every((p) => p.item.videoId === VIDEO_C && p.index === 0 && p.item.id === queued[0].id && p.by === pid("Sa-id")));
   check("it carries on from the same moment", again[0].seekToMs >= 1000 && again[0].seekToMs < 6000, String(again[0].seekToMs));
   await all([a, b], (x) => x.send({ t: "ready", epoch: again[0].epoch }));
   const started = await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
@@ -481,8 +490,8 @@ async function reconnectSection() {
   await back.join(false);
   const probe = new Client(code, "Rp-id", "Rp");
   const full = await probe.join(false);
-  check("a device that came back on a new connection is listed once", full.members.filter((m) => m.id === "Rb-id").length === 1, JSON.stringify(full.members));
-  check("and nobody else was added or lost", ids(full) === "Ra-id,Rb-id,Rp-id", ids(full));
+  check("a device that came back on a new connection is listed once", full.members.filter((m) => m.id === pid("Rb-id")).length === 1, JSON.stringify(full.members));
+  check("and nobody else was added or lost", ids(full) === ["Ra-id", "Rb-id", "Rp-id"].map(pid).sort().join(","), ids(full));
   check("the old connection was closed by the server", (await b.closed) === 1000);
   [a, back, probe].forEach((x) => x.close());
 }
@@ -497,7 +506,7 @@ async function ghostSection(staleMs) {
   a.send({ t: "ping", c0: Date.now() }); // a, unlike the ghost, is still talking
   const fresh = new Client(code, "Gnew-id", "Gold");
   const state = await fresh.join(false);
-  check("an old silent entry of the same name is not listed beside the new one", state.members.filter((m) => m.name === "Gold").length === 1 && state.members.some((m) => m.id === "Gnew-id"), JSON.stringify(state.members));
+  check("an old silent entry of the same name is not listed beside the new one", state.members.filter((m) => m.name === "Gold").length === 1 && state.members.some((m) => m.id === pid("Gnew-id")), JSON.stringify(state.members));
   check("the ghost's connection was closed", (await old.closed) === 1001);
   // Two live devices that happen to share a name are both kept
   const twin = new Client(code, "Gtwin-id", "Ga");
@@ -568,10 +577,10 @@ async function existenceSection() {
 
   const owner = new Client(code, "own-id", "Olga");
   const opened = await owner.join(true);
-  check("create opens the room and its creator owns it", opened.state.ownerId === "own-id" && opened.members[0].owner === true);
+  check("create opens the room and its creator owns it", opened.state.ownerId === pid("own-id") && opened.members[0].owner === true);
   const guest = new Client(code, "gst-id", "Gus");
   const joined = await guest.join(false);
-  check("joining a room that exists works", joined.state.ownerId === "own-id" && joined.members.length === 2);
+  check("joining a room that exists works", joined.state.ownerId === pid("own-id") && joined.members.length === 2);
   const info = await roomInfo(code);
   check("info tells whether the room exists and who is in it", info.exists === true && info.members === 2 && info.playing === false && info.name === null);
   if (KEY) {
@@ -638,43 +647,43 @@ async function ownerSection() {
   check("a restricted guest cannot swap a song for its video", await refuses(guest, { t: "queue.swap", id: prepared.item.id, track: { videoId: VIDEO_B, title: "One", artist: "x", durMs: 200000 } }));
   check("a restricted guest cannot rename the room", await refuses(guest, { t: "room.name", name: "Mine" }));
   guest.send({ t: "solo", on: true });
-  const alone = await guest.waitFor((m) => m.t === "members" && m.members.find((x) => x.id === "g-id")?.solo);
+  const alone = await guest.waitFor((m) => m.t === "members" && m.members.find((x) => x.id === pid("g-id"))?.solo);
   check("a restricted guest can still listen on their own", alone.members.length === 3);
   guest.send({ t: "solo", on: false });
-  await guest.waitFor((m) => m.t === "members" && !m.members.find((x) => x.id === "g-id")?.solo);
+  await guest.waitFor((m) => m.t === "members" && !m.members.find((x) => x.id === pid("g-id"))?.solo);
 
   owner.send({ t: "repeat", mode: "all" });
   check("the owner still controls the room", (await seen(guest, (s) => s.repeat === "all")).state.repeat === "all");
   check("info shows what is playing", (await roomInfo(code)).title === "One");
 
   owner.close();
-  await guest.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === "o-id"));
+  await guest.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === pid("o-id")));
   guest.send({ t: "repeat", mode: "off" });
   check("with the owner away guests may control the room", (await seen(guest, (s) => s.repeat === "off")).state.repeat === "off");
 
   const owner2 = new Client(code, "o-id", "Olga");
   const back = await owner2.join(false);
-  check("an owner who comes back is still the owner", back.state.ownerId === "o-id" && back.state.guestControl === "add");
+  check("an owner who comes back is still the owner", back.state.ownerId === pid("o-id") && back.state.guestControl === "add");
   check("guests are held to the restriction again", await refuses(guest, { t: "pause" }));
 
-  check("a guest cannot remove anyone", await refuses(guest, { t: "kick", id: "t-id" }));
-  owner2.send({ t: "kick", id: "t-id" });
+  check("a guest cannot remove anyone", await refuses(guest, { t: "kick", id: pid("t-id") }));
+  owner2.send({ t: "kick", id: pid("t-id") });
   const removed = await third.waitFor((m) => m.t === "error" && m.code === "removed");
   check("the owner removes a member", removed.code === "removed" && (await third.closed) === 4001);
-  await guest.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === "t-id"));
+  await guest.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === pid("t-id")));
   const again = new Client(code, "t-id", "Tom");
   check("a removed member may join again", (await again.join(false)).members.length === 3);
 
   owner2.send({ t: "bye" });
-  const handed = await guest.waitFor((m) => m.t === "state" && m.state.ownerId !== "o-id");
-  check("an owner who leaves hands the room to whoever has been here longest", handed.state.ownerId === "g-id");
+  const handed = await guest.waitFor((m) => m.t === "state" && m.state.ownerId !== pid("o-id"));
+  check("an owner who leaves hands the room to whoever has been here longest", handed.state.ownerId === pid("g-id"));
   guest.send({ t: "bye" });
-  await again.waitFor((m) => m.t === "state" && m.state.ownerId === "t-id");
+  await again.waitFor((m) => m.t === "state" && m.state.ownerId === pid("t-id"));
   again.send({ t: "bye" });
   await sleep(200);
   const late = new Client(code, "l-id", "Lea");
   const adopted = await late.join(false);
-  check("a room everyone left has no owner until someone comes", adopted.state.ownerId === "l-id" && adopted.state.guestControl === "all");
+  check("a room everyone left has no owner until someone comes", adopted.state.ownerId === pid("l-id") && adopted.state.guestControl === "all");
   [owner2, guest, again, late].forEach((x) => x.close());
 }
 
@@ -705,20 +714,20 @@ async function avatarSection() {
   const bob = new Client(code, "bo-id", "Bob");
   await bob.join(false);
   const picture = Buffer.from("a small picture, as far as the server can tell").toString("base64");
-  const members = (client) => client.waitFor((m) => m.t === "members" && m.members.some((x) => x.id === "an-id" && x.av));
+  const members = (client) => client.waitFor((m) => m.t === "members" && m.members.some((x) => x.id === pid("an-id") && x.av));
 
   ann.send({ t: "avatar.set", data: picture });
   const announced = await members(bob);
-  const av = announced.members.find((x) => x.id === "an-id").av;
+  const av = announced.members.find((x) => x.id === pid("an-id")).av;
   check("a picture is announced by a short fingerprint, not sent along", /^[0-9a-f]{8}$/.test(av) && !JSON.stringify(announced).includes(picture));
-  bob.send({ t: "avatar.get", id: "an-id" });
+  bob.send({ t: "avatar.get", id: pid("an-id") });
   const got = await bob.waitFor((m) => m.t === "avatar");
-  check("asking for it brings the picture and its fingerprint to the one who asked", got.id === "an-id" && got.av === av && got.data === picture);
+  check("asking for it brings the picture and its fingerprint to the one who asked", got.id === pid("an-id") && got.av === av && got.data === picture);
   check("the others are not sent it", await ann.stays((m) => m.t === "avatar", 300));
 
-  bob.send({ t: "avatar.get", id: "bo-id" });
+  bob.send({ t: "avatar.get", id: pid("bo-id") });
   const none = await bob.waitFor((m) => m.t === "avatar");
-  check("a member without a picture answers with none", none.id === "bo-id" && none.data === undefined && none.av === undefined);
+  check("a member without a picture answers with none", none.id === pid("bo-id") && none.data === undefined && none.av === undefined);
 
   await sleep(100);
   bob.inbox.length = 0; // what was announced so far
@@ -731,19 +740,19 @@ async function avatarSection() {
   await sleep(100);
   bob.inbox.length = 0; // the old socket of Ann closing
   same.send({ t: "avatar.set", data: picture });
-  check("the same picture again changes nothing for the others", await bob.stays((m) => m.t === "members" && m.members.some((x) => x.id === "an-id" && x.av !== av), 300));
+  check("the same picture again changes nothing for the others", await bob.stays((m) => m.t === "members" && m.members.some((x) => x.id === pid("an-id") && x.av !== av), 300));
   same.send({ t: "avatar.set", data: null });
-  const removed = await bob.waitFor((m) => m.t === "members" && m.members.some((x) => x.id === "an-id" && !x.av));
+  const removed = await bob.waitFor((m) => m.t === "members" && m.members.some((x) => x.id === pid("an-id") && !x.av));
   check("taking the picture away is announced", removed.members.every((x) => !x.av));
-  bob.send({ t: "avatar.get", id: "an-id" });
+  bob.send({ t: "avatar.get", id: pid("an-id") });
   check("and it cannot be fetched any more", (await bob.waitFor((m) => m.t === "avatar")).data === undefined);
 
   // A device that leaves takes its picture with it
   same.send({ t: "avatar.set", data: picture });
   await members(bob);
   same.close();
-  await bob.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === "an-id"));
-  bob.send({ t: "avatar.get", id: "an-id" });
+  await bob.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === pid("an-id")));
+  bob.send({ t: "avatar.get", id: pid("an-id") });
   check("a picture does not outlive its member", (await bob.waitFor((m) => m.t === "avatar")).data === undefined);
   [ann, bob].forEach((x) => x.close());
 }
@@ -831,7 +840,7 @@ async function shuffleSection() {
 
   a.send({ t: "play" });
   const again = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
-  check("play after the last song starts the list again from the top", again[0].index === 0 && again[0].by === "Ha-id");
+  check("play after the last song starts the list again from the top", again[0].index === 0 && again[0].by === pid("Ha-id"));
 
   // Finish again, then shuffle the finished list
   await all([a, b], (x) => x.send({ t: "ready", epoch: again[0].epoch }));
@@ -857,10 +866,10 @@ async function soloAndPresenceSection(staleMs) {
   const stopAlive = keepAlive([a, b]);
   const member = (msg, id) => msg.members.find((m) => m.id === id);
 
-  check("members start out present and following", member(await a.waitFor((m) => m.t === "members" && m.members.length === 3), "Xc-id").solo === false);
+  check("members start out present and following", member(await a.waitFor((m) => m.t === "members" && m.members.length === 3), pid("Xc-id")).solo === false);
 
   c.send({ t: "solo", on: true });
-  const soloMsg = await a.waitFor((m) => m.t === "members" && member(m, "Xc-id")?.solo === true);
+  const soloMsg = await a.waitFor((m) => m.t === "members" && member(m, pid("Xc-id"))?.solo === true);
   check("the others are told a device listens on its own", !!soloMsg);
 
   a.send({ t: "queue.add", videoId: VIDEO_A, title: "One", artist: "x", durMs: 200000 });
@@ -873,16 +882,16 @@ async function soloAndPresenceSection(staleMs) {
 
   b.send({ t: "pause" });
   const paused = await a.waitFor((m) => m.t === "pause");
-  check("a pause says who paused", paused.by === "Xb-id", `by=${paused.by}`);
+  check("a pause says who paused", paused.by === pid("Xb-id"), `by=${paused.by}`);
   b.send({ t: "play" });
   const resumed = await a.waitFor((m) => m.t === "start");
-  check("a resume says who resumed", resumed.by === "Xb-id");
+  check("a resume says who resumed", resumed.by === pid("Xb-id"));
 
   a.send({ t: "queue.add", videoId: VIDEO_B, title: "Two", artist: "x", durMs: 200000 });
   await a.waitFor((m) => m.t === "state" && m.state.queue.length === 2);
   a.send({ t: "next" });
   const skipped = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
-  check("a skip says who skipped", skipped[0].by === "Xa-id");
+  check("a skip says who skipped", skipped[0].by === pid("Xa-id"));
 
   // c missed nothing on purpose here, but asks again as it would when rejoining
   c.inbox.length = 0; // whatever it heard so far must not be mistaken for the answer
@@ -893,14 +902,14 @@ async function soloAndPresenceSection(staleMs) {
   check("resync during a barrier also returns the prepare", again.item.videoId === VIDEO_B && again.epoch === skipped[0].epoch);
 
   c.send({ t: "solo", on: false });
-  check("the device is following again", !!(await a.waitFor((m) => m.t === "members" && member(m, "Xc-id")?.solo === false)));
+  check("the device is following again", !!(await a.waitFor((m) => m.t === "members" && member(m, pid("Xc-id"))?.solo === false)));
 
   if (staleMs > 0) {
     await sleep(staleMs + 400);
-    const away = await a.waitFor((m) => m.t === "members" && member(m, "Xc-id")?.away === true, 3000);
+    const away = await a.waitFor((m) => m.t === "members" && member(m, pid("Xc-id"))?.away === true, 3000);
     check("a device that went quiet is marked away", !!away);
     c.send({ t: "ping", c0: Date.now() });
-    const back = await a.waitFor((m) => m.t === "members" && member(m, "Xc-id")?.away === false, 3000);
+    const back = await a.waitFor((m) => m.t === "members" && member(m, pid("Xc-id"))?.away === false, 3000);
     check("and is marked present again as soon as it speaks", !!back);
   }
 
@@ -1183,6 +1192,320 @@ async function crossfireSection() {
     check("the other device was never held up", !!(await (async () => { a.send({ t: "ping", c0: Date.now() }); return a.waitFor((m) => m.t === "pong", 1500).catch(() => null); })()));
     [a, b].forEach((x) => x.close());
   }
+}
+
+/**
+ * Behaviours that group listening elsewhere has settled, checked against this server:
+ * Jellyfin SyncPlay's next/previous name the item they were pressed on and are ignored once the group moved on,
+ * Syncplay's crossfire (seek, pause and play from several people at once), a seek during loading as in SharePlay's
+ * coordinated seek, presence and ownership as in Spotify Jam. Ends with a randomized storm of commands from three
+ * devices after which every device's own picture of the room must match the server's, from the messages alone.
+ */
+async function conformanceSection() {
+  console.log("Market conformance");
+  const track = (videoId, title) => ({ videoId, title, artist: "x", durMs: 200000 });
+  const quiet = (clients) => clients.forEach((x) => (x.inbox.length = 0));
+  const codeOf = (client) => client.ws.url.split("/room/")[1].split("?")[0];
+  const views = async (clients) => {
+    quiet(clients);
+    clients.forEach((x) => x.send({ t: "resync" }));
+    return all(clients, (x) => x.waitFor((m) => m.t === "state"));
+  };
+  /** A room of [names] playing [count] songs, everybody through the first barrier; returns the clients and the queue. */
+  const playing = async (names, count) => {
+    const clients = await freshRoom(names);
+    clients[0].send({ t: "queue.addMany", tracks: Array.from({ length: count }, (_, i) => track([VIDEO_A, VIDEO_B, VIDEO_C][i % 3], `Song ${i}`)) });
+    const st = await clients[0].waitFor((m) => m.t === "state" && m.state.queue.length === count);
+    const p = await all(clients, (x) => x.waitFor((m) => m.t === "prepare"));
+    clients.forEach((x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    await all(clients, (x) => x.waitFor((m) => m.t === "start"));
+    quiet(clients);
+    return { clients, ids: st.state.queue.map((q) => q.id) };
+  };
+
+  // Two people press next on the same song at the same moment: the room moves one song, not two
+  {
+    const { clients: [a, b, c], ids } = await playing(["Na", "Nb", "Nc"], 4);
+    a.send({ t: "next", from: ids[0] });
+    b.send({ t: "next", from: ids[0] });
+    await sleep(400);
+    let seen = await views([a, b, c]);
+    check("two people pressing next on the same song move the room one song, not two", seen.every((m) => m.state.index === 1), JSON.stringify(seen.map((m) => m.state.index)));
+    b.send({ t: "prev", from: ids[0] });
+    await sleep(300);
+    seen = await views([a, b, c]);
+    check("a previous pressed on a song the room already left does nothing", seen.every((m) => m.state.index === 1));
+    a.send({ t: "prev", from: ids[1] });
+    await sleep(300);
+    seen = await views([a, b, c]);
+    check("a previous pressed on the current song works", seen.every((m) => m.state.index === 0));
+    a.send({ t: "next" });
+    await sleep(300);
+    seen = await views([a, b, c]);
+    check("a next from an older app that names no song still works", seen.every((m) => m.state.index === 1));
+    [a, b, c].forEach((x) => x.close());
+  }
+
+  // Two people pause (or resume) at the same moment: one pause, one start, nobody flaps
+  {
+    const { clients: [a, b] } = await playing(["Da", "Db"], 1);
+    a.send({ t: "pause" });
+    b.send({ t: "pause" });
+    await sleep(500);
+    check("two pauses at once reach every device as one pause", a.inbox.filter((m) => m.t === "pause").length === 1 && b.inbox.filter((m) => m.t === "pause").length === 1);
+    quiet([a, b]);
+    a.send({ t: "play" });
+    b.send({ t: "play" });
+    await sleep(500);
+    check("two plays at once reach every device as one start", a.inbox.filter((m) => m.t === "start").length === 1 && b.inbox.filter((m) => m.t === "start").length === 1);
+    [a, b].forEach((x) => x.close());
+  }
+
+  // Somebody seeks while the song is still loading: the room starts at the new place, and a newcomer prepares there
+  {
+    const [a, b] = await freshRoom(["Sa2", "Sb2"]);
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+    const p = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+    b.send({ t: "seek", positionMs: 30000 });
+    await sleep(300);
+    const late = new Client(codeOf(a), "Sc2-id", "Sc2");
+    await late.join();
+    const lp = await late.waitFor((m) => m.t === "prepare");
+    check("a seek while the song loads is kept for whoever joins meanwhile", lp.seekToMs === 30000, `seekToMs=${lp.seekToMs}`);
+    [a, b, late].forEach((x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    const go = await all([a, b, late], (x) => x.waitFor((m) => m.t === "start", 3000)).catch(() => null);
+    check("a seek while the song loads is where the room starts", !!go && go.every((st) => st.positionMs === 30000 && st.startAt === go[0].startAt), JSON.stringify(go?.map((st) => st.positionMs)));
+    [a, b, late].forEach((x) => x.close());
+  }
+
+  // Everybody leaves while a song is loading: whoever comes back finds it paused, not starting by itself
+  {
+    const [a, b] = await freshRoom(["La3", "Lb3"]);
+    const code = codeOf(a);
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+    await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+    [a, b].forEach((x) => x.close());
+    await sleep(400);
+    const back = new Client(code, "La3-id", "La3");
+    const st = await back.join(false);
+    const again = await back.waitFor((m) => m.t === "prepare", 600).catch(() => null);
+    if (again) back.send({ t: "ready", epoch: again.epoch });
+    check("a room left while a song loads is paused when somebody comes back", st.state.phase === "paused", st.state.phase);
+    check("and it does not start by itself", await back.stays((m) => m.t === "start", 800));
+    back.close();
+  }
+
+  // Ownership cannot be taken by copying an id from the member list
+  {
+    const { code } = await (await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders })).json();
+    const owner = new Client(code, "Io-secret", "Io");
+    await owner.join(true);
+    owner.send({ t: "room.settings", guestControl: "add" });
+    await owner.waitFor((m) => m.t === "state" && m.state.guestControl === "add");
+    const guest = new Client(code, "Ig-secret", "Ig");
+    const gs = await guest.join(false);
+    const listed = gs.members.map((m) => m.id);
+    check("the member list never shows a device's own secret id", !listed.includes("Io-secret") && !listed.includes("Ig-secret"), JSON.stringify(listed));
+    const ownerEntry = gs.members.find((m) => m.owner);
+    const impostor = new Client(code, ownerEntry.id, "Io");
+    const is = await impostor.join(false);
+    await sleep(300);
+    check("joining with the owner's listed id does not make a device the owner", is.state.ownerId !== is.you && is.state.ownerId === ownerEntry.id);
+    check("and does not push the real owner out", owner.ws.readyState === WebSocket.OPEN);
+    quiet([impostor]);
+    impostor.send({ t: "pause" });
+    check("and that device stays a guest", !!(await impostor.waitFor((m) => m.t === "error" && m.code === "forbidden", 1500).catch(() => null)));
+    [owner, guest, impostor].forEach((x) => x.close());
+  }
+
+  // An owner who leaves hands the room to somebody who is really there, not to a device that went quiet
+  if (process.env.SIM_STALE_MS) {
+    const staleMs = Number(process.env.SIM_STALE_MS);
+    const { code } = await (await fetch(`${BASE}/rooms`, { method: "POST", headers: keyHeaders })).json();
+    const owner = new Client(code, "Ho-secret", "Ho");
+    await owner.join(true);
+    const quietOne = new Client(code, "Hq-secret", "Hq"); // here longest after the owner, then silent
+    await quietOne.join(false);
+    await sleep(50);
+    const awake = new Client(code, "Ha-secret", "Ha");
+    await awake.join(false);
+    const keepAlive = setInterval(() => [owner, awake].forEach((x) => x.send({ t: "ping", c0: Date.now() })), 400);
+    await sleep(staleMs + 800);
+    clearInterval(keepAlive);
+    quiet([awake]);
+    owner.send({ t: "bye" });
+    const handed = await awake.waitFor((m) => m.t === "state" && m.state.ownerId !== pid("Ho-secret"), 2000).catch(() => null);
+    check("an owner who leaves hands the room to a member who is present, not to one gone quiet", handed?.state.ownerId === pid("Ha-secret"), handed?.state.ownerId);
+    [owner, quietOne, awake].forEach((x) => x.close());
+  }
+
+  // Devices that say their round trip get a start scheduled sooner than the old fixed 1.5 s; one that does not keeps it
+  {
+    const [a, b] = await freshRoom(["Ra5", "Rb5"]);
+    [a, b].forEach((x) => x.send({ t: "ping", c0: Date.now(), rtt: 40 }));
+    await all([a, b], (x) => x.waitFor((m) => m.t === "pong"));
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+    const p = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+    [a, b].forEach((x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    const st = await a.waitFor((m) => m.t === "start");
+    const lead = st.startAt - st._at;
+    check("devices on a good network are started about 0.6 s ahead, not 1.5 s", lead > 300 && lead < 900, `lead=${lead}ms`);
+    const old = new Client(codeOf(a), "Rc5-id", "Rc5"); // an older app: says nothing about its round trip
+    await old.join();
+    quiet([a, b, old]);
+    a.send({ t: "seek", positionMs: 10000 });
+    const st2 = await a.waitFor((m) => m.t === "start");
+    const lead2 = st2.startAt - st2._at;
+    check("with an older app in the room the lead is the full 1.5 s", lead2 > 1100 && lead2 < 1700, `lead=${lead2}ms`);
+    [a, b, old].forEach((x) => x.close());
+  }
+
+  // The clock the devices sync to answers within the round trip, and never goes back
+  {
+    const [a] = await freshRoom(["Ck"]);
+    const samples = [];
+    for (let i = 0; i < 10; i++) {
+      const c0 = Date.now();
+      a.send({ t: "ping", c0 });
+      const pong = await a.waitFor((m) => m.t === "pong" && m.c0 === c0);
+      samples.push({ c0, s1: pong.s1, c2: pong._at });
+      await sleep(30);
+    }
+    // Server and simulation share this machine's clock here, so s1 must lie between sending and receiving
+    check("every pong is stamped between its ping and its answer", samples.every((x) => x.s1 >= x.c0 && x.s1 <= x.c2), JSON.stringify(samples.slice(0, 3)));
+    check("and the server clock never goes back", samples.every((x, i) => i === 0 || x.s1 >= samples[i - 1].s1));
+    a.close();
+  }
+
+  // A storm of commands from three devices at once, three times with different seeds
+  for (const seed of [Number(process.env.SIM_SEED) || 0x5a9, 0x1234, 0xbeef].map((s, i) => s + i)) {
+    await stormRound(seed);
+  }
+}
+
+/** A small seeded random source, so that a failing storm can be replayed with SIM_SEED. */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Three devices send random commands with small random gaps and answer every prepare after a random delay, like
+ * phones loading at their own pace. Afterwards: every device saw epochs only grow, every device got the same start for
+ * an epoch, the room is not stuck loading, and what each device pieced together from the messages it received is
+ * exactly the server's state.
+ */
+async function stormRound(seed) {
+  const rand = mulberry32(seed);
+  // Loading delays draw from their own source, so that the commands stay the same however the answers interleave
+  const loading = mulberry32(seed ^ 0x9e3779b9);
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  const clients = await freshRoom([`F${seed}a`, `F${seed}b`, `F${seed}c`]);
+  /** Follows what [client] is told, the way a phone pieces the room together. */
+  const follow = (client) => {
+    const model = { epoch: -1, phase: "idle", index: 0, positionMs: 0, startedAt: 0, queue: [], backwards: [], starts: new Map(), errors: [] };
+    const inner = client.ws.onmessage;
+    client.ws.onmessage = (event) => {
+      inner(event);
+      const m = JSON.parse(event.data);
+      const epoch = m.t === "state" ? m.state.epoch : m.epoch;
+      if (typeof epoch === "number") {
+        if (epoch < model.epoch) model.backwards.push(`${m.t} ${epoch} after ${model.epoch}`);
+      }
+      switch (m.t) {
+        case "state":
+          Object.assign(model, { epoch: m.state.epoch, phase: m.state.phase, index: m.state.index, positionMs: m.state.positionMs, startedAt: m.state.startedAt, queue: m.state.queue.map((q) => q.id) });
+          break;
+        case "prepare":
+          Object.assign(model, { epoch: m.epoch, phase: "preparing", index: m.index, positionMs: m.seekToMs });
+          setTimeout(() => client.ws.readyState === WebSocket.OPEN && client.send({ t: "ready", epoch: m.epoch }), Math.floor(loading() * 150));
+          break;
+        case "start":
+          Object.assign(model, { epoch: m.epoch, phase: "playing", positionMs: m.positionMs, startedAt: m.startAt - m.positionMs });
+          model.starts.set(m.epoch, `${m.startAt}/${m.positionMs}`);
+          break;
+        case "pause":
+          Object.assign(model, { epoch: m.epoch, phase: "paused", positionMs: m.positionMs });
+          break;
+        case "advance":
+          Object.assign(model, { epoch: m.epoch, phase: "playing", index: m.index, positionMs: 0, startedAt: m.startedAt });
+          break;
+        case "error":
+          model.errors.push(m.code);
+          break;
+      }
+    };
+    return model;
+  };
+  const models = clients.map(follow);
+
+  const songs = [VIDEO_A, VIDEO_B, VIDEO_C];
+  clients[0].send({ t: "queue.addMany", tracks: Array.from({ length: 6 }, (_, i) => ({ videoId: songs[i % 3], title: `S${i}`, artist: "x", durMs: 200000 })) });
+  await sleep(600);
+
+  const code = clients[0].ws.url.split("/room/")[1].split("?")[0];
+  const dropAt = 10 + Math.floor(rand() * 25);
+  for (let i = 0; i < 45; i++) {
+    if (i === dropAt) {
+      // One device loses its connection in the middle of it all and comes back on a new one, as phones do
+      const k = Math.floor(rand() * clients.length);
+      const gone = clients[k];
+      gone.close();
+      const back = new Client(code, gone.clientId, gone.name);
+      models[k] = follow(back);
+      clients[k] = back;
+      await back.join();
+    }
+    const at = Math.floor(rand() * clients.length);
+    const client = clients[at];
+    const { queue, index } = models[at];
+    const current = queue[index];
+    const any = queue.length ? pick(queue) : undefined;
+    const r = rand();
+    let msg;
+    if (r < 0.14) msg = { t: "play" };
+    else if (r < 0.28) msg = { t: "pause" };
+    else if (r < 0.4) msg = { t: "seek", positionMs: Math.floor(rand() * 190000) };
+    else if (r < 0.54) msg = { t: "next", from: current };
+    else if (r < 0.62) msg = { t: "prev", from: current };
+    else if (r < 0.72 && any) msg = { t: "jump", id: any };
+    else if (r < 0.82) msg = { t: "queue.add", videoId: pick(songs), title: `Added ${i}`, artist: "x", durMs: 200000, next: rand() < 0.5 };
+    else if (r < 0.88 && any && queue.length > 3) msg = { t: "queue.remove", id: any };
+    else if (r < 0.96 && any) msg = { t: "queue.move", id: any, toIndex: Math.floor(rand() * queue.length) };
+    else msg = { t: "queue.shuffle" };
+    client.send(msg);
+    await sleep(15 + Math.floor(rand() * 45));
+  }
+  // Let every barrier release: devices answer within 150 ms, nothing else is sent
+  await sleep(1500);
+
+  const pictured = models.map((m) => ({ ...m, queue: [...m.queue] }));
+  clients.forEach((x) => (x.inbox.length = 0));
+  clients.forEach((x) => x.send({ t: "resync" }));
+  const truth = await all(clients, (x) => x.waitFor((m) => m.t === "state"));
+  const s = truth[0].state;
+  const label = `(seed ${seed})`;
+  check(`storm ${label}: no device ever saw the room go back to an older epoch`, models.every((m) => m.backwards.length === 0), JSON.stringify(models.map((m) => m.backwards.slice(0, 2))));
+  const startsAgree = [...new Set(models.flatMap((m) => [...m.starts.keys()]))].every((epoch) => {
+    const told = models.map((m) => m.starts.get(epoch)).filter(Boolean);
+    return told.every((x) => x === told[0]);
+  });
+  check(`storm ${label}: every device was given the same start for each epoch`, startsAgree);
+  check(`storm ${label}: the room is not left loading once every device is ready`, s.phase !== "preparing", s.phase);
+  check(`storm ${label}: the current song is in the queue`, s.queue.length === 0 ? s.index === 0 : s.index >= 0 && s.index < s.queue.length, `${s.index}/${s.queue.length}`);
+  const same = (m) =>
+    m.epoch === s.epoch && m.phase === s.phase && m.index === s.index && m.queue.join() === s.queue.map((q) => q.id).join() &&
+    (s.phase !== "paused" || m.positionMs === s.positionMs) && (s.phase !== "playing" || m.startedAt === s.startedAt);
+  check(`storm ${label}: what each device pieced together from the messages is the server's state`, pictured.every(same),
+    JSON.stringify({ server: [s.epoch, s.phase, s.index, s.positionMs, s.startedAt], devices: pictured.map((m) => [m.epoch, m.phase, m.index, m.positionMs, m.startedAt]) }));
+  check(`storm ${label}: no device was refused or slowed down`, models.every((m) => m.errors.length === 0), JSON.stringify(models.map((m) => m.errors)));
+  clients.forEach((x) => x.close());
 }
 
 main().catch((error) => {

@@ -90,7 +90,8 @@ export type ClientMessage =
   | { t: "room.name"; name: string }
   /** Owner only. */
   | { t: "room.settings"; guestControl: GuestControl }
-  | { t: "ping"; c0: number }
+  /** [rtt] is the best round trip the device measured; the room schedules starts from the slowest. Absent from older apps. */
+  | { t: "ping"; c0: number; rtt?: number }
   /** The member's own picture, as base64 of a small JPEG or PNG; null takes it away. Pictures are not part of the member list. */
   | { t: "avatar.set"; data: string | null }
   /** Asks for the picture of the member [id]; answered with an avatar message to this socket only. */
@@ -114,8 +115,12 @@ export type ClientMessage =
   | { t: "play" }
   | { t: "pause" }
   | { t: "seek"; positionMs: number }
-  | { t: "next" }
-  | { t: "prev" }
+  /**
+   * [from] is the id of the item the button was pressed on: when the room has already left it (somebody else skipped
+   * first) the press is ignored, so two people skipping at once move the room one item, not two. Absent from older apps.
+   */
+  | { t: "next"; from?: string }
+  | { t: "prev"; from?: string }
   | { t: "repeat"; mode: Repeat }
   /** Turns the room's autoplay on or off, restricted like [repeat]. Protocol 9. */
   | { t: "autoplay"; on: boolean }

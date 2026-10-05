@@ -585,8 +585,10 @@ final class GroupController {
 
     // Outside a room the buttons drive the personal queue; in a room they act on the room, or on this device alone
     @discardableResult func requestPause() -> Bool { act({ $0.pause() }, { $0.soloPause() }) { send(Wire.pause()) } }
-    @discardableResult func requestNext() -> Bool { act({ $0.next() }, { $0.soloNext() }) { send(Wire.next()) } }
-    @discardableResult func requestPrev() -> Bool { act({ $0.prev() }, { $0.soloPrev() }) { send(Wire.prev()) } }
+    // Each names the song it was pressed on, so that it does nothing once somebody else already skipped it
+    @discardableResult func requestNext() -> Bool { act({ $0.next() }, { $0.soloNext() }) { send(Wire.next(from: roomItemId())) } }
+    @discardableResult func requestPrev() -> Bool { act({ $0.prev() }, { $0.soloPrev() }) { send(Wire.prev(from: roomItemId())) } }
+    private func roomItemId() -> String? { session?.snapshot.value.state?.current?.id }
     @discardableResult func requestSeek(_ positionMs: Int64) -> Bool { act({ $0.seek(positionMs) }, { $0.soloSeek(positionMs) }) { send(Wire.seek(positionMs)) } }
     @discardableResult func requestJump(_ itemId: String) -> Bool { act({ $0.jump(itemId) }, { $0.soloJump(itemId) }) { send(Wire.jump(itemId)) } }
 

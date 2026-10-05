@@ -116,6 +116,9 @@ final class RoomClient: SocketEvents {
     /// The fingerprint of each member's picture as last asked for, so a picture is fetched once and not at every change.
     private var known: [String: String] = [:]
 
+    /// What the room calls this device: members are listed by a public id, not by [clientId].
+    private var you: String?
+
     init(baseUrl: String, roomCode: String, clientId: String, name: String, scope: Scope, clock: ClockSync,
          time: TimeSource? = nil, log: @escaping (String) -> Void = { _ in }, headers: [String: String] = [:],
          create: Bool? = nil, sockets: SocketFactory? = nil, pingEveryMs: Int64 = RoomClient.refreshMs,
@@ -268,7 +271,8 @@ final class RoomClient: SocketEvents {
             onAvatar(id, av, data)
         case let message?:
             if case .state = message, createOnJoin == true { createOnJoin = false }
-            if case let .state(_, _, _, members, protocolVersion) = message {
+            if case let .state(_, yourId, _, members, protocolVersion) = message {
+                you = yourId
                 serverProtocol = protocolVersion
                 shareAvatar()
                 wantPictures(members)
@@ -291,7 +295,7 @@ final class RoomClient: SocketEvents {
         if serverProtocol < Self.avatarProtocol { return }
         let present = Set(members.map(\.id))
         known = known.filter { present.contains($0.key) }
-        for member in members where member.id != clientId {
+        for member in members where member.id != clientId && member.id != you {
             if let av = member.av {
                 if known[member.id] != av {
                     known[member.id] = av
@@ -323,7 +327,7 @@ final class RoomClient: SocketEvents {
     /// here, since nothing else would notice.
     private func pingLoop(_ ws: Socket) async {
         for _ in 0..<Self.burstPings {
-            ws.send(Wire.ping(time.nowMs()))
+            ws.send(Wire.ping(time.nowMs(), rttMs: clock.bestRttMs()))
             guard await time.wait(ms: Self.burstGapMs) else { return }
         }
         while true {
@@ -334,7 +338,7 @@ final class RoomClient: SocketEvents {
                 attemptEnd?.complete(-1)
                 return
             }
-            ws.send(Wire.ping(time.nowMs()))
+            ws.send(Wire.ping(time.nowMs(), rttMs: clock.bestRttMs()))
         }
     }
 

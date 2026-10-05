@@ -21,7 +21,7 @@ Connection: a WebSocket to `wss://<worker>/room/<CODE>`. Every room is a Durable
 }
 ```
 
-`name` and `ownerId` may be absent. See section 5c for the owner and the room name. `autoplay` says whether the room carries on by itself when its queue runs out (section 5e); it is absent when the server is older than protocol 9. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d.
+`name` and `ownerId` may be absent. See section 5c for the owner and the room name. Member ids, `ownerId`, `addedBy`, `by` and `you` are **public ids**, never the `clientId` a device joins with (section 3). `autoplay` says whether the room carries on by itself when its queue runs out (section 5e); it is absent when the server is older than protocol 9. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d.
 
 - `phase=playing`: the current position is `serverNow - startedAt`.
 - `phase=paused`: the position is `positionMs`.
@@ -45,12 +45,12 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 | `t` | Fields | Meaning |
 |---|---|---|
-| `join` | `name`, `clientId`, `create?` | Join a room; the server answers with `state`. `create:true` is a code the device just made up, `create:false` is a code it was given: if the room does not exist the server answers with the error `room_not_found` and closes with 4004 (a mistyped code does not open an empty room). A missing `create` is an old app, which is allowed to open the room as before |
+| `join` | `name`, `clientId`, `create?` | Join a room; the server answers with `state`. `clientId` is the device's own secret: the room knows the device by its public id, the first 16 hexadecimal digits of the SHA-256 of `sapoche-member:<clientId>`, and that is the id everybody sees (in `members`, `ownerId`, `addedBy`, `by`, and `you` in the device's own `state`). Knowing someone's public id therefore does not let a device join as them or as the owner. Rooms saved before public ids carry their old owner and `addedBy` over (hashing an old id gives the new one). `create:true` is a code the device just made up, `create:false` is a code it was given: if the room does not exist the server answers with the error `room_not_found` and closes with 4004 (a mistyped code does not open an empty room). A missing `create` is an old app, which is allowed to open the room as before |
 | `bye` | | Leave on purpose (as opposed to losing the connection). When the owner sends `bye` the longest-present member becomes the owner; a room with nobody left has no owner |
 | `kick` | `id` | Owner only: disconnect that member (closes 4001, with the error `removed`); they can join again |
 | `room.name` | `name` | Rename the room, at most 32 characters, empty removes the name |
 | `room.settings` | `guestControl` | Owner only: `all` (everybody steers, the default) or `add` (guests can only add songs) |
-| `ping` | `c0` | Clock measurement |
+| `ping` | `c0`, `rtt?` | Clock measurement. `rtt` is the best round trip the device has measured so far, in ms; the server schedules starts from the slowest device that follows the room (section 5). Older apps leave it out |
 | `avatar.set` | `data` | The device's own picture: base64 of a small JPEG or PNG (about 256 px), at most 24,000 characters; `null` takes it away. Anything else is ignored. Only servers of protocol 8 or newer know it, and an older one answers with `unknown_type`, so a client sends it only after a `state` that says `protocol` 8 or more |
 | `avatar.get` | `id` | Asks for the picture of the member `id`; answered with `avatar` to this socket only |
 | `queue.add` | `videoId`, metadata, `next?` | Add a song; `next: true` inserts it right after the current one (if the room is `idle` the new song is only appended and played) |
@@ -62,8 +62,8 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 | `jump` | `id` | Play this song from the start now (through the barrier) |
 | `queue.move` | `id`, `toIndex` | Change the position |
 | `play` / `pause` | | Control. `play` when the room is `idle` at the last song (the queue has run out) plays again **from the first song**, not only the last one. `pause` while the room is `preparing` (the song is still loading) holds it there: the phase becomes `paused`, the barrier is dropped, and a later `play` starts it |
-| `seek` | `positionMs` | Seek |
-| `next` / `prev` | | Change song; `next` at the last song with `repeat=all` goes back to the first |
+| `seek` | `positionMs` | Seek. While the room is `preparing` the barrier goes on: the new position is kept, the coming `start` carries it, and a device that joins meanwhile is told to prepare there |
+| `next` / `prev` | `from?` | Change song; `next` at the last song with `repeat=all` goes back to the first. `from` is the id of the queue item the button was pressed on: if the room has already left it (somebody else skipped first) the press is ignored, so two people skipping at the same moment move the room one song, not two. Older apps leave it out, and their presses always count |
 | `autoplay` | `on` | Turn the room's autoplay on or off (section 5e). Restricted like `repeat`: once the owner lets guests only add songs, only the owner may. Anything but `true` or `false` is ignored. Only servers of protocol 9 or newer know it, and an older one answers with `unknown_type`, so a client sends it only after a `state` that carries `autoplay` |
 | `repeat` | `mode` | `off`: stop after the last song. `all`: when the queue ends, play it again from the start. `one`: when the current song ends, play it again (the `next` button still goes to the next song). Unknown values are ignored |
 | `solo` | `on` | Start (`true`) or stop (`false`) listening alone: the room's commands no longer steer this device and the room does not wait for it at the barrier. The server forgets this flag when the socket drops, so the client sends it again after every reconnect |
@@ -94,7 +94,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 1. A device sends `next` (or the current song ends).
 2. The server increases `epoch`, sets `phase=preparing` and sends `prepare` to every device.
 3. Every device resolves the URL, buffers about 3 seconds and sends `ready`.
-4. When every device is `ready` (or after 8 seconds, skipping the slow ones) the server sets `startedAt = serverNow + 1500ms` and `phase=playing`, and sends `start`.
+4. When every device is `ready` (or after 8 seconds, skipping the slow ones) the server sets `startedAt = serverNow + lead` and `phase=playing`, and sends `start`. The lead is 1500 ms at most: when every device following the room (present, not alone) has said its round trip in its pings, it is the slowest round trip plus 400 ms, and never less than 600 ms. The same lead applies to every `start`, so play and seek answer sooner on a good network.
 5. Every device converts `startAt` to its own clock (minus `offset`) and starts playing at exactly that moment.
 6. A device that was skipped because it was late to be ready seeks to the current position and plays.
 7. While playing, every device resolves and preloads the next song so the change is seamless.
@@ -123,7 +123,7 @@ Who did what: `pause`, `start` and `prepare` carry `by` so that other devices ca
 
 ## 5c. Owner, room name and lifecycle
 
-**Owner.** Whoever opens the room (`create:true`), or the first to join when the room has no owner, is the owner. `guestControl` defaults to `all`: everybody has equal rights, as before. When the owner switches to `add`, guests can only add songs (`queue.add`, `queue.addMany`) and listen alone; `play`, `pause`, `seek`, `next`, `prev`, `jump`, `queue.remove`, `queue.swap`, `queue.move`, `queue.clear`, `queue.shuffle`, `repeat` and `room.name` get `forbidden`. The limit only holds while the owner is present (socket open and not `away`); if the owner loses the connection everybody can steer, and when the owner is back the limit is back, with no handover timer. `kick` and `room.settings` are always owner-only. A room with nobody left loses its owner and `guestControl` goes back to `all`; the first to join afterwards becomes the new owner.
+**Owner.** Whoever opens the room (`create:true`), or the first to join when the room has no owner, is the owner. `guestControl` defaults to `all`: everybody has equal rights, as before. When the owner switches to `add`, guests can only add songs (`queue.add`, `queue.addMany`) and listen alone; `play`, `pause`, `seek`, `next`, `prev`, `jump`, `queue.remove`, `queue.swap`, `queue.move`, `queue.clear`, `queue.shuffle`, `repeat` and `room.name` get `forbidden`. The limit only holds while the owner is present (socket open and not `away`); if the owner loses the connection everybody can steer, and when the owner is back the limit is back, with no handover timer. `kick` and `room.settings` are always owner-only. A room with nobody left loses its owner and `guestControl` goes back to `all`; the first to join afterwards becomes the new owner. Nobody left also stops the music where it was: a room that was playing, or still preparing a song, is `paused` for whoever comes back, so it never starts by itself.
 
 **Lifecycle.** A code is only a name: a room is born when someone joins with `create` not equal to `false`, and does not exist before that. An empty room is kept for 7 days if there are songs left in its queue, for 1 hour if there are none, and then deleted entirely (`deleteAll`). The server has only one Durable Object alarm but keeps the due time of each job (`barrier`, `end`, `gc`, `sweep`) and sets the alarm at the nearest one. `sweep` runs every 5 minutes while the room has people: it closes sockets that have been silent for more than 150 seconds (even when nobody sends anything), so a room of dead devices still becomes empty and is cleaned up. A socket that has not joined (or was refused) creates no data. The server also understands the state stored in the old form (a single alarm).
 
@@ -153,7 +153,7 @@ The thresholds are starting values, to be tuned after measuring on real devices.
 
 Measurements on a real phone show that the position ExoPlayer reports has a sawtooth noise of about 200 ms with a period of 3 to 4 seconds, so decisions are not based on single samples but on the **average over a window of 8 samples (4 seconds)**, after subtracting what was corrected by changing speed. The window is cleared after every seek and every time the player stops or buffers.
 
-**Start latency.** Every device is heard about 150 to 350 ms later than asked after `play()` or a seek (audio output latency). The device learns it: after every normal start, the drift left in the first full window is added to `startBias` (factor 0.8, limited to ±800 ms, kept in the device's storage), and the next time it seeks ahead by exactly that amount. There is also a `trim` that the person sets by hand for devices with an unusual latency (a Bluetooth speaker).
+**Start latency.** Every device is heard about 150 to 350 ms later than asked after `play()` or a seek (audio output latency). The device learns it: after every normal start, the drift left in the first full window is added to `startBias` (factor 0.8, limited to ±800 ms, kept in the device's storage), and the next time it seeks ahead by exactly that amount. A start that is more than 200 ms off after the first 3 readings (a device that has never learned its delay, or a new output) is learned from at once and fixed with one seek, instead of 10 seconds or more at 0.97/1.03. There is also a `trim` that the person sets by hand for devices with an unusual latency (a Bluetooth speaker).
 
 ## 7. Recovery
 
@@ -171,6 +171,6 @@ Measurements on a real phone show that the position ExoPlayer reports has a sawt
 
 ## 8. Open points (to verify by measuring)
 
-- Whether the 1500 ms start delay is enough for slow devices.
+- Whether the start lead (600 to 1500 ms, from the devices' round trips) is enough for slow devices; a device that gets the start late skips ahead as a late joiner does.
 - Whether the drift thresholds and the speed correction make the sound distort.
-- How to handle two people pressing controls at the same time (today: the message that reaches the server first wins).
+- How to handle two people pressing controls at the same time. `next` and `prev` name the item they were pressed on (as Jellyfin SyncPlay does), so a second press for the same item does nothing; for `play`, `pause` and `seek` the message that reaches the server last wins, and every device is told the same.

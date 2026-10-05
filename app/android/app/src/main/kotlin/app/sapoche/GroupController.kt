@@ -538,8 +538,10 @@ class GroupController(
         return act({ it.play() }, { it.soloPlay() }) { send(Protocol.play()) }
     }
     fun requestPause(): Boolean = act({ it.pause() }, { it.soloPause() }) { send(Protocol.pause()) }
-    fun requestNext(): Boolean = act({ it.next() }, { it.soloNext() }) { send(Protocol.next()) }
-    fun requestPrev(): Boolean = act({ it.prev() }, { it.soloPrev() }) { send(Protocol.prev()) }
+    // Each names the song it was pressed on, so that it does nothing once somebody else already skipped it
+    fun requestNext(): Boolean = act({ it.next() }, { it.soloNext() }) { send(Protocol.next(roomItemId())) }
+    fun requestPrev(): Boolean = act({ it.prev() }, { it.soloPrev() }) { send(Protocol.prev(roomItemId())) }
+    private fun roomItemId(): String? = session?.snapshot?.value?.state?.current?.id
     fun requestSeek(positionMs: Long): Boolean = act({ it.seek(positionMs) }, { it.soloSeek(positionMs) }) { send(Protocol.seek(positionMs)) }
     fun requestJump(itemId: String): Boolean = act({ it.jump(itemId) }, { it.soloJump(itemId) }) { send(Protocol.jump(itemId)) }
 

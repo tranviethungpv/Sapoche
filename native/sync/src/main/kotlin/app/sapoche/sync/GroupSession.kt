@@ -257,8 +257,10 @@ class GroupSession(
                 startJob = scope.launch { catchUpPlaying(item, state?.startedAt ?: return@launch) }
                 return@launch
             }
-            val target = clock.toServer(nowMs()) - started + trimMs + seekCostMs + startBiasMs
+            val before = nowMs()
+            val target = clock.toServer(before) - started + trimMs + seekCostMs + startBiasMs
             player.seekTo(target.coerceAtLeast(0))
+            seekCostMs = (nowMs() - before).coerceIn(50, 1000) // the next aim uses what a seek really costs here
             player.play()
             drift.reset()
             player.setSpeed(1f)
@@ -746,6 +748,7 @@ class GroupSession(
         scope.launch {
             if (solo || loadedItemId != null || startJob?.isActive == true || prepareJob?.isActive == true) return@launch
             reportedFailure = null // a new try by hand is told about again if it fails
+            player.refresh(item.videoId) // the address that failed may be what is wrong, and it is kept for hours
             log("play pressed with nothing loaded, catching up with the room")
             startJob = scope.launch { catchUpPlaying(item, s.startedAt) }
         }
@@ -836,12 +839,15 @@ class GroupSession(
                 if (++tick % LOG_EVERY_TICKS == 0) {
                     log("drift=${driftMs}ms smoothed=${smoothed}ms offset=${clock.offsetMs().toLong()}ms rtt=${clock.bestRttMs()?.toLong()}ms")
                 }
-                if (learnBias && filter.isFull) learnStartBias()
+                // A start far from the room (a phone that has not learned its speaker's delay yet) is learned from at
+                // once and fixed with one seek, rather than pulled in at 3 % for ten seconds or more
+                val coldStart = learnBias && filter.hasLargeDriftEvidence && abs(smoothed) > COLD_START_SEEK_MS
+                if (coldStart || (learnBias && filter.isFull)) learnStartBias()
                 if (!correctionEnabled) continue
-                val trusted = if (abs(smoothed) > drift.seekThresholdMs) filter.hasLargeDriftEvidence else filter.isFull
+                val trusted = coldStart || if (abs(smoothed) > drift.seekThresholdMs) filter.hasLargeDriftEvidence else filter.isFull
                 if (!trusted) continue
 
-                when (val action = drift.decide(smoothed)) {
+                when (val action = if (coldStart) DriftAction.Seek else drift.decide(smoothed)) {
                     DriftAction.None -> Unit
                     is DriftAction.SetSpeed -> {
                         player.setSpeed(action.factor)
@@ -856,6 +862,7 @@ class GroupSession(
                         learnBias = false // a corrective seek muddies what the plain start looked like
                         player.seekTo(target)
                         seekCostMs = (nowMs() - before).coerceIn(50, 1000)
+                        drift.reset()
                         player.setSpeed(1f)
                         filter.reset(nowMs())
                         _snapshot.update { it.copy(speed = 1f) }
@@ -906,6 +913,9 @@ class GroupSession(
         const val MAX_RECOVERIES_PER_EPOCH = 5
         const val BIAS_LEARNING_RATE = 0.8
         const val MAX_BIAS_MS = 800L
+
+        /** A start this far off the room is fixed with a seek at once, see the drift loop. */
+        const val COLD_START_SEEK_MS = 200L
 
         /** After moving to the next item by itself, wait this long before reporting when it started. */
         const val ADVANCE_REPORT_DELAY_MS = 1000L

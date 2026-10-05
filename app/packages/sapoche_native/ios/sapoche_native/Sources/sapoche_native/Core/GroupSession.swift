@@ -232,8 +232,10 @@ final class GroupSession {
                 self.startJob = self.scope.launch { [weak self] in try await self?.catchUpPlaying(item, s.startedAt) }
                 return
             }
-            let target = self.clock.toServer(self.time.nowMs()) - started + self.trimMs + self.seekCostMs + self.startBiasMs
+            let before = self.time.nowMs()
+            let target = self.clock.toServer(before) - started + self.trimMs + self.seekCostMs + self.startBiasMs
             try await self.player.seekTo(max(target, 0))
+            self.seekCostMs = min(max(self.time.nowMs() - before, 50), 1000) // the next aim uses what a seek really costs here
             self.player.play()
             self.drift.reset()
             self.player.setSpeed(1)
@@ -733,6 +735,7 @@ final class GroupSession {
             guard let self, !self.solo, self.loadedItemId == nil, self.startJob?.isActive != true,
                   self.prepareJob?.isActive != true else { return }
             self.reportedFailure = nil // a new try by hand is told about again if it fails
+            await self.player.refresh(item.videoId) // the address that failed may be what is wrong, and it is kept for hours
             self.log("play pressed with nothing loaded, catching up with the room")
             self.startJob = self.scope.launch { [weak self] in try await self?.catchUpPlaying(item, s.startedAt) }
         }
@@ -825,12 +828,15 @@ final class GroupSession {
                 if tick % Self.logEveryTicks == 0 {
                     self.log("drift=\(driftMs)ms smoothed=\(smoothed)ms offset=\(Int64(self.clock.offsetMs()))ms rtt=\(self.clock.bestRttMs().map { String(Int64($0)) } ?? "-")ms")
                 }
-                if self.learnBias && self.filter.isFull { self.learnStartBias() }
+                // A start far from the room (a phone that has not learned its speaker's delay yet) is learned from at
+                // once and fixed with one seek, rather than pulled in at 3 % for ten seconds or more
+                let coldStart = self.learnBias && self.filter.hasLargeDriftEvidence && abs(smoothed) > Self.coldStartSeekMs
+                if coldStart || (self.learnBias && self.filter.isFull) { self.learnStartBias() }
                 if !self.correctionEnabled { continue }
-                let trusted = abs(smoothed) > self.drift.seekThresholdMs ? self.filter.hasLargeDriftEvidence : self.filter.isFull
+                let trusted = coldStart || (abs(smoothed) > self.drift.seekThresholdMs ? self.filter.hasLargeDriftEvidence : self.filter.isFull)
                 if !trusted { continue }
 
-                switch self.drift.decide(smoothed) {
+                switch coldStart ? DriftAction.seek : self.drift.decide(smoothed) {
                 case .none:
                     break
                 case let .setSpeed(factor):
@@ -845,6 +851,7 @@ final class GroupSession {
                     self.learnBias = false // a corrective seek muddies what the plain start looked like
                     try await self.player.seekTo(target)
                     self.seekCostMs = min(max(self.time.nowMs() - before, 50), 1000)
+                    self.drift.reset()
                     self.player.setSpeed(1)
                     self.filter.reset(self.time.nowMs())
                     self.snapshot.update { $0.speed = 1 }
@@ -894,6 +901,8 @@ final class GroupSession {
     private static let maxRecoveriesPerEpoch = 5
     private static let biasLearningRate = 0.8
     private static let maxBiasMs: Int64 = 800
+    /// A start this far off the room is fixed with a seek at once, see the drift loop.
+    private static let coldStartSeekMs: Int64 = 200
 
     /// After moving to the next item by itself, wait this long before reporting when it started.
     private static let advanceReportDelayMs: Int64 = 1000

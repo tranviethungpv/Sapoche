@@ -82,6 +82,9 @@ class RoomClient(
     /** The fingerprint of each member's picture as last asked for, so a picture is fetched once and not at every change. */
     private val known = HashMap<String, String>()
 
+    /** What the room calls this device: members are listed by a public id, not by [clientId]. */
+    private var you: String? = null
+
     /** A token here ends the current reconnect wait early. */
     private val wake = Channel<Unit>(Channel.CONFLATED)
 
@@ -168,6 +171,7 @@ class RoomClient(
                         else -> {
                             if (msg is ServerMessage.State && createOnJoin == true) createOnJoin = false
                             if (msg is ServerMessage.State) {
+                                you = msg.you
                                 serverProtocol = msg.protocol
                                 shareAvatar(webSocket)
                                 wantPictures(msg.members)
@@ -232,7 +236,7 @@ class RoomClient(
         if (serverProtocol < AVATAR_PROTOCOL) return
         known.keys.retainAll(members.map { it.id }.toSet())
         for (member in members) {
-            if (member.id == clientId) continue
+            if (member.id == clientId || member.id == you) continue
             if (member.av == null) {
                 // They had one and took it away
                 if (known.remove(member.id) != null) onAvatar(member.id, null, null)
@@ -250,7 +254,7 @@ class RoomClient(
      */
     private suspend fun pingLoop(ws: WebSocket) {
         repeat(BURST_PINGS) {
-            ws.send(Protocol.ping(nowMs()))
+            ws.send(Protocol.ping(nowMs(), clock.bestRttMs()))
             delay(BURST_GAP_MS)
         }
         while (true) {
@@ -260,7 +264,7 @@ class RoomClient(
                 ws.cancel()
                 return
             }
-            ws.send(Protocol.ping(nowMs()))
+            ws.send(Protocol.ping(nowMs(), clock.bestRttMs()))
         }
     }
 

@@ -13,8 +13,15 @@ import type {
   TrackInput,
 } from "./protocol";
 
-/** How far in the future a start is scheduled, so every device has time to receive and arm it. */
+/**
+ * How far in the future a start is scheduled, so every device has time to receive and arm it. This is the most; when
+ * every device following the room says what its round trip is, the lead is the slowest of them plus LEAD_MARGIN_MS,
+ * and no less than MIN_LEAD_MS, so that play and seek answer sooner on good networks.
+ */
 const LEAD_MS = 1500;
+const MIN_LEAD_MS = 600;
+/** Covers the start message's way down, jitter, and the seek a device makes before the moment comes. */
+const LEAD_MARGIN_MS = 400;
 /** How long to wait for slow devices to report ready before starting without them. */
 const BARRIER_TIMEOUT_MS = 8000;
 /** Extra time after the expected end of an item before the server advances on its own. */
@@ -54,7 +61,10 @@ const MAX_MESSAGES_PER_SECOND = 20;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 interface Attachment {
+  /** The device's own secret id: only it knows it, and it proves the device is the same one when it reconnects. */
   clientId: string;
+  /** What everybody else knows the device by (members, owner, who added or skipped): derived from [clientId], never the other way round. */
+  id: string;
   name: string;
   /** Last time this socket sent anything; clients ping every 30 seconds. */
   lastSeen: number;
@@ -64,6 +74,8 @@ interface Attachment {
   joinedAt?: number;
   /** Fingerprint of this member's picture; the picture is in storage, since an attachment holds only 2 KiB. */
   av?: string;
+  /** The best round trip the device measured, as it last said in a ping; absent from older apps. */
+  rtt?: number;
 }
 
 /** What only the owner may do once the owner has restricted guests to adding songs. */
@@ -135,6 +147,7 @@ export class Room extends DurableObject<Env> {
       const { alarm, ...rest } = saved;
       this.s = { ...defaultState(), ...rest };
       this.created = true;
+      await this.migrateIds();
       // A room saved with the single alarm it had before: carry that alarm's time over
       const at = await ctx.storage.getAlarm();
       if (at && (alarm === "barrier" || alarm === "end" || alarm === "gc")) this.s.alarms[alarm] = at;
@@ -176,13 +189,14 @@ export class Room extends DurableObject<Env> {
 
     if (msg.t === "ping") {
       if (typeof msg.c0 !== "number") return this.fail(ws, "bad_message", "ping needs c0");
+      this.noteRoundTrip(ws, msg.rtt);
       return this.send(ws, { t: "pong", c0: msg.c0, s1: Date.now() });
     }
     if (msg.t === "join") return this.onJoin(ws, msg);
 
     const me = ws.deserializeAttachment() as Attachment | null;
     if (!me) return this.fail(ws, "not_joined", "Send join first");
-    if (CONTROL_MESSAGES.has(msg.t) && !this.canControl(me.clientId)) {
+    if (CONTROL_MESSAGES.has(msg.t) && !this.canControl(me.id)) {
       return this.fail(ws, "forbidden", "Only the room's owner can do that");
     }
 
@@ -192,14 +206,15 @@ export class Room extends DurableObject<Env> {
       case "queue.remove": return this.onQueueRemove(msg.id);
       case "queue.swap": return this.onQueueSwap(me, msg);
       case "queue.clear": return this.onQueueClear();
-      case "queue.shuffle": return this.onQueueShuffle(me.clientId);
-      case "jump": return this.onJump(msg.id, me.clientId);
+      case "queue.shuffle": return this.onQueueShuffle(me.id);
+      case "jump": return this.onJump(msg.id, me.id);
       case "queue.move": return this.onQueueMove(msg.id, msg.toIndex);
-      case "play": return this.onPlay(me.clientId);
-      case "pause": return this.onPause(me.clientId);
-      case "seek": return this.onSeek(msg.positionMs, me.clientId);
-      case "next": return this.onNext(me.clientId);
-      case "prev": return this.onPrev(me.clientId);
+      case "play": return this.onPlay(me.id);
+      case "pause": return this.onPause(me.id);
+      case "seek": return this.onSeek(msg.positionMs, me.id);
+      // Pressed on a song the room has already left (somebody else skipped first): the room has moved on already
+      case "next": return this.pressedOnCurrent(msg.from) ? this.onNext(me.id) : undefined;
+      case "prev": return this.pressedOnCurrent(msg.from) ? this.onPrev(me.id) : undefined;
       case "repeat": return this.onRepeat(msg.mode);
       case "autoplay": return this.onAutoplay(msg.on);
       case "solo": return this.onSolo(me, msg.on === true);
@@ -210,8 +225,8 @@ export class Room extends DurableObject<Env> {
       case "room.name": return this.onRoomName(msg.name);
       case "room.settings": return this.onRoomSettings(ws, me, msg.guestControl);
       case "resync": return this.onResync(ws, me);
-      case "ready": return this.onReady(me.clientId, msg.epoch);
-      case "resolveFailed": return this.onResolveFailed(me.clientId, msg.epoch);
+      case "ready": return this.onReady(me.id, msg.epoch);
+      case "resolveFailed": return this.onResolveFailed(me.id, msg.epoch);
       case "ended": return this.onEnded(msg.epoch);
       case "advanced": return this.onAdvanced(msg.epoch, msg.itemId, msg.startedAt);
       case "report": return; // diagnostics only for now
@@ -233,6 +248,7 @@ export class Room extends DurableObject<Env> {
     const clientId = typeof msg.clientId === "string" ? msg.clientId.slice(0, 64) : "";
     const name = typeof msg.name === "string" ? msg.name.trim().slice(0, 32) : "";
     if (!clientId || !name) return this.fail(ws, "bad_message", "join needs clientId and name");
+    const id = await publicId(clientId);
 
     // The same device reconnecting: drop its stale socket. A quiet entry of the same name under another id is
     // taken for the same device's ghost (it came back with a new id, after a reinstall or cleared data): it goes
@@ -249,7 +265,7 @@ export class Room extends DurableObject<Env> {
       ws.close(4004, "room not found");
       return;
     }
-    if (this.members().length >= MAX_MEMBERS && !this.members().some((m) => m.id === clientId)) {
+    if (this.members().length >= MAX_MEMBERS && !this.members().some((m) => m.id === id)) {
       this.fail(ws, "room_full", "The room is full");
       ws.close(1008, "room is full");
       return;
@@ -259,22 +275,22 @@ export class Room extends DurableObject<Env> {
     const before = ws.deserializeAttachment() as Attachment | null;
     const now = Date.now();
     // A device that comes back keeps the picture it had, so it does not vanish from the others' screens meanwhile
-    const kept = await this.ctx.storage.get<string>(AVATAR_PREFIX + clientId);
+    const kept = await this.ctx.storage.get<string>(AVATAR_PREFIX + id);
     const av = kept === undefined ? undefined : await fingerprint(kept);
     ws.serializeAttachment(
-      { clientId, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av } satisfies Attachment,
+      { clientId, id, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av } satisfies Attachment,
     );
 
     // The first to arrive owns a room that has no owner; the room now exists and someone is in it
     this.created = true;
     const adopted = !this.s.ownerId;
-    if (adopted) this.s.ownerId = clientId;
+    if (adopted) this.s.ownerId = id;
     delete this.s.alarms.gc;
     if (!this.s.alarms.sweep) this.s.alarms.sweep = now + this.dropCheckMs();
     await this.armAlarm();
 
     if (adopted) this.broadcastState();
-    else this.send(ws, this.stateMessage(clientId));
+    else this.send(ws, this.stateMessage(id));
     // A device joining mid-preparation must take part in the barrier
     if (this.s.phase === "preparing") this.send(ws, this.prepareMessage());
     this.broadcastMembers();
@@ -285,9 +301,13 @@ export class Room extends DurableObject<Env> {
     if (members.length === 0) {
       // A socket that never joined a room that does not exist is nothing to keep
       if (!this.created) return;
-      // Nobody is listening: freeze the position, let go of the ownership and schedule cleanup
+      // Nobody is listening: freeze the position, let go of the ownership and schedule cleanup. A song still loading
+      // waits paused too, or it would start by itself for whoever comes back
       if (this.s.phase === "playing") {
         this.s.positionMs = this.currentPositionMs();
+        this.s.phase = "paused";
+        this.s.epoch++;
+      } else if (this.s.phase === "preparing") {
         this.s.phase = "paused";
         this.s.epoch++;
       }
@@ -320,9 +340,9 @@ export class Room extends DurableObject<Env> {
     if (data !== null && (typeof data !== "string" || data.length > MAX_AVATAR_CHARS || !/^[A-Za-z0-9+/=]+$/.test(data))) return;
     let av: string | undefined;
     if (data === null) {
-      await this.ctx.storage.delete(AVATAR_PREFIX + me.clientId);
+      await this.ctx.storage.delete(AVATAR_PREFIX + me.id);
     } else {
-      await this.ctx.storage.put(AVATAR_PREFIX + me.clientId, data);
+      await this.ctx.storage.put(AVATAR_PREFIX + me.id, data);
       av = await fingerprint(data);
     }
     for (const ws of this.ctx.getWebSockets()) {
@@ -353,14 +373,17 @@ export class Room extends DurableObject<Env> {
   /** The device is leaving on purpose. An owner hands the room to whoever has been here longest. */
   private async onBye(ws: WebSocket, me: Attachment): Promise<void> {
     ws.close(1000, "left"); // the socket no longer counts as a member from here on
-    if (this.s.ownerId === me.clientId) {
+    if (this.s.ownerId === me.id) {
+      // Somebody who is really here: a device gone quiet (away) only gets the room when nobody else is left
+      const limit = Number(this.env.STALE_MS) || AWAY_AFTER_MS;
+      const away = (att: Attachment) => (Date.now() - att.lastSeen > limit ? 1 : 0);
       const successor = this.ctx
         .getWebSockets()
         .filter((other) => other.readyState === WebSocket.OPEN)
         .map((other) => other.deserializeAttachment() as Attachment | null)
         .filter((att): att is Attachment => att !== null && att.clientId !== me.clientId)
-        .sort((x, y) => (x.joinedAt ?? 0) - (y.joinedAt ?? 0))[0];
-      if (successor) this.s.ownerId = successor.clientId;
+        .sort((x, y) => away(x) - away(y) || (x.joinedAt ?? 0) - (y.joinedAt ?? 0))[0];
+      if (successor) this.s.ownerId = successor.id;
       else delete this.s.ownerId;
       await this.save();
       this.broadcastState();
@@ -369,11 +392,11 @@ export class Room extends DurableObject<Env> {
   }
 
   private async onKick(ws: WebSocket, me: Attachment, id: unknown): Promise<void> {
-    if (me.clientId !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
-    if (typeof id !== "string" || id === me.clientId) return;
+    if (me.id !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
+    if (typeof id !== "string" || id === me.id) return;
     for (const other of this.ctx.getWebSockets()) {
       const att = other.deserializeAttachment() as Attachment | null;
-      if (att?.clientId !== id) continue;
+      if (att?.id !== id) continue;
       this.send(other, { t: "error", code: "removed", message: "The owner removed you from the room" });
       other.close(4001, "removed by the owner");
     }
@@ -390,7 +413,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private async onRoomSettings(ws: WebSocket, me: Attachment, guestControl: GuestControl): Promise<void> {
-    if (me.clientId !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
+    if (me.id !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
     if (guestControl !== "all" && guestControl !== "add") return;
     if (guestControl === this.s.guestControl) return;
     this.s.guestControl = guestControl;
@@ -399,8 +422,8 @@ export class Room extends DurableObject<Env> {
   }
 
   /** The owner is here, or guests are free to do everything, or this is the owner. */
-  private canControl(clientId: string): boolean {
-    if (this.s.guestControl === "all" || clientId === this.s.ownerId) return true;
+  private canControl(id: string): boolean {
+    if (this.s.guestControl === "all" || id === this.s.ownerId) return true;
     return !this.members().some((m) => m.owner && !m.away);
   }
 
@@ -418,7 +441,7 @@ export class Room extends DurableObject<Env> {
 
   /** Sends one device the current state again, plus the prepare it may have missed. */
   private onResync(ws: WebSocket, me: Attachment): void {
-    this.send(ws, this.stateMessage(me.clientId));
+    this.send(ws, this.stateMessage(me.id));
     if (this.s.phase === "preparing") this.send(ws, this.prepareMessage());
   }
 
@@ -473,7 +496,7 @@ export class Room extends DurableObject<Env> {
         this.failAll(me, "queue_full", "Queue is full");
         break;
       }
-      items.push({ id: crypto.randomUUID(), ...cleanTrack(track), addedBy: me.clientId });
+      items.push({ id: crypto.randomUUID(), ...cleanTrack(track), addedBy: me.id });
     }
     if (items.length === 0) return;
 
@@ -515,7 +538,7 @@ export class Room extends DurableObject<Env> {
     if (at === this.s.index && this.s.phase !== "idle") {
       // The same moment of the song, from the other release
       const positionMs = clamp(this.currentPositionMs(), 0, item.durMs || Number.MAX_SAFE_INTEGER);
-      return this.begin(at, positionMs, me.clientId);
+      return this.begin(at, positionMs, me.id);
     }
     await this.save();
     this.broadcastState();
@@ -577,19 +600,19 @@ export class Room extends DurableObject<Env> {
     await this.maybeStart();
   }
 
-  private async onReady(clientId: string, epoch: number): Promise<void> {
+  private async onReady(id: string, epoch: number): Promise<void> {
     if (this.s.phase !== "preparing" || epoch !== this.s.epoch) return;
-    if (!this.s.readyIds.includes(clientId)) this.s.readyIds.push(clientId);
+    if (!this.s.readyIds.includes(id)) this.s.readyIds.push(id);
     await this.save();
     this.broadcastMembers();
     await this.maybeStart();
   }
 
   /** A device could not load the item. It counts as answered, so it never holds the others back. */
-  private async onResolveFailed(clientId: string, epoch: number): Promise<void> {
+  private async onResolveFailed(id: string, epoch: number): Promise<void> {
     if (this.s.phase !== "preparing" || epoch !== this.s.epoch) return;
-    if (!this.s.failedIds.includes(clientId)) this.s.failedIds.push(clientId);
-    return this.onReady(clientId, epoch);
+    if (!this.s.failedIds.includes(id)) this.s.failedIds.push(id);
+    return this.onReady(id, epoch);
   }
 
   /** Releases the barrier once every connected device is ready. */
@@ -610,7 +633,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private async startPlayback(by?: string): Promise<void> {
-    const startAt = Date.now() + LEAD_MS;
+    const startAt = Date.now() + this.leadMs();
     this.s.phase = "playing";
     this.s.startedAt = startAt - this.s.positionMs;
     this.s.readyIds = [];
@@ -654,10 +677,17 @@ export class Room extends DurableObject<Env> {
   }
 
   private async onSeek(positionMs: number, by: string): Promise<void> {
-    if (this.s.phase !== "playing" && this.s.phase !== "paused") return;
+    if (this.s.phase === "idle") return;
     if (typeof positionMs !== "number" || !Number.isFinite(positionMs)) return;
     const item = this.s.queue[this.s.index];
     this.s.positionMs = clamp(positionMs, 0, item?.durMs || Number.MAX_SAFE_INTEGER);
+    if (this.s.phase === "preparing") {
+      // The song is still loading: the barrier goes on, the start carries the new place, and whoever joins meanwhile
+      // prepares there. Devices already loading seek once the start comes, which leaves them the lead time to do it
+      await this.save();
+      this.broadcastState();
+      return;
+    }
     this.s.epoch++;
     if (this.s.phase === "playing") return this.startPlayback(by);
     await this.save();
@@ -698,7 +728,7 @@ export class Room extends DurableObject<Env> {
     if (!this.s.autoplay || !last) return;
     const limit = Number(this.env.STALE_MS) || AWAY_AFTER_MS;
     const now = Date.now();
-    const rank = (att: Attachment) => (att.solo ? 2 : 0) + (att.clientId === this.s.ownerId ? 0 : 1);
+    const rank = (att: Attachment) => (att.solo ? 2 : 0) + (att.id === this.s.ownerId ? 0 : 1);
     const asked = this.ctx
       .getWebSockets()
       .filter((ws) => ws.readyState === WebSocket.OPEN)
@@ -830,6 +860,48 @@ export class Room extends DurableObject<Env> {
 
   // ------------------------------------------------------------------ helpers
 
+  /** Keeps the round trip a device reports with its pings. */
+  private noteRoundTrip(ws: WebSocket, rtt: unknown): void {
+    if (typeof rtt !== "number" || !Number.isFinite(rtt)) return;
+    const att = ws.deserializeAttachment() as Attachment | null;
+    if (!att) return;
+    att.rtt = clamp(Math.round(rtt), 0, 10_000);
+    ws.serializeAttachment(att);
+  }
+
+  /** How far ahead to schedule a start: enough for the slowest device that follows the room, LEAD_MS when one does not say. */
+  private leadMs(): number {
+    const limit = Number(this.env.STALE_MS) || AWAY_AFTER_MS;
+    const now = Date.now();
+    const following = this.ctx
+      .getWebSockets()
+      .filter((ws) => ws.readyState === WebSocket.OPEN)
+      .map((ws) => ws.deserializeAttachment() as Attachment | null)
+      .filter((att): att is Attachment => att !== null && !att.solo && now - att.lastSeen <= limit);
+    if (following.length === 0 || following.some((att) => att.rtt === undefined)) return LEAD_MS;
+    return clamp(Math.max(...following.map((att) => att.rtt ?? 0)) + LEAD_MARGIN_MS, MIN_LEAD_MS, LEAD_MS);
+  }
+
+  /** A next or previous names the item it was pressed on; one sent by an older app names none and always counts. */
+  private pressedOnCurrent(from: unknown): boolean {
+    return typeof from !== "string" || from === this.s.queue[this.s.index]?.id;
+  }
+
+  /**
+   * Rooms saved before members had public ids kept each device's secret id as the owner and as who added a song.
+   * Hashing such an id gives exactly the public id that device has now, so its owner and its songs stay its own.
+   */
+  private async migrateIds(): Promise<void> {
+    const legacy = (value: string | undefined): value is string => value !== undefined && !PUBLIC_ID.test(value);
+    if (legacy(this.s.ownerId)) this.s.ownerId = await publicId(this.s.ownerId);
+    for (const item of this.s.queue) {
+      if (legacy(item.addedBy)) item.addedBy = await publicId(item.addedBy);
+    }
+    const migrate = (ids: string[]) => Promise.all(ids.map((value) => (legacy(value) ? publicId(value) : value)));
+    this.s.readyIds = await migrate(this.s.readyIds);
+    this.s.failedIds = await migrate(this.s.failedIds);
+  }
+
   private currentPositionMs(): number {
     if (this.s.phase === "playing") return Math.max(0, Date.now() - this.s.startedAt);
     return this.s.positionMs;
@@ -845,12 +917,12 @@ export class Room extends DurableObject<Env> {
       const att = ws.deserializeAttachment() as Attachment | null;
       if (!att) continue;
       out.push({
-        id: att.clientId,
+        id: att.id,
         name: att.name,
-        ready: this.s.readyIds.includes(att.clientId),
+        ready: this.s.readyIds.includes(att.id),
         solo: att.solo === true,
         away: now - att.lastSeen > limit,
-        owner: att.clientId === this.s.ownerId,
+        owner: att.id === this.s.ownerId,
         ...(att.av ? { av: att.av } : {}),
       });
     }
@@ -895,7 +967,7 @@ export class Room extends DurableObject<Env> {
   private broadcastState(): void {
     for (const ws of this.ctx.getWebSockets()) {
       const att = ws.deserializeAttachment() as Attachment | null;
-      if (att) this.send(ws, this.stateMessage(att.clientId));
+      if (att) this.send(ws, this.stateMessage(att.id));
     }
   }
 
@@ -943,6 +1015,18 @@ export class Room extends DurableObject<Env> {
     bucket.tokens -= 1;
     return true;
   }
+}
+
+/** What a public id looks like: 16 hexadecimal digits. The app's own secret ids are UUIDs, which never do. */
+const PUBLIC_ID = /^[0-9a-f]{16}$/;
+
+/**
+ * The id a device is known by in the room: the start of the SHA-256 of its secret client id. Everybody can see it, and
+ * nobody can work the secret back from it, so knowing it does not let anyone join as that device or as the owner.
+ */
+async function publicId(clientId: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`sapoche-member:${clientId}`));
+  return [...new Uint8Array(digest).slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** A short fingerprint of a picture, so that clients know whether the one they hold is the current one. */

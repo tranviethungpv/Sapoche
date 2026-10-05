@@ -40,6 +40,23 @@ class ClockSyncTest {
     }
 
     @Test
+    fun `a fast sample from minutes ago gives way to a fresh one, since the clocks drift apart meanwhile`() {
+        val clock = ClockSync()
+        clock.addSample(c0 = 1_000, c2 = 1_010, s1 = 6_005)             // rtt 10, offset 5000
+        clock.addSample(c0 = 300_980, c2 = 301_010, s1 = 306_025)       // five minutes later: rtt 30, offset 5030
+        assertEquals(5030.0, clock.offsetMs(), "after five minutes the old sample may be 30 ms off")
+        assertEquals(30.0, clock.bestRttMs())
+    }
+
+    @Test
+    fun `a fresh sample with a slow round trip does not beat a fast one from seconds ago`() {
+        val clock = ClockSync()
+        clock.addSample(c0 = 0, c2 = 10, s1 = 5_005)                    // rtt 10, offset 5000
+        clock.addSample(c0 = 9_700, c2 = 10_000, s1 = 15_000)           // ten seconds later: rtt 300, offset 5150
+        assertEquals(5000.0, clock.offsetMs())
+    }
+
+    @Test
     fun `old samples fall out of the window`() {
         val clock = ClockSync(windowSize = 3)
         clock.addSample(0, 10, 5005)       // rtt 10, offset 5000
@@ -112,6 +129,16 @@ class ProtocolTest {
         assertEquals(7L, msg.epoch)
         assertEquals(2, msg.index)
         assertEquals(1790660600123L, msg.startedAt)
+    }
+
+    @Test
+    fun `next and previous name the song they were pressed on, and older forms stay as they were`() {
+        assertEquals("""{"t":"next","from":"q1"}""", Protocol.next("q1"))
+        assertEquals("""{"t":"prev","from":"q1"}""", Protocol.prev("q1"))
+        assertEquals("""{"t":"next"}""", Protocol.next())
+        assertEquals("""{"t":"ping","c0":5,"rtt":42}""", Protocol.ping(5, 42.7))
+        assertEquals("""{"t":"ping","c0":5}""", Protocol.ping(5))
+        assertEquals("""{"t":"prev"}""", Protocol.prev())
     }
 
     @Test

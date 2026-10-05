@@ -482,6 +482,18 @@ final class RoomClientTests: XCTestCase {
         XCTAssertTrue(socket.sent.filter { $0.contains("avatar") }.isEmpty)
     }
 
+    func testItsOwnPictureIsNotAskedForWhenTheRoomListsItByAPublicId() async {
+        let client = client(create: false)
+        client.start()
+        await time.settle()
+        let socket = sockets.opened[0]
+        socket.open()
+        let members = #"[{"id":"a1b2c3d4e5f60718","name":"Me","ready":false,"av":"ffff0000"},{"id":"you","name":"You","ready":false,"av":"abcd1234"}]"#
+        socket.receive(#"{"t":"state","serverNow":0,"you":"a1b2c3d4e5f60718","protocol":9,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":\#(members)}"#)
+        XCTAssertEqual(socket.sent.filter { $0.contains("avatar.get") && $0.contains("you") }.count, 1)
+        XCTAssertTrue(socket.sent.filter { $0.contains("avatar.get") && $0.contains("a1b2c3d4e5f60718") }.isEmpty, "its own picture is not asked for")
+    }
+
     func testPicturesAreSharedAndFetchedOnceTheServerSpeaksProtocolEight() async {
         let client = client(create: false)
         var heard: [String] = []
@@ -605,6 +617,12 @@ final class WireTests: XCTestCase {
 
         XCTAssertEqual(object(Wire.queueMove("q", toIndex: 2))["toIndex"] as? Int, 2)
         XCTAssertEqual(object(Wire.seek(1234))["positionMs"] as? Int, 1234)
+        XCTAssertEqual(object(Wire.next(from: "q1"))["from"] as? String, "q1")
+        XCTAssertEqual(object(Wire.prev(from: "q1"))["from"] as? String, "q1")
+        XCTAssertNil(object(Wire.next())["from"])
+        XCTAssertNil(object(Wire.prev())["from"])
+        XCTAssertEqual(object(Wire.ping(5, rttMs: 42.7))["rtt"] as? Int, 42)
+        XCTAssertNil(object(Wire.ping(5))["rtt"])
         XCTAssertEqual(object(Wire.advanced(3, itemId: "q", startedAt: 99))["startedAt"] as? Int, 99)
         XCTAssertEqual((object(Wire.resolveFailed(3, reason: String(repeating: "x", count: 500)))["reason"] as? String)?.count, 200)
         XCTAssertEqual(object(Wire.roomSettings(guestControl: "add"))["guestControl"] as? String, "add")
@@ -622,6 +640,21 @@ final class SmallPartsTests: XCTestCase {
         XCTAssertEqual(clock.offsetMs(), 5005)
         XCTAssertEqual(clock.toServer(100), 5105)
         XCTAssertEqual(clock.toLocal(5105), 100)
+    }
+
+    func testAFastSampleFromMinutesAgoGivesWayToAFreshOne() {
+        let clock = ClockSync()
+        clock.addSample(c0: 1_000, c2: 1_010, s1: 6_005) // rtt 10, offset 5000
+        clock.addSample(c0: 300_980, c2: 301_010, s1: 306_025) // five minutes later: rtt 30, offset 5030
+        XCTAssertEqual(clock.offsetMs(), 5030)
+        XCTAssertEqual(clock.bestRttMs(), 30)
+    }
+
+    func testAFreshSampleWithASlowRoundTripDoesNotBeatAFastOneFromSecondsAgo() {
+        let clock = ClockSync()
+        clock.addSample(c0: 0, c2: 10, s1: 5_005) // rtt 10, offset 5000
+        clock.addSample(c0: 9_700, c2: 10_000, s1: 15_000) // ten seconds later: rtt 300, offset 5150
+        XCTAssertEqual(clock.offsetMs(), 5000)
     }
 
     func testDriftIsAnsweredWithASpeedChangeOrASeek() {

@@ -963,6 +963,7 @@ class GroupSessionTest {
 
         assertTrue(h.session.catchUp())
         step(3000)
+        assertEquals(listOf(item.videoId), h.player.refreshed, "trying again by hand asks for a new address")
         assertEquals(item, h.player.loaded)
         assertTrue(h.player.playing)
         val expected = h.serverNow() - startAt
