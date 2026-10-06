@@ -55,6 +55,24 @@ enum UiJson {
         JSONText.encode(["type": "avatar", "id": avatar.id, "data": avatar.data ?? NSNull()] as [String: Any])
     }
 
+    /// Chat messages of `chat.room`: all of them when `replace`, else new ones.
+    static func chat(_ chat: GroupController.Chat) -> String {
+        JSONText.encode([
+            "type": "chat",
+            "room": chat.room,
+            "replace": chat.replace,
+            "messages": chat.messages.map { message -> [String: Any] in
+                ["id": message.id, "by": message.by, "name": message.name, "text": message.text, "at": message.at,
+                 "cid": message.cid ?? NSNull()]
+            },
+        ] as [String: Any])
+    }
+
+    /// Another member reacted.
+    static func reaction(_ reaction: GroupController.Reaction) -> String {
+        JSONText.encode(["type": "reaction", "by": reaction.by, "e": reaction.e, "n": reaction.n] as [String: Any])
+    }
+
     /// Fast changing values: sent about once a second while the UI is visible.
     static func position(_ view: GroupController.View, _ player: PlayerInfo) -> String {
         JSONText.encode([

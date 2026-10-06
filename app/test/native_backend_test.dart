@@ -97,6 +97,45 @@ void main() {
     );
   });
 
+  test('reads the chat and the reactions of the room', () async {
+    final received = await receive([
+      '{"type":"chat","room":"ABC234","replace":true,"messages":[{"id":1,"by":"b","name":"Binh","text":"hi","at":5,"cid":null}]}',
+      '{"type":"chat","room":"ABC234","replace":false,"messages":[{"id":2,"by":"me","name":"Anna","text":"yo","at":6,"cid":"c-1"}]}',
+      '{"type":"reaction","by":"b","e":"clap","n":3}',
+      '{"type":"reaction","by":"b","e":"unknown","n":1}',
+    ]);
+    final all = received[0] as ChatEvent;
+    expect((all.room, all.replace), ('ABC234', true));
+    final first = all.messages.single;
+    expect(
+      (first.id, first.by, first.name, first.text, first.at, first.cid),
+      (1, 'b', 'Binh', 'hi', 5, null),
+    );
+    final added = received[1] as ChatEvent;
+    expect((added.replace, added.messages.single.cid), (false, 'c-1'));
+    final reaction = received[2] as ReactionEvent;
+    expect(
+      (reaction.by, reaction.reaction, reaction.count),
+      ('b', Reaction.clap, 3),
+    );
+    expect((received[3] as ReactionEvent).reaction, isNull);
+  });
+
+  test('a chat message and a reaction are sent with their arguments', () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(control, (call) async {
+      calls.add(call);
+      return call.method == 'sendChat' ? true : null;
+    });
+    final backend = NativeBackend();
+    expect(await backend.sendChat('hello', 'c-1'), isTrue);
+    await backend.react(Reaction.heart, 4);
+    expect(calls.map((c) => '${c.method} ${c.arguments}'), [
+      'sendChat {text: hello, cid: c-1}',
+      'react {e: heart, n: 4}',
+    ]);
+  });
+
   test('a platform error becomes a BackendException with its code', () async {
     messenger.setMockMethodCallHandler(control, (call) async {
       throw PlatformException(code: 'no_room', message: 'Not in a room');

@@ -68,6 +68,18 @@ data class Member(
     val av: String? = null,
 )
 
+/** A chat message as the room keeps it. [name] is the sender's name when it was sent; [cid] is the id the sending device gave it. */
+@Serializable
+data class ChatMessage(
+    val id: Long,
+    val by: String,
+    val name: String,
+    val text: String,
+    /** Server time it was sent at. */
+    val at: Long,
+    val cid: String? = null,
+)
+
 sealed interface ServerMessage {
     @Serializable
     data class State(
@@ -108,6 +120,18 @@ sealed interface ServerMessage {
     @Serializable
     data class Avatar(val id: String, val av: String? = null, val data: String? = null) : ServerMessage
 
+    /** A new chat message, this device's own included. Protocol 10. */
+    @Serializable
+    data class Chat(val msg: ChatMessage) : ServerMessage
+
+    /** The room's last chat messages, oldest first, sent right after the state on joining. Protocol 10. */
+    @Serializable
+    data class ChatHistory(val msgs: List<ChatMessage>) : ServerMessage
+
+    /** Member [by] reacted with [e], [n] taps of it. Protocol 10. */
+    @Serializable
+    data class React(val by: String, val e: String, val n: Int = 1) : ServerMessage
+
     @Serializable
     data class Error(val code: String, val message: String) : ServerMessage
 }
@@ -129,6 +153,9 @@ object Protocol {
                 "pong" -> json.decodeFromJsonElement<ServerMessage.Pong>(obj)
                 "autoplay.fill" -> json.decodeFromJsonElement<ServerMessage.AutoplayFill>(obj)
                 "avatar" -> json.decodeFromJsonElement<ServerMessage.Avatar>(obj)
+                "chat" -> json.decodeFromJsonElement<ServerMessage.Chat>(obj)
+                "chat.history" -> json.decodeFromJsonElement<ServerMessage.ChatHistory>(obj)
+                "react" -> json.decodeFromJsonElement<ServerMessage.React>(obj)
                 "error" -> json.decodeFromJsonElement<ServerMessage.Error>(obj)
                 else -> null
             }
@@ -176,6 +203,18 @@ object Protocol {
 
     /** Asks for the picture of the member [id]. */
     fun avatarGet(id: String) = msg("avatar.get") { put("id", id) }
+
+    /** A chat message to the room; [cid] comes back with it, so this device knows it arrived. Protocol 10. */
+    fun chat(text: String, cid: String) = msg("chat") {
+        put("text", text)
+        put("cid", cid)
+    }
+
+    /** A reaction ([e] is one of heart, fire, laugh, wow, sad, clap) standing for [n] taps. Protocol 10. */
+    fun react(e: String, n: Int) = msg("react") {
+        put("e", e)
+        put("n", n)
+    }
 
     /** With [playNext] the track goes right after the current one instead of at the end. */
     fun queueAdd(videoId: String, title: String, artist: String, thumb: String?, durMs: Long, playNext: Boolean = false) =

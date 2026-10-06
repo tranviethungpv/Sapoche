@@ -155,6 +155,7 @@ class SapocheBridge(
             outputs.refresh()
             emit(UiJson.output(outputs.current.value))
             SapocheApp.group.value?.picturesSeen()?.forEach { emit(UiJson.avatar(it)) }
+            SapocheApp.group.value?.chatSeen()?.let { emit(UiJson.chat(it)) }
             SapocheApp.updater.refreshPermission()
             SapocheApp.updater.check(force = false)
             emit(UiJson.update(SapocheApp.updater.state.value))
@@ -257,6 +258,13 @@ class SapocheBridge(
                         group.picturesSeen().forEach { emit(UiJson.avatar(it)) }
                         group.avatars.collect { if (visible) emit(UiJson.avatar(it)) }
                     }
+                    launch {
+                        // Like the pictures: the whole chat for a screen that starts listening, then what is new
+                        group.chatSeen()?.let { emit(UiJson.chat(it)) }
+                        group.chat.collect { if (visible) emit(UiJson.chat(it)) }
+                    }
+                    // A reaction nobody sees is gone: it is not kept for later
+                    launch { group.reactions.collect { if (visible) emit(UiJson.reaction(it)) } }
                     launch { group.sleep.state.collect { emit(UiJson.sleep(it)) } }
                     launch {
                         // No ticking at all while the screen is off, and none while the song stands still: a pause, a
@@ -615,6 +623,14 @@ class SapocheBridge(
                     "roomAutoplay" -> {
                         requireRoom(group)
                         group.requestRoomAutoplay(call.argument<Boolean>("on") == true)
+                    }
+                    "sendChat" -> {
+                        requireRoom(group)
+                        return group.sendChat(call.argument<String>("text").orEmpty(), call.argument<String>("cid").orEmpty())
+                    }
+                    "react" -> {
+                        requireRoom(group)
+                        group.react(call.argument<String>("e").orEmpty(), call.argument<Int>("n") ?: 1)
                     }
                     "play" -> group.requestPlay { group.playLocally() }
                     "pause" -> group.requestPause()

@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 export interface QueueItem {
   id: string;
@@ -60,6 +60,22 @@ export interface RoomState {
   /** When each pending job is due, in server time. */
   alarms: Partial<Record<AlarmKind, number>>;
 }
+
+/** A chat message as the room keeps it and sends it. [name] is the sender's name when it was sent, so it outlives them. */
+export interface ChatMessage {
+  /** Increases by one with every message of the room. */
+  id: number;
+  by: string;
+  name: string;
+  text: string;
+  /** Server time it was sent at. */
+  at: number;
+  /** The id the sending device gave it, so that device knows the message arrived; absent when it gave none. */
+  cid?: string;
+}
+
+/** The reactions a member can send to the room; anything else is ignored. */
+export type Reaction = "heart" | "fire" | "laugh" | "wow" | "sad" | "clap";
 
 export interface Member {
   id: string;
@@ -136,7 +152,11 @@ export type ClientMessage =
    * time at which position 0 of that item was heard.
    */
   | { t: "advanced"; epoch: number; itemId: string; startedAt: number }
-  | { t: "report"; epoch: number; posMs: number; bufferMs: number };
+  | { t: "report"; epoch: number; posMs: number; bufferMs: number }
+  /** A chat message to everybody; [cid] is the device's own id for it, sent back with it. Protocol 10. */
+  | { t: "chat"; text: string; cid?: string }
+  /** A reaction, [n] times in a row (1 when absent). Not kept. Protocol 10. */
+  | { t: "react"; e: Reaction; n?: number };
 
 // ---- server -> client ----
 
@@ -158,6 +178,12 @@ export type ServerMessage =
   | { t: "autoplay.fill"; epoch: number; videoId: string; title: string }
   /** The picture of [id] ([av] is its fingerprint); both are absent when that member has none. */
   | { t: "avatar"; id: string; av?: string; data?: string }
+  /** A new chat message, sent to everybody including its sender. Protocol 10. */
+  | { t: "chat"; msg: ChatMessage }
+  /** The room's last chat messages, oldest first, sent to a device right after the state it gets on joining. Protocol 10. */
+  | { t: "chat.history"; msgs: ChatMessage[] }
+  /** Somebody else reacted, [n] times in a row. Protocol 10. */
+  | { t: "react"; by: string; e: Reaction; n: number }
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */

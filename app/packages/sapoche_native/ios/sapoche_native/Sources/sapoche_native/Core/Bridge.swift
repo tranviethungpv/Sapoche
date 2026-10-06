@@ -140,6 +140,7 @@ final class Bridge {
             emit(UiJson.calm(platform.calm.value))
             emit(UiJson.output(platform.output.value))
             for avatar in controller.picturesSeen() { emit(UiJson.avatar(avatar)) }
+            if let chat = controller.chatSeen() { emit(UiJson.chat(chat)) }
             controller.resumeRoom()
             // A phone that was in a pocket may have lost the connection without noticing
             controller.networkChanged(changed: false)
@@ -210,6 +211,17 @@ final class Bridge {
         observing.collect(controller.avatars) { [weak self] avatar in
             guard let self, self.visible else { return }
             self.emit(UiJson.avatar(avatar))
+        }
+        // Like the pictures: the whole chat for a screen that starts listening, then what is new
+        if let chat = controller.chatSeen() { emit(UiJson.chat(chat)) }
+        observing.collect(controller.chat) { [weak self] chat in
+            guard let self, self.visible else { return }
+            self.emit(UiJson.chat(chat))
+        }
+        // A reaction nobody sees is gone: it is not kept for later
+        observing.collect(controller.reactions) { [weak self] reaction in
+            guard let self, self.visible else { return }
+            self.emit(UiJson.reaction(reaction))
         }
         observing.collect(controller.sleep.state) { [weak self] state in self?.emit(UiJson.sleep(state)) }
         // Play, pause and seek should show at once instead of at the next tick
@@ -517,6 +529,12 @@ final class Bridge {
         case "roomAutoplay":
             try requireRoom()
             controller.requestRoomAutoplay(bool("on"))
+        case "sendChat":
+            try requireRoom()
+            return controller.sendChat(string("text"), cid: string("cid"))
+        case "react":
+            try requireRoom()
+            controller.react(string("e"), n: args["n"] == nil ? 1 : int("n"))
         case "play": controller.requestPlay()
         case "pause": controller.requestPause()
         case "next": controller.requestNext()

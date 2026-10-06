@@ -151,6 +151,38 @@ final class GroupController {
         pictures.map { Avatar(id: $0.key, data: $0.value) }
     }
 
+    /// Chat messages of room [room]: all it keeps when [replace], else new ones to add.
+    struct Chat: Equatable {
+        let room: String
+        let messages: [ChatMessage]
+        let replace: Bool
+    }
+
+    let chat = SharedFlow<Chat>()
+
+    /// The room's chat as last heard; nil until the room sent its history (a server older than protocol 10 never does).
+    private var chatLog: [ChatMessage]?
+
+    /// The whole chat, for a screen that comes back after messages arrived.
+    func chatSeen() -> Chat? {
+        guard let roomCode, let chatLog else { return nil }
+        return Chat(room: roomCode, messages: chatLog, replace: true)
+    }
+
+    /// Member [by] reacted with [e], [n] taps of it.
+    struct Reaction: Equatable {
+        let by: String
+        let e: String
+        let n: Int
+    }
+
+    let reactions = SharedFlow<Reaction>()
+
+    /// Sends a chat message; false when there is no connection to send it on.
+    func sendChat(_ text: String, cid: String) -> Bool { client?.send(Wire.chat(text, cid: cid)) ?? false }
+
+    func react(_ e: String, n: Int) { client?.send(Wire.react(e, n: n)) }
+
     /// The picture this device shows the room as its own, as base64 of a small JPEG; nil for none. Kept across restarts.
     func setAvatar(_ data: String?) {
         prefs.set(data, for: Self.keyAvatar)
@@ -406,6 +438,7 @@ final class GroupController {
         newClient.onMessage = { [weak self] message in
             if case let .error(code, text) = message { self?.errors.emit(ControllerError(code: code, message: text)) }
             if case let .autoplayFill(epoch, videoId, title) = message { self?.fillRoom(epoch: epoch, videoId: videoId, title: title) }
+            self?.onChat(room: code.uppercased(), message)
             newSession.onMessage(message)
         }
         newClient.onAvatar = { [weak self] memberId, _, data in
@@ -518,11 +551,28 @@ final class GroupController {
         suspended = false
         pending.removeAll()
         pictures.removeAll()
+        chatLog = nil
         scope.cancel()
         scope = Scope()
         local.attach() // the personal queue gets the player back, paused where it was
         publish()
         updateIdle()
+    }
+
+    private func onChat(room: String, _ message: ServerMessage) {
+        switch message {
+        case let .chatHistory(messages):
+            let kept = Array(messages.suffix(Self.chatKept))
+            chatLog = kept
+            chat.emit(Chat(room: room, messages: kept, replace: true))
+        case let .chat(message):
+            chatLog = Array(((chatLog ?? []) + [message]).suffix(Self.chatKept))
+            chat.emit(Chat(room: room, messages: [message], replace: false))
+        case let .react(by, e, n):
+            reactions.emit(Reaction(by: by, e: e, n: n))
+        default:
+            break
+        }
     }
 
     private func publish() {
@@ -720,6 +770,8 @@ final class GroupController {
     private static let keyRoomCode = "room_code"
     private static let keyRoomName = "room_name"
     private static let keyAvatar = "avatar"
+    /// The chat messages kept, as many as the room keeps.
+    private static let chatKept = 100
     private static let keyRoomSolo = "room_solo"
     private static let keyRoomSoloItem = "room_solo_item"
     private static let keyLastActive = "room_last_active"

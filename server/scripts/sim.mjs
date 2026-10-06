@@ -114,6 +114,11 @@ async function main() {
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);
   }
+  if (process.env.SIM_ONLY === "chat") {
+    await chatSection();
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+  }
   if (process.env.SIM_ONLY === "crossfire") {
     await crossfireSection();
     console.log(`\n${passed} passed, ${failed} failed`);
@@ -266,6 +271,7 @@ async function main() {
   await ownerSection();
   await inviteSection();
   await avatarSection();
+  await chatSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
@@ -757,17 +763,108 @@ async function avatarSection() {
   [ann, bob].forEach((x) => x.close());
 }
 
+/** Chat: kept for whoever joins later, sent to everybody; reactions: passed on to the others, never kept. */
+async function chatSection() {
+  console.log("Chat and reactions");
+  const code = await newCode();
+  const ann = new Client(code, "chat-an", "Ann");
+  await ann.join(true);
+  const empty = await ann.waitFor((m) => m.t === "chat.history");
+  check("a new room has no chat yet, and says so right after the state", Array.isArray(empty.msgs) && empty.msgs.length === 0);
+  const bob = new Client(code, "chat-bo", "Bob");
+  await bob.join(false);
+  await bob.waitFor((m) => m.t === "chat.history");
+
+  ann.send({ t: "chat", text: "  hello there  ", cid: "c-1" });
+  const [toAnn, toBob] = await all([ann, bob], (x) => x.waitFor((m) => m.t === "chat"));
+  check(
+    "a message reaches everybody, its sender too, trimmed and signed with the public id and name",
+    toAnn.msg.text === "hello there" && toBob.msg.text === "hello there" && toBob.msg.by === pid("chat-an") && toBob.msg.name === "Ann",
+    JSON.stringify(toBob),
+  );
+  check("it carries the room's number for it, its time and the sender's own id for it", toAnn.msg.id === 1 && Math.abs(toAnn.msg.at - Date.now()) < 3000 && toAnn.msg.cid === "c-1");
+  check("the secret client id never goes out with it", !JSON.stringify(toBob).includes("chat-an\""));
+
+  ann.send({ t: "chat", text: "   " });
+  ann.send({ t: "chat", text: 42 });
+  ann.send({ t: "chat" });
+  check("a message with no text is ignored", await bob.stays((m) => m.t === "chat", 400));
+
+  bob.send({ t: "chat", text: "x".repeat(499) + "\u{1F600}\u{1F600}" });
+  const long = await ann.waitFor((m) => m.t === "chat");
+  check("a long message is cut to 500 characters without splitting an emoji", Array.from(long.msg.text).length === 500 && long.msg.text.endsWith("\u{1F600}") && long.msg.id === 2 && long.msg.cid === undefined);
+
+  // A guest who may only add songs can still talk
+  ann.send({ t: "room.settings", guestControl: "add" });
+  await bob.waitFor((m) => m.t === "state" && m.state.guestControl === "add");
+  bob.send({ t: "chat", text: "still here" });
+  const guest = await ann.waitFor((m) => m.t === "chat");
+  check("guests limited to adding songs can still chat", guest.msg.text === "still here");
+  check("and get no forbidden error for it", await bob.stays((m) => m.t === "error", 300));
+
+  const cara = new Client(code, "chat-ca", "Cara");
+  await cara.join(false);
+  const history = await cara.waitFor((m) => m.t === "chat.history");
+  check("whoever joins later gets the messages so far, oldest first", history.msgs.map((m) => m.id).join(",") === "1,2,3", JSON.stringify(history.msgs.map((m) => m.id)));
+
+  console.log("Reactions");
+  ann.send({ t: "react", e: "heart", n: 3 });
+  const [rb, rc] = await all([bob, cara], (x) => x.waitFor((m) => m.t === "react"));
+  check("a reaction reaches the others with who sent it and how many", rb.by === pid("chat-an") && rb.e === "heart" && rb.n === 3 && rc.n === 3);
+  check("but not its sender, who already showed it", await ann.stays((m) => m.t === "react", 300));
+  bob.send({ t: "react", e: "fire", n: 500 });
+  check("a count is capped", (await ann.waitFor((m) => m.t === "react")).n === 10);
+  bob.send({ t: "react", e: "fire" });
+  check("no count means one", (await ann.waitFor((m) => m.t === "react")).n === 1);
+  bob.send({ t: "react", e: "poop" });
+  bob.send({ t: "react", e: "fire", n: 1.5 });
+  const odd = await ann.waitFor((m) => m.t === "react");
+  check("an unknown reaction is ignored, and a count that is not whole counts as one", odd.e === "fire" && odd.n === 1);
+  check("only that one came", await ann.stays((m) => m.t === "react", 300));
+
+  const late = new Client(code, "chat-da", "Dan");
+  await late.join(false);
+  const kept = await late.waitFor((m) => m.t === "chat.history");
+  check("reactions are not kept in the history", kept.msgs.length === 3);
+
+  // Only the last messages are kept
+  for (let i = 0; i < 100; i++) {
+    ann.send({ t: "chat", text: `m${i}` });
+    if (i % 15 === 14) await sleep(1000); // under the limit of 20 messages a second
+  }
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "m99", 8000);
+  const eve = new Client(code, "chat-ev", "Eve");
+  await eve.join(false);
+  const last = await eve.waitFor((m) => m.t === "chat.history");
+  check("the room keeps the last 100 messages", last.msgs.length === 100 && last.msgs[0].id === 4 && last.msgs[99].text === "m99", `${last.msgs.length} ${last.msgs[0]?.id}`);
+
+  // A member who left keeps their name on what they wrote
+  ann.close();
+  await bob.waitFor((m) => m.t === "members" && !m.members.some((x) => x.id === pid("chat-an")));
+  const fay = new Client(code, "chat-fa", "Fay");
+  await fay.join(false);
+  const after = await fay.waitFor((m) => m.t === "chat.history");
+  check("messages keep their sender's name after they leave", after.msgs.at(-1).name === "Ann");
+  [bob, cara, late, eve, fay].forEach((x) => x.close());
+}
+
 /** How long empty rooms live and whether dead connections are noticed. Needs the short timers of `npm test`. */
 async function lifetimeSection() {
   console.log("Room lifetime");
   const bare = await newCode();
   const first = new Client(bare, "b-id", "Bee");
   await first.join(true);
+  first.send({ t: "chat", text: "anyone?" });
+  await first.waitFor((m) => m.t === "chat");
   first.close();
   await sleep(500);
   check("an empty room with nothing queued is kept for a moment", (await roomInfo(bare)).exists === true);
   await sleep(1800);
   check("and is gone after its short lifetime", (await roomInfo(bare)).exists === false);
+  const again = new Client(bare, "b-id", "Bee");
+  await again.join(true);
+  check("its chat went with it", (await again.waitFor((m) => m.t === "chat.history")).msgs.length === 0);
+  again.close();
 
   const kept = await newCode();
   const second = new Client(kept, "k-id", "Kay");

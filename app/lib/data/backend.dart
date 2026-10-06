@@ -61,6 +61,26 @@ class AvatarEvent extends BackendEvent {
   final Uint8List? bytes;
 }
 
+/// Chat messages of room [room]: everything it keeps when [replace], else new ones.
+class ChatEvent extends BackendEvent {
+  const ChatEvent({
+    required this.room,
+    required this.messages,
+    required this.replace,
+  });
+  final String room;
+  final List<ChatMessage> messages;
+  final bool replace;
+}
+
+/// Member [by] sent a reaction, [count] taps of it; [reaction] is null for one this app does not know.
+class ReactionEvent extends BackendEvent {
+  const ReactionEvent(this.by, this.reaction, this.count);
+  final String by;
+  final Reaction? reaction;
+  final int count;
+}
+
 /// The phone became warm or went into battery saver ([on]), or stopped being so.
 class CalmEvent extends BackendEvent {
   const CalmEvent(this.on);
@@ -127,6 +147,13 @@ abstract class Backend {
 
   /// The picture the room sees of this device, as base64 of a small JPEG; null for none.
   Future<void> setAvatar(String? base64);
+
+  /// Writes [text] to the room's chat; [cid] comes back with it once the room has it. False when there is no
+  /// connection to send it on.
+  Future<bool> sendChat(String text, String cid);
+
+  /// Sends the room [reaction], standing for [count] taps.
+  Future<void> react(Reaction reaction, int count);
 
   /// The room stopped but this device carries on by itself.
   Future<void> keepPlaying();
@@ -357,6 +384,19 @@ class NativeBackend implements Backend {
         json['data'] == null ? null : base64Decode(json['data'] as String),
       ),
       'sleep' => SleepEvent(SleepState.fromJson(json)),
+      'chat' => ChatEvent(
+        room: json['room'] as String,
+        replace: json['replace'] as bool? ?? false,
+        messages: [
+          for (final e in json['messages'] as List<dynamic>)
+            ChatMessage.fromJson(e as Map<String, dynamic>),
+        ],
+      ),
+      'reaction' => ReactionEvent(
+        json['by'] as String,
+        Reaction.parse(json['e'] as String?),
+        (json['n'] as num?)?.toInt() ?? 1,
+      ),
       'invite' => InviteEvent(json['code'] as String),
       'setup' => SetupEvent(json['link'] as String),
       'notice' => NoticeEvent(
@@ -431,6 +471,14 @@ class NativeBackend implements Backend {
   @override
   Future<void> setAvatar(String? base64) =>
       _call<void>('setAvatar', {'data': base64});
+
+  @override
+  Future<bool> sendChat(String text, String cid) async =>
+      await _call<bool>('sendChat', {'text': text, 'cid': cid}) ?? false;
+
+  @override
+  Future<void> react(Reaction reaction, int count) =>
+      _call('react', {'e': reaction.name, 'n': count});
 
   @override
   Future<void> keepPlaying() => _call('keepPlaying');

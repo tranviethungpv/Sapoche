@@ -5,6 +5,7 @@ import '../data/models.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'chat_sheet.dart';
 import 'home_shell.dart';
 import 'members_sheet.dart';
 import 'rooms_sheet.dart';
@@ -265,6 +266,7 @@ class _Header extends StatelessWidget {
                   tooltip: S.invite,
                   icon: Icon(Icons.ios_share_rounded, color: p.primary),
                 ),
+                ChatButton(controller: AppScope.roomOf(context)),
                 IconButton(
                   onPressed: () => showRoomSheet(context),
                   tooltip: S.room,

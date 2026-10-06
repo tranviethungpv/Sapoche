@@ -545,6 +545,27 @@ final class WireTests: XCTestCase {
         XCTAssertTrue(Wire.avatarSet("TUlORQ==").contains("TUlORQ=="))
     }
 
+    func testChatMessagesTheHistoryAndReactionsAreRead() {
+        XCTAssertEqual(
+            Wire.parse(#"{"t":"chat","msg":{"id":3,"by":"a1","name":"Ann","text":"hi","at":1790660600123,"cid":"c-1"}}"#),
+            .chat(ChatMessage(id: 3, by: "a1", name: "Ann", text: "hi", at: 1790660600123, cid: "c-1"))
+        )
+        XCTAssertEqual(
+            Wire.parse(#"{"t":"chat.history","msgs":[{"id":1,"by":"b2","name":"Ben","text":"yo","at":5},{"id":2}]}"#),
+            .chatHistory([ChatMessage(id: 1, by: "b2", name: "Ben", text: "yo", at: 5)])
+        )
+        XCTAssertNil(Wire.parse(#"{"t":"chat","msg":{"id":3}}"#))
+        XCTAssertEqual(Wire.parse(#"{"t":"react","by":"a1","e":"heart","n":3}"#), .react(by: "a1", e: "heart", n: 3))
+        XCTAssertEqual(Wire.parse(#"{"t":"react","by":"a1","e":"fire"}"#), .react(by: "a1", e: "fire", n: 1))
+        let chat = JSON.parse(Wire.chat("hi \"you\"", cid: "c-1"))
+        XCTAssertEqual(chat?["t"].string, "chat")
+        XCTAssertEqual(chat?["text"].string, "hi \"you\"")
+        XCTAssertEqual(chat?["cid"].string, "c-1")
+        let react = JSON.parse(Wire.react("clap", n: 4))
+        XCTAssertEqual(react?["e"].string, "clap")
+        XCTAssertEqual(react?["n"].int, 4)
+    }
+
     func testTheServersMessagesAreRead() throws {
         guard case let .state(serverNow, you, state, members, version)? = Wire.parse(
             #"{"t":"state","serverNow":5,"you":"me","protocol":6,"state":{"queue":[{"id":"q","videoId":"v","title":"T","artist":"A","durMs":9,"addedBy":"x"}],"index":0,"phase":"playing","startedAt":10,"positionMs":0,"epoch":3,"repeat":"all","name":"Room","ownerId":"me","guestControl":"add"},"members":[{"id":"me","name":"Me","ready":true,"owner":true}]}"#

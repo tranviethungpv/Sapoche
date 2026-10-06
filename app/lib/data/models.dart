@@ -448,6 +448,79 @@ class RoomSnapshot {
   };
 }
 
+/// Where a chat message of this device is: the room has it ([sent]), it is on its way, or it never got there.
+enum ChatDelivery { sent, sending, failed }
+
+/// A chat message of the room. Until the room confirms one of this device's own, [id] is 0 and [delivery] says how it goes.
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.by,
+    required this.name,
+    required this.text,
+    required this.at,
+    this.cid,
+    this.delivery = ChatDelivery.sent,
+  });
+
+  /// The room's number for it, one more with every message.
+  final int id;
+
+  /// The member who wrote it.
+  final String by;
+
+  /// Their name when they wrote it, so it stays after they leave.
+  final String name;
+  final String text;
+
+  /// When it was sent, in ms since the epoch.
+  final int at;
+
+  /// The id this device gave it when it wrote it; null for messages of the others.
+  final String? cid;
+  final ChatDelivery delivery;
+
+  ChatMessage withDelivery(ChatDelivery delivery) => ChatMessage(
+    id: id,
+    by: by,
+    name: name,
+    text: text,
+    at: at,
+    cid: cid,
+    delivery: delivery,
+  );
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+    id: (json['id'] as num).toInt(),
+    by: json['by'] as String,
+    name: json['name'] as String? ?? '',
+    text: json['text'] as String,
+    at: (json['at'] as num).toInt(),
+    cid: json['cid'] as String?,
+  );
+}
+
+/// The reactions a member can send to the room, in the order they are offered; [name] is how they go on the wire.
+enum Reaction {
+  heart('❤️'),
+  fire('🔥'),
+  laugh('😂'),
+  wow('😮'),
+  sad('😢'),
+  clap('👏');
+
+  const Reaction(this.emoji);
+
+  final String emoji;
+
+  static Reaction? parse(String? name) {
+    for (final reaction in values) {
+      if (reaction.name == name) return reaction;
+    }
+    return null;
+  }
+}
+
 /// The local player, sampled about once a second and extrapolated in between.
 class PlayerPosition {
   const PlayerPosition({
