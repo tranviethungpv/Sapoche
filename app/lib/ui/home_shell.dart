@@ -369,7 +369,8 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     _folded.animateTo(fold ? 1 : 0);
   }
 
-  /// Scrolling a page down folds the bars away; scrolling back up, however little, brings them back.
+  /// Scrolling a page down folds the bars away, and they stay folded, however the page is scrolled back, until it is
+  /// back at its top, as in Apple Music.
   bool _onScroll(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
     // Only the phone's bars fold: beside a rail or a sidebar there is room for the player
@@ -387,7 +388,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
         if (scrollDelta.sign != _travel.sign) _travel = 0;
         _travel += scrollDelta;
         if (_travel > 24) _fold(true);
-        if (_travel < -8) _fold(false);
+        if (metrics.extentBefore <= 0) _fold(false);
       // A page with too little to scroll cannot fold the bars by scrolling, yet its last rows may lie under the open
       // ones: pulling it on past its end folds them, and pulling it back the other way brings them back
       case ScrollUpdateNotification(:final scrollDelta?, :final metrics)

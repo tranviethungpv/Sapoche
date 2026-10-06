@@ -88,7 +88,7 @@ class _PlayerPage extends StatelessWidget {
 double coverSize(MediaQueryData media) {
   // Everything except the cover needs about this much height; the cover takes what is left. Its side margins are the
   // ones of Apple Music, 32 on each side
-  const otherContent = 400.0;
+  const otherContent = 416.0;
   return [
     media.size.width - 2 * _margin,
     576.0,
@@ -98,6 +98,9 @@ double coverSize(MediaQueryData media) {
 
 /// The side margin of the full player: the cover, the title, the seek bar and the buttons all start and end on it.
 const _margin = 32.0;
+
+/// What is left under the last row of buttons, on top of the system's own bar: the icons do not sit on the edge.
+const _bottomGap = 28.0;
 
 /// What the middle of the full player shows: the cover, or one of the panels that take its place.
 enum _Panel { cover, lyrics, upNext }
@@ -231,7 +234,7 @@ class _BodyState extends State<_Body> {
                 const SizedBox(height: 6),
                 _RoomStrip(controller: _c),
               ],
-              const SizedBox(height: 12),
+              const SizedBox(height: _bottomGap),
             ],
           ),
         ),
@@ -528,7 +531,8 @@ class _CoverStage extends StatelessWidget {
                   size: side,
                 ),
               ),
-              const SizedBox(height: _coverGap),
+              // With no room left for the cover the title is all there is
+              SizedBox(height: side > 0 ? _coverGap : 0),
               _TitleRow(controller: controller, current: current),
             ],
           ),
@@ -1001,7 +1005,7 @@ class _ModePill extends StatelessWidget {
             () => _chooseMode(context, false),
           ),
           segment(
-            Icons.videocam_rounded,
+            Icons.smart_display_rounded,
             S.modeVideo,
             video,
             () => _chooseMode(context, true),
