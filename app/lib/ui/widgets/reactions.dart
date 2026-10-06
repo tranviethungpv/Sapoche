@@ -45,7 +45,11 @@ class ReactionBar extends StatelessWidget {
           IconButton(
             onPressed: () => showReactionPicker(context, controller),
             tooltip: S.reactMore,
-            icon: Icon(Icons.add_reaction_outlined, color: p.textSecondary),
+            icon: Icon(
+              Icons.add_reaction_outlined,
+              size: 26,
+              color: p.textTertiary,
+            ),
           ),
         ],
       ),

@@ -295,7 +295,7 @@ class _BodyState extends State<_Body> {
   }
 }
 
-/// Shuffle, previous, play, next and repeat.
+/// Previous, play and next. Shuffle and repeat live in Up Next, as in Apple Music.
 class _TransportRow extends StatelessWidget {
   const _TransportRow({required this.controller, this.playSize = 72});
 
@@ -306,9 +306,8 @@ class _TransportRow extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller.playState,
     builder: (context, _) => Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _ShuffleButton(controller: controller),
         SkipButton(forward: false, onPressed: controller.prev, size: 52),
         PlayPauseButton(
           playing: controller.isPlaying,
@@ -317,7 +316,6 @@ class _TransportRow extends StatelessWidget {
           size: playSize,
         ),
         SkipButton(forward: true, onPressed: controller.next, size: 52),
-        _RepeatButton(controller: controller),
       ],
     ),
   );
@@ -896,90 +894,6 @@ class _SleepButton extends StatelessWidget {
   }
 }
 
-/// Mixes up what comes next. It is an action, not a mode, so it says what it did: the icon turns once and a
-/// note follows. Dimmed when there is nothing to mix.
-class _ShuffleButton extends StatefulWidget {
-  const _ShuffleButton({required this.controller});
-
-  final RoomController controller;
-
-  @override
-  State<_ShuffleButton> createState() => _ShuffleButtonState();
-}
-
-class _ShuffleButtonState extends State<_ShuffleButton> {
-  int _turns = 0;
-
-  void _shuffle() {
-    HapticFeedback.selectionClick();
-    setState(() => _turns++);
-    widget.controller.shuffle();
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(S.upNextShuffled),
-          duration: Duration(milliseconds: 1400),
-        ),
-      );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final enough = widget.controller.snapshot.upNext.length > 1;
-    return IconButton(
-      onPressed: enough ? _shuffle : null,
-      tooltip: S.shuffle,
-      color: p.primary,
-      disabledColor: p.textTertiary.withValues(alpha: 0.5),
-      icon: AnimatedRotation(
-        turns: _turns.toDouble(),
-        duration: const Duration(milliseconds: 420),
-        curve: Curves.easeOutCubic,
-        child: const Icon(Icons.shuffle_rounded),
-      ),
-    );
-  }
-}
-
-/// Cycles off, repeat all, repeat this song. Lit up while repeating.
-class _RepeatButton extends StatelessWidget {
-  const _RepeatButton({required this.controller});
-
-  final RoomController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final mode = controller.snapshot.repeat;
-    final on = mode != Repeat.off;
-    return Tooltip(
-      message: switch (mode) {
-        Repeat.off => S.repeatOff,
-        Repeat.all => S.repeatAll,
-        Repeat.one => S.repeatOne,
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: on ? p.primaryContainer : Colors.transparent,
-        ),
-        child: IconButton(
-          onPressed: controller.cycleRepeat,
-          icon: Icon(
-            mode == Repeat.one
-                ? Icons.repeat_one_rounded
-                : Icons.repeat_rounded,
-          ),
-          color: on ? p.onPrimaryContainer : p.textTertiary,
-        ),
-      ),
-    );
-  }
-}
-
 /// What a touch on Audio or Video does. The picture is this device's own choice and follows at once. The song also
 /// changes to its other release (the music video, or the audio release) like YouTube Music's switch does: outside a
 /// room for this device, in a room for everybody, because the queue is shared. A room only goes to the video
@@ -1120,7 +1034,11 @@ class _RoomStrip extends StatelessWidget {
             ),
           ),
         ),
-        ChatButton(controller: controller),
+        ChatButton(
+          controller: controller,
+          color: context.palette.textTertiary,
+          size: 26,
+        ),
         const SizedBox(width: 8),
         ListenableBuilder(
           listenable: controller.player,

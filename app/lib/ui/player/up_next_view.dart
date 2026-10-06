@@ -27,63 +27,196 @@ class UpNextView extends StatelessWidget {
         final snapshot = controller.snapshot;
         final upNext = snapshot.upNext;
         final current = snapshot.current;
-        return CustomScrollView(
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            SliverToBoxAdapter(child: SectionHeading(S.upNext)),
-            if (upNext.isEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                  child: Text(
-                    S.nothingAfter,
-                    style: Theme.of(context).textTheme.bodyMedium
-                        ?.copyWith(color: context.palette.textSecondary),
-                  ),
-                ),
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Row(
+                children: [
+                  Expanded(child: _ShuffleButton(controller: controller)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _RepeatButton(controller: controller)),
+                ],
               ),
-            SliverReorderableList(
-              itemCount: upNext.length,
-              onReorderItem: (from, to) =>
-                  controller.move(upNext[from], snapshot.myIndex + 1 + to),
-              proxyDecorator: (child, _, animation) => Material(
-                color: Colors.transparent,
-                elevation: 0,
-                child: ScaleTransition(
-                  scale: Tween(begin: 1.0, end: 1.02).animate(animation),
-                  child: child,
-                ),
-              ),
-              itemBuilder: (context, i) {
-                final entry = upNext[i];
-                return Dismissible(
-                  key: ValueKey(entry.id),
-                  direction: DismissDirection.endToStart,
-                  background: const DeleteBackground(),
-                  onDismissed: (_) {
-                    HapticFeedback.lightImpact();
-                    controller.remove(entry);
-                  },
-                  child: ReorderableDelayedDragStartListener(
-                    index: i,
-                    child: TrackTile(
-                      track: entry,
-                      onTap: () => controller.jump(entry),
-                    ),
-                  ),
-                );
-              },
             ),
-            if (current != null)
-              SliverToBoxAdapter(
-                child: _Suggestions(controller: controller, current: current),
-              ),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            Expanded(child: _list(context, snapshot, upNext, current)),
           ],
         );
       },
+    );
+  }
+
+  Widget _list(
+    BuildContext context,
+    RoomSnapshot snapshot,
+    List<QueueEntry> upNext,
+    QueueEntry? current,
+  ) {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      slivers: [
+        SliverToBoxAdapter(child: SectionHeading(S.upNext)),
+        if (upNext.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Text(
+                S.nothingAfter,
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: context.palette.textSecondary),
+              ),
+            ),
+          ),
+        SliverReorderableList(
+          itemCount: upNext.length,
+          onReorderItem: (from, to) =>
+              controller.move(upNext[from], snapshot.myIndex + 1 + to),
+          proxyDecorator: (child, _, animation) => Material(
+            color: Colors.transparent,
+            elevation: 0,
+            child: ScaleTransition(
+              scale: Tween(begin: 1.0, end: 1.02).animate(animation),
+              child: child,
+            ),
+          ),
+          itemBuilder: (context, i) {
+            final entry = upNext[i];
+            return Dismissible(
+              key: ValueKey(entry.id),
+              direction: DismissDirection.endToStart,
+              background: const DeleteBackground(),
+              onDismissed: (_) {
+                HapticFeedback.lightImpact();
+                controller.remove(entry);
+              },
+              child: ReorderableDelayedDragStartListener(
+                index: i,
+                child: TrackTile(
+                  track: entry,
+                  onTap: () => controller.jump(entry),
+                ),
+              ),
+            );
+          },
+        ),
+        if (current != null)
+          SliverToBoxAdapter(
+            child: _Suggestions(controller: controller, current: current),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
+  }
+}
+
+/// Mixes up what comes next. It is an action, not a mode, so it says what it did: the icon turns once and a
+/// note follows. Dimmed when there is nothing to mix.
+class _ShuffleButton extends StatefulWidget {
+  const _ShuffleButton({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  State<_ShuffleButton> createState() => _ShuffleButtonState();
+}
+
+class _ShuffleButtonState extends State<_ShuffleButton> {
+  int _turns = 0;
+
+  void _shuffle() {
+    HapticFeedback.selectionClick();
+    setState(() => _turns++);
+    widget.controller.shuffle();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(S.upNextShuffled),
+          duration: Duration(milliseconds: 1400),
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final enough = widget.controller.snapshot.upNext.length > 1;
+    return _Pill(
+      onPressed: enough ? _shuffle : null,
+      tooltip: S.shuffle,
+      on: false,
+      icon: AnimatedRotation(
+        turns: _turns.toDouble(),
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        child: Icon(
+          Icons.shuffle_rounded,
+          color: enough
+              ? p.textSecondary
+              : p.textTertiary.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+  }
+}
+
+/// Cycles off, repeat all, repeat this song. Lit up while repeating.
+class _RepeatButton extends StatelessWidget {
+  const _RepeatButton({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final mode = controller.snapshot.repeat;
+    final on = mode != Repeat.off;
+    return _Pill(
+      onPressed: controller.cycleRepeat,
+      tooltip: switch (mode) {
+        Repeat.off => S.repeatOff,
+        Repeat.all => S.repeatAll,
+        Repeat.one => S.repeatOne,
+      },
+      on: on,
+      icon: Icon(
+        mode == Repeat.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+        color: on ? p.onPrimaryContainer : p.textSecondary,
+      ),
+    );
+  }
+}
+
+/// A button of the strip over the queue, wide and soft like Apple Music's: filled with the theme colour while on.
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.onPressed,
+    required this.tooltip,
+    required this.on,
+    required this.icon,
+  });
+
+  final VoidCallback? onPressed;
+  final String tooltip;
+  final bool on;
+  final Widget icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: on ? p.primaryContainer : p.textTertiary.withValues(alpha: 0.14),
+        shape: const StadiumBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: SizedBox(height: 40, child: Center(child: icon)),
+        ),
+      ),
     );
   }
 }

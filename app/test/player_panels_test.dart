@@ -262,14 +262,12 @@ void main() {
   });
 
   group('shuffle and repeat', () {
-    testWidgets('sit beside the play button, with or without a panel open', (
-      tester,
-    ) async {
+    testWidgets('are in Up Next, not beside the play button', (tester) async {
       final backend = await openPlayer(tester);
-      expect(find.byTooltip('Shuffle'), findsOneWidget);
-      expect(find.byTooltip('Repeat off'), findsOneWidget);
+      expect(find.byTooltip('Shuffle'), findsNothing);
+      expect(find.byTooltip('Repeat off'), findsNothing);
 
-      await openPanel(tester, 'Lyrics');
+      await openPanel(tester, 'Up Next');
       expect(find.byTooltip('Shuffle'), findsOneWidget);
       expect(find.byTooltip('Repeat off'), findsOneWidget);
 
@@ -280,6 +278,7 @@ void main() {
 
     testWidgets('shuffle mixes what comes next and says so', (tester) async {
       final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 4));
+      await openPanel(tester, 'Up Next');
       await tester.tap(find.byTooltip('Shuffle'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
@@ -292,6 +291,7 @@ void main() {
       tester,
     ) async {
       final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 2));
+      await openPanel(tester, 'Up Next');
       await tester.tap(find.byTooltip('Shuffle'));
       await tester.pump();
       expect(backend.calls, isNot(contains('shuffle')));

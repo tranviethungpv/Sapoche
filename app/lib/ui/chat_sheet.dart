@@ -21,10 +21,16 @@ void showChatSheet(BuildContext context) {
 
 /// The way into the chat, with how many messages came since it was last open. Nothing where the room has no chat.
 class ChatButton extends StatelessWidget {
-  const ChatButton({super.key, required this.controller, this.color});
+  const ChatButton({
+    super.key,
+    required this.controller,
+    this.color,
+    this.size,
+  });
 
   final RoomController controller;
   final Color? color;
+  final double? size;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +49,7 @@ class ChatButton extends StatelessWidget {
             label: Text(unread > 99 ? '99+' : '$unread'),
             child: Icon(
               Icons.chat_bubble_outline_rounded,
+              size: size,
               color: color ?? context.palette.primary,
             ),
           ),
