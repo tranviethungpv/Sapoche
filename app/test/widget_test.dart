@@ -200,6 +200,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
 
+    // Repeat is in Up Next, as in Apple Music
+    await tester.tap(find.byTooltip('Up Next'));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byIcon(Icons.repeat_rounded));
     await tester.pump();
     expect(backend.calls.last, 'repeat all');

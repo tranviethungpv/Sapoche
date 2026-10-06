@@ -14,7 +14,6 @@ import 'artist_page.dart';
 import 'chat_sheet.dart';
 import 'members_sheet.dart';
 import 'player/lyrics_view.dart';
-import 'player/related_view.dart';
 import 'player/up_next_view.dart';
 import 'player/video_controls.dart';
 import 'player_sheet.dart';
@@ -97,7 +96,7 @@ double coverSize(MediaQueryData media) {
 }
 
 /// What the middle of the full player shows: the cover, or one of the panels that take its place.
-enum _Panel { cover, lyrics, upNext, related }
+enum _Panel { cover, lyrics, upNext }
 
 class _Body extends StatefulWidget {
   const _Body({required this.controller, required this.current});
@@ -296,7 +295,7 @@ class _BodyState extends State<_Body> {
   }
 }
 
-/// Shuffle, previous, play, next and repeat.
+/// Previous, play and next. Shuffle and repeat live in Up Next, as in Apple Music.
 class _TransportRow extends StatelessWidget {
   const _TransportRow({required this.controller, this.playSize = 72});
 
@@ -307,9 +306,8 @@ class _TransportRow extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller.playState,
     builder: (context, _) => Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _ShuffleButton(controller: controller),
         SkipButton(forward: false, onPressed: controller.prev, size: 52),
         PlayPauseButton(
           playing: controller.isPlaying,
@@ -318,7 +316,6 @@ class _TransportRow extends StatelessWidget {
           size: playSize,
         ),
         SkipButton(forward: true, onPressed: controller.next, size: 52),
-        _RepeatButton(controller: controller),
       ],
     ),
   );
@@ -456,8 +453,7 @@ class _WidePanel extends StatelessWidget {
                   controller: controller,
                   track: current,
                 ),
-                _Panel.upNext => UpNextView(controller: controller),
-                _ => RelatedView(track: current),
+                _ => UpNextView(controller: controller),
               },
             ),
             _Toolbar(controller: controller, panel: panel, onPanel: onPanel),
@@ -647,8 +643,7 @@ class _PanelStage extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 28),
               child: LyricsView(controller: controller, track: current),
             ),
-            _Panel.upNext => UpNextView(controller: controller),
-            _ => RelatedView(track: current),
+            _ => UpNextView(controller: controller),
           },
         ),
       ],
@@ -773,7 +768,7 @@ class _MoreButton extends StatelessWidget {
   }
 }
 
-/// Lyrics, the queue, related songs and the sleep timer: the things to reach for while listening.
+/// Lyrics, the queue, the sleep timer and where the sound goes: the things to reach for while listening.
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.controller,
@@ -808,7 +803,6 @@ class _Toolbar extends StatelessWidget {
       children: [
         button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
         button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
-        button(Icons.explore_outlined, S.related, _Panel.related),
         Flexible(child: _SleepButton(controller: controller)),
         _OutputButton(controller: controller),
       ],
@@ -883,90 +877,6 @@ class _SleepButton extends StatelessWidget {
         foregroundColor: p.primary,
         backgroundColor: p.primaryContainer,
         shape: const StadiumBorder(),
-      ),
-    );
-  }
-}
-
-/// Mixes up what comes next. It is an action, not a mode, so it says what it did: the icon turns once and a
-/// note follows. Dimmed when there is nothing to mix.
-class _ShuffleButton extends StatefulWidget {
-  const _ShuffleButton({required this.controller});
-
-  final RoomController controller;
-
-  @override
-  State<_ShuffleButton> createState() => _ShuffleButtonState();
-}
-
-class _ShuffleButtonState extends State<_ShuffleButton> {
-  int _turns = 0;
-
-  void _shuffle() {
-    HapticFeedback.selectionClick();
-    setState(() => _turns++);
-    widget.controller.shuffle();
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(S.upNextShuffled),
-          duration: Duration(milliseconds: 1400),
-        ),
-      );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final enough = widget.controller.snapshot.upNext.length > 1;
-    return IconButton(
-      onPressed: enough ? _shuffle : null,
-      tooltip: S.shuffle,
-      color: p.primary,
-      disabledColor: p.textTertiary.withValues(alpha: 0.5),
-      icon: AnimatedRotation(
-        turns: _turns.toDouble(),
-        duration: const Duration(milliseconds: 420),
-        curve: Curves.easeOutCubic,
-        child: const Icon(Icons.shuffle_rounded),
-      ),
-    );
-  }
-}
-
-/// Cycles off, repeat all, repeat this song. Lit up while repeating.
-class _RepeatButton extends StatelessWidget {
-  const _RepeatButton({required this.controller});
-
-  final RoomController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final mode = controller.snapshot.repeat;
-    final on = mode != Repeat.off;
-    return Tooltip(
-      message: switch (mode) {
-        Repeat.off => S.repeatOff,
-        Repeat.all => S.repeatAll,
-        Repeat.one => S.repeatOne,
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: on ? p.primaryContainer : Colors.transparent,
-        ),
-        child: IconButton(
-          onPressed: controller.cycleRepeat,
-          icon: Icon(
-            mode == Repeat.one
-                ? Icons.repeat_one_rounded
-                : Icons.repeat_rounded,
-          ),
-          color: on ? p.onPrimaryContainer : p.textTertiary,
-        ),
       ),
     );
   }
@@ -1109,7 +1019,11 @@ class _RoomStrip extends StatelessWidget {
           ),
         ),
         ReactButton(controller: controller),
-        ChatButton(controller: controller),
+        ChatButton(
+          controller: controller,
+          color: context.palette.textTertiary,
+          size: 26,
+        ),
       ],
     );
   }

@@ -65,7 +65,8 @@ class ReactButton extends StatelessWidget {
             tooltip: S.reactMore,
             icon: Icon(
               Icons.add_reaction_outlined,
-              color: context.palette.primary,
+              size: 26,
+              color: context.palette.textTertiary,
             ),
           )
         : const SizedBox.shrink(),
