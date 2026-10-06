@@ -410,6 +410,64 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `shuffle as a mode mixes what is to come, and off puts it back in order`() = runTest {
+        val h = harness()
+        h.session.add((1..8).map(::track), next = false)
+        step()
+        h.session.next()
+        step()
+        val before = h.titles()
+        h.session.setShuffle(true)
+        step()
+        assertTrue(h.session.snapshot.value.shuffle)
+        val mixed = h.titles()
+        assertEquals(before.take(2), mixed.take(2), "what was played and the current song stay put")
+        assertEquals(before.drop(2).toSet(), mixed.drop(2).toSet())
+        assertTrue(before != mixed, "the rest was mixed")
+        assertEquals(mixed[2], h.player.queuedNext?.title, "and the successor follows the new order")
+
+        h.session.setShuffle(false)
+        step()
+        assertFalse(h.session.snapshot.value.shuffle)
+        assertEquals(before, h.titles(), "turning it off puts the songs back in the order they had")
+    }
+
+    @Test
+    fun `songs added while shuffle is on are mixed in, and follow the rest once it is off`() = runTest {
+        val h = harness()
+        h.session.add((1..6).map(::track), next = false)
+        step()
+        h.session.setShuffle(true)
+        step()
+        h.session.add(listOf(track(7)), next = false)
+        h.session.add(listOf(track(8)), next = true)
+        step()
+        val titles = h.titles()
+        assertEquals("Song 8", titles[1], "a song added to play next stays next")
+        assertEquals("Song 1", titles[0], "the current song stays first")
+        assertTrue("Song 7" in titles.drop(1))
+
+        h.session.setShuffle(false)
+        step()
+        val back = h.titles()
+        assertEquals((1..6).map { "Song $it" }, back.filter { it in (1..6).map { n -> "Song $n" } })
+        assertEquals(setOf("Song 7", "Song 8"), back.takeLast(2).toSet(), "the ones added meanwhile come after")
+    }
+
+    @Test
+    fun `shuffle mode survives clearing the queue and is saved`() = runTest {
+        val h = harness()
+        h.session.add((1..4).map(::track), next = false)
+        step()
+        h.session.setShuffle(true)
+        step()
+        h.session.clear()
+        step()
+        assertTrue(h.session.snapshot.value.shuffle, "clearing the queue leaves the mode as it was")
+        assertTrue(h.saved.last().shuffle)
+    }
+
+    @Test
     fun `jump plays the chosen song`() = runTest {
         val h = harness()
         h.session.add(listOf(track(1), track(2), track(3)), next = false)

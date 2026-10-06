@@ -1139,7 +1139,7 @@ void main() {
       expect(find.byType(Texture), findsNothing);
       expect(backend.calls, isNot(contains('videoSurface')));
 
-      await tester.tap(find.text('Video'));
+      await tester.tap(find.byTooltip('Video'));
       await tester.pump();
       expect(backend.calls, contains('video true'));
 

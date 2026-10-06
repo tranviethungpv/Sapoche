@@ -86,14 +86,18 @@ class _PlayerPage extends StatelessWidget {
 /// Side of the full player's cover. It depends only on the screen, so the cover can be decoded
 /// at this size before the player is ever opened.
 double coverSize(MediaQueryData media) {
-  // Everything except the cover needs about this much height; the cover takes what is left
-  const otherContent = 436.0;
+  // Everything except the cover needs about this much height; the cover takes what is left. Its side margins are the
+  // ones of Apple Music, 32 on each side
+  const otherContent = 400.0;
   return [
-    media.size.width - 64,
-    380.0,
+    media.size.width - 2 * _margin,
+    576.0,
     media.size.height - media.padding.vertical - otherContent,
-  ].reduce((a, b) => a < b ? a : b).clamp(140.0, 380.0);
+  ].reduce((a, b) => a < b ? a : b).clamp(140.0, 576.0);
 }
+
+/// The side margin of the full player: the cover, the title, the seek bar and the buttons all start and end on it.
+const _margin = 32.0;
 
 /// What the middle of the full player shows: the cover, or one of the panels that take its place.
 enum _Panel { cover, lyrics, upNext }
@@ -214,20 +218,20 @@ class _BodyState extends State<_Body> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
+          padding: const EdgeInsets.symmetric(horizontal: _margin),
           child: Column(
             children: [
               const SizedBox(height: 14),
               PlaybackBar(controller: _c),
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
               _TransportRow(controller: _c),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               _Toolbar(controller: _c, panel: _panel, onPanel: _show),
               if (_c.snapshot.inRoom) ...[
                 const SizedBox(height: 6),
                 _RoomStrip(controller: _c),
               ],
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -264,7 +268,7 @@ class _BodyState extends State<_Body> {
               ),
             ),
           ),
-          const SizedBox(width: 28),
+          const SizedBox(width: 40),
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 240),
@@ -295,9 +299,9 @@ class _BodyState extends State<_Body> {
   }
 }
 
-/// Previous, play and next. Shuffle and repeat live in Up Next, as in Apple Music.
+/// Previous, play and next, bare and close together like Apple Music's. Shuffle and repeat live in Up Next.
 class _TransportRow extends StatelessWidget {
-  const _TransportRow({required this.controller, this.playSize = 72});
+  const _TransportRow({required this.controller, this.playSize = 84});
 
   final RoomController controller;
   final double playSize;
@@ -306,16 +310,19 @@ class _TransportRow extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller.playState,
     builder: (context, _) => Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        SkipButton(forward: false, onPressed: controller.prev, size: 52),
+        SkipButton(forward: false, onPressed: controller.prev, size: 46),
+        const SizedBox(width: 14),
         PlayPauseButton(
           playing: controller.isPlaying,
           starting: controller.isStarting,
           onPressed: controller.togglePlay,
           size: playSize,
+          filled: false,
         ),
-        SkipButton(forward: true, onPressed: controller.next, size: 52),
+        const SizedBox(width: 14),
+        SkipButton(forward: true, onPressed: controller.next, size: 46),
       ],
     ),
   );
@@ -372,11 +379,11 @@ class _WideControls extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               _TitleRow(controller: controller, current: current),
-              const SizedBox(height: 4),
+              const SizedBox(height: 12),
               PlaybackBar(controller: controller),
+              const SizedBox(height: 10),
+              _TransportRow(controller: controller, playSize: 72),
               const SizedBox(height: 6),
-              _TransportRow(controller: controller, playSize: 64),
-              const SizedBox(height: 4),
               _Toolbar(controller: controller, panel: panel, onPanel: onPanel),
               if (controller.snapshot.inRoom) ...[
                 const SizedBox(height: 4),
@@ -482,7 +489,7 @@ class _CoverStage extends StatelessWidget {
       // The picture takes all the height there is and keeps its own shape in it: a wide one is as wide as the
       // column, an upright one as tall as the place, never over the title and the controls
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28),
+        padding: const EdgeInsets.symmetric(horizontal: _margin),
         child: Column(
           children: [
             Expanded(
@@ -503,15 +510,25 @@ class _CoverStage extends StatelessWidget {
     }
     return LayoutBuilder(
       builder: (context, box) {
-        // The title keeps its place and the cover is what gives way when the screen is short
-        final side = min(artSize, max(0.0, box.maxHeight - _titleHeight - 24));
+        // The cover and the title under it are one block, in the middle of the place above the controls, as in Apple
+        // Music. The title keeps its size and the cover is what gives way when the screen is short
+        final side = min(
+          artSize,
+          max(0.0, box.maxHeight - _titleHeight - _coverGap - 16),
+        );
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
+          padding: const EdgeInsets.symmetric(horizontal: _margin),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Spacer(flex: 2),
-              _CoverArt(controller: controller, current: current, size: side),
-              const Spacer(flex: 2),
+              Center(
+                child: _CoverArt(
+                  controller: controller,
+                  current: current,
+                  size: side,
+                ),
+              ),
+              const SizedBox(height: _coverGap),
               _TitleRow(controller: controller, current: current),
             ],
           ),
@@ -523,6 +540,9 @@ class _CoverStage extends StatelessWidget {
 
 /// About the height of the title, the artist and the heart under the cover.
 const _titleHeight = 64.0;
+
+/// The space between the cover and the title under it.
+const _coverGap = 28.0;
 
 /// The cover, or the picture when the song is shown as a video. It is the same in the upright player and on its side.
 class _CoverArt extends StatelessWidget {
@@ -607,7 +627,7 @@ class _PanelStage extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(28, 14, 20, 8),
+          padding: const EdgeInsets.fromLTRB(_margin, 14, 20, 8),
           child: Row(
             children: [
               GestureDetector(
@@ -640,7 +660,7 @@ class _PanelStage extends StatelessWidget {
         Expanded(
           child: switch (panel) {
             _Panel.lyrics => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
+              padding: const EdgeInsets.symmetric(horizontal: _margin),
               child: LyricsView(controller: controller, track: current),
             ),
             _ => UpNextView(controller: controller),
@@ -791,8 +811,8 @@ class _Toolbar extends StatelessWidget {
         isSelected: on,
         icon: Icon(icon, size: 26),
         style: IconButton.styleFrom(
-          foregroundColor: on ? p.onPrimaryContainer : p.textTertiary,
-          backgroundColor: on ? p.primaryContainer : Colors.transparent,
+          foregroundColor: on ? p.onPrimary : p.textTertiary,
+          backgroundColor: on ? p.primary : Colors.transparent,
           fixedSize: const Size(52, 44),
         ),
       );
@@ -836,8 +856,8 @@ class _OutputButton extends StatelessWidget {
       tooltip: output.name.isEmpty ? S.playOn : '${S.playOn} · ${output.name}',
       icon: Icon(_icon(output.kind), size: 26),
       style: IconButton.styleFrom(
-        foregroundColor: away ? p.onPrimaryContainer : p.textTertiary,
-        backgroundColor: away ? p.primaryContainer : Colors.transparent,
+        foregroundColor: away ? p.onPrimary : p.textTertiary,
+        backgroundColor: away ? p.primary : Colors.transparent,
         fixedSize: const Size(52, 44),
       ),
     );
@@ -874,8 +894,8 @@ class _SleepButton extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       style: TextButton.styleFrom(
-        foregroundColor: p.primary,
-        backgroundColor: p.primaryContainer,
+        foregroundColor: p.onPrimary,
+        backgroundColor: p.primary,
         shape: const StadiumBorder(),
       ),
     );
@@ -924,7 +944,7 @@ Future<void> _chooseMode(BuildContext context, bool video) async {
   }
 }
 
-/// Audio or Video, like the switch at the top of YouTube Music's player.
+/// Audio or Video, like the switch at the top of YouTube Music's player: two icons, the one chosen filled.
 class _ModePill extends StatelessWidget {
   const _ModePill({required this.controller});
 
@@ -934,24 +954,37 @@ class _ModePill extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final video = controller.snapshot.video;
-    Widget segment(String label, bool selected, VoidCallback onTap) =>
-        GestureDetector(
+    Widget segment(
+      IconData icon,
+      String label,
+      bool selected,
+      VoidCallback onTap,
+    ) => Semantics(
+      label: label,
+      button: true,
+      selected: selected,
+      child: Tooltip(
+        message: label,
+        child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
+            width: 52,
+            height: 32,
             decoration: BoxDecoration(
               color: selected ? p.primary : Colors.transparent,
               borderRadius: BorderRadius.circular(999),
             ),
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.labelMedium
-                  ?.copyWith(color: selected ? p.onPrimary : p.textSecondary),
+            child: Icon(
+              icon,
+              size: 20,
+              color: selected ? p.onPrimary : p.textSecondary,
             ),
           ),
-        );
+        ),
+      ),
+    );
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
@@ -961,8 +994,18 @@ class _ModePill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          segment(S.modeAudio, !video, () => _chooseMode(context, false)),
-          segment(S.modeVideo, video, () => _chooseMode(context, true)),
+          segment(
+            Icons.music_note_rounded,
+            S.modeAudio,
+            !video,
+            () => _chooseMode(context, false),
+          ),
+          segment(
+            Icons.videocam_rounded,
+            S.modeVideo,
+            video,
+            () => _chooseMode(context, true),
+          ),
         ],
       ),
     );

@@ -177,6 +177,9 @@ abstract class Backend {
   /// Mixes up the songs still to come; with the queue finished, mixes them all and plays from the top.
   Future<void> shuffle();
 
+  /// Shuffle as a mode: on mixes what is to come and keeps mixing what is added, off puts the songs back in their order.
+  Future<void> setShuffle(bool on);
+
   /// Fills the personal queue, where [videoId] plays alone, with songs like it. Does nothing in a room, with
   /// autoplay off, or once the queue was changed.
   Future<void> fillRadio(String videoId);
@@ -516,6 +519,9 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> shuffle() => _call('shuffle');
+
+  @override
+  Future<void> setShuffle(bool on) => _call('setShuffle', {'on': on});
 
   @override
   Future<void> fillRadio(String videoId) =>

@@ -620,6 +620,14 @@ class GroupController(
 
     fun requestClearQueue() = onQueue({ it.clear() }) { send(Protocol.queueClear()) }
     fun requestShuffle() = onQueue({ it.shuffle() }) { send(Protocol.queueShuffle()) }
+    /** Shuffle as a mode. A server older than protocol 11 has none, so there it mixes the queue once, as it always did. */
+    fun requestShuffleMode(on: Boolean) = onQueue({ it.setShuffle(on) }) {
+        if (session?.snapshot?.value?.state?.shuffle == null) {
+            if (on) send(Protocol.queueShuffle()) else true
+        } else {
+            send(Protocol.shuffle(on))
+        }
+    }
     fun requestRepeat(mode: String) = onQueue({ it.setRepeat(mode) }) { send(Protocol.repeat(mode)) }
     fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = onQueue({ it.add(tracks, playNext) }) {
         // What is waiting in the room's queue is not added twice

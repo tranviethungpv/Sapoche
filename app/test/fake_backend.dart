@@ -115,6 +115,9 @@ class FakeBackend implements Backend {
   Future<void> shuffle() => _record('shuffle');
 
   @override
+  Future<void> setShuffle(bool on) => _record('setShuffle $on');
+
+  @override
   Future<void> swap(String itemId, Track track) =>
       _record('swap $itemId ${track.videoId}');
 
@@ -630,6 +633,7 @@ RoomSnapshot sampleRoom({
   String? ownerId,
   GuestControl guestControl = GuestControl.all,
   bool? roomAutoplay,
+  bool? shuffle,
 
   /// Outside a room: the personal queue.
   bool local = false,
@@ -649,6 +653,7 @@ RoomSnapshot sampleRoom({
   ownerId: ownerId,
   guestControl: guestControl,
   roomAutoplay: roomAutoplay,
+  shuffle: shuffle,
   members:
       members ??
       const [

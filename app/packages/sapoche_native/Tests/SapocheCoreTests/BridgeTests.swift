@@ -416,7 +416,7 @@ final class BridgeTests: XCTestCase {
         let room = #"""
         {"t":"state","serverNow":1000,"you":"dev-a","protocol":6,
          "state":{"queue":[{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":200000,"addedBy":"dev-a"}],
-                  "index":0,"phase":"paused","startedAt":0,"positionMs":0,"epoch":2,"repeat":"off","name":"Party","ownerId":"dev-a","guestControl":"all","autoplay":true},
+                  "index":0,"phase":"paused","startedAt":0,"positionMs":0,"epoch":2,"repeat":"off","name":"Party","ownerId":"dev-a","guestControl":"all","autoplay":true,"shuffle":false},
          "members":[{"id":"dev-a","name":"Me","ready":true,"owner":true}]}
         """#
         socket.receive(room.replacingOccurrences(of: "\n", with: ""))
@@ -426,6 +426,7 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(state["name"] as? String, "Party")
         XCTAssertEqual(state["ownerId"] as? String, "dev-a")
         XCTAssertEqual(state["roomAutoplay"] as? Bool, true)
+        XCTAssertEqual(state["shuffle"] as? Bool, false, "in a room the room's shuffle")
         XCTAssertEqual(state["connection"] as? String, "connected")
         XCTAssertEqual((state["queue"] as? [[String: Any]])?.first?["id"] as? String, "q1")
         XCTAssertEqual((state["members"] as? [[String: Any]])?.first?["owner"] as? Bool, true)
@@ -436,7 +437,9 @@ final class BridgeTests: XCTestCase {
         _ = try await call("seek", ["ms": 5000])
         _ = try await call("roomName", ["name": "New"])
         _ = try await call("roomAutoplay", ["on": false])
-        XCTAssertEqual(socket.sent.compactMap { JSON.parse($0)?.at("t").string }, ["play", "seek", "room.name", "autoplay"])
+        _ = try await call("setShuffle", ["on": true])
+        XCTAssertEqual(socket.sent.compactMap { JSON.parse($0)?.at("t").string }, ["play", "seek", "room.name", "autoplay", "shuffle"])
+        XCTAssertEqual(JSON.parse(socket.sent.last ?? "")?.at("on").bool, true)
 
         // The room tells this phone to get ready, then to start
         socket.receive(#"{"t":"prepare","epoch":3,"index":0,"item":{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":200000,"addedBy":"dev-a"},"seekToMs":0}"#)

@@ -304,6 +304,7 @@ class RoomSnapshot {
     this.ownerId,
     this.guestControl = GuestControl.all,
     this.roomAutoplay,
+    this.shuffle,
   });
 
   /// Room code, or null when this device is not in a room. Outside a room this describes the
@@ -349,6 +350,10 @@ class RoomSnapshot {
   /// The room carries on with similar songs when its queue runs out. Null outside a room and when the server is too
   /// old to say, in which case nothing carries on.
   final bool? roomAutoplay;
+
+  /// What is still to come is mixed, and stays mixed as songs are added: this device's own outside a room, the room's
+  /// in one. Null in a room whose server is too old to say, where shuffle is only a one-time mix.
+  final bool? shuffle;
 
   bool get inRoom => room != null;
 
@@ -428,6 +433,7 @@ class RoomSnapshot {
     ownerId: json['ownerId'] as String?,
     guestControl: GuestControl.parse(json['guestControl'] as String?),
     roomAutoplay: json['roomAutoplay'] as bool?,
+    shuffle: json['shuffle'] as bool?,
     queue: [
       for (final e in json['queue'] as List<dynamic>? ?? const [])
         QueueEntry.fromJson(e as Map<String, dynamic>),

@@ -712,6 +712,8 @@ class RoomController extends ChangeNotifier {
       _run(() => _backend.move(entry.id, toIndex));
   Future<void> clearQueue() => _run(_backend.clear);
   Future<void> shuffle() => _run(_backend.shuffle);
+
+  Future<void> setShuffle(bool on) => _run(() => _backend.setShuffle(on));
   Future<void> addMany(List<Track> tracks, {bool playNext = false}) async {
     final fresh = _snapshot.fresh(tracks);
     if (fresh.isEmpty) return;

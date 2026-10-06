@@ -26,6 +26,9 @@ data class SavedQueue(
     /** Where the current item resumes. */
     val positionMs: Long = 0,
     val finished: Boolean = false,
+    /** Whether shuffle is on, and the order the queue had when it went on. */
+    val shuffle: Boolean = false,
+    val shuffleOrder: List<String> = emptyList(),
 )
 
 /** [SavedQueue] as one JSON file. A write goes to a temporary file first, so a crash never leaves half a queue. */
@@ -77,6 +80,8 @@ class LocalSession(
         val index: Int = 0,
         /** off, all or one, like the room's repeat. */
         val repeat: String = "off",
+        /** What is still to come is mixed, and stays mixed as songs are added; off puts the songs back in their order. */
+        val shuffle: Boolean = false,
         /** The queue ran out: nothing is playing, and play starts it again from the top. */
         val finished: Boolean = false,
         /** The current song is on its way to play: the screen shows that something is happening before it is heard. */
@@ -115,6 +120,9 @@ class LocalSession(
 
     /** Where the current item resumes once it is loaded. */
     private var pendingPositionMs = if (saved?.finished == true) 0 else saved?.positionMs ?: 0
+
+    /** The ids of the queue in the order it had when shuffle went on: what turning it off goes back to. */
+    private var shuffleOrder: List<String> = saved?.shuffleOrder.orEmpty()
 
     /** Item handed to the player as the gapless successor of the loaded one. */
     private var preloaded: QueueItem? = null
@@ -220,6 +228,11 @@ class LocalSession(
 
         val at = if (next && !startNow) s.index + 1 else s.queue.size
         val queue = s.queue.toMutableList().also { it.addAll(at, items) }
+        if (s.shuffle && !next && !startNow) {
+            // Mixed in among what is to come instead of waiting behind it
+            queue.subList(at, queue.size).clear()
+            for (item in items) queue.add(random.nextInt(s.index + 1, queue.size + 1), item)
+        }
         _snapshot.update { it.copy(queue = queue) }
         if (startNow) load(items.first(), 0, play = true) else preload()
         save()
@@ -235,7 +248,7 @@ class LocalSession(
             at > s.index -> _snapshot.update { it.copy(queue = queue) }
             queue.isEmpty() -> {
                 stopPlayer()
-                _snapshot.update { Snapshot(repeat = it.repeat) }
+                _snapshot.update { Snapshot(repeat = it.repeat, shuffle = it.shuffle) }
             }
             at < queue.size -> {
                 // The next song takes the place of the one removed, and plays if that one was playing
@@ -288,7 +301,7 @@ class LocalSession(
     fun clear() {
         stopPlayer()
         skippedInARow = 0 // a new list is a new start
-        _snapshot.update { Snapshot(repeat = it.repeat) }
+        _snapshot.update { Snapshot(repeat = it.repeat, shuffle = it.shuffle) }
         save()
     }
 
@@ -312,6 +325,34 @@ class LocalSession(
         save()
     }
 
+    /**
+     * Shuffle as a mode, like the room's: on remembers the order and mixes what is still to come; off puts those songs
+     * back in that order, with the ones added meanwhile after them.
+     */
+    fun setShuffle(on: Boolean) {
+        val s = snapshot.value
+        if (on == s.shuffle) return
+        val queue = s.queue.toMutableList()
+        val first = if (s.finished) 0 else s.index + 1
+        if (on) {
+            shuffleOrder = queue.map { it.id }
+            // After the queue finished only the mode is set: the list is mixed when it is played again
+            if (!s.finished && first < queue.size) queue.subList(first, queue.size).shuffle(random)
+        } else {
+            val rank = shuffleOrder.withIndex().associate { (i, id) -> id to i }
+            if (first < queue.size) {
+                val rest = queue.subList(first, queue.size)
+                val sorted = rest.sortedBy { rank[it.id] ?: Int.MAX_VALUE }
+                rest.clear()
+                rest.addAll(sorted)
+            }
+            shuffleOrder = emptyList()
+        }
+        _snapshot.update { it.copy(shuffle = on, queue = queue) }
+        preload()
+        save()
+    }
+
     fun setRepeat(mode: String) {
         if (mode != "off" && mode != "all" && mode != "one") return
         if (mode == snapshot.value.repeat) return
@@ -324,7 +365,7 @@ class LocalSession(
     fun save() {
         val s = snapshot.value
         val position = if (loadedId != null) player.positionMs() else pendingPositionMs
-        persist(SavedQueue(s.queue, s.index, s.repeat, position, s.finished))
+        persist(SavedQueue(s.queue, s.index, s.repeat, position, s.finished, s.shuffle, shuffleOrder))
     }
 
     // ------------------------------------------------------------------ playing
@@ -471,6 +512,7 @@ class LocalSession(
             index = saved.index.coerceIn(0, maxOf(0, queue.size - 1)),
             repeat = saved.repeat.takeIf { it == "all" || it == "one" } ?: "off",
             finished = saved.finished && queue.isNotEmpty(),
+            shuffle = saved.shuffle,
         )
     }
 

@@ -551,6 +551,7 @@ final class Bridge {
         case "jump": controller.requestJump(string("id"))
         case "clear": controller.requestClearQueue()
         case "shuffle": controller.requestShuffle()
+        case "setShuffle": controller.requestShuffleMode(bool("on"))
         case "radio": controller.requestRadio(string("videoId"))
         case "repeat": controller.requestRepeat(string("mode"))
         case "addMany": controller.requestAddMany(tracks(), playNext: bool("next"))

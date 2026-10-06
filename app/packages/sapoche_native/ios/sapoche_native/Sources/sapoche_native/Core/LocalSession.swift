@@ -8,18 +8,24 @@ struct SavedQueue: Equatable, Codable {
     /// Where the current item resumes.
     var positionMs: Int64 = 0
     var finished = false
+    /// Whether shuffle is on, and the order the queue had when it went on.
+    var shuffle = false
+    var shuffleOrder: [String] = []
 
     enum CodingKeys: String, CodingKey {
-        case queue, index, positionMs, finished
+        case queue, index, positionMs, finished, shuffle, shuffleOrder
         case repeatMode = "repeat"
     }
 
-    init(queue: [QueueItem] = [], index: Int = 0, repeatMode: String = "off", positionMs: Int64 = 0, finished: Bool = false) {
+    init(queue: [QueueItem] = [], index: Int = 0, repeatMode: String = "off", positionMs: Int64 = 0, finished: Bool = false,
+         shuffle: Bool = false, shuffleOrder: [String] = []) {
         self.queue = queue
         self.index = index
         self.repeatMode = repeatMode
         self.positionMs = positionMs
         self.finished = finished
+        self.shuffle = shuffle
+        self.shuffleOrder = shuffleOrder
     }
 
     init(from decoder: Decoder) throws {
@@ -29,6 +35,8 @@ struct SavedQueue: Equatable, Codable {
         repeatMode = try values.decodeIfPresent(String.self, forKey: .repeatMode) ?? "off"
         positionMs = try values.decodeIfPresent(Int64.self, forKey: .positionMs) ?? 0
         finished = try values.decodeIfPresent(Bool.self, forKey: .finished) ?? false
+        shuffle = try values.decodeIfPresent(Bool.self, forKey: .shuffle) ?? false
+        shuffleOrder = try values.decodeIfPresent([String].self, forKey: .shuffleOrder) ?? []
     }
 }
 
@@ -73,6 +81,8 @@ final class LocalSession {
         var index = 0
         /// off, all or one, like the room's repeat.
         var repeatMode = "off"
+        /// What is still to come is mixed, and stays mixed as songs are added; off puts the songs back in their order.
+        var shuffle = false
         /// The queue ran out: nothing is playing, and play starts it again from the top.
         var finished = false
         /// The current song is on its way to play: the screen shows that something is happening before it is heard.
@@ -125,6 +135,9 @@ final class LocalSession {
     /// Where the current item resumes once it is loaded.
     private var pendingPositionMs: Int64
 
+    /// The ids of the queue in the order it had when shuffle went on: what turning it off goes back to.
+    private var shuffleOrder: [String]
+
     /// Item handed to the player as the gapless successor of the loaded one.
     private var preloaded: QueueItem?
     private var job: Job?
@@ -158,6 +171,7 @@ final class LocalSession {
         self.newId = newId
         self.random = random
         snapshot = StateFlow(LocalSession.restore(saved))
+        shuffleOrder = saved?.shuffleOrder ?? []
         pendingPositionMs = saved?.finished == true ? 0 : saved?.positionMs ?? 0
     }
 
@@ -265,6 +279,11 @@ final class LocalSession {
         let at = next && !startNow ? s.index + 1 : s.queue.count
         var queue = s.queue
         queue.insert(contentsOf: items, at: at)
+        if s.shuffle && !next && !startNow {
+            // Mixed in among what is to come instead of waiting behind it
+            queue.removeSubrange(at...)
+            for item in items { queue.insert(item, at: Int.random(in: (s.index + 1)...queue.count, using: &random)) }
+        }
         snapshot.update { $0.queue = queue }
         if startNow { load(first, 0, play: true) } else { preload() }
         save()
@@ -282,7 +301,8 @@ final class LocalSession {
         } else if queue.isEmpty {
             stopPlayer()
             let repeatMode = snapshot.value.repeatMode
-            snapshot.set(Snapshot(repeatMode: repeatMode))
+            let shuffle = snapshot.value.shuffle
+            snapshot.set(Snapshot(repeatMode: repeatMode, shuffle: shuffle))
         } else if at < queue.count {
             // The next song takes the place of the one removed, and plays if that one was playing
             let play = loadedId == id && player.isPlaying()
@@ -335,7 +355,8 @@ final class LocalSession {
         stopPlayer()
         skippedInARow = 0 // a new list is a new start
         let repeatMode = snapshot.value.repeatMode
-        snapshot.set(Snapshot(repeatMode: repeatMode))
+        let shuffle = snapshot.value.shuffle
+        snapshot.set(Snapshot(repeatMode: repeatMode, shuffle: shuffle))
         save()
     }
 
@@ -360,6 +381,39 @@ final class LocalSession {
         save()
     }
 
+    /// Shuffle as a mode, like the room's: on remembers the order and mixes what is still to come; off puts those songs
+    /// back in that order, with the ones added meanwhile after them.
+    func setShuffle(_ on: Bool) {
+        let s = snapshot.value
+        if on == s.shuffle { return }
+        var queue = s.queue
+        let first = s.finished ? 0 : s.index + 1
+        if on {
+            shuffleOrder = queue.map(\.id)
+            // After the queue finished only the mode is set: the list is mixed when it is played again
+            if !s.finished && first < queue.count {
+                var tail = Array(queue[first...])
+                tail.shuffle(using: &random)
+                queue.replaceSubrange(first..., with: tail)
+            }
+        } else {
+            var rank: [String: Int] = [:]
+            for (i, id) in shuffleOrder.enumerated() { rank[id] = i }
+            if first < queue.count {
+                // The sort is made stable by the position, so songs that were not there keep their order, at the end
+                let tail = queue[first...].enumerated().sorted {
+                    let a = rank[$0.element.id] ?? Int.max, b = rank[$1.element.id] ?? Int.max
+                    return a != b ? a < b : $0.offset < $1.offset
+                }.map(\.element)
+                queue.replaceSubrange(first..., with: tail)
+            }
+            shuffleOrder = []
+        }
+        snapshot.update { $0.shuffle = on; $0.queue = queue }
+        preload()
+        save()
+    }
+
     func setRepeat(_ mode: String) {
         if mode != "off" && mode != "all" && mode != "one" { return }
         if mode == snapshot.value.repeatMode { return }
@@ -372,7 +426,8 @@ final class LocalSession {
     func save() {
         let s = snapshot.value
         let position = loadedId != nil ? player.positionMs() : pendingPositionMs
-        persist(SavedQueue(queue: s.queue, index: s.index, repeatMode: s.repeatMode, positionMs: position, finished: s.finished))
+        persist(SavedQueue(queue: s.queue, index: s.index, repeatMode: s.repeatMode, positionMs: position, finished: s.finished,
+                           shuffle: s.shuffle, shuffleOrder: shuffleOrder))
     }
 
     // ------------------------------------------------------------------ playing
@@ -530,6 +585,7 @@ final class LocalSession {
             queue: queue,
             index: min(max(saved.index, 0), max(0, queue.count - 1)),
             repeatMode: saved.repeatMode == "all" || saved.repeatMode == "one" ? saved.repeatMode : "off",
+            shuffle: saved.shuffle,
             finished: saved.finished && !queue.isEmpty
         )
     }

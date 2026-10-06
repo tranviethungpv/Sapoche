@@ -160,7 +160,7 @@ const NASTY = [null, true, false, 0, -1, 1e308, -1e308, 2 ** 53 + 1, 0.5, "", " 
 
 const TYPES = [
   "join", "bye", "kick", "room.name", "room.settings", "ping", "avatar.set", "avatar.get", "queue.add", "queue.addMany", "queue.remove",
-  "queue.swap", "queue.clear", "queue.shuffle", "jump", "queue.move", "play", "pause", "seek", "next", "prev", "repeat", "autoplay",
+  "queue.swap", "queue.clear", "queue.shuffle", "jump", "queue.move", "play", "pause", "seek", "next", "prev", "repeat", "autoplay", "shuffle",
   "solo", "resync", "ready", "resolveFailed", "ended", "advanced", "report", "nope", "", "__proto__", "constructor", "toString",
 ];
 const FIELDS = ["clientId", "name", "create", "id", "guestControl", "c0", "rtt", "data", "videoId", "title", "artist", "thumb", "durMs", "next", "tracks", "track", "toIndex", "positionMs", "from", "mode", "on", "epoch", "reason", "itemId", "startedAt", "posMs", "bufferMs"];
