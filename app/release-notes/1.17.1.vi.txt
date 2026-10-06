@@ -1,0 +1,3 @@
+Điều hướng trình phát gọn hơn
+- Bỏ mục Liên quan không còn dùng trong trình phát đầy đủ.
+- Cải thiện mục Tiếp theo và giữ các nút chat nhất quán.

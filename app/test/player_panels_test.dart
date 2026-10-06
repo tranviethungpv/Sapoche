@@ -261,14 +261,12 @@ void main() {
   });
 
   group('shuffle and repeat', () {
-    testWidgets('sit beside the play button, with or without a panel open', (
-      tester,
-    ) async {
+    testWidgets('are in Up Next, not beside the play button', (tester) async {
       final backend = await openPlayer(tester);
-      expect(find.byTooltip('Shuffle'), findsOneWidget);
-      expect(find.byTooltip('Repeat off'), findsOneWidget);
+      expect(find.byTooltip('Shuffle'), findsNothing);
+      expect(find.byTooltip('Repeat off'), findsNothing);
 
-      await openPanel(tester, 'Lyrics');
+      await openPanel(tester, 'Up Next');
       expect(find.byTooltip('Shuffle'), findsOneWidget);
       expect(find.byTooltip('Repeat off'), findsOneWidget);
 
@@ -279,6 +277,7 @@ void main() {
 
     testWidgets('shuffle mixes what comes next and says so', (tester) async {
       final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 4));
+      await openPanel(tester, 'Up Next');
       await tester.tap(find.byTooltip('Shuffle'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
@@ -291,6 +290,7 @@ void main() {
       tester,
     ) async {
       final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 2));
+      await openPanel(tester, 'Up Next');
       await tester.tap(find.byTooltip('Shuffle'));
       await tester.pump();
       expect(backend.calls, isNot(contains('shuffle')));
@@ -410,7 +410,7 @@ void main() {
     );
 
     testWidgets(
-      'outside a room the suggestions are the autoplay, with a switch',
+      'outside a room the suggestions are the autoplay, with a button',
       (tester) async {
         final backend = await openPlayer(
           tester,
@@ -433,14 +433,14 @@ void main() {
 
         expect(find.text('Autoplay'), findsOneWidget);
         expect(find.text('Nothing is queued after this song.'), findsOneWidget);
-        await tester.tap(find.byType(Switch));
+        await tester.tap(find.byTooltip('Autoplay'));
         await tester.pump();
         expect(backend.calls.last, 'autoplay false');
       },
     );
 
     testWidgets(
-      'in a room the autoplay is the room\'s, and a switch turns it off',
+      'in a room the autoplay is the room\'s, and a button turns it off',
       (tester) async {
         final backend = await openPlayer(
           tester,
@@ -456,8 +456,7 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
-        await tester.tap(find.byType(Switch));
+        await tester.tap(find.byTooltip('Autoplay'));
         await tester.pump();
         expect(backend.calls.last, 'roomAutoplay false');
       },
@@ -481,7 +480,11 @@ void main() {
         backend.radioResult = const SongRadio(tracks: [song]);
         await openPanel(tester, 'Up Next');
 
-        expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+        final button = find.descendant(
+          of: find.byTooltip('Autoplay'),
+          matching: find.byType(InkWell),
+        );
+        expect(tester.widget<InkWell>(button).onTap, isNull);
       },
     );
 
@@ -490,62 +493,6 @@ void main() {
       backend.failWith = StateError('offline');
       await openPanel(tester, 'Up Next');
       expect(find.text('Couldn’t reach YouTube Music'), findsOneWidget);
-    });
-  });
-
-  group('related', () {
-    testWidgets('shows songs, other performances and artists to open', (
-      tester,
-    ) async {
-      final backend = await openPlayer(tester);
-      backend.relatedResult = const RelatedPage(
-        more: [
-          MusicTrack(
-            videoId: 'relatedaaaa',
-            title: 'Related A',
-            artist: 'x',
-            durMs: 1000,
-          ),
-        ],
-        otherPerformances: [
-          MusicTrack(
-            videoId: 'coveraaaaaa',
-            title: 'A Cover',
-            artist: 'y',
-            durMs: 1000,
-          ),
-        ],
-        artists: [ArtistCard(id: 'UC9', name: 'Some Band')],
-        about: 'Text about the artist',
-      );
-      await openPanel(tester, 'Related');
-
-      expect(find.text('You might also like'), findsOneWidget);
-      expect(find.text('Related A'), findsOneWidget);
-      expect(find.text('Other performances'), findsOneWidget);
-      expect(find.text('A Cover'), findsOneWidget);
-      expect(find.text('Similar artists'), findsOneWidget);
-      expect(find.text('Text about the artist'), findsOneWidget);
-
-      await tester.tap(find.text('Related A'));
-      await tester.pump();
-      expect(backend.calls.last, 'add relatedaaaa next=false');
-      await tester.pump(const Duration(seconds: 2));
-
-      backend.artistResult = const ArtistPage(id: 'UC9', name: 'Some Band');
-      await tester.tap(find.text('Some Band'));
-      await tester.pumpAndSettle();
-      expect(backend.calls, contains('musicArtist UC9'));
-      expect(find.text('Some Band'), findsOneWidget);
-    });
-
-    testWidgets('say when there is nothing related', (tester) async {
-      await openPlayer(tester);
-      await openPanel(tester, 'Related');
-      expect(
-        find.text('Nothing related to this song was found'),
-        findsOneWidget,
-      );
     });
   });
 

@@ -1,0 +1,3 @@
+Cleaner player navigation
+- Removed the unused Related panel from the full player.
+- Made the Up Next panel easier to use and kept chat controls consistent.

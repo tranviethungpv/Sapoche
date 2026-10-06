@@ -614,9 +614,8 @@ abstract final class S {
   static String get copyLog => _t('Copy log', 'Sao chép nhật ký');
   static String get logCopied => _t('Log copied', 'Đã sao chép nhật ký');
 
-  // Full player: lyrics, queue, related songs, song and artist pages
+  // Full player: lyrics, queue, song and artist pages
   static String get lyrics => _t('Lyrics', 'Lời bài hát');
-  static String get related => _t('Related', 'Liên quan');
   static String get noLyrics =>
       _t('No lyrics for this song', 'Bài này chưa có lời');
   static String get lyricsFailed =>
@@ -643,10 +642,6 @@ abstract final class S {
       _t('Other performances', 'Các bản trình diễn khác');
   static String get similarArtists => _t('Similar artists', 'Nghệ sĩ tương tự');
   static String get aboutArtist => _t('About the artist', 'Về nghệ sĩ');
-  static String get nothingRelated => _t(
-    'Nothing related to this song was found',
-    'Không tìm thấy gì liên quan đến bài này',
-  );
   static String get topSongs => _t('Top songs', 'Bài hát hàng đầu');
   static String get fansAlsoLike =>
       _t('Fans might also like', 'Người hâm mộ cũng có thể thích');
