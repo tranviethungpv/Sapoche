@@ -819,6 +819,12 @@ async function chatSection() {
   bob.send({ t: "react", e: "guitar", n: 2 });
   const more = await ann.waitFor((m) => m.t === "react");
   check("the fuller set of reactions is passed on too", more.e === "guitar" && more.n === 2);
+  for (const e of ["🍕", "👍🏽", "🇻🇳", "👨‍👩‍👧‍👦", "1️⃣"]) {
+    bob.send({ t: "react", e });
+    check(`any emoji of a keyboard is passed on: ${e}`, (await ann.waitFor((m) => m.t === "react")).e === e);
+  }
+  for (const e of ["poop", "12", "#", "a🍕", "🍕🍕🍕🍕🍕🍕🍕🍕🍕🍕🍕🍕🍕🍕🍕🍕🍕", "<b>🍕</b>"]) bob.send({ t: "react", e });
+  check("but not text, digits alone or a long string of them", await ann.stays((m) => m.t === "react", 300));
   bob.send({ t: "react", e: "poop" });
   bob.send({ t: "react", e: "toString" });
   bob.send({ t: "react", e: "fire", n: 1.5 });

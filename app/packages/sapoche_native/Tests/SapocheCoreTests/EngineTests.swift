@@ -1198,3 +1198,40 @@ actor Collected2 {
 
     func add(_ item: String) { items.append(item) }
 }
+
+final class MissedReactionsTests: XCTestCase {
+    private var clock: Int64 = 1_000
+    private var missed: MissedReactions!
+
+    override func setUp() {
+        clock = 1_000
+        missed = MissedReactions { [unowned self] in self.clock }
+    }
+
+    func testTapsOfOneMemberOnOneEmojiAreAddedUpAndTheOrderTheyBeganIsKept() {
+        missed.add(by: "a", e: "fire", n: 2)
+        missed.add(by: "b", e: "heart", n: 1)
+        missed.add(by: "a", e: "fire", n: 3)
+        XCTAssertEqual(missed.take(), [.init(by: "a", e: "fire", n: 5), .init(by: "b", e: "heart", n: 1)])
+    }
+
+    func testWhatWasTakenIsNotGivenTwice() {
+        missed.add(by: "a", e: "fire", n: 1)
+        XCTAssertEqual(missed.take().count, 1)
+        XCTAssertTrue(missed.take().isEmpty)
+    }
+
+    func testReactionsOlderThanTheTimeTheyAreKeptAreLeftOut() {
+        missed.add(by: "a", e: "old", n: 1)
+        clock += MissedReactions.keepMs + 1
+        missed.add(by: "a", e: "new", n: 1)
+        XCTAssertEqual(missed.take(), [.init(by: "a", e: "new", n: 1)])
+    }
+
+    func testAPocketFullOfThemKeepsTheLastOnes() {
+        for i in 0..<(MissedReactions.maxEntries + 50) { missed.add(by: "m\(i)", e: "fire", n: 1) }
+        let taken: [MissedReactions.Missed] = missed.take()
+        XCTAssertEqual(taken.count, MissedReactions.maxEntries)
+        XCTAssertEqual(taken.first?.by, "m50")
+    }
+}

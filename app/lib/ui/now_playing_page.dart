@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -225,7 +227,6 @@ class _BodyState extends State<_Body> {
               if (_c.snapshot.inRoom) ...[
                 const SizedBox(height: 6),
                 _RoomStrip(controller: _c),
-                _Reactions(controller: _c),
               ],
               const SizedBox(height: 14),
             ],
@@ -383,7 +384,6 @@ class _WideControls extends StatelessWidget {
               if (controller.snapshot.inRoom) ...[
                 const SizedBox(height: 4),
                 _RoomStrip(controller: controller),
-                _Reactions(controller: controller),
               ],
             ],
           ),
@@ -505,19 +505,28 @@ class _CoverStage extends StatelessWidget {
         ),
       );
     }
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Column(
-        children: [
-          const Spacer(flex: 2),
-          _CoverArt(controller: controller, current: current, size: artSize),
-          const Spacer(flex: 2),
-          _TitleRow(controller: controller, current: current),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, box) {
+        // The title keeps its place and the cover is what gives way when the screen is short
+        final side = min(artSize, max(0.0, box.maxHeight - _titleHeight - 24));
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            children: [
+              const Spacer(flex: 2),
+              _CoverArt(controller: controller, current: current, size: side),
+              const Spacer(flex: 2),
+              _TitleRow(controller: controller, current: current),
+            ],
+          ),
+        );
+      },
     );
   }
 }
+
+/// About the height of the title, the artist and the heart under the cover.
+const _titleHeight = 64.0;
 
 /// The cover, or the picture when the song is shown as a video. It is the same in the upright player and on its side.
 class _CoverArt extends StatelessWidget {
@@ -794,26 +803,21 @@ class _Toolbar extends StatelessWidget {
       );
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
-            button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
-            button(Icons.explore_outlined, S.related, _Panel.related),
-            Flexible(child: _SleepButton(controller: controller)),
-          ],
-        ),
+        button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
+        button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
+        button(Icons.explore_outlined, S.related, _Panel.related),
+        Flexible(child: _SleepButton(controller: controller)),
         _OutputButton(controller: controller),
       ],
     );
   }
 }
 
-/// Says where the sound goes, the phone or headphones or a speaker, and opens the system's list to play somewhere
-/// else. Lit up while the sound is not on the phone itself.
+/// Opens the system's list to play somewhere else than on the phone: headphones, a speaker. Its icon says where the
+/// sound goes, and it is lit up while that is not the phone itself.
 class _OutputButton extends StatelessWidget {
   const _OutputButton({required this.controller});
 
@@ -833,26 +837,14 @@ class _OutputButton extends StatelessWidget {
     final p = context.palette;
     final output = controller.output;
     final away = output.kind != 'speaker';
-    return Tooltip(
-      message: S.playOn,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 280),
-        child: TextButton.icon(
-          onPressed: controller.pickOutput,
-          icon: Icon(_icon(output.kind), size: 20),
-          label: Text(
-            output.name.isEmpty ? S.thisPhone : output.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          style: TextButton.styleFrom(
-            foregroundColor: away ? p.primary : p.textTertiary,
-            backgroundColor: away ? p.primaryContainer : Colors.transparent,
-            shape: const StadiumBorder(),
-            minimumSize: const Size(0, 32),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ),
+    return IconButton(
+      onPressed: controller.pickOutput,
+      tooltip: output.name.isEmpty ? S.playOn : '${S.playOn} · ${output.name}',
+      icon: Icon(_icon(output.kind), size: 26),
+      style: IconButton.styleFrom(
+        foregroundColor: away ? p.onPrimaryContainer : p.textTertiary,
+        backgroundColor: away ? p.primaryContainer : Colors.transparent,
+        fixedSize: const Size(52, 44),
       ),
     );
   }
@@ -1083,7 +1075,7 @@ class _Grabber extends StatelessWidget {
   );
 }
 
-/// Who is listening and whether this phone is in step with them.
+/// Who is listening and whether this phone is in step with them, with the ways to react and to write to them.
 class _RoomStrip extends StatelessWidget {
   const _RoomStrip({required this.controller});
 
@@ -1091,59 +1083,36 @@ class _RoomStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
-    final theme = Theme.of(context).textTheme;
     final snapshot = controller.snapshot;
     return Row(
       children: [
         // Who is here: tapping opens the list of members
-        Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => showMembersSheet(context),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  AvatarStack(members: snapshot.members, size: 30),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      S.listening(snapshot.listeningCount),
-                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => showMembersSheet(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Semantics(
+              label: S.listening(snapshot.listeningCount),
+              child: AvatarStack(members: snapshot.members, size: 30, max: 3),
             ),
           ),
         ),
-        ChatButton(controller: controller),
-        const SizedBox(width: 8),
-        ListenableBuilder(
-          listenable: controller.player,
-          builder: (context, _) => _SyncChip(controller: controller),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ListenableBuilder(
+              listenable: controller.player,
+              builder: (context, _) => _SyncChip(controller: controller),
+            ),
+          ),
         ),
+        ReactButton(controller: controller),
+        ChatButton(controller: controller),
       ],
     );
   }
-}
-
-/// The reactions to send the room, once its server can pass them on.
-class _Reactions extends StatelessWidget {
-  const _Reactions({required this.controller});
-
-  final RoomController controller;
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: controller,
-    builder: (context, _) => controller.hasChat
-        ? ReactionBar(controller: controller)
-        : const SizedBox.shrink(),
-  );
 }
 
 /// Within this many ms of the room counts as in sync (the drift control aims well inside it).
@@ -1203,10 +1172,14 @@ class _SyncChip extends StatelessWidget {
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 7),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelMedium
-                  ?.copyWith(color: color),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium
+                    ?.copyWith(color: color),
+              ),
             ),
           ],
         ),

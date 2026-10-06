@@ -1,6 +1,7 @@
 package app.sapoche
 
 import app.sapoche.sync.Connection
+import app.sapoche.sync.MissedReactions
 import app.sapoche.sync.QueueItem
 import app.sapoche.sync.Sleep
 import org.json.JSONArray
@@ -149,6 +150,16 @@ object UiJson {
     /** Another member reacted. */
     fun reaction(reaction: GroupController.Reaction): String =
         JSONObject().put("type", "reaction").put("by", reaction.by).put("e", reaction.e).put("n", reaction.n).toString()
+
+    /** Another member reacted while the screen was off: the screen shows it as one that came late. */
+    fun reaction(missed: MissedReactions.Missed): String =
+        JSONObject()
+            .put("type", "reaction")
+            .put("by", missed.by)
+            .put("e", missed.e)
+            .put("n", missed.n)
+            .put("late", true)
+            .toString()
 
     /** The app went into a small window over other apps ([on]), or came back out of it. */
     fun pip(on: Boolean): String = JSONObject().put("type", "pip").put("on", on).toString()

@@ -11,6 +11,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import app.sapoche.core.TrackInfo
 import app.sapoche.core.YoutubeLinks
+import app.sapoche.sync.MissedReactions
 import app.sapoche.sync.Taste
 import app.sapoche.sync.TrackRef
 import com.google.common.util.concurrent.ListenableFuture
@@ -64,6 +65,7 @@ class SapocheBridge(
     private var observing: Job? = null
     private var controller: ListenableFuture<MediaController>? = null
     private val shown = MutableStateFlow(false)
+    private val missedReactions = MissedReactions(SystemClock::elapsedRealtime)
     private val visible get() = shown.value
 
     /** An invitation that arrived before the UI was listening. */
@@ -156,6 +158,7 @@ class SapocheBridge(
             emit(UiJson.output(outputs.current.value))
             SapocheApp.group.value?.picturesSeen()?.forEach { emit(UiJson.avatar(it)) }
             SapocheApp.group.value?.chatSeen()?.let { emit(UiJson.chat(it)) }
+            missedReactions.take().forEach { emit(UiJson.reaction(it)) }
             SapocheApp.updater.refreshPermission()
             SapocheApp.updater.check(force = false)
             emit(UiJson.update(SapocheApp.updater.state.value))
@@ -263,8 +266,12 @@ class SapocheBridge(
                         group.chatSeen()?.let { emit(UiJson.chat(it)) }
                         group.chat.collect { if (visible) emit(UiJson.chat(it)) }
                     }
-                    // A reaction nobody sees is gone: it is not kept for later
-                    launch { group.reactions.collect { if (visible) emit(UiJson.reaction(it)) } }
+                    // A screen that is off still hears them: the ones in the pocket are told when it comes back
+                    launch {
+                        group.reactions.collect {
+                            if (visible) emit(UiJson.reaction(it)) else missedReactions.add(it.by, it.e, it.n)
+                        }
+                    }
                     launch { group.sleep.state.collect { emit(UiJson.sleep(it)) } }
                     launch {
                         // No ticking at all while the screen is off, and none while the song stands still: a pause, a

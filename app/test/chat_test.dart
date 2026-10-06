@@ -1,3 +1,4 @@
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/backend.dart';
@@ -164,6 +165,7 @@ void main() {
     test('a reaction of somebody else comes with their name', () async {
       final shown = <RoomReaction>[];
       controller.reactions.listen(shown.add);
+      controller.watchReactions();
       backend.emit(const ReactionEvent('b', Reaction.fire, 3));
       backend.emit(const ReactionEvent('b', null, 1));
       await settle();
@@ -171,6 +173,83 @@ void main() {
       expect(shown.single.reaction, Reaction.fire);
       expect(shown.single.count, 3);
       expect(shown.single.mine, isFalse);
+    });
+  });
+
+  group('reactions that nothing was showing', () {
+    late FakeBackend backend;
+    late RoomController controller;
+    late List<RoomReaction> shown;
+
+    setUp(() async {
+      backend = FakeBackend();
+      controller = RoomController(backend);
+      await controller.start();
+      backend.emit(StateEvent(sampleRoom()));
+      await settle();
+      shown = [];
+      controller.reactions.listen(shown.add);
+    });
+
+    tearDown(() => controller.dispose());
+
+    Future<void> wait([int ms = 900]) =>
+        Future<void>.delayed(Duration(milliseconds: ms));
+
+    test(
+      'are shown, a few of them, when a place that shows them opens',
+      () async {
+        backend.emit(const ReactionEvent('b', Reaction.fire, 5));
+        backend.emit(const ReactionEvent('b', Reaction.fire, 4));
+        backend.emit(const ReactionEvent('b', Reaction.heart, 1));
+        await wait(100);
+        expect(shown, isEmpty);
+
+        controller.watchReactions();
+        await wait();
+        // One of each kind, the taps added up and held to a few
+        expect(shown.map((r) => (r.reaction, r.count, r.name)), [
+          (Reaction.fire, RoomController.lateTaps, 'Binh'),
+          (Reaction.heart, 1, 'Binh'),
+        ]);
+        controller.unwatchReactions();
+
+        // Told once
+        controller.watchReactions();
+        await wait();
+        expect(shown, hasLength(2));
+      },
+    );
+
+    test(
+      'that came while the screen was off are shown when it is back',
+      () async {
+        controller.watchReactions();
+        backend.emit(const ReactionEvent('b', Reaction.clap, 2, late: true));
+        await wait(100);
+        expect(shown, isEmpty);
+        await wait();
+        expect(shown.single.reaction, Reaction.clap);
+        expect(shown.single.count, 2);
+      },
+    );
+
+    test('are shown as they come while a place shows them', () async {
+      controller.watchReactions();
+      backend.emit(const ReactionEvent('b', Reaction.wow, 1));
+      await wait(50);
+      expect(shown.single.reaction, Reaction.wow);
+    });
+
+    test('are kept to the last few kinds', () async {
+      final kinds = Reaction.named.take(RoomController.lateKinds + 5).toList();
+      for (final kind in kinds) {
+        backend.emit(ReactionEvent('b', kind, 1));
+      }
+      await wait(50);
+      controller.watchReactions();
+      await wait(2500);
+      expect(shown.map((r) => r.reaction), kinds.skip(5).toList());
     });
   });
 
@@ -517,27 +596,15 @@ void main() {
     );
 
     testWidgets(
-      'the player offers the reactions in a room with a chat, and they fly up and go',
+      'the player offers the way to the emoji in a room with a chat, and theirs fly up and go',
       (tester) async {
         final backend = await openPlayer(tester);
         moving(tester);
-        expect(find.byType(ReactionBar), findsNothing);
+        expect(find.byTooltip(S.reactMore), findsNothing);
         backend.emit(history(const []));
         await tester.pump();
-        expect(find.byType(ReactionBar), findsOneWidget);
-
-        await tester.tap(find.byKey(const ValueKey('react-heart')));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
-        expect(
-          find.descendant(
-            of: find.byType(ReactionShower),
-            matching: find.text('❤️'),
-          ),
-          findsWidgets,
-        );
-        await tester.pump(RoomController.reactionGathering);
-        expect(backend.calls, contains('react heart 1'));
+        expect(find.byType(ReactionBar), findsNothing);
+        expect(find.byTooltip(S.reactMore), findsOneWidget);
 
         // Somebody else's, with their name, three taps one after another
         backend.emit(const ReactionEvent('b', Reaction.laugh, 3));
@@ -555,41 +622,156 @@ void main() {
     );
 
     testWidgets(
-      'every reaction is a tap further, by kind, and picking one sends it and shows it flying',
+      'the chat has the quick reactions, and a tap on one flies up and goes to the room',
       (tester) async {
         final backend = await openPlayer(tester);
         moving(tester);
         backend.emit(history(const []));
         await tester.pump();
-        // The quick ones are in the bar; the guitar is not
-        expect(find.byKey(const ValueKey('react-guitar')), findsNothing);
+        await tester.tap(find.byTooltip(S.chat));
+        await tester.pumpAndSettle();
         for (final reaction in Reaction.quick) {
           expect(
             find.byKey(ValueKey('react-${reaction.name}')),
             findsOneWidget,
           );
         }
+        expect(find.byKey(const ValueKey('react-guitar')), findsNothing);
 
-        await tester.tap(find.byTooltip(S.reactMore));
-        await tester.pumpAndSettle();
-        for (final reaction in Reaction.values) {
-          expect(find.byKey(ValueKey('pick-${reaction.name}')), findsOneWidget);
-        }
-        expect(find.text(S.reactMusic), findsOneWidget);
-
-        await tester.tap(find.byKey(const ValueKey('pick-guitar')));
+        await tester.tap(find.byKey(const ValueKey('react-heart')));
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 400));
-        expect(find.byKey(const ValueKey('pick-guitar')), findsNothing);
-        expect(flying('🎸'), 1);
-        expect(backend.calls, contains('react guitar 1'));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(flying('❤️'), greaterThan(0));
+        await tester.pump(RoomController.reactionGathering);
+        expect(backend.calls, contains('react heart 1'));
         await tester.pumpAndSettle();
       },
     );
 
-    test('the app offers exactly the reactions the room passes on', () {
+    for (final (width, height) in [
+      (360.0, 568.0),
+      (375.0, 667.0),
+      (360.0, 640.0),
+      (393.0, 852.0),
+    ]) {
+      testWidgets('the player of a room with a chat fits ${width}x$height', (
+        tester,
+      ) async {
+        final backend = await openPlayer(tester);
+        tester.view.physicalSize = Size(width * 2, height * 2);
+        backend.emit(history(const []));
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(tester.takeException(), isNull);
+        // Nothing of the controls is pushed off the screen or under another
+        for (final tooltip in [S.chat, S.reactMore, S.lyrics, S.playOn]) {
+          expect(
+            find.byTooltip(tooltip).hitTestable(),
+            findsOneWidget,
+            reason: tooltip,
+          );
+        }
+      });
+    }
+
+    testWidgets(
+      'the chat stays below the island with the keyboard up, and a touch outside the field puts the keyboard away',
+      (tester) async {
+        // 393x852 with an island (59) at the top and a keyboard of 336 at the bottom
+        final backend = await openPlayer(tester);
+        tester.view.physicalSize = const Size(393 * 2, 852 * 2);
+        tester.view.padding = const FakeViewPadding(
+          top: 59 * 2,
+          bottom: 34 * 2,
+        );
+        backend.emit(
+          history([message(1, 'b', 'hello'), message(2, 'me', 'hi')]),
+        );
+        await tester.pump();
+        await tester.tap(find.byTooltip(S.chat));
+        await tester.pumpAndSettle();
+        final sheet = find.byType(ChatSheet);
+
+        await tester.tap(find.byKey(const ValueKey('chat-field')));
+        tester.view.viewInsets = const FakeViewPadding(bottom: 336 * 2);
+        await tester.pumpAndSettle();
+        final typing = tester.getRect(sheet);
+        expect(typing.top, greaterThanOrEqualTo(59));
+        expect(
+          tester.getRect(find.byKey(const ValueKey('chat-field'))).bottom,
+          lessThanOrEqualTo(852 - 336),
+        );
+        expect(tester.testTextInput.isVisible, isTrue);
+
+        await tester.tap(find.text('hello'));
+        await tester.pumpAndSettle();
+        expect(tester.testTextInput.isVisible, isFalse);
+        addTearDown(tester.view.resetViewInsets);
+        addTearDown(tester.view.resetPadding);
+      },
+    );
+
+    testWidgets(
+      'every emoji is a tap further, and picking one sends it and shows it flying',
+      (tester) async {
+        final backend = await openPlayer(tester);
+        moving(tester);
+        backend.emit(history(const []));
+        await tester.pump();
+        await tester.tap(find.byTooltip(S.reactMore));
+        await tester.pumpAndSettle();
+        expect(find.byType(EmojiPicker), findsOneWidget);
+
+        // One the room has had by name goes by its name, so older apps show it too; and the sheet stays, to tap again
+        await tester.tap(find.text('😍'));
+        await tester.tap(find.text('😍'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.byType(EmojiPicker), findsOneWidget);
+        expect(flying('😍'), greaterThan(1));
+        expect(backend.calls, contains('react love 2'));
+
+        // Any other goes as itself
+        await tester.tap(find.text('😀'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.byType(EmojiPicker), findsOneWidget);
+        expect(backend.calls, contains('react 😀 1'));
+
+        // A touch outside puts it away
+        await tester.tapAt(const Offset(200, 20));
+        await tester.pumpAndSettle();
+        expect(find.byType(EmojiPicker), findsNothing);
+      },
+    );
+
+    test(
+      'a name or an emoji from the room is a reaction, and nothing else is',
+      () {
+        expect(Reaction.parse('guitar'), Reaction.guitar);
+        for (final e in ['🍕', '👍🏽', '🇻🇳', '👨‍👩‍👧‍👦', '1️⃣', '❤️']) {
+          expect(Reaction.parse(e)?.emoji, e);
+        }
+        for (final e in [
+          'poop',
+          '12',
+          '#',
+          'a🍕',
+          '<b>🍕</b>',
+          '',
+          '🍕' * 17,
+        ]) {
+          expect(Reaction.parse(e), isNull, reason: e);
+        }
+        expect(Reaction.parse(null), isNull);
+        // An emoji picked that has a name goes by it
+        expect(Reaction.of('🎸').wire, 'guitar');
+        expect(Reaction.of('🍕').wire, '🍕');
+      },
+    );
+
+    test('the reactions that go by name are the names the room has had', () {
       // The same names as REACTIONS in server/src/protocol.ts
-      expect(Reaction.values.map((r) => r.name), [
+      expect(Reaction.named.map((r) => r.name), [
         'heart',
         'love',
         'kiss',
@@ -631,8 +813,8 @@ void main() {
         'replay',
       ]);
       expect(
-        Reaction.values.map((r) => r.emoji).toSet(),
-        hasLength(Reaction.values.length),
+        Reaction.named.map((r) => r.emoji).toSet(),
+        hasLength(Reaction.named.length),
       );
       expect(Reaction.quick.map((r) => r.name), [
         'heart',

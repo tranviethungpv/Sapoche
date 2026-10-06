@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { PROTOCOL_VERSION, REACTIONS } from "./protocol";
+import { PROTOCOL_VERSION, REACTIONS, isEmoji } from "./protocol";
 import type {
   AlarmKind,
   ChatMessage,
@@ -371,13 +371,13 @@ export class Room extends DurableObject<Env> {
     this.broadcast({ t: "chat", msg });
   }
 
-  /** Passes a reaction on to everybody else; it is not kept. Unknown reactions are ignored. */
+  /** Passes a reaction on to everybody else; it is not kept. What is neither a known name nor an emoji is ignored. */
   private onReact(me: Attachment, e: unknown, n: unknown): void {
-    if (typeof e !== "string" || !KNOWN_REACTIONS.has(e)) return;
+    if (typeof e !== "string" || !(KNOWN_REACTIONS.has(e) || isEmoji(e))) return;
     const count = Number.isInteger(n) ? clamp(n as number, 1, MAX_REACTION_COUNT) : 1;
     for (const ws of this.ctx.getWebSockets()) {
       const att = ws.deserializeAttachment() as Attachment | null;
-      if (att && att.clientId !== me.clientId) this.send(ws, { t: "react", by: me.id, e: e as Reaction, n: count });
+      if (att && att.clientId !== me.clientId) this.send(ws, { t: "react", by: me.id, e, n: count });
     }
   }
 

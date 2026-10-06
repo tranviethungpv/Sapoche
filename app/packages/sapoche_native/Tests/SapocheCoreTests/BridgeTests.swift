@@ -538,7 +538,8 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(out[0]["text"] as? String, "yo")
         XCTAssertEqual(out[1]["n"] as? Int, 3)
 
-        // Nothing is sent while the screen is off, and a screen that comes back gets the whole chat again
+        // Nothing is sent while the screen is off, and a screen that comes back gets the whole chat again, and is told
+        // of the reactions that came, as ones that came late
         bridge.setVisible(false)
         events.removeAll()
         socket.receive(#"{"t":"chat","msg":{"id":3,"by":"u2","name":"Ann","text":"later","at":7}}"#)
@@ -550,6 +551,14 @@ final class BridgeTests: XCTestCase {
         let again = try XCTUnwrap(events.last { $0["type"] as? String == "chat" })
         XCTAssertEqual(again["replace"] as? Bool, true)
         XCTAssertEqual((again["messages"] as? [[String: Any]])?.compactMap { $0["id"] as? Int }, [1, 2, 3])
+        let late = events.filter { $0["type"] as? String == "reaction" }
+        XCTAssertEqual(late.count, 1)
+        XCTAssertEqual(late.first?["e"] as? String, "wow")
+        XCTAssertEqual(late.first?["late"] as? Bool, true)
+        // They are told once
+        events.removeAll()
+        bridge.setVisible(false)
+        bridge.setVisible(true)
         XCTAssertFalse(events.contains { $0["type"] as? String == "reaction" })
 
         // Out of the room there is no chat to send to

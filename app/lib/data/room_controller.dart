@@ -43,6 +43,18 @@ class RoomReaction {
   final bool mine;
 }
 
+/// A reaction of somebody that nothing showed when it came.
+class _Unseen {
+  const _Unseen(this.by, this.reaction, this.count, this.at);
+
+  final String by;
+  final Reaction reaction;
+  final int count;
+
+  /// On the controller's clock.
+  final Duration at;
+}
+
 /// The room as the UI sees it: latest state from the native side plus the actions a user can take.
 ///
 /// Room structure notifies listeners rarely; the player position lives in [player] and is
@@ -186,14 +198,26 @@ class RoomController extends ChangeNotifier {
         notifyListeners();
       case ChatEvent(:final room, :final messages, :final replace):
         _onChat(room, messages, replace);
-      case ReactionEvent(:final by, reaction: final reaction?, :final count):
-        _reactions.add(
-          RoomReaction(
-            name: _snapshot.nameOf(by),
-            reaction: reaction,
-            count: count,
-          ),
-        );
+      case ReactionEvent(
+        :final by,
+        reaction: final reaction?,
+        :final count,
+        :final late,
+      ):
+        if (late || _reactionWatchers == 0) {
+          // Nothing shows them now, or they are already over: they are shown, a few, when something does
+          _unseen.add(_Unseen(by, reaction, count, _clock.elapsed));
+          if (_unseen.length > maxUnseenReactions) _unseen.removeAt(0);
+          if (_reactionWatchers > 0) _showUnseenSoon();
+        } else {
+          _reactions.add(
+            RoomReaction(
+              name: _snapshot.nameOf(by),
+              reaction: reaction,
+              count: count,
+            ),
+          );
+        }
       case ReactionEvent():
         break; // one a newer app sent, which this one cannot show
       case AvatarEvent(:final id, :final bytes):
@@ -243,6 +267,76 @@ class RoomController extends ChangeNotifier {
 
   /// Reactions to show as they come, this device's own included.
   Stream<RoomReaction> get reactions => _reactions.stream;
+
+  /// How many places show the reactions flying right now (the player, the chat, the emoji sheet).
+  int _reactionWatchers = 0;
+
+  /// What came while none did, or while the screen was off.
+  final _unseen = <_Unseen>[];
+  final _lateTimers = <Timer>[];
+  final _clock = Stopwatch()..start();
+
+  /// Most reactions kept for a place that shows them later; the oldest go.
+  static const maxUnseenReactions = 100;
+
+  /// Reactions older than this are not worth showing any more.
+  static const unseenKept = Duration(minutes: 5);
+
+  /// What is shown of the ones missed: each member's taps on each emoji, at most this many taps, in this many emoji.
+  static const lateTaps = 3;
+  static const lateKinds = 12;
+
+  /// A place that shows reactions flying has come, or gone. When the first one comes, the ones missed are shown.
+  void watchReactions() {
+    if (_reactionWatchers++ == 0 && _unseen.isNotEmpty) _showUnseenSoon();
+  }
+
+  void unwatchReactions() => _reactionWatchers--;
+
+  /// After the place has begun to appear, so that they are seen from the start.
+  void _showUnseenSoon() {
+    late final Timer timer;
+    timer = Timer(const Duration(milliseconds: 300), () {
+      _lateTimers.remove(timer);
+      _showUnseen();
+    });
+    _lateTimers.add(timer);
+  }
+
+  void _showUnseen() {
+    final from = _clock.elapsed - unseenKept;
+    final sums = <(String, Reaction), int>{};
+    for (final seen in _unseen) {
+      if (seen.at < from) continue;
+      sums.update(
+        (seen.by, seen.reaction),
+        (taps) => taps + seen.count,
+        ifAbsent: () => seen.count,
+      );
+    }
+    _unseen.clear();
+    // The latest kinds, one after another so they do not all start at once
+    final shown = sums.entries.toList();
+    final latest = shown.sublist(
+      shown.length > lateKinds ? shown.length - lateKinds : 0,
+    );
+    for (var i = 0; i < latest.length; i++) {
+      final MapEntry(key: (by, reaction), value: taps) = latest[i];
+      late final Timer timer;
+      timer = Timer(Duration(milliseconds: 140 * i), () {
+        _lateTimers.remove(timer);
+        if (_reactions.isClosed) return;
+        _reactions.add(
+          RoomReaction(
+            name: _snapshot.nameOf(by),
+            reaction: reaction,
+            count: taps < lateTaps ? taps : lateTaps,
+          ),
+        );
+      });
+      _lateTimers.add(timer);
+    }
+  }
 
   /// Taps on each reaction not sent yet; quick taps go together in one message.
   final _reactionTaps = <Reaction, int>{};
@@ -756,6 +850,9 @@ class RoomController extends ChangeNotifier {
     _notices.close();
     _reactions.close();
     _reactionFlush?.cancel();
+    for (final timer in _lateTimers) {
+      timer.cancel();
+    }
     for (final timer in _chatDeadlines.values) {
       timer.cancel();
     }

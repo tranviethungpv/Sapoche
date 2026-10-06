@@ -360,3 +360,55 @@ final class IdleWatch {
         job = nil
     }
 }
+
+/// The reactions that came while nobody looked at the screen, for the screen that comes back. The room keeps no
+/// reaction, so what this device heard while it lay in a pocket is all there is of them. Only the last `keepMs` count:
+/// a heart from an hour ago is no longer a reaction to anything.
+final class MissedReactions {
+    /// `n` taps of `e` by member `by`.
+    struct Missed: Equatable {
+        let by: String
+        let e: String
+        let n: Int
+    }
+
+    static let keepMs: Int64 = 5 * 60_000
+    /// More than this many in a pocket are not kept: the oldest go.
+    static let maxEntries = 200
+
+    private struct Entry {
+        let by: String
+        let e: String
+        let n: Int
+        let at: Int64
+    }
+
+    private let now: () -> Int64
+    private var entries: [Entry] = []
+
+    /// `now` is a clock that keeps counting while the device sleeps.
+    init(now: @escaping () -> Int64) { self.now = now }
+
+    func add(by: String, e: String, n: Int) {
+        entries.append(Entry(by: by, e: e, n: n, at: now()))
+        if entries.count > Self.maxEntries { entries.removeFirst(entries.count - Self.maxEntries) }
+    }
+
+    /// What is still worth showing, the taps of each member on each emoji added up in the order they began. Empties the list.
+    func take() -> [Missed] {
+        let from = now() - Self.keepMs
+        var order: [String] = []
+        var sums: [String: Missed] = [:]
+        for entry in entries where entry.at >= from {
+            let key = entry.by + "\u{0}" + entry.e
+            if let seen = sums[key] {
+                sums[key] = Missed(by: seen.by, e: seen.e, n: seen.n + entry.n)
+            } else {
+                order.append(key)
+                sums[key] = Missed(by: entry.by, e: entry.e, n: entry.n)
+            }
+        }
+        entries.removeAll()
+        return order.compactMap { sums[$0] }
+    }
+}

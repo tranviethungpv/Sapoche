@@ -73,6 +73,11 @@ enum UiJson {
         JSONText.encode(["type": "reaction", "by": reaction.by, "e": reaction.e, "n": reaction.n] as [String: Any])
     }
 
+    /// Another member reacted while the screen was off: the screen shows it as one that came late.
+    static func reaction(_ missed: MissedReactions.Missed) -> String {
+        JSONText.encode(["type": "reaction", "by": missed.by, "e": missed.e, "n": missed.n, "late": true] as [String: Any])
+    }
+
     /// Fast changing values: sent about once a second while the UI is visible.
     static func position(_ view: GroupController.View, _ player: PlayerInfo) -> String {
         JSONText.encode([

@@ -210,7 +210,7 @@ object Protocol {
         put("cid", cid)
     }
 
-    /** A reaction ([e] is its name, see `REACTIONS` in server/src/protocol.ts) standing for [n] taps. Protocol 10. */
+    /** A reaction ([e] is its name, see `REACTIONS` in server/src/protocol.ts, or the emoji itself) standing for [n] taps. Protocol 10. */
     fun react(e: String, n: Int) = msg("react") {
         put("e", e)
         put("n", n)

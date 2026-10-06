@@ -67,6 +67,7 @@ final class Bridge {
     private let downloader: Downloader
     private let http: HTTPClient
     private let time: TimeSource
+    private let missedReactions: MissedReactions
     private let scope = Scope()
 
     private var sink: ((String) -> Void)?
@@ -105,7 +106,9 @@ final class Bridge {
         self.files = files
         self.downloader = downloader
         self.http = http
-        self.time = time ?? SystemTime.shared
+        let clock = time ?? SystemTime.shared
+        self.time = clock
+        self.missedReactions = MissedReactions { clock.nowMs() }
         // The screen slows its small moving parts down while the phone is warm
         calmSubscription = platform.calm.observe { [weak self] calm in
             guard let self, self.visible else { return }
@@ -141,6 +144,7 @@ final class Bridge {
             emit(UiJson.output(platform.output.value))
             for avatar in controller.picturesSeen() { emit(UiJson.avatar(avatar)) }
             if let chat = controller.chatSeen() { emit(UiJson.chat(chat)) }
+            for missed in missedReactions.take() { emit(UiJson.reaction(missed)) }
             controller.resumeRoom()
             // A phone that was in a pocket may have lost the connection without noticing
             controller.networkChanged(changed: false)
@@ -218,10 +222,14 @@ final class Bridge {
             guard let self, self.visible else { return }
             self.emit(UiJson.chat(chat))
         }
-        // A reaction nobody sees is gone: it is not kept for later
+        // A screen that is off still hears them: the ones in the pocket are told when it comes back
         observing.collect(controller.reactions) { [weak self] reaction in
-            guard let self, self.visible else { return }
-            self.emit(UiJson.reaction(reaction))
+            guard let self else { return }
+            if self.visible {
+                self.emit(UiJson.reaction(reaction))
+            } else {
+                self.missedReactions.add(by: reaction.by, e: reaction.e, n: reaction.n)
+            }
         }
         observing.collect(controller.sleep.state) { [weak self] state in self?.emit(UiJson.sleep(state)) }
         // Play, pause and seek should show at once instead of at the next tick

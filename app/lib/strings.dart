@@ -430,7 +430,6 @@ abstract final class S {
 
   // Where the sound goes
   static String get playOn => _t('Play on', 'Phát trên');
-  static String get thisPhone => _t('This phone', 'Điện thoại này');
 
   // Sleep timer
   static String get sleepTimer => _t('Sleep timer', 'Hẹn giờ tắt');
@@ -486,10 +485,11 @@ abstract final class S {
       _t('Not sent · tap to try again', 'Chưa gửi được · chạm để thử lại');
   static String get react => _t('React', 'Thả cảm xúc');
   static String get reactMore => _t('More reactions', 'Thêm cảm xúc');
-  static String get reactFeelings => _t('Feelings', 'Tình cảm');
-  static String get reactMoods => _t('Laughs and moods', 'Cười và tâm trạng');
-  static String get reactHype => _t('Hype', 'Cổ vũ');
-  static String get reactMusic => _t('Music', 'Âm nhạc');
+  static String get reactNoRecents =>
+      _t('Nothing sent yet', 'Chưa gửi cảm xúc nào');
+  static String get reactKeepTapping =>
+      _t('Tap as many as you like', 'Chạm bao nhiêu lần tuỳ ý');
+  static String get reactSearch => _t('Search emoji', 'Tìm cảm xúc');
   static String unreadMessages(int n) =>
       _t(n == 1 ? '1 unread message' : '$n unread messages', '$n tin chưa đọc');
   static String pausedBy(String name) =>
@@ -564,10 +564,8 @@ abstract final class S {
     '“$title” can’t be played. Skipped to the next song.',
     'Không phát được “$title”. Đã chuyển sang bài tiếp.',
   );
-  static String loadUnplayable(String title) => _t(
-    'YouTube won’t play “$title”.',
-    'YouTube không cho phát “$title”.',
-  );
+  static String loadUnplayable(String title) =>
+      _t('YouTube won’t play “$title”.', 'YouTube không cho phát “$title”.');
   static String loadFailed(String title) => _t(
     'Couldn’t load “$title”. Press play to try again.',
     'Không tải được “$title”. Bấm phát để thử lại.',

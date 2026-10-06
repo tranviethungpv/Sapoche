@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -42,21 +43,41 @@ class ReactionBar extends StatelessWidget {
                 ),
               ),
             ),
-          IconButton(
-            onPressed: () => showReactionPicker(context, controller),
-            tooltip: S.reactMore,
-            icon: Icon(Icons.add_reaction_outlined, color: p.textSecondary),
-          ),
+          ReactButton(controller: controller),
         ],
       ),
     );
   }
 }
 
-/// Every reaction, by kind. Picking one sends it and closes the sheet, so it is seen flying up.
+/// The way to all the emoji. Nothing where the room cannot pass reactions on.
+class ReactButton extends StatelessWidget {
+  const ReactButton({super.key, required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, _) => controller.hasChat
+        ? IconButton(
+            onPressed: () => showReactionPicker(context, controller),
+            tooltip: S.reactMore,
+            icon: Icon(
+              Icons.add_reaction_outlined,
+              color: context.palette.primary,
+            ),
+          )
+        : const SizedBox.shrink(),
+  );
+}
+
+/// Every emoji, as a keyboard has them. Picking one sends it and the sheet stays, so that one can be sent again and
+/// again; they fly up over the grid, and a touch outside the sheet puts it away.
 void showReactionPicker(BuildContext context, RoomController controller) {
   showModalBottomSheet<void>(
     useRootNavigator: true,
+    useSafeArea: true,
     context: context,
     isScrollControlled: true,
     builder: (context) => _ReactionPicker(controller: controller),
@@ -71,63 +92,69 @@ class _ReactionPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final theme = Theme.of(context).textTheme;
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.7,
-      ),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(S.reactMore, style: theme.headlineSmall),
-              for (final group in ReactionGroup.values) ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 14, bottom: 4),
-                  child: Text(switch (group) {
-                    ReactionGroup.feelings => S.reactFeelings,
-                    ReactionGroup.moods => S.reactMoods,
-                    ReactionGroup.hype => S.reactHype,
-                    ReactionGroup.music => S.reactMusic,
-                  }, style: theme.labelLarge?.copyWith(color: p.textSecondary)),
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Where what was sent is seen to fly, over the words that say the sheet stays
+          ReactionShower(
+            controller: controller,
+            child: SizedBox(
+              height: _flightHeight,
+              width: double.infinity,
+              child: Center(
+                child: Text(
+                  S.reactKeepTapping,
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: p.textTertiary),
                 ),
-                Wrap(
-                  children: [
-                    for (final reaction in Reaction.values)
-                      if (reaction.group == group)
-                        InkResponse(
-                          key: ValueKey('pick-${reaction.name}'),
-                          radius: 26,
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            Navigator.pop(context);
-                            controller.react(reaction);
-                          },
-                          child: SizedBox(
-                            width: 52,
-                            height: 48,
-                            child: Center(
-                              child: Text(
-                                reaction.emoji,
-                                style: const TextStyle(fontSize: 28),
-                              ),
-                            ),
-                          ),
-                        ),
-                  ],
-                ),
-              ],
-            ],
+              ),
+            ),
           ),
-        ),
+          EmojiPicker(
+            onEmojiSelected: (_, emoji) {
+              HapticFeedback.selectionClick();
+              controller.react(Reaction.of(emoji.emoji));
+            },
+            config: Config(
+              height: MediaQuery.sizeOf(context).height * 0.42,
+              emojiViewConfig: EmojiViewConfig(
+                backgroundColor: Colors.transparent,
+                emojiSizeMax: 30,
+                noRecents: Text(
+                  S.reactNoRecents,
+                  style: TextStyle(color: p.textSecondary),
+                ),
+              ),
+              categoryViewConfig: CategoryViewConfig(
+                initCategory: Category.SMILEYS,
+                backgroundColor: Colors.transparent,
+                indicatorColor: p.primary,
+                iconColor: p.textTertiary,
+                iconColorSelected: p.primary,
+              ),
+              bottomActionBarConfig: BottomActionBarConfig(
+                showBackspaceButton: false,
+                backgroundColor: Colors.transparent,
+                buttonColor: p.primary.withValues(alpha: 0.12),
+                buttonIconColor: p.primary,
+              ),
+              searchViewConfig: SearchViewConfig(
+                backgroundColor: p.surface,
+                buttonIconColor: p.textSecondary,
+                hintText: S.reactSearch,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
+/// The height of what shows the emoji flying above the grid.
+const _flightHeight = 120.0;
 
 /// Reactions flying up over [child], from the bottom of the place: the room's, and this device's own. Each one ends
 /// by itself after a moment, so nothing keeps the screen drawing once they stop coming.
@@ -142,7 +169,7 @@ class ReactionShower extends StatefulWidget {
   final Widget child;
 
   /// How long one reaction takes to rise and fade.
-  static const flight = Duration(milliseconds: 2200);
+  static const flight = Duration(milliseconds: 3400);
 
   /// The most reactions in the air at once; more are left out rather than slow the phone down.
   static const maxFlying = 24;
@@ -162,6 +189,7 @@ class _ReactionShowerState extends State<ReactionShower>
   void initState() {
     super.initState();
     _subscription = widget.controller.reactions.listen(_onReaction);
+    widget.controller.watchReactions();
   }
 
   @override
@@ -169,7 +197,9 @@ class _ReactionShowerState extends State<ReactionShower>
     super.didUpdateWidget(old);
     if (old.controller != widget.controller) {
       _subscription?.cancel();
+      old.controller.unwatchReactions();
       _subscription = widget.controller.reactions.listen(_onReaction);
+      widget.controller.watchReactions();
     }
   }
 
@@ -215,6 +245,7 @@ class _ReactionShowerState extends State<ReactionShower>
   @override
   void dispose() {
     _subscription?.cancel();
+    widget.controller.unwatchReactions();
     for (final timer in _waiting) {
       timer.cancel();
     }

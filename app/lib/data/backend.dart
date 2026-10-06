@@ -73,12 +73,14 @@ class ChatEvent extends BackendEvent {
   final bool replace;
 }
 
-/// Member [by] sent a reaction, [count] taps of it; [reaction] is null for one this app does not know.
+/// Member [by] sent a reaction, [count] taps of it; [reaction] is null for one this app does not know. [late] when it
+/// came while the screen was off and is told now that the screen is back.
 class ReactionEvent extends BackendEvent {
-  const ReactionEvent(this.by, this.reaction, this.count);
+  const ReactionEvent(this.by, this.reaction, this.count, {this.late = false});
   final String by;
   final Reaction? reaction;
   final int count;
+  final bool late;
 }
 
 /// The phone became warm or went into battery saver ([on]), or stopped being so.
@@ -396,6 +398,7 @@ class NativeBackend implements Backend {
         json['by'] as String,
         Reaction.parse(json['e'] as String?),
         (json['n'] as num?)?.toInt() ?? 1,
+        late: json['late'] == true,
       ),
       'invite' => InviteEvent(json['code'] as String),
       'setup' => SetupEvent(json['link'] as String),
@@ -478,7 +481,7 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> react(Reaction reaction, int count) =>
-      _call('react', {'e': reaction.name, 'n': count});
+      _call('react', {'e': reaction.wire, 'n': count});
 
   @override
   Future<void> keepPlaying() => _call('keepPlaying');

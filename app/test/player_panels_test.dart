@@ -59,14 +59,13 @@ void main() {
     tester,
   ) async {
     final backend = await openPlayer(tester);
-    expect(find.text('This phone'), findsOneWidget);
+    expect(find.byTooltip('Play on'), findsOneWidget);
     backend.emit(
       const OutputEvent(AudioOutput(kind: 'bluetooth', name: 'AirPods Pro')),
     );
     await tester.pump();
-    expect(find.text('AirPods Pro'), findsOneWidget);
-    expect(find.text('This phone'), findsNothing);
-    await tester.tap(find.byTooltip('Play on'));
+    expect(find.byTooltip('Play on · AirPods Pro'), findsOneWidget);
+    await tester.tap(find.byTooltip('Play on · AirPods Pro'));
     await tester.pump();
     expect(backend.calls, contains('pickOutput'));
   });

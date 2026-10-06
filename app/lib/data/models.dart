@@ -500,65 +500,136 @@ class ChatMessage {
   );
 }
 
-/// How the reactions are grouped where they are all offered.
-enum ReactionGroup { feelings, moods, hype, music }
-
-/// The reactions a member can send to the room; [name] is how they go on the wire. The room accepts exactly these.
-enum Reaction {
-  heart('❤️', ReactionGroup.feelings),
-  love('😍', ReactionGroup.feelings),
-  kiss('😘', ReactionGroup.feelings),
-  hug('🤗', ReactionGroup.feelings),
-  blush('😊', ReactionGroup.feelings),
-  cool('😎', ReactionGroup.feelings),
-  wink('😉', ReactionGroup.feelings),
-  pleading('🥺', ReactionGroup.feelings),
-  laugh('😂', ReactionGroup.moods),
-  rofl('🤣', ReactionGroup.moods),
-  grin('😁', ReactionGroup.moods),
-  wow('😮', ReactionGroup.moods),
-  mindblown('🤯', ReactionGroup.moods),
-  think('🤔', ReactionGroup.moods),
-  eyes('👀', ReactionGroup.moods),
-  sad('😢', ReactionGroup.moods),
-  cry('😭', ReactionGroup.moods),
-  skull('💀', ReactionGroup.moods),
-  sleepy('😴', ReactionGroup.moods),
-  fire('🔥', ReactionGroup.hype),
-  clap('👏', ReactionGroup.hype),
-  raise('🙌', ReactionGroup.hype),
-  party('🥳', ReactionGroup.hype),
-  hundred('💯', ReactionGroup.hype),
-  sparkles('✨', ReactionGroup.hype),
-  rocket('🚀', ReactionGroup.hype),
-  muscle('💪', ReactionGroup.hype),
-  thumbsup('👍', ReactionGroup.hype),
-  thumbsdown('👎', ReactionGroup.hype),
-  ok('👌', ReactionGroup.hype),
-  pray('🙏', ReactionGroup.hype),
-  music('🎶', ReactionGroup.music),
-  dance('💃', ReactionGroup.music),
-  headphones('🎧', ReactionGroup.music),
-  mic('🎤', ReactionGroup.music),
-  guitar('🎸', ReactionGroup.music),
-  drum('🥁', ReactionGroup.music),
-  speaker('🔊', ReactionGroup.music),
-  replay('🔁', ReactionGroup.music);
-
-  const Reaction(this.emoji, this.group);
+/// What a member can send the room: one emoji. The first ones this app had go on the wire by [name], so that apps
+/// which know only those still show them; any other goes as the emoji itself.
+class Reaction {
+  const Reaction(this.emoji, [this.name]);
 
   final String emoji;
-  final ReactionGroup group;
+  final String? name;
+
+  /// How it goes to the room.
+  String get wire => name ?? emoji;
+
+  static const heart = Reaction('❤️', 'heart');
+  static const love = Reaction('😍', 'love');
+  static const kiss = Reaction('😘', 'kiss');
+  static const hug = Reaction('🤗', 'hug');
+  static const blush = Reaction('😊', 'blush');
+  static const cool = Reaction('😎', 'cool');
+  static const wink = Reaction('😉', 'wink');
+  static const pleading = Reaction('🥺', 'pleading');
+  static const laugh = Reaction('😂', 'laugh');
+  static const rofl = Reaction('🤣', 'rofl');
+  static const grin = Reaction('😁', 'grin');
+  static const wow = Reaction('😮', 'wow');
+  static const mindblown = Reaction('🤯', 'mindblown');
+  static const think = Reaction('🤔', 'think');
+  static const eyes = Reaction('👀', 'eyes');
+  static const sad = Reaction('😢', 'sad');
+  static const cry = Reaction('😭', 'cry');
+  static const skull = Reaction('💀', 'skull');
+  static const sleepy = Reaction('😴', 'sleepy');
+  static const fire = Reaction('🔥', 'fire');
+  static const clap = Reaction('👏', 'clap');
+  static const raise = Reaction('🙌', 'raise');
+  static const party = Reaction('🥳', 'party');
+  static const hundred = Reaction('💯', 'hundred');
+  static const sparkles = Reaction('✨', 'sparkles');
+  static const rocket = Reaction('🚀', 'rocket');
+  static const muscle = Reaction('💪', 'muscle');
+  static const thumbsup = Reaction('👍', 'thumbsup');
+  static const thumbsdown = Reaction('👎', 'thumbsdown');
+  static const ok = Reaction('👌', 'ok');
+  static const pray = Reaction('🙏', 'pray');
+  static const music = Reaction('🎶', 'music');
+  static const dance = Reaction('💃', 'dance');
+  static const headphones = Reaction('🎧', 'headphones');
+  static const mic = Reaction('🎤', 'mic');
+  static const guitar = Reaction('🎸', 'guitar');
+  static const drum = Reaction('🥁', 'drum');
+  static const speaker = Reaction('🔊', 'speaker');
+  static const replay = Reaction('🔁', 'replay');
+
+  /// The ones that go by name.
+  static const named = [
+    heart,
+    love,
+    kiss,
+    hug,
+    blush,
+    cool,
+    wink,
+    pleading,
+    laugh,
+    rofl,
+    grin,
+    wow,
+    mindblown,
+    think,
+    eyes,
+    sad,
+    cry,
+    skull,
+    sleepy,
+    fire,
+    clap,
+    raise,
+    party,
+    hundred,
+    sparkles,
+    rocket,
+    muscle,
+    thumbsup,
+    thumbsdown,
+    ok,
+    pray,
+    music,
+    dance,
+    headphones,
+    mic,
+    guitar,
+    drum,
+    speaker,
+    replay,
+  ];
 
   /// The ones always in reach, one tap each; the rest are a tap further.
   static const quick = [heart, fire, laugh, wow, sad, clap];
 
-  static Reaction? parse(String? name) {
-    for (final reaction in values) {
-      if (reaction.name == name) return reaction;
+  /// Most UTF-16 units one emoji takes (a family or a flag of a region joins up to a dozen), as the room accepts.
+  static const maxEmojiUnits = 32;
+
+  static const _emojiPattern =
+      r'^(?=.*[\p{Extended_Pictographic}\p{Regional_Indicator}\u20E3])'
+      r'(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|[\uFE0F\u200D\u20E3#*0-9]|[\u{E0020}-\u{E007F}])+$';
+
+  static final _emoji = RegExp(_emojiPattern, unicode: true);
+
+  /// The reaction for an emoji picked: the one that goes by name if it has one.
+  static Reaction of(String emoji) {
+    for (final reaction in named) {
+      if (reaction.emoji == emoji) return reaction;
     }
-    return null;
+    return Reaction(emoji);
   }
+
+  /// The reaction a name or an emoji from the room stands for; null for anything else.
+  static Reaction? parse(String? wire) {
+    if (wire == null) return null;
+    for (final reaction in named) {
+      if (reaction.name == wire) return reaction;
+    }
+    return wire.length <= maxEmojiUnits && _emoji.hasMatch(wire)
+        ? Reaction(wire)
+        : null;
+  }
+
+  @override
+  bool operator ==(Object other) => other is Reaction && other.emoji == emoji;
+
+  @override
+  int get hashCode => emoji.hashCode;
 }
 
 /// The local player, sampled about once a second and extrapolated in between.

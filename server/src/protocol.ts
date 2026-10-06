@@ -74,7 +74,7 @@ export interface ChatMessage {
   cid?: string;
 }
 
-/** The reactions a member can send to the room, by name; anything else is ignored. Apps show the ones they know. */
+/** The reactions that go by name, as they did before any emoji could be sent. Apps of that time know only these. */
 export const REACTIONS = [
   "heart", "love", "kiss", "hug", "blush", "cool", "wink", "pleading",
   "laugh", "rofl", "grin", "wow", "mindblown", "think", "eyes", "sad",
@@ -84,6 +84,20 @@ export const REACTIONS = [
 ] as const;
 
 export type Reaction = (typeof REACTIONS)[number];
+
+/** Most UTF-16 units one emoji takes: a family or a flag of a region joins up to a dozen. */
+const MAX_EMOJI_UNITS = 32;
+
+/**
+ * Whether [e] is one emoji as a keyboard offers it: pictographs, flags, skin tones, joined and keycap forms. Written
+ * as what an emoji is made of and not as a list, so emoji newer than this server still pass.
+ */
+export function isEmoji(e: string): boolean {
+  return e.length <= MAX_EMOJI_UNITS && EMOJI.test(e);
+}
+
+const EMOJI =
+  /^(?=.*[\p{Extended_Pictographic}\p{Regional_Indicator}\u20E3])(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|[\uFE0F\u200D\u20E3#*0-9]|[\u{E0020}-\u{E007F}])+$/u;
 
 export interface Member {
   id: string;
@@ -163,8 +177,8 @@ export type ClientMessage =
   | { t: "report"; epoch: number; posMs: number; bufferMs: number }
   /** A chat message to everybody; [cid] is the device's own id for it, sent back with it. Protocol 10. */
   | { t: "chat"; text: string; cid?: string }
-  /** A reaction, [n] times in a row (1 when absent). Not kept. Protocol 10. */
-  | { t: "react"; e: Reaction; n?: number };
+  /** A reaction, [n] times in a row (1 when absent): one of the names in [REACTIONS], or an emoji. Not kept. Protocol 10. */
+  | { t: "react"; e: string; n?: number };
 
 // ---- server -> client ----
 
@@ -191,7 +205,7 @@ export type ServerMessage =
   /** The room's last chat messages, oldest first, sent to a device right after the state it gets on joining. Protocol 10. */
   | { t: "chat.history"; msgs: ChatMessage[] }
   /** Somebody else reacted, [n] times in a row. Protocol 10. */
-  | { t: "react"; by: string; e: Reaction; n: number }
+  | { t: "react"; by: string; e: string; n: number }
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */

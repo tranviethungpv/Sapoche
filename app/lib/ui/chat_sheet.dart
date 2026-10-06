@@ -1,8 +1,11 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
+import '../theme/palette.dart';
 import '../theme/theme.dart';
 import 'scope.dart';
 import 'widgets/avatars.dart';
@@ -13,6 +16,8 @@ void showChatSheet(BuildContext context) {
   final controller = AppScope.roomOf(context);
   showModalBottomSheet<void>(
     useRootNavigator: true,
+    // Below the status bar, the notch and the island, keyboard or not
+    useSafeArea: true,
     context: context,
     isScrollControlled: true,
     builder: (_) => ChatSheet(controller: controller),
@@ -93,109 +98,126 @@ class _ChatSheetState extends State<ChatSheet> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    final media = MediaQuery.of(context);
-    return Padding(
-      // Above the keyboard while it is up
-      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
-      child: SizedBox(
-        height: (media.size.height - media.viewInsets.bottom) * 0.85,
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-                child: ListenableBuilder(
-                  listenable: _c,
-                  builder: (context, _) => Row(
-                    children: [
-                      Expanded(child: Text(S.chat, style: theme.headlineSmall)),
-                      Text(
-                        S.listening(_c.snapshot.listeningCount),
-                        style: theme.bodySmall?.copyWith(
-                          color: p.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Expanded(
-                child: ReactionShower(
-                  controller: _c,
-                  child: ValueListenableBuilder(
-                    valueListenable: _c.chat,
-                    builder: (context, messages, _) => messages.isEmpty
-                        ? const _EmptyChat()
-                        : _Messages(controller: _c, messages: messages),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: ReactionBar(controller: _c),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+    return LayoutBuilder(
+      builder: (context, box) {
+        final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+        return Padding(
+          // Above the keyboard while it is up
+          padding: EdgeInsets.only(bottom: keyboard),
+          child: SizedBox(
+            // Most of the screen, and with the keyboard up all that is left above it
+            height: min(box.maxHeight * 0.85, box.maxHeight - keyboard),
+            child: _sheet(context, p, theme),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _sheet(BuildContext context, Palette p, TextTheme theme) {
+    return SafeArea(
+      top: false,
+      child: Column(
+        children: [
+          // Pulling the sheet down by its head puts the keyboard away with it
+          Listener(
+            onPointerMove: (move) {
+              if (move.delta.dy > 2) {
+                FocusManager.instance.primaryFocus?.unfocus();
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+              child: ListenableBuilder(
+                listenable: _c,
+                builder: (context, _) => Row(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        key: const ValueKey('chat-field'),
-                        controller: _field,
-                        minLines: 1,
-                        maxLines: 4,
-                        maxLength: RoomController.maxChatChars,
-                        textCapitalization: TextCapitalization.sentences,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _send(),
-                        // The count shows only near the end, where it matters
-                        buildCounter:
-                            (
-                              context, {
-                              required currentLength,
-                              required isFocused,
-                              maxLength,
-                            }) =>
-                                currentLength > RoomController.maxChatChars - 50
-                                ? Text('$currentLength/$maxLength')
-                                : null,
-                        decoration: InputDecoration(
-                          hintText: S.chatHint,
-                          isDense: true,
-                          filled: true,
-                          fillColor: p.primary.withValues(alpha: 0.08),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                    ValueListenableBuilder(
-                      valueListenable: _field,
-                      builder: (context, value, _) => IconButton(
-                        onPressed: value.text.trim().isEmpty ? null : _send,
-                        tooltip: S.chatSend,
-                        icon: Icon(
-                          Icons.send_rounded,
-                          color: value.text.trim().isEmpty
-                              ? p.textTertiary
-                              : p.primary,
-                        ),
-                      ),
+                    Expanded(child: Text(S.chat, style: theme.headlineSmall)),
+                    Text(
+                      S.listening(_c.snapshot.listeningCount),
+                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+          Expanded(
+            child: ReactionShower(
+              controller: _c,
+              child: ValueListenableBuilder(
+                valueListenable: _c.chat,
+                builder: (context, messages, _) => messages.isEmpty
+                    ? const _EmptyChat()
+                    : _Messages(controller: _c, messages: messages),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: ReactionBar(controller: _c),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('chat-field'),
+                    controller: _field,
+                    minLines: 1,
+                    maxLines: 4,
+                    maxLength: RoomController.maxChatChars,
+                    textCapitalization: TextCapitalization.sentences,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _send(),
+                    // A touch anywhere else puts the keyboard away: its return key makes a new line
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
+                    // The count shows only near the end, where it matters
+                    buildCounter:
+                        (
+                          context, {
+                          required currentLength,
+                          required isFocused,
+                          maxLength,
+                        }) => currentLength > RoomController.maxChatChars - 50
+                        ? Text('$currentLength/$maxLength')
+                        : null,
+                    decoration: InputDecoration(
+                      hintText: S.chatHint,
+                      isDense: true,
+                      filled: true,
+                      fillColor: p.primary.withValues(alpha: 0.08),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                ValueListenableBuilder(
+                  valueListenable: _field,
+                  builder: (context, value, _) => IconButton(
+                    onPressed: value.text.trim().isEmpty ? null : _send,
+                    tooltip: S.chatSend,
+                    icon: Icon(
+                      Icons.send_rounded,
+                      color: value.text.trim().isEmpty
+                          ? p.textTertiary
+                          : p.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -248,6 +270,8 @@ class _Messages extends StatelessWidget {
     // Upside down, so the newest message sits at the bottom and the list opens there
     return ListView.builder(
       reverse: true,
+      // Pulling the messages puts the keyboard away, as in the chats of the phone
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       itemCount: messages.length,
       itemBuilder: (context, i) {

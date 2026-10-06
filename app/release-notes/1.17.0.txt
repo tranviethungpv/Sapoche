@@ -1,0 +1,4 @@
+Every emoji, and reactions you did not miss
+- Pick any emoji from the full keyboard set to send to the room, and keep tapping to send more without the picker closing.
+- Reactions sent while you were away fly up when you come back.
+- Cleaner player in rooms, and the chat keyboard can now be put away.
