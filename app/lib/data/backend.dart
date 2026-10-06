@@ -79,6 +79,12 @@ class UpdateEvent extends BackendEvent {
   final UpdateInfo info;
 }
 
+/// The picture moved into a small window over other apps ([on]), or came back into the app.
+class PipEvent extends BackendEvent {
+  const PipEvent(this.on);
+  final bool on;
+}
+
 class ErrorEvent extends BackendEvent {
   const ErrorEvent(this.error);
   final ServerError error;
@@ -157,6 +163,19 @@ abstract class Backend {
 
   /// Tallest picture to fetch, in pixels.
   Future<void> setVideoQuality(int height);
+
+  /// Plays faster or slower than normal (1). Outside a room only: in one the speed keeps the phones in step.
+  Future<void> setPlaybackSpeed(double speed);
+
+  /// Somebody watches the picture now ([on]: it is on screen and playing, [width] x [height] pixels): the screen
+  /// stays on, and leaving the app moves the picture into a small window where the phone can do that.
+  Future<void> setVideoWatching(bool on, {int width = 0, int height = 0});
+
+  /// Whether the phone can show the picture in a small window over other apps.
+  Future<bool> pictureInPictureSupported();
+
+  /// Moves the picture into a small window over other apps now.
+  Future<void> enterPictureInPicture();
 
   /// The songs behind a pasted YouTube link, or null when the text is not a link.
   Future<LinkResult?> lookup(String text);
@@ -331,6 +350,7 @@ class NativeBackend implements Backend {
       'library' => const LibraryEvent(),
       'update' => UpdateEvent(UpdateInfo.fromJson(json)),
       'calm' => CalmEvent(json['on'] as bool),
+      'pip' => PipEvent(json['on'] as bool),
       'output' => OutputEvent(AudioOutput.fromJson(json)),
       'avatar' => AvatarEvent(
         json['id'] as String,
@@ -463,6 +483,21 @@ class NativeBackend implements Backend {
   @override
   Future<void> setVideoQuality(int height) =>
       _call('videoQuality', {'height': height});
+
+  @override
+  Future<void> setPlaybackSpeed(double speed) =>
+      _call('playbackSpeed', {'speed': speed});
+
+  @override
+  Future<void> setVideoWatching(bool on, {int width = 0, int height = 0}) =>
+      _call('videoWatching', {'on': on, 'width': width, 'height': height});
+
+  @override
+  Future<bool> pictureInPictureSupported() async =>
+      await _call<bool>('pipSupported') ?? false;
+
+  @override
+  Future<void> enterPictureInPicture() => _call('pipEnter');
 
   @override
   Future<List<Track>> search(String query, {bool songsOnly = false}) async {

@@ -29,6 +29,7 @@ class RoomController extends ChangeNotifier {
   RoomController(this._backend, {this._recents}) {
     player.addListener(_updatePlayState);
     addListener(_updatePlayState);
+    playState.addListener(_updateWatching);
   }
 
   final Backend _backend;
@@ -72,6 +73,14 @@ class RoomController extends ChangeNotifier {
   /// A setup link that was opened, for the screen to check and ask about.
   final ValueNotifier<SetupLink?> setup = ValueNotifier(null);
 
+  /// The app is shown in a small window over other apps, where only the picture belongs.
+  final ValueNotifier<bool> pictureInPicture = ValueNotifier(false);
+
+  bool _pipSupported = false;
+
+  /// The phone can show the picture in a small window over other apps.
+  bool get pipSupported => _pipSupported;
+
   final _messages = StreamController<String>.broadcast();
   final _notices = StreamController<Notice>.broadcast();
 
@@ -106,6 +115,11 @@ class RoomController extends ChangeNotifier {
     } on Object {
       // The name field just starts empty
     }
+    try {
+      _pipSupported = await _backend.pictureInPictureSupported();
+    } on Object {
+      // No small window then
+    }
     notifyListeners();
   }
 
@@ -122,6 +136,7 @@ class RoomController extends ChangeNotifier {
         );
         _ready = true;
         notifyListeners();
+        _updateWatching();
       case NoticeEvent(:final kind, :final by, :final title):
         final who = by.isEmpty ? S.someone : by;
         if (kind == 'paused') {
@@ -135,6 +150,7 @@ class RoomController extends ChangeNotifier {
           ..reset()
           ..start();
         player.value = position;
+        _updateWatching();
       case InviteEvent(:final code):
         invite.value = code;
       case SetupEvent(:final link):
@@ -160,6 +176,8 @@ class RoomController extends ChangeNotifier {
         break; // and UpdateController for this
       case CalmEvent(:final on):
         Calm.on.value = on;
+      case PipEvent(:final on):
+        pictureInPicture.value = on;
       case ErrorEvent(:final error):
         final text = _describe(error);
         if (text != null) _messages.add(text);
@@ -449,8 +467,39 @@ class RoomController extends ChangeNotifier {
     } else {
       _videoViewsSeen.remove(view);
     }
+    _updateWatching();
     return _run(() => _backend.setVideoVisible(_videoViewsSeen.isNotEmpty));
   }
+
+  /// What the native side was last told by [_updateWatching].
+  (bool, int, int)? _watching;
+
+  /// The size of the last picture, kept while a new song has none yet so the small window keeps its shape.
+  (int, int) _pictureSize = (16, 9);
+
+  /// Tells the native side whether somebody watches the picture: it is on screen and the music plays. Then the screen
+  /// stays on, and leaving the app moves the picture into a small window. A song that is buffering still counts as
+  /// playing, or the screen could go dark at once in the middle of a video.
+  void _updateWatching() {
+    final p = player.value;
+    if (p.videoWidth > 0 && p.videoHeight > 0) {
+      _pictureSize = (p.videoWidth, p.videoHeight);
+    }
+    final on = _snapshot.video && _videoViewsSeen.isNotEmpty && isPlaying;
+    final next = (on, _pictureSize.$1, _pictureSize.$2);
+    if (next == _watching) return;
+    _watching = next;
+    _run(() => _backend.setVideoWatching(on, width: next.$2, height: next.$3));
+  }
+
+  /// Plays faster or slower than normal (1). Only outside a room: in one the speed keeps the phones in step.
+  Future<void> setPlaybackSpeed(double speed) {
+    if (_snapshot.inRoom) return Future.value();
+    return _run(() => _backend.setPlaybackSpeed(speed));
+  }
+
+  /// Moves the picture into a small window over other apps.
+  Future<void> enterPictureInPicture() => _run(_backend.enterPictureInPicture);
 
   /// The texture the picture is drawn into, or null when it cannot be made.
   Future<int?> videoSurface() async {
@@ -485,6 +534,7 @@ class RoomController extends ChangeNotifier {
     playState.dispose();
     invite.dispose();
     setup.dispose();
+    pictureInPicture.dispose();
     super.dispose();
   }
 }

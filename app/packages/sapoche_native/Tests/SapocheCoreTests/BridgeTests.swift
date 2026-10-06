@@ -450,6 +450,60 @@ final class BridgeTests: XCTestCase {
         XCTAssertTrue(states().last?["room"] is NSNull)
     }
 
+    func testTheSpeedIsChosenOutsideARoomAndTheScreenIsTold() async throws {
+        _ = try await call("add", song(1))
+        await time.advance(100)
+        XCTAssertEqual(JSON(states().last?["playbackSpeed"]).double, 1)
+        _ = try await call("playbackSpeed", ["speed": 1.5])
+        XCTAssertEqual(engine.currentSpeed, 1.5)
+        XCTAssertEqual(JSON(states().last?["playbackSpeed"]).double, 1.5)
+        await time.advance(1500)
+        let position = events.last { $0["type"] as? String == "position" }
+        XCTAssertEqual(JSON(position?["speed"]).double, 1.5, "the screen moves its bar at the speed the song plays at")
+        // No faster or slower than a person can choose
+        _ = try await call("playbackSpeed", ["speed": 9.0])
+        XCTAssertEqual(engine.currentSpeed, 2)
+        _ = try await call("playbackSpeed", ["speed": 0.01])
+        XCTAssertEqual(engine.currentSpeed, 0.25)
+    }
+
+    func testARoomPlaysAtNormalSpeedAndItsSpeedIsNotThePersonsToChange() async throws {
+        _ = try await call("add", song(1))
+        await time.advance(100)
+        _ = try await call("playbackSpeed", ["speed": 1.75])
+        XCTAssertEqual(engine.currentSpeed, 1.75)
+
+        _ = try await call("configure", ["server": "https://sapoche.example.dev", "key": "k3y"])
+        http.answer("/rooms", text: #"{"code":"ABC234"}"#)
+        _ = try await call("createRoom", ["name": "Me"])
+        await time.advance(10)
+        XCTAssertEqual(engine.currentSpeed, 1, "joining puts the speed back to normal")
+        XCTAssertEqual(JSON(states().last?["playbackSpeed"]).double, 1)
+        _ = try await call("playbackSpeed", ["speed": 1.5])
+        XCTAssertEqual(engine.currentSpeed, 1)
+        XCTAssertEqual(JSON(states().last?["playbackSpeed"]).double, 1)
+
+        // Back on the personal queue it stays normal until chosen again
+        _ = try await call("leave")
+        await time.advance(100)
+        XCTAssertEqual(engine.currentSpeed, 1)
+        _ = try await call("playbackSpeed", ["speed": 1.25])
+        XCTAssertEqual(engine.currentSpeed, 1.25)
+    }
+
+    func testWatchingThePictureAndTheSmallWindowGoToThePlayer() async throws {
+        let without = try await call("pipSupported") as? Bool
+        XCTAssertEqual(without, false)
+        engine.pipSupported = true
+        let with = try await call("pipSupported") as? Bool
+        XCTAssertEqual(with, true)
+        _ = try await call("videoWatching", ["on": true, "width": 720, "height": 1280])
+        _ = try await call("videoWatching", ["on": false, "width": 720, "height": 1280])
+        XCTAssertEqual(engine.watching, ["true 720x1280", "false 720x1280"])
+        _ = try await call("pipEnter")
+        XCTAssertEqual(engine.pipStarts, 1)
+    }
+
     func testAnInvitationLinkReachesTheScreen() async throws {
         _ = try await call("configure", ["server": "https://sapoche.example.dev"])
         bridge.onLink(URL(string: "sapoche://join/abc234")!)

@@ -1,0 +1,6 @@
+Phát video đầy đủ như một ứng dụng hiện đại
+- Xem video nhạc với bộ điều khiển trên hình, chạm đúp để tua và chọn tốc độ phát.
+- Mở video trong cửa sổ nổi PiP khi dùng ứng dụng khác.
+- Xem toàn màn hình cho video ngang hoặc dọc, chụm để phóng to và vuốt để thoát.
+- Trình phát theo hướng xoay của máy và giữ màn hình sáng khi video đang phát.
+- Chọn chất lượng luồng và vẫn giữ đồng bộ khi xem trong phòng.

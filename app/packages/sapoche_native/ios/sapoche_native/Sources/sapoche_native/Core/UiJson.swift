@@ -5,7 +5,8 @@ enum UiJson {
 
     /// Structure of what is playing: the room, or outside one the personal queue in the same shape (no room code, no
     /// members). Changes rarely, so the UI only rebuilds when this differs.
-    static func state(_ view: GroupController.View, trimMs: Int64, video: Bool = false, videoHeight: Int = 720) -> String {
+    static func state(_ view: GroupController.View, trimMs: Int64, video: Bool = false, videoHeight: Int = 720,
+                      playbackSpeed: Float = 1) -> String {
         let snap = view.snapshot
         let state = snap.state
         let local = view.local
@@ -28,6 +29,7 @@ enum UiJson {
             "trimMs": trimMs,
             "video": video,
             "videoHeight": videoHeight,
+            "playbackSpeed": Double(playbackSpeed),
             "solo": snap.solo,
             "soloItemId": snap.soloItemId ?? NSNull(),
             // A song is on its way to play on this device: outside a room, or while listening alone in one
@@ -62,7 +64,7 @@ enum UiJson {
             "positionMs": player.positionMs,
             "durationMs": player.durationMs,
             "driftMs": view.snapshot.driftMs ?? NSNull(),
-            "speed": Double(view.snapshot.speed),
+            "speed": Double(player.speed),
             "videoWidth": player.videoWidth,
             "videoHeight": player.videoHeight,
             "noPicture": player.noPicture,

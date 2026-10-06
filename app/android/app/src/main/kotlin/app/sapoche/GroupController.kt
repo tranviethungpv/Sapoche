@@ -264,6 +264,18 @@ class GroupController(
     /** The picture is on screen; when it is not, it is neither downloaded nor decoded. */
     fun setVideoVisible(visible: Boolean) = port.setVideoVisible(visible)
 
+    /** How fast the personal queue plays, 1 being normal. Not kept across runs, and 1 in a room, where the speed keeps the phones in step. */
+    var playbackSpeed: Float = 1f
+        private set
+
+    /** Plays the personal queue faster or slower; in a room the speed is the drift control's, and this does nothing. */
+    fun setPlaybackSpeed(speed: Float) {
+        if (session != null) return
+        playbackSpeed = speed.coerceIn(MIN_SPEED, MAX_SPEED)
+        port.setSpeed(playbackSpeed)
+        EventLog.d("local", "speed $playbackSpeed")
+    }
+
     /** Where the player draws the picture, or null to let go of the screen. */
     fun attachVideoSurface(surface: Surface?) {
         if (surface == null) exo.clearVideoSurface() else exo.setVideoSurface(surface)
@@ -277,6 +289,11 @@ class GroupController(
     fun join(baseUrl: String, code: String, name: String, create: Boolean) {
         stopFollowing()
         local.detach()
+        // The room plays at its own pace
+        if (playbackSpeed != 1f) {
+            playbackSpeed = 1f
+            port.setSpeed(1f)
+        }
         val id = deviceId()
         val now = { SystemClock.elapsedRealtime() }
         val log = { message: String -> EventLog.d("sync", message) }
@@ -615,6 +632,8 @@ class GroupController(
         val noPicture: Boolean = false,
         /** Paused on this device while the room plays on, see [heldBack]. */
         val heldBack: Boolean = false,
+        /** How fast the player plays: the person's choice outside a room, the drift control's in one. */
+        val speed: Float = 1f,
     )
 
     /** Snapshot of the local player for the UI; call on the main thread. */
@@ -633,6 +652,7 @@ class GroupController(
             videoHeight = exo.videoSize.height,
             noPicture = port.pictureMissing(),
             heldBack = heldBack(),
+            speed = exo.playbackParameters.speed,
         )
     }
 
@@ -693,6 +713,8 @@ class GroupController(
         const val KEY_LAST_ACTIVE = "room_last_active"
         const val KEY_VIDEO = "video_mode"
         const val KEY_AUTOPLAY = "autoplay"
+        const val MIN_SPEED = 0.25f
+        const val MAX_SPEED = 2f
         const val AUTOPLAY_RESTART_AT = 150
 
         /** Songs added each time the queue runs out and the music carries on by itself. */

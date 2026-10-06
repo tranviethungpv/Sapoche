@@ -255,7 +255,8 @@ final class Bridge {
 
     private func emitState() {
         guard sink != nil else { return }
-        let state = UiJson.state(controller.view.value, trimMs: controller.trimMs, video: controller.videoMode, videoHeight: videoHeight)
+        let state = UiJson.state(controller.view.value, trimMs: controller.trimMs, video: controller.videoMode, videoHeight: videoHeight,
+                                 playbackSpeed: controller.playbackSpeed)
         if state == lastState { return }
         lastState = state
         emit(state)
@@ -488,6 +489,16 @@ final class Bridge {
             prefs.set(int64("height") > 0 ? int64("height") : 720, for: "video_height")
             lastState = nil
             emitState()
+        case "playbackSpeed":
+            controller.setPlaybackSpeed(Float(JSON(args["speed"]).double ?? 1))
+            lastState = nil
+            emitState()
+        case "videoWatching":
+            controller.setVideoWatching(bool("on"), width: int("width"), height: int("height"))
+        case "pipSupported":
+            return controller.pictureInPictureSupported()
+        case "pipEnter":
+            controller.startPictureInPicture()
         case "solo":
             try requireRoom()
             if bool("on") { controller.goSolo() } else { controller.rejoin() }

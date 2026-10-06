@@ -12,6 +12,8 @@ struct PlayerInfo: Equatable {
     var noPicture = false
     /// Paused on this device while the room plays on, see `GroupController.heldBack`.
     var heldBack = false
+    /// How fast the player plays: the person's choice outside a room, the drift control's in one.
+    var speed: Float = 1
 }
 
 /// A [PlayerPort] with what the controller needs beyond the session's needs: volume for the sleep timer's fade, a way to
@@ -54,6 +56,16 @@ protocol PlayerEngine: PlayerPort {
 
     /// The id of the texture the picture is drawn into; throws where pictures cannot be played.
     func videoSurface() throws -> Int64
+
+    /// Somebody watches the picture ([on]: it is on screen and playing, [width] x [height] pixels): the screen stays
+    /// on, and leaving the app moves the picture into a small window where the phone can do that.
+    func setVideoWatching(_ on: Bool, width: Int, height: Int)
+
+    /// Whether the phone can show the picture in a small window over other apps.
+    func pictureInPictureSupported() -> Bool
+
+    /// Moves the picture into a small window over other apps now.
+    func startPictureInPicture()
 }
 
 struct VideoUnavailable: Error, LocalizedError {
@@ -64,6 +76,9 @@ extension PlayerEngine {
     func setVideoMode(_ on: Bool) {}
     func setVideoVisible(_ visible: Bool) {}
     func videoSurface() throws -> Int64 { throw VideoUnavailable() }
+    func setVideoWatching(_ on: Bool, width: Int, height: Int) {}
+    func pictureInPictureSupported() -> Bool { false }
+    func startPictureInPicture() {}
 }
 
 /// Lives as long as the app, so the room connection survives the screen. While joined, the room decides what plays;
@@ -342,6 +357,25 @@ final class GroupController {
     /// Where the player draws the picture; throws where pictures cannot be played.
     func videoSurface() throws -> Int64 { try engine.videoSurface() }
 
+    func setVideoWatching(_ on: Bool, width: Int, height: Int) { engine.setVideoWatching(on, width: width, height: height) }
+    func pictureInPictureSupported() -> Bool { engine.pictureInPictureSupported() }
+    func startPictureInPicture() { engine.startPictureInPicture() }
+
+    /// How fast the personal queue plays, 1 being normal. Not kept across runs, and 1 in a room, where the speed keeps
+    /// the phones in step.
+    private(set) var playbackSpeed: Float = 1
+
+    /// Plays the personal queue faster or slower; in a room the speed is the drift control's, and this does nothing.
+    func setPlaybackSpeed(_ speed: Float) {
+        guard session == nil else { return }
+        playbackSpeed = min(max(speed, Self.minSpeed), Self.maxSpeed)
+        engine.setSpeed(playbackSpeed)
+        EventLog.d("local", "speed \(playbackSpeed)")
+    }
+
+    static let minSpeed: Float = 0.25
+    static let maxSpeed: Float = 2
+
     // ------------------------------------------------------------------ room
 
     /// [create] says whether the code was just made (true) or given to this device (false): a mistyped code must not open a room.
@@ -353,6 +387,11 @@ final class GroupController {
         }
         stopFollowing()
         local.detach()
+        // The room plays at its own pace
+        if playbackSpeed != 1 {
+            playbackSpeed = 1
+            engine.setSpeed(1)
+        }
         let id = deviceId()
         let log = { (message: String) in EventLog.d("sync", message) }
         let settings = config()

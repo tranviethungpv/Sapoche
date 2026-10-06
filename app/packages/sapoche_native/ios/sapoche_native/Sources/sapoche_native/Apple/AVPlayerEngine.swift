@@ -68,6 +68,16 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var textureId: Int64?
     private var ticker: CADisplayLink?
 
+    /// The picture is on screen and playing, so leaving the app moves it into the small window.
+    private var watching = false
+    private var pipHost: UIView?
+    private var pipLayer: AVPlayerLayer?
+    private var pip: AVPictureInPictureController?
+    /// The small window shows the picture, or is about to.
+    private var pipActive = false
+    /// Waits for the small window to be possible, after it was asked for before the layer was ready.
+    private var pipPossible: NSKeyValueObservation?
+
     init(library: MediaLibrary, maxVideoHeight: @escaping () -> Int, log: @escaping (String) -> Void = { _ in }) {
         self.library = library
         self.loader = PlaylistLoader(playlists: library.playlists, log: log)
@@ -242,7 +252,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             durationMs: seconds.isFinite && seconds > 0 ? Int64(seconds * 1000) : 0,
             videoWidth: Int(size.width),
             videoHeight: Int(size.height),
-            noPicture: wantsVideo && current != nil && !currentHasVideo && pictureless == current?.videoId
+            noPicture: wantsVideo && current != nil && !currentHasVideo && pictureless == current?.videoId,
+            speed: speed
         )
     }
 
@@ -284,7 +295,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         return id
     }
 
-    private var wantsVideo: Bool { videoOn && videoVisible }
+    /// The small window keeps showing the picture while the app is in the background, where the screen sees none.
+    private var wantsVideo: Bool { videoOn && (videoVisible || pipActive) }
 
     /// Shows or hides the picture. A song that has its picture keeps it and only turns it on or off, which costs no gap
     /// in the sound: when the app goes to the background, when it comes back, when the person switches to sound only.
@@ -618,6 +630,86 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         onChange?()
     }
 
+    // ------------------------------------------------------------------ the small window
+
+    func pictureInPictureSupported() -> Bool { AVPictureInPictureController.isPictureInPictureSupported() }
+
+    func setVideoWatching(_ on: Bool, width: Int, height: Int) {
+        watching = on
+        // A video plays: the screen must not go dark under it, as it would for music
+        UIApplication.shared.isIdleTimerDisabled = on
+        guard pictureInPictureSupported() else { return }
+        if on { preparePictureInPicture() }
+        if !pipActive { pipLayer?.player = on ? player : nil }
+        if #available(iOS 14.2, *) { pip?.canStartPictureInPictureAutomaticallyFromInline = on }
+    }
+
+    func startPictureInPicture() {
+        guard pictureInPictureSupported(), !pipActive else { return }
+        preparePictureInPicture()
+        pipLayer?.player = player
+        guard let pip else { return }
+        if pip.isPictureInPicturePossible {
+            pip.startPictureInPicture()
+            return
+        }
+        // A layer that was just given the player is not ready at once: the small window opens once it is
+        pipPossible = pip.observe(\.isPictureInPicturePossible, options: [.new]) { [weak self] controller, _ in
+            guard controller.isPictureInPicturePossible else { return }
+            Task { @MainActor in
+                self?.pipPossible = nil
+                controller.startPictureInPicture()
+            }
+        }
+    }
+
+    /// The system's small window shows a layer the player draws into, not Flutter's texture: a layer behind Flutter's
+    /// view, which covers it, holds the player while somebody watches. A player drawing into a layer is paused by the
+    /// system when the app goes to the background, so the layer lets go of it then unless the small window shows it.
+    private func preparePictureInPicture() {
+        if pip != nil { return }
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow }) else { return }
+        let host = UIView(frame: window.bounds)
+        host.isUserInteractionEnabled = false
+        host.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        let layer = AVPlayerLayer()
+        layer.frame = host.bounds
+        layer.videoGravity = .resizeAspect
+        host.layer.addSublayer(layer)
+        window.insertSubview(host, at: 0)
+        guard let controller = AVPictureInPictureController(playerLayer: layer) else {
+            host.removeFromSuperview()
+            return
+        }
+        controller.delegate = self
+        pipHost = host
+        pipLayer = layer
+        pip = controller
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.pipActive else { return }
+                self.pipLayer?.player = nil
+            }
+        }
+        center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.watching else { return }
+                self.pipLayer?.player = self.player
+            }
+        }
+    }
+
+    fileprivate func pictureInPictureChanged(_ active: Bool) {
+        pipActive = active
+        log("small window \(active ? "open" : "closed")")
+        applyVideo()
+        if !active { pipLayer?.player = watching ? player : nil }
+    }
+
     // ------------------------------------------------------------------ the system
 
     private func watchSystem() {
@@ -684,6 +776,27 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         } catch {
             log("could not take the audio session: \(error.localizedDescription)")
         }
+    }
+}
+
+extension AVPlayerEngine: AVPictureInPictureControllerDelegate {
+    nonisolated func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        MainActor.assumeIsolated { self.pictureInPictureChanged(true) }
+    }
+
+    nonisolated func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        MainActor.assumeIsolated { self.pictureInPictureChanged(false) }
+    }
+
+    nonisolated func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                                failedToStartPictureInPictureWithError error: Error) {
+        MainActor.assumeIsolated { self.pictureInPictureChanged(false) }
+    }
+
+    /// Back from the small window: the app is where it was, nothing to bring back.
+    nonisolated func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                                restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        completionHandler(true)
     }
 }
 

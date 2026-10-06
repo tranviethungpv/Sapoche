@@ -38,9 +38,26 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onPause() {
-        bridge?.setVisible(false)
+        // In the small window over other apps the picture is still seen
+        if (!isInPictureInPictureMode) bridge?.setVisible(false)
         EventLog.flush()
         super.onPause()
+    }
+
+    override fun onStop() {
+        // The small window was closed, or the app left while in it
+        bridge?.setVisible(false)
+        super.onStop()
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        bridge?.onUserLeaveHint()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        bridge?.onPictureInPictureChanged(isInPictureInPictureMode)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

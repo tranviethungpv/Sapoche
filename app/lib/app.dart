@@ -10,6 +10,7 @@ import 'theme/theme.dart';
 import 'ui/home_shell.dart';
 import 'ui/scope.dart';
 import 'ui/widgets/ambient_backdrop.dart';
+import 'ui/widgets/pip_host.dart';
 
 class SapocheApp extends StatefulWidget {
   const SapocheApp({super.key, required this.model});
@@ -91,6 +92,8 @@ class _SapocheAppState extends State<SapocheApp> {
               return ui.Locale(code);
             },
             home: const _Root(),
+            builder: (context, child) =>
+                PipHost(controller: model.room, child: child!),
           );
         },
       ),

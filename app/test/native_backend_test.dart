@@ -219,4 +219,50 @@ void main() {
     expect(snapshot.repeat, Repeat.all);
     expect(snapshot.ownPlayback, isTrue);
   });
+
+  test('the picture: speed, watching and the small window use the names the native side handles', () async {
+    final seen = <MethodCall>[];
+    messenger.setMockMethodCallHandler(control, (call) async {
+      seen.add(call);
+      return call.method == 'pipSupported' ? true : null;
+    });
+    final backend = NativeBackend();
+    await backend.setPlaybackSpeed(1.5);
+    await backend.setVideoWatching(true, width: 720, height: 1280);
+    expect(await backend.pictureInPictureSupported(), isTrue);
+    await backend.enterPictureInPicture();
+    expect(seen.map((c) => c.method), [
+      'playbackSpeed',
+      'videoWatching',
+      'pipSupported',
+      'pipEnter',
+    ]);
+    expect(seen[0].arguments, {'speed': 1.5});
+    expect(seen[1].arguments, {'on': true, 'width': 720, 'height': 1280});
+  });
+
+  test(
+    'a phone that does not answer about the small window has none',
+    () async {
+      messenger.setMockMethodCallHandler(control, (call) async => null);
+      expect(await NativeBackend().pictureInPictureSupported(), isFalse);
+    },
+  );
+
+  test(
+    'reads the small window opening and closing, and the speed in the state',
+    () async {
+      final received = await receive([
+        '{"type":"pip","on":true}',
+        '{"type":"pip","on":false}',
+        '{"type":"state","room":null,"phase":"paused","playbackSpeed":1.75,"queue":[],"members":[]}',
+        '{"type":"state","room":null,"phase":"paused","queue":[],"members":[]}',
+      ]);
+      expect((received[0] as PipEvent).on, isTrue);
+      expect((received[1] as PipEvent).on, isFalse);
+      expect((received[2] as StateEvent).snapshot.playbackSpeed, 1.75);
+      // An older native side says nothing of it: normal speed
+      expect((received[3] as StateEvent).snapshot.playbackSpeed, 1.0);
+    },
+  );
 }

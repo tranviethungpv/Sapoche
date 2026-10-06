@@ -138,6 +138,22 @@ class FakeBackend implements Backend {
   Future<void> setVideoQuality(int height) => _record('videoQuality $height');
 
   @override
+  Future<void> setPlaybackSpeed(double speed) => _record('speed $speed');
+
+  @override
+  Future<void> setVideoWatching(bool on, {int width = 0, int height = 0}) =>
+      _record('watching $on ${width}x$height');
+
+  /// Whether this phone can show the picture in a small window.
+  bool pipSupportedValue = true;
+
+  @override
+  Future<bool> pictureInPictureSupported() async => pipSupportedValue;
+
+  @override
+  Future<void> enterPictureInPicture() => _record('pipEnter');
+
+  @override
   Future<List<Track>> search(String query, {bool songsOnly = false}) async {
     await _record(songsOnly ? 'search $query songs' : 'search $query');
     await searchGate?.future;

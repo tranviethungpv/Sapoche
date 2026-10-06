@@ -13,6 +13,7 @@ import 'members_sheet.dart';
 import 'player/lyrics_view.dart';
 import 'player/related_view.dart';
 import 'player/up_next_view.dart';
+import 'player/video_controls.dart';
 import 'player_sheet.dart';
 import 'song_info_sheet.dart';
 import 'scope.dart';
@@ -117,6 +118,29 @@ class _BodyState extends State<_Body> {
   /// A second touch on the button of the panel that is open goes back to the cover.
   void _show(_Panel panel) =>
       setState(() => _panel = _panel == panel ? _Panel.cover : panel);
+
+  /// Whether the screen was on its side at the last look, to see the phone being turned.
+  bool? _wasLandscape;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final media = MediaQuery.of(context);
+    final landscape = media.orientation == Orientation.landscape;
+    final turned = _wasLandscape == false && landscape;
+    _wasLandscape = landscape;
+    // A phone turned on its side while the picture plays shows it across the whole screen, as video apps do. A tablet
+    // has room for the picture beside the controls.
+    if (turned &&
+        _c.snapshot.video &&
+        media.size.shortestSide < 600 &&
+        PlayerSheetScope.of(context).position.value == 1 &&
+        !VideoFullScreen.open.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) openVideoFullScreen(context, _c, turned: true);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -451,6 +475,29 @@ class _CoverStage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final artSize = coverSize(MediaQuery.of(context));
+    if (controller.snapshot.video) {
+      // The picture takes all the height there is and keeps its own shape in it: a wide one is as wide as the
+      // column, an upright one as tall as the place, never over the title and the controls
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          children: [
+            Expanded(
+              child: Padding(
+                key: const ValueKey('video-place'),
+                padding: const EdgeInsets.only(top: 12, bottom: 16),
+                child: _CoverArt(
+                  controller: controller,
+                  current: current,
+                  size: artSize,
+                ),
+              ),
+            ),
+            _TitleRow(controller: controller, current: current),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
@@ -485,6 +532,7 @@ class _CoverArt extends StatelessWidget {
         key: const ValueKey('video'),
         controller: controller,
         cover: current,
+        overlay: VideoControls(controller: controller),
       );
     }
     return ListenableBuilder(

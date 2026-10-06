@@ -13,7 +13,7 @@ object UiJson {
      * Structure of what is playing: the room, or outside one the personal queue in the same shape (no
      * room code, no members). Changes rarely, so the UI only rebuilds when this differs.
      */
-    fun state(view: GroupController.View, trimMs: Long, video: Boolean = false, videoHeight: Int = 720): String {
+    fun state(view: GroupController.View, trimMs: Long, video: Boolean = false, videoHeight: Int = 720, playbackSpeed: Float = 1f): String {
         val snap = view.snapshot
         val state = snap.state
         val local = view.local
@@ -34,6 +34,7 @@ object UiJson {
             .put("trimMs", trimMs)
             .put("video", video)
             .put("videoHeight", videoHeight)
+            .put("playbackSpeed", playbackSpeed.toDouble())
             .put("solo", snap.solo)
             .put("soloItemId", snap.soloItemId ?: JSONObject.NULL)
             // A song is on its way to play on this device: outside a room, or while listening alone in one
@@ -104,7 +105,7 @@ object UiJson {
             .put("positionMs", player.positionMs)
             .put("durationMs", player.durationMs)
             .put("driftMs", view.snapshot.driftMs ?: JSONObject.NULL)
-            .put("speed", view.snapshot.speed.toDouble())
+            .put("speed", player.speed.toDouble())
             .put("videoWidth", player.videoWidth)
             .put("videoHeight", player.videoHeight)
             .put("noPicture", player.noPicture)
@@ -125,6 +126,9 @@ object UiJson {
     /** A member's picture as base64, or none; the screen keeps it by the member's id. */
     fun avatar(avatar: GroupController.Avatar): String =
         JSONObject().put("type", "avatar").put("id", avatar.id).put("data", avatar.data ?: JSONObject.NULL).toString()
+
+    /** The app went into a small window over other apps ([on]), or came back out of it. */
+    fun pip(on: Boolean): String = JSONObject().put("type", "pip").put("on", on).toString()
 
     fun invite(code: String): String = JSONObject().put("type", "invite").put("code", code).toString()
 

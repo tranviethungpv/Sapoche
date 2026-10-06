@@ -487,6 +487,27 @@ abstract final class S {
     'Applies from the next song. Higher quality uses more data. Music keeps playing when the screen is off; the picture does not.',
     'Áp dụng từ bài sau. Chất lượng cao hơn tốn nhiều dữ liệu hơn. Nhạc vẫn phát khi tắt màn hình; hình thì không.',
   );
+  static String get pause => _t('Pause', 'Tạm dừng');
+  static String get fullScreen => _t('Full screen', 'Toàn màn hình');
+  static String get exitFullScreen =>
+      _t('Exit full screen', 'Thoát toàn màn hình');
+  static String get pictureInPicture => _t('Small window', 'Cửa sổ nổi');
+  static String get videoSettings => _t('Video settings', 'Cài đặt video');
+  static String get playbackSpeed => _t('Playback speed', 'Tốc độ phát');
+  static String get speedNormal => _t('Normal', 'Bình thường');
+  static String get speedInRoom => _t(
+    'In a room everybody plays at normal speed, to stay in step.',
+    'Trong phòng mọi người phát ở tốc độ thường để cùng nhịp.',
+  );
+  static String get previousSong => _t('Previous', 'Bài trước');
+  static String get nextSong => _t('Next', 'Bài sau');
+  static String get back10 => _t('Back 10 seconds', 'Lùi 10 giây');
+  static String get forward10 => _t('Forward 10 seconds', 'Tới 10 giây');
+  static String seconds(int n) => _t('$n seconds', '$n giây');
+  static String get fillScreen => _t('Fill the screen', 'Lấp đầy màn hình');
+  static String get fitScreen => _t('Fit the screen', 'Vừa màn hình');
+  static String get qualityNextSong =>
+      _t('Applies from the next song', 'Áp dụng từ bài sau');
 
   // Who is in the room
   static String get membersTitle => _t('In the room', 'Trong phòng');

@@ -299,6 +299,7 @@ class RoomSnapshot {
     this.loading = false,
     this.video = false,
     this.videoHeight = 720,
+    this.playbackSpeed = 1.0,
     this.name,
     this.ownerId,
     this.guestControl = GuestControl.all,
@@ -334,6 +335,9 @@ class RoomSnapshot {
 
   /// Tallest picture fetched, in pixels.
   final int videoHeight;
+
+  /// How fast this device plays outside a room, 1 being normal. In a room it is always 1.
+  final double playbackSpeed;
 
   /// Room name, when it has one.
   final String? name;
@@ -419,6 +423,7 @@ class RoomSnapshot {
     loading: json['loading'] as bool? ?? false,
     video: json['video'] as bool? ?? false,
     videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 720,
+    playbackSpeed: (json['playbackSpeed'] as num?)?.toDouble() ?? 1.0,
     name: json['name'] as String?,
     ownerId: json['ownerId'] as String?,
     guestControl: GuestControl.parse(json['guestControl'] as String?),

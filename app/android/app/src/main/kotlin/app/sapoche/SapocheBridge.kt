@@ -84,6 +84,11 @@ class SapocheBridge(
     /** Where the player's picture is drawn for Flutter's Texture widget; made when first asked for. */
     private var picture: TextureRegistry.SurfaceProducer? = null
 
+    private val pip = PictureInPicture(activity)
+
+    /** The UI shows the picture. The small window shows it too, whatever the UI last said. */
+    private var pictureShown = false
+
     init {
         MethodChannel(messenger, "app.sapoche/control").setMethodCallHandler(this)
         EventChannel(messenger, "app.sapoche/state").setStreamHandler(this)
@@ -161,6 +166,16 @@ class SapocheBridge(
         SapocheApp.setUiVisible(value)
     }
 
+    /** The person leaves the app: the picture they watch goes into a small window. */
+    fun onUserLeaveHint() = pip.onUserLeaveHint()
+
+    /** The app went into the small window ([on]) or came back out of it. */
+    fun onPictureInPictureChanged(on: Boolean) {
+        EventLog.d("video", "small window ${if (on) "open" else "closed"}")
+        emit(UiJson.pip(on))
+        SapocheApp.group.value?.setVideoVisible(pictureShown || on)
+    }
+
     /**
      * What the person called this phone in its settings ("Pixel 8"), or its model: the name offered in a room
      * until they choose another, so that following an invitation does not begin with a question.
@@ -228,7 +243,7 @@ class SapocheBridge(
                         combine(group.view.map(::structure).distinctUntilChanged(), shown) { view, on -> view.takeIf { on } }
                             .filterNotNull()
                             .collect { view ->
-                                val state = UiJson.state(view, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight)
+                                val state = UiJson.state(view, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight, group.playbackSpeed)
                                 if (state != lastState) {
                                     lastState = state
                                     emit(state)
@@ -506,6 +521,19 @@ class SapocheBridge(
                 share(call.argument<String>("text").orEmpty())
                 return null
             }
+            "pipSupported" -> return pip.supported
+            "pipEnter" -> {
+                pip.enter()
+                return null
+            }
+            "videoWatching" -> {
+                pip.setWatching(
+                    call.argument<Boolean>("on") == true,
+                    call.argument<Int>("width") ?: 0,
+                    call.argument<Int>("height") ?: 0,
+                )
+                return null
+            }
             "log" -> return EventLog.snapshot()
             "note" -> {
                 EventLog.d("ui", call.argument<String>("line").orEmpty())
@@ -538,21 +566,29 @@ class SapocheBridge(
                 group.setTrim((call.argument<Number>("ms") ?: 0).toLong())
                 // The trim is part of the state the UI shows, but the room itself did not change
                 lastState = null
-                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight))
+                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight, group.playbackSpeed))
             }
             "videoMode" -> {
                 group.setVideoMode(call.argument<Boolean>("on") == true)
                 lastState = null
-                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight))
+                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight, group.playbackSpeed))
             }
-            "videoVisible" -> group.setVideoVisible(call.argument<Boolean>("visible") == true)
+            "videoVisible" -> {
+                pictureShown = call.argument<Boolean>("visible") == true
+                group.setVideoVisible(pictureShown || pip.active)
+            }
             "videoSurface" -> return videoTexture(group)
             "videoQuality" -> {
                 val height = (call.argument<Number>("height") ?: SapocheApp.DEFAULT_VIDEO_HEIGHT).toInt()
                 SapocheApp.videoMaxHeight = height
                 prefs.edit().putInt("video_height", height).apply()
                 lastState = null
-                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight))
+                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight, group.playbackSpeed))
+            }
+            "playbackSpeed" -> {
+                group.setPlaybackSpeed((call.argument<Number>("speed") ?: 1).toFloat())
+                lastState = null
+                emit(UiJson.state(group.view.value, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight, group.playbackSpeed))
             }
             else -> {
                 when (call.method) {

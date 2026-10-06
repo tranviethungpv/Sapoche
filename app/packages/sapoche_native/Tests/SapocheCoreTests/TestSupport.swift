@@ -175,8 +175,18 @@ final class FakePlayer: PlayerEngine {
     var wantsSound: Bool { playing }
 
     func playerInfo() -> PlayerInfo {
-        PlayerInfo(playing: playing, buffering: false, positionMs: positionMs(), durationMs: loaded?.durMs ?? 0)
+        PlayerInfo(playing: playing, buffering: false, positionMs: positionMs(), durationMs: loaded?.durMs ?? 0,
+                   speed: currentSpeed)
     }
+
+    /// What the screen said about the picture being watched, as "on width x height".
+    var watching: [String] = []
+    var pipSupported = false
+    var pipStarts = 0
+
+    func setVideoWatching(_ on: Bool, width: Int, height: Int) { watching.append("\(on) \(width)x\(height)") }
+    func pictureInPictureSupported() -> Bool { pipSupported }
+    func startPictureInPicture() { pipStarts += 1 }
 
     func resumeLocally() {
         resumedLocally += 1

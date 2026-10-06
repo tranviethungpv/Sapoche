@@ -30,6 +30,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
 
   /// Stands in for the system's photo picker.
   PhotoPicker? photoPicker,
+
+  /// Whether the phone can show the picture in a small window.
+  bool pipSupported = true,
 }) async {
   // A tall phone-shaped window; the default 800x600 one is not what the app runs on. Test text is
   // drawn with the wide Ahem font, so it is 540 dp wide instead of the usual 360 to avoid false overflows.
@@ -45,6 +48,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
   SharedPreferences.setMockInitialValues({'theme_mode': mode.name, ...prefs});
   final backend = FakeBackend();
   if (profile != null) backend.profileValue = profile;
+  backend.pipSupportedValue = pipSupported;
   final recents = await RecentRooms.load();
   final searches = await RecentSearches.load();
   final room = RoomController(backend, recents: recents);

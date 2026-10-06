@@ -1,0 +1,6 @@
+Video playback that feels complete
+- Watch music videos with controls over the picture, double-tap seeking, and playback speed.
+- Open a video in a floating picture-in-picture window while you use another app.
+- Fill the screen for landscape and portrait videos, with pinch-to-zoom and a swipe to leave.
+- The player follows device rotation and keeps the screen awake while a video is playing.
+- Choose the stream quality and keep video playback synchronized in a room.

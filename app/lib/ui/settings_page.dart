@@ -14,6 +14,7 @@ import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'home_shell.dart';
+import 'player/video_controls.dart';
 import 'scope.dart';
 import 'setup_dialog.dart';
 import 'profile_sheet.dart';
@@ -388,7 +389,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 side: BorderSide(color: context.palette.outline),
               ),
               segments: [
-                for (final h in const [360, 480, 720, 1080])
+                for (final h in videoQualities)
                   ButtonSegment(value: h, label: Text('${h}p')),
               ],
               selected: {model.room.snapshot.videoHeight},
