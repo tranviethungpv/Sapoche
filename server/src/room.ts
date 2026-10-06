@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { PROTOCOL_VERSION } from "./protocol";
+import { PROTOCOL_VERSION, REACTIONS } from "./protocol";
 import type {
   AlarmKind,
   ChatMessage,
@@ -65,7 +65,7 @@ const MAX_CHAT_CHARS = 500;
 /** How many of the last chat messages the room keeps for whoever joins later. */
 const CHAT_KEPT = 100;
 const CHAT_KEY = "chat";
-const REACTIONS = new Set<Reaction>(["heart", "fire", "laugh", "wow", "sad", "clap"]);
+const KNOWN_REACTIONS = new Set<string>(REACTIONS);
 /** Taps on a reaction that one message may carry. */
 const MAX_REACTION_COUNT = 10;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -373,7 +373,7 @@ export class Room extends DurableObject<Env> {
 
   /** Passes a reaction on to everybody else; it is not kept. Unknown reactions are ignored. */
   private onReact(me: Attachment, e: unknown, n: unknown): void {
-    if (!REACTIONS.has(e as Reaction)) return;
+    if (typeof e !== "string" || !KNOWN_REACTIONS.has(e)) return;
     const count = Number.isInteger(n) ? clamp(n as number, 1, MAX_REACTION_COUNT) : 1;
     for (const ws of this.ctx.getWebSockets()) {
       const att = ws.deserializeAttachment() as Attachment | null;

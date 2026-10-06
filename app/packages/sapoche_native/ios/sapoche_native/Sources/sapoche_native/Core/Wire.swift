@@ -297,7 +297,7 @@ enum Wire {
     /// A chat message to the room; [cid] comes back with it, so this device knows it arrived. Protocol 10.
     static func chat(_ text: String, cid: String) -> String { msg("chat", ["text": text, "cid": cid]) }
 
-    /// A reaction ([e] is one of heart, fire, laugh, wow, sad, clap) standing for [n] taps. Protocol 10.
+    /// A reaction ([e] is its name, see `REACTIONS` in server/src/protocol.ts) standing for [n] taps. Protocol 10.
     static func react(_ e: String, n: Int) -> String { msg("react", ["e": e, "n": n]) }
 
     /// With [playNext] the track goes right after the current one instead of at the end.

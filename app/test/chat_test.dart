@@ -554,6 +554,96 @@ void main() {
       },
     );
 
+    testWidgets(
+      'every reaction is a tap further, by kind, and picking one sends it and shows it flying',
+      (tester) async {
+        final backend = await openPlayer(tester);
+        moving(tester);
+        backend.emit(history(const []));
+        await tester.pump();
+        // The quick ones are in the bar; the guitar is not
+        expect(find.byKey(const ValueKey('react-guitar')), findsNothing);
+        for (final reaction in Reaction.quick) {
+          expect(
+            find.byKey(ValueKey('react-${reaction.name}')),
+            findsOneWidget,
+          );
+        }
+
+        await tester.tap(find.byTooltip(S.reactMore));
+        await tester.pumpAndSettle();
+        for (final reaction in Reaction.values) {
+          expect(find.byKey(ValueKey('pick-${reaction.name}')), findsOneWidget);
+        }
+        expect(find.text(S.reactMusic), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('pick-guitar')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.byKey(const ValueKey('pick-guitar')), findsNothing);
+        expect(flying('🎸'), 1);
+        expect(backend.calls, contains('react guitar 1'));
+        await tester.pumpAndSettle();
+      },
+    );
+
+    test('the app offers exactly the reactions the room passes on', () {
+      // The same names as REACTIONS in server/src/protocol.ts
+      expect(Reaction.values.map((r) => r.name), [
+        'heart',
+        'love',
+        'kiss',
+        'hug',
+        'blush',
+        'cool',
+        'wink',
+        'pleading',
+        'laugh',
+        'rofl',
+        'grin',
+        'wow',
+        'mindblown',
+        'think',
+        'eyes',
+        'sad',
+        'cry',
+        'skull',
+        'sleepy',
+        'fire',
+        'clap',
+        'raise',
+        'party',
+        'hundred',
+        'sparkles',
+        'rocket',
+        'muscle',
+        'thumbsup',
+        'thumbsdown',
+        'ok',
+        'pray',
+        'music',
+        'dance',
+        'headphones',
+        'mic',
+        'guitar',
+        'drum',
+        'speaker',
+        'replay',
+      ]);
+      expect(
+        Reaction.values.map((r) => r.emoji).toSet(),
+        hasLength(Reaction.values.length),
+      );
+      expect(Reaction.quick.map((r) => r.name), [
+        'heart',
+        'fire',
+        'laugh',
+        'wow',
+        'sad',
+        'clap',
+      ]);
+    });
+
     testWidgets('reactions pile up only so far', (tester) async {
       final backend = await openPlayer(tester);
       moving(tester);

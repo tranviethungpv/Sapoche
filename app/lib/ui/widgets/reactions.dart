@@ -9,7 +9,8 @@ import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 
-/// The six reactions, one tap each: they fly up here at once and on the screens of the others.
+/// The quick reactions, one tap each, and the way to all the others: they fly up here at once and on the screens of
+/// the others.
 class ReactionBar extends StatelessWidget {
   const ReactionBar({super.key, required this.controller});
 
@@ -24,7 +25,7 @@ class ReactionBar extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          for (final reaction in Reaction.values)
+          for (final reaction in Reaction.quick)
             InkResponse(
               key: ValueKey('react-${reaction.name}'),
               radius: 22,
@@ -41,7 +42,88 @@ class ReactionBar extends StatelessWidget {
                 ),
               ),
             ),
+          IconButton(
+            onPressed: () => showReactionPicker(context, controller),
+            tooltip: S.reactMore,
+            icon: Icon(Icons.add_reaction_outlined, color: p.textSecondary),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// Every reaction, by kind. Picking one sends it and closes the sheet, so it is seen flying up.
+void showReactionPicker(BuildContext context, RoomController controller) {
+  showModalBottomSheet<void>(
+    useRootNavigator: true,
+    context: context,
+    isScrollControlled: true,
+    builder: (context) => _ReactionPicker(controller: controller),
+  );
+}
+
+class _ReactionPicker extends StatelessWidget {
+  const _ReactionPicker({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(S.reactMore, style: theme.headlineSmall),
+              for (final group in ReactionGroup.values) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 14, bottom: 4),
+                  child: Text(switch (group) {
+                    ReactionGroup.feelings => S.reactFeelings,
+                    ReactionGroup.moods => S.reactMoods,
+                    ReactionGroup.hype => S.reactHype,
+                    ReactionGroup.music => S.reactMusic,
+                  }, style: theme.labelLarge?.copyWith(color: p.textSecondary)),
+                ),
+                Wrap(
+                  children: [
+                    for (final reaction in Reaction.values)
+                      if (reaction.group == group)
+                        InkResponse(
+                          key: ValueKey('pick-${reaction.name}'),
+                          radius: 26,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            Navigator.pop(context);
+                            controller.react(reaction);
+                          },
+                          child: SizedBox(
+                            width: 52,
+                            height: 48,
+                            child: Center(
+                              child: Text(
+                                reaction.emoji,
+                                style: const TextStyle(fontSize: 28),
+                              ),
+                            ),
+                          ),
+                        ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

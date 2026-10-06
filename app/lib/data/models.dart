@@ -500,18 +500,58 @@ class ChatMessage {
   );
 }
 
-/// The reactions a member can send to the room, in the order they are offered; [name] is how they go on the wire.
-enum Reaction {
-  heart('❤️'),
-  fire('🔥'),
-  laugh('😂'),
-  wow('😮'),
-  sad('😢'),
-  clap('👏');
+/// How the reactions are grouped where they are all offered.
+enum ReactionGroup { feelings, moods, hype, music }
 
-  const Reaction(this.emoji);
+/// The reactions a member can send to the room; [name] is how they go on the wire. The room accepts exactly these.
+enum Reaction {
+  heart('❤️', ReactionGroup.feelings),
+  love('😍', ReactionGroup.feelings),
+  kiss('😘', ReactionGroup.feelings),
+  hug('🤗', ReactionGroup.feelings),
+  blush('😊', ReactionGroup.feelings),
+  cool('😎', ReactionGroup.feelings),
+  wink('😉', ReactionGroup.feelings),
+  pleading('🥺', ReactionGroup.feelings),
+  laugh('😂', ReactionGroup.moods),
+  rofl('🤣', ReactionGroup.moods),
+  grin('😁', ReactionGroup.moods),
+  wow('😮', ReactionGroup.moods),
+  mindblown('🤯', ReactionGroup.moods),
+  think('🤔', ReactionGroup.moods),
+  eyes('👀', ReactionGroup.moods),
+  sad('😢', ReactionGroup.moods),
+  cry('😭', ReactionGroup.moods),
+  skull('💀', ReactionGroup.moods),
+  sleepy('😴', ReactionGroup.moods),
+  fire('🔥', ReactionGroup.hype),
+  clap('👏', ReactionGroup.hype),
+  raise('🙌', ReactionGroup.hype),
+  party('🥳', ReactionGroup.hype),
+  hundred('💯', ReactionGroup.hype),
+  sparkles('✨', ReactionGroup.hype),
+  rocket('🚀', ReactionGroup.hype),
+  muscle('💪', ReactionGroup.hype),
+  thumbsup('👍', ReactionGroup.hype),
+  thumbsdown('👎', ReactionGroup.hype),
+  ok('👌', ReactionGroup.hype),
+  pray('🙏', ReactionGroup.hype),
+  music('🎶', ReactionGroup.music),
+  dance('💃', ReactionGroup.music),
+  headphones('🎧', ReactionGroup.music),
+  mic('🎤', ReactionGroup.music),
+  guitar('🎸', ReactionGroup.music),
+  drum('🥁', ReactionGroup.music),
+  speaker('🔊', ReactionGroup.music),
+  replay('🔁', ReactionGroup.music);
+
+  const Reaction(this.emoji, this.group);
 
   final String emoji;
+  final ReactionGroup group;
+
+  /// The ones always in reach, one tap each; the rest are a tap further.
+  static const quick = [heart, fire, laugh, wow, sad, clap];
 
   static Reaction? parse(String? name) {
     for (final reaction in values) {

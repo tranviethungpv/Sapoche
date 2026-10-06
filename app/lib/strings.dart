@@ -485,6 +485,11 @@ abstract final class S {
   static String get chatNotSent =>
       _t('Not sent · tap to try again', 'Chưa gửi được · chạm để thử lại');
   static String get react => _t('React', 'Thả cảm xúc');
+  static String get reactMore => _t('More reactions', 'Thêm cảm xúc');
+  static String get reactFeelings => _t('Feelings', 'Tình cảm');
+  static String get reactMoods => _t('Laughs and moods', 'Cười và tâm trạng');
+  static String get reactHype => _t('Hype', 'Cổ vũ');
+  static String get reactMusic => _t('Music', 'Âm nhạc');
   static String unreadMessages(int n) =>
       _t(n == 1 ? '1 unread message' : '$n unread messages', '$n tin chưa đọc');
   static String pausedBy(String name) =>

@@ -816,7 +816,11 @@ async function chatSection() {
   check("a count is capped", (await ann.waitFor((m) => m.t === "react")).n === 10);
   bob.send({ t: "react", e: "fire" });
   check("no count means one", (await ann.waitFor((m) => m.t === "react")).n === 1);
+  bob.send({ t: "react", e: "guitar", n: 2 });
+  const more = await ann.waitFor((m) => m.t === "react");
+  check("the fuller set of reactions is passed on too", more.e === "guitar" && more.n === 2);
   bob.send({ t: "react", e: "poop" });
+  bob.send({ t: "react", e: "toString" });
   bob.send({ t: "react", e: "fire", n: 1.5 });
   const odd = await ann.waitFor((m) => m.t === "react");
   check("an unknown reaction is ignored, and a count that is not whole counts as one", odd.e === "fire" && odd.n === 1);

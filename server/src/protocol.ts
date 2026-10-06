@@ -74,8 +74,16 @@ export interface ChatMessage {
   cid?: string;
 }
 
-/** The reactions a member can send to the room; anything else is ignored. */
-export type Reaction = "heart" | "fire" | "laugh" | "wow" | "sad" | "clap";
+/** The reactions a member can send to the room, by name; anything else is ignored. Apps show the ones they know. */
+export const REACTIONS = [
+  "heart", "love", "kiss", "hug", "blush", "cool", "wink", "pleading",
+  "laugh", "rofl", "grin", "wow", "mindblown", "think", "eyes", "sad",
+  "cry", "skull", "sleepy", "fire", "clap", "raise", "party", "hundred",
+  "sparkles", "rocket", "muscle", "thumbsup", "thumbsdown", "ok", "pray", "music",
+  "dance", "headphones", "mic", "guitar", "drum", "speaker", "replay",
+] as const;
+
+export type Reaction = (typeof REACTIONS)[number];
 
 export interface Member {
   id: string;
