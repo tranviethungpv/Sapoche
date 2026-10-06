@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
+import 'chat_sheet.dart';
 import 'home_page.dart';
 import 'library_page.dart';
 import 'player_sheet.dart';
@@ -190,6 +191,11 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                 ? SnackBarAction(
                     label: S.keepPlaying,
                     onPressed: room.keepPlaying,
+                  )
+                : notice.opensChat
+                ? SnackBarAction(
+                    label: S.chatOpen,
+                    onPressed: () => showChatSheet(context),
                   )
                 : null,
           ),

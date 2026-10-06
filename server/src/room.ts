@@ -1,12 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
-import { PROTOCOL_VERSION } from "./protocol";
+import { PROTOCOL_VERSION, REACTIONS } from "./protocol";
 import type {
   AlarmKind,
+  ChatMessage,
   ClientMessage,
   GuestControl,
   Member,
   PublicState,
   QueueItem,
+  Reaction,
   Repeat,
   RoomState,
   ServerMessage,
@@ -58,6 +60,14 @@ const AVATAR_PREFIX = "avatar:";
 /** Songs accepted from one queue.addMany message. */
 const MAX_ADD_MANY = 100;
 const MAX_MESSAGES_PER_SECOND = 20;
+/** A chat message is cut to this many characters. */
+const MAX_CHAT_CHARS = 500;
+/** How many of the last chat messages the room keeps for whoever joins later. */
+const CHAT_KEPT = 100;
+const CHAT_KEY = "chat";
+const KNOWN_REACTIONS = new Set<string>(REACTIONS);
+/** Taps on a reaction that one message may carry. */
+const MAX_REACTION_COUNT = 10;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 interface Attachment {
@@ -137,10 +147,13 @@ export class Room extends DurableObject<Env> {
   private membersKey = "";
   /** The room was made on purpose (or by an older app) and has not expired; stops a mistyped code from opening an empty room. */
   private created = false;
+  /** The last chat messages, oldest first. Kept apart from the state, so that saving the state does not write them again. */
+  private chat: ChatMessage[] = [];
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
+      this.chat = (await ctx.storage.get<ChatMessage[]>(CHAT_KEY)) ?? [];
       const saved = await ctx.storage.get<RoomState & { alarm?: string }>("state");
       if (!saved) return;
       // Fields added after a room was saved get their defaults
@@ -229,6 +242,8 @@ export class Room extends DurableObject<Env> {
       case "resolveFailed": return this.onResolveFailed(me.id, msg.epoch);
       case "ended": return this.onEnded(msg.epoch);
       case "advanced": return this.onAdvanced(msg.epoch, msg.itemId, msg.startedAt);
+      case "chat": return this.onChat(me, msg.text, msg.cid);
+      case "react": return this.onReact(me, msg.e, msg.n);
       case "report": return; // diagnostics only for now
       default: return this.fail(ws, "unknown_type", `Unknown message type`);
     }
@@ -291,6 +306,7 @@ export class Room extends DurableObject<Env> {
 
     if (adopted) this.broadcastState();
     else this.send(ws, this.stateMessage(id));
+    this.send(ws, { t: "chat.history", msgs: this.chat });
     // A device joining mid-preparation must take part in the barrier
     if (this.s.phase === "preparing") this.send(ws, this.prepareMessage());
     this.broadcastMembers();
@@ -333,6 +349,36 @@ export class Room extends DurableObject<Env> {
     const kept = await this.ctx.storage.list({ prefix: AVATAR_PREFIX });
     const gone = [...kept.keys()].filter((key) => !present.has(key));
     if (gone.length) await this.ctx.storage.delete(gone);
+  }
+
+  /** Keeps a chat message and hands it to everybody, its sender too. A message with no text is ignored. */
+  private async onChat(me: Attachment, text: unknown, cid: unknown): Promise<void> {
+    if (typeof text !== "string") return;
+    // Cut by characters, not UTF-16 units, so an emoji at the end is not split in half
+    const clean = Array.from(text.trim()).slice(0, MAX_CHAT_CHARS).join("").trimEnd();
+    if (!clean) return;
+    const msg: ChatMessage = {
+      id: (this.chat.at(-1)?.id ?? 0) + 1,
+      by: me.id,
+      name: me.name,
+      text: clean,
+      at: Date.now(),
+      ...(typeof cid === "string" && cid ? { cid: cid.slice(0, 40) } : {}),
+    };
+    this.chat.push(msg);
+    if (this.chat.length > CHAT_KEPT) this.chat.splice(0, this.chat.length - CHAT_KEPT);
+    await this.ctx.storage.put(CHAT_KEY, this.chat);
+    this.broadcast({ t: "chat", msg });
+  }
+
+  /** Passes a reaction on to everybody else; it is not kept. Unknown reactions are ignored. */
+  private onReact(me: Attachment, e: unknown, n: unknown): void {
+    if (typeof e !== "string" || !KNOWN_REACTIONS.has(e)) return;
+    const count = Number.isInteger(n) ? clamp(n as number, 1, MAX_REACTION_COUNT) : 1;
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = ws.deserializeAttachment() as Attachment | null;
+      if (att && att.clientId !== me.clientId) this.send(ws, { t: "react", by: me.id, e: e as Reaction, n: count });
+    }
   }
 
   /** Sets, or with null takes away, the picture of the device that sent it. */
@@ -815,6 +861,7 @@ export class Room extends DurableObject<Env> {
     if (due.includes("end") && this.s.phase === "playing") await this.onFinished();
     if (due.includes("gc") && this.members().length === 0) {
       this.s = defaultState();
+      this.chat = [];
       this.created = false;
       await this.ctx.storage.deleteAll();
       return;

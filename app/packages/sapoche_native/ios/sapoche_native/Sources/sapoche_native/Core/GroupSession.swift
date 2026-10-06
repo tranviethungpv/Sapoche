@@ -190,6 +190,7 @@ final class GroupSession {
             case .pong: break // consumed by the connection layer
             case .avatar: break // consumed by the connection layer too
             case .autoplayFill: break // answered by the controller, which can look for songs
+            case .chat, .chatHistory, .react: break // shown by the controller
             case let .error(code, message): self.log("server error \(code): \(message)")
             }
         }

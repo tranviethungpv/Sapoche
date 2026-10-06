@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import app.sapoche.sync.ChatMessage
 import app.sapoche.sync.ClockSync
 import app.sapoche.sync.Connection
 import app.sapoche.sync.GroupSession
@@ -126,6 +127,35 @@ class GroupController(
     private val pictures = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     fun picturesSeen(): List<Avatar> = pictures.map { Avatar(it.key, it.value) }
+
+    /** Chat messages of room [room]: all it keeps when [replace], else new ones to add. */
+    data class Chat(val room: String, val messages: List<ChatMessage>, val replace: Boolean)
+
+    private val _chat = MutableSharedFlow<Chat>(extraBufferCapacity = 64)
+    val chat: SharedFlow<Chat> = _chat.asSharedFlow()
+
+    /** The room's chat as last heard; null until the room sent its history (a server older than protocol 10 never does). */
+    @Volatile
+    private var chatLog: List<ChatMessage>? = null
+
+    /** The whole chat, for a screen that comes back after messages arrived. */
+    fun chatSeen(): Chat? {
+        val code = roomCode ?: return null
+        return chatLog?.let { Chat(code, it, replace = true) }
+    }
+
+    /** Member [by] reacted with [e], [n] taps of it. */
+    data class Reaction(val by: String, val e: String, val n: Int)
+
+    private val _reactions = MutableSharedFlow<Reaction>(extraBufferCapacity = 16)
+    val reactions: SharedFlow<Reaction> = _reactions.asSharedFlow()
+
+    /** Sends a chat message; false when there is no connection to send it on. */
+    fun sendChat(text: String, cid: String): Boolean = client?.send(Protocol.chat(text, cid)) ?: false
+
+    fun react(e: String, n: Int) {
+        client?.send(Protocol.react(e, n))
+    }
 
     /** The picture this device shows the room as its own, as base64 of a small JPEG; null for none. Kept across restarts. */
     fun setAvatar(data: String?) {
@@ -306,6 +336,7 @@ class GroupController(
         newClient.onMessage = {
             if (it is ServerMessage.Error) _errors.tryEmit(it)
             if (it is ServerMessage.AutoplayFill) fillRoom(it)
+            onChat(code.uppercase(), it)
             newSession.onMessage(it)
         }
         newClient.onAvatar = { memberId, _, data ->
@@ -440,10 +471,26 @@ class GroupController(
         suspended = false
         pending.clear()
         pictures.clear()
+        chatLog = null
         scope.cancel()
         scope = newScope()
         local.attach() // the personal queue gets the player back, paused where it was
         publish()
+    }
+
+    private fun onChat(room: String, message: ServerMessage) {
+        when (message) {
+            is ServerMessage.ChatHistory -> {
+                chatLog = message.msgs.takeLast(CHAT_KEPT)
+                _chat.tryEmit(Chat(room, chatLog.orEmpty(), replace = true))
+            }
+            is ServerMessage.Chat -> {
+                chatLog = (chatLog.orEmpty() + message.msg).takeLast(CHAT_KEPT)
+                _chat.tryEmit(Chat(room, listOf(message.msg), replace = false))
+            }
+            is ServerMessage.React -> _reactions.tryEmit(Reaction(message.by, message.e, message.n))
+            else -> Unit
+        }
     }
 
     private fun publish() {
@@ -731,5 +778,8 @@ class GroupController(
 
         /** A room is rejoined after a restart only if this device was in it this recently. */
         const val RECOVERY_WINDOW_MS = 10 * 60_000L
+
+        /** The chat messages kept, as many as the room keeps. */
+        const val CHAT_KEPT = 100
     }
 }

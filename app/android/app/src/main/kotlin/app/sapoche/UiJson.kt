@@ -127,6 +127,29 @@ object UiJson {
     fun avatar(avatar: GroupController.Avatar): String =
         JSONObject().put("type", "avatar").put("id", avatar.id).put("data", avatar.data ?: JSONObject.NULL).toString()
 
+    /** Chat messages of [GroupController.Chat.room]: all of them when `replace`, else new ones. */
+    fun chat(chat: GroupController.Chat): String = JSONObject()
+        .put("type", "chat")
+        .put("room", chat.room)
+        .put("replace", chat.replace)
+        .put(
+            "messages",
+            JSONArray(chat.messages.map {
+                JSONObject()
+                    .put("id", it.id)
+                    .put("by", it.by)
+                    .put("name", it.name)
+                    .put("text", it.text)
+                    .put("at", it.at)
+                    .put("cid", it.cid ?: JSONObject.NULL)
+            }),
+        )
+        .toString()
+
+    /** Another member reacted. */
+    fun reaction(reaction: GroupController.Reaction): String =
+        JSONObject().put("type", "reaction").put("by", reaction.by).put("e", reaction.e).put("n", reaction.n).toString()
+
     /** The app went into a small window over other apps ([on]), or came back out of it. */
     fun pip(on: Boolean): String = JSONObject().put("type", "pip").put("on", on).toString()
 

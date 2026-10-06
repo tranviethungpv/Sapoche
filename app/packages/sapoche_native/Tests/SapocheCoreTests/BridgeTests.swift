@@ -504,6 +504,62 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(engine.pipStarts, 1)
     }
 
+    func testTheRoomsChatAndReactionsReachTheScreenAndItsOwnGoOut() async throws {
+        _ = try await call("configure", ["server": "https://sapoche.example.dev"])
+        _ = try await call("join", ["code": "abc234", "name": "Me"])
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        socket.receive(#"{"t":"state","serverNow":1,"you":"me","protocol":10,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":1},"members":[]}"#)
+        socket.receive(#"{"t":"chat.history","msgs":[{"id":1,"by":"u2","name":"Ann","text":"hello","at":5}]}"#)
+        socket.receive(#"{"t":"chat","msg":{"id":2,"by":"me","name":"Me","text":"hi","at":6,"cid":"c-1"}}"#)
+        socket.receive(#"{"t":"react","by":"u2","e":"fire","n":2}"#)
+        await time.advance(10)
+        let chats = events.filter { $0["type"] as? String == "chat" }
+        XCTAssertEqual(chats.count, 2)
+        XCTAssertEqual(chats[0]["room"] as? String, "ABC234")
+        XCTAssertEqual(chats[0]["replace"] as? Bool, true)
+        XCTAssertEqual((chats[0]["messages"] as? [[String: Any]])?.first?["text"] as? String, "hello")
+        XCTAssertEqual(chats[1]["replace"] as? Bool, false)
+        let own = try XCTUnwrap((chats[1]["messages"] as? [[String: Any]])?.first)
+        XCTAssertEqual(own["cid"] as? String, "c-1")
+        XCTAssertEqual(own["id"] as? Int, 2)
+        let reaction = try XCTUnwrap(events.last { $0["type"] as? String == "reaction" })
+        XCTAssertEqual(reaction["by"] as? String, "u2")
+        XCTAssertEqual(reaction["e"] as? String, "fire")
+        XCTAssertEqual(reaction["n"] as? Int, 2)
+
+        socket.sent.removeAll()
+        let sent = try await call("sendChat", ["text": "yo", "cid": "c-2"]) as? Bool
+        XCTAssertEqual(sent, true)
+        _ = try await call("react", ["e": "heart", "n": 3])
+        let out = socket.sent.compactMap { JSON.parse($0)?.object }
+        XCTAssertEqual(out.map { $0["t"] as? String }, ["chat", "react"])
+        XCTAssertEqual(out[0]["text"] as? String, "yo")
+        XCTAssertEqual(out[1]["n"] as? Int, 3)
+
+        // Nothing is sent while the screen is off, and a screen that comes back gets the whole chat again
+        bridge.setVisible(false)
+        events.removeAll()
+        socket.receive(#"{"t":"chat","msg":{"id":3,"by":"u2","name":"Ann","text":"later","at":7}}"#)
+        socket.receive(#"{"t":"react","by":"u2","e":"wow","n":1}"#)
+        await time.advance(10)
+        XCTAssertTrue(events.filter { ["chat", "reaction"].contains($0["type"] as? String) }.isEmpty)
+        bridge.setVisible(true)
+        await time.advance(10)
+        let again = try XCTUnwrap(events.last { $0["type"] as? String == "chat" })
+        XCTAssertEqual(again["replace"] as? Bool, true)
+        XCTAssertEqual((again["messages"] as? [[String: Any]])?.compactMap { $0["id"] as? Int }, [1, 2, 3])
+        XCTAssertFalse(events.contains { $0["type"] as? String == "reaction" })
+
+        // Out of the room there is no chat to send to
+        _ = try await call("leave")
+        do {
+            _ = try await call("sendChat", ["text": "gone", "cid": "c-3"])
+            XCTFail("sent outside a room")
+        } catch {}
+    }
+
     func testAnInvitationLinkReachesTheScreen() async throws {
         _ = try await call("configure", ["server": "https://sapoche.example.dev"])
         bridge.onLink(URL(string: "sapoche://join/abc234")!)

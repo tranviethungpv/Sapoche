@@ -448,6 +448,119 @@ class RoomSnapshot {
   };
 }
 
+/// Where a chat message of this device is: the room has it ([sent]), it is on its way, or it never got there.
+enum ChatDelivery { sent, sending, failed }
+
+/// A chat message of the room. Until the room confirms one of this device's own, [id] is 0 and [delivery] says how it goes.
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.by,
+    required this.name,
+    required this.text,
+    required this.at,
+    this.cid,
+    this.delivery = ChatDelivery.sent,
+  });
+
+  /// The room's number for it, one more with every message.
+  final int id;
+
+  /// The member who wrote it.
+  final String by;
+
+  /// Their name when they wrote it, so it stays after they leave.
+  final String name;
+  final String text;
+
+  /// When it was sent, in ms since the epoch.
+  final int at;
+
+  /// The id this device gave it when it wrote it; null for messages of the others.
+  final String? cid;
+  final ChatDelivery delivery;
+
+  ChatMessage withDelivery(ChatDelivery delivery) => ChatMessage(
+    id: id,
+    by: by,
+    name: name,
+    text: text,
+    at: at,
+    cid: cid,
+    delivery: delivery,
+  );
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+    id: (json['id'] as num).toInt(),
+    by: json['by'] as String,
+    name: json['name'] as String? ?? '',
+    text: json['text'] as String,
+    at: (json['at'] as num).toInt(),
+    cid: json['cid'] as String?,
+  );
+}
+
+/// How the reactions are grouped where they are all offered.
+enum ReactionGroup { feelings, moods, hype, music }
+
+/// The reactions a member can send to the room; [name] is how they go on the wire. The room accepts exactly these.
+enum Reaction {
+  heart('❤️', ReactionGroup.feelings),
+  love('😍', ReactionGroup.feelings),
+  kiss('😘', ReactionGroup.feelings),
+  hug('🤗', ReactionGroup.feelings),
+  blush('😊', ReactionGroup.feelings),
+  cool('😎', ReactionGroup.feelings),
+  wink('😉', ReactionGroup.feelings),
+  pleading('🥺', ReactionGroup.feelings),
+  laugh('😂', ReactionGroup.moods),
+  rofl('🤣', ReactionGroup.moods),
+  grin('😁', ReactionGroup.moods),
+  wow('😮', ReactionGroup.moods),
+  mindblown('🤯', ReactionGroup.moods),
+  think('🤔', ReactionGroup.moods),
+  eyes('👀', ReactionGroup.moods),
+  sad('😢', ReactionGroup.moods),
+  cry('😭', ReactionGroup.moods),
+  skull('💀', ReactionGroup.moods),
+  sleepy('😴', ReactionGroup.moods),
+  fire('🔥', ReactionGroup.hype),
+  clap('👏', ReactionGroup.hype),
+  raise('🙌', ReactionGroup.hype),
+  party('🥳', ReactionGroup.hype),
+  hundred('💯', ReactionGroup.hype),
+  sparkles('✨', ReactionGroup.hype),
+  rocket('🚀', ReactionGroup.hype),
+  muscle('💪', ReactionGroup.hype),
+  thumbsup('👍', ReactionGroup.hype),
+  thumbsdown('👎', ReactionGroup.hype),
+  ok('👌', ReactionGroup.hype),
+  pray('🙏', ReactionGroup.hype),
+  music('🎶', ReactionGroup.music),
+  dance('💃', ReactionGroup.music),
+  headphones('🎧', ReactionGroup.music),
+  mic('🎤', ReactionGroup.music),
+  guitar('🎸', ReactionGroup.music),
+  drum('🥁', ReactionGroup.music),
+  speaker('🔊', ReactionGroup.music),
+  replay('🔁', ReactionGroup.music);
+
+  const Reaction(this.emoji, this.group);
+
+  final String emoji;
+  final ReactionGroup group;
+
+  /// The ones always in reach, one tap each; the rest are a tap further.
+  static const quick = [heart, fire, laugh, wow, sad, clap];
+
+  static Reaction? parse(String? name) {
+    for (final reaction in values) {
+      if (reaction.name == name) return reaction;
+    }
+    return null;
+  }
+}
+
 /// The local player, sampled about once a second and extrapolated in between.
 class PlayerPosition {
   const PlayerPosition({

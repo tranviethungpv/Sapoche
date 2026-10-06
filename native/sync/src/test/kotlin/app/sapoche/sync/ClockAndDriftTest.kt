@@ -193,6 +193,22 @@ class ProtocolTest {
     }
 
     @Test
+    fun `parses chat messages, the chat history and reactions`() {
+        val chat = Protocol.parse("""{"t":"chat","msg":{"id":3,"by":"a1","name":"Ann","text":"hi","at":1790660600123,"cid":"c-1"}}""")
+        assertEquals(ServerMessage.Chat(ChatMessage(3, "a1", "Ann", "hi", 1790660600123, "c-1")), chat)
+        val history = Protocol.parse("""{"t":"chat.history","msgs":[{"id":1,"by":"b2","name":"Ben","text":"yo","at":5}]}""")
+        assertEquals(ServerMessage.ChatHistory(listOf(ChatMessage(1, "b2", "Ben", "yo", 5, null))), history)
+        assertEquals(ServerMessage.React("a1", "heart", 3), Protocol.parse("""{"t":"react","by":"a1","e":"heart","n":3}"""))
+        assertEquals(ServerMessage.React("a1", "fire", 1), Protocol.parse("""{"t":"react","by":"a1","e":"fire"}"""))
+    }
+
+    @Test
+    fun `builds the chat and reaction messages`() {
+        assertEquals("""{"t":"chat","text":"hi \"you\"","cid":"c-1"}""", Protocol.chat("hi \"you\"", "c-1"))
+        assertEquals("""{"t":"react","e":"clap","n":4}""", Protocol.react("clap", 4))
+    }
+
+    @Test
     fun `builds the owner and room messages`() {
         assertEquals("""{"t":"bye"}""", Protocol.bye())
         assertEquals("""{"t":"kick","id":"dev-b"}""", Protocol.kick("dev-b"))

@@ -9,6 +9,7 @@ import '../strings.dart';
 import '../theme/palette.dart';
 import '../theme/theme.dart';
 import 'artist_page.dart';
+import 'chat_sheet.dart';
 import 'members_sheet.dart';
 import 'player/lyrics_view.dart';
 import 'player/related_view.dart';
@@ -29,6 +30,7 @@ import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
 import 'widgets/video_view.dart';
 import 'widgets/player_backdrop.dart';
+import 'widgets/reactions.dart';
 
 class NowPlayingPage extends StatelessWidget {
   const NowPlayingPage({super.key});
@@ -156,11 +158,14 @@ class _BodyState extends State<_Body> {
           ),
         ),
         // On its side the phone has no height for one column: the cover goes beside the controls instead. The
-        // safe area also keeps both clear of a notch at the side.
-        SafeArea(
-          child: LayoutBuilder(
-            builder: (context, box) =>
-                box.maxWidth > box.maxHeight ? _wide(box) : _tall(context),
+        // safe area also keeps both clear of a notch at the side. Reactions in the room fly up over all of it.
+        ReactionShower(
+          controller: _c,
+          child: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, box) =>
+                  box.maxWidth > box.maxHeight ? _wide(box) : _tall(context),
+            ),
           ),
         ),
       ],
@@ -220,6 +225,7 @@ class _BodyState extends State<_Body> {
               if (_c.snapshot.inRoom) ...[
                 const SizedBox(height: 6),
                 _RoomStrip(controller: _c),
+                _Reactions(controller: _c),
               ],
               const SizedBox(height: 14),
             ],
@@ -377,6 +383,7 @@ class _WideControls extends StatelessWidget {
               if (controller.snapshot.inRoom) ...[
                 const SizedBox(height: 4),
                 _RoomStrip(controller: controller),
+                _Reactions(controller: controller),
               ],
             ],
           ),
@@ -1113,6 +1120,7 @@ class _RoomStrip extends StatelessWidget {
             ),
           ),
         ),
+        ChatButton(controller: controller),
         const SizedBox(width: 8),
         ListenableBuilder(
           listenable: controller.player,
@@ -1121,6 +1129,21 @@ class _RoomStrip extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The reactions to send the room, once its server can pass them on.
+class _Reactions extends StatelessWidget {
+  const _Reactions({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, _) => controller.hasChat
+        ? ReactionBar(controller: controller)
+        : const SizedBox.shrink(),
+  );
 }
 
 /// Within this many ms of the room counts as in sync (the drift control aims well inside it).

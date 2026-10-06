@@ -1,0 +1,4 @@
+Chat and reactions for listening rooms
+- Send messages to everyone in the room while music keeps playing.
+- React with quick emojis or choose from the full reaction picker.
+- See chat notifications and reactions arrive live across the room.

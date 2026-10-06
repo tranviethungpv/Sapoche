@@ -471,6 +471,27 @@ abstract final class S {
       _t('You are listening on your own', 'Bạn đang nghe riêng');
   static String get keepPlaying => _t('Keep playing', 'Tiếp tục phát');
   static String get someone => _t('Someone', 'Ai đó');
+  static String get chat => _t('Chat', 'Trò chuyện');
+  static String chatFrom(String name, String text) =>
+      '${name.isEmpty ? someone : name}: $text';
+  static String get chatOpen => _t('Open', 'Mở');
+  static String get chatHint => _t('Say something…', 'Nhắn gì đó…');
+  static String get chatSend => _t('Send', 'Gửi');
+  static String get chatEmpty => _t('No messages yet', 'Chưa có tin nhắn nào');
+  static String get chatEmptyBody => _t(
+    'Say hi, or react to what is playing.',
+    'Chào mọi người, hoặc thả cảm xúc cho bài đang phát.',
+  );
+  static String get chatNotSent =>
+      _t('Not sent · tap to try again', 'Chưa gửi được · chạm để thử lại');
+  static String get react => _t('React', 'Thả cảm xúc');
+  static String get reactMore => _t('More reactions', 'Thêm cảm xúc');
+  static String get reactFeelings => _t('Feelings', 'Tình cảm');
+  static String get reactMoods => _t('Laughs and moods', 'Cười và tâm trạng');
+  static String get reactHype => _t('Hype', 'Cổ vũ');
+  static String get reactMusic => _t('Music', 'Âm nhạc');
+  static String unreadMessages(int n) =>
+      _t(n == 1 ? '1 unread message' : '$n unread messages', '$n tin chưa đọc');
   static String pausedBy(String name) =>
       _t('$name paused the room', '$name đã tạm dừng phòng');
   static String skippedBy(String name, String title) => _t(

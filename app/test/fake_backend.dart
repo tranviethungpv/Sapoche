@@ -593,6 +593,23 @@ class FakeBackend implements Backend {
   @override
   Future<void> setAvatar(String? base64) => _record('setAvatar $base64');
 
+  /// Whether [sendChat] finds a connection to send on.
+  bool chatConnected = true;
+
+  @override
+  Future<bool> sendChat(String text, String cid) async {
+    await _record('sendChat $text');
+    lastChatCid = cid;
+    return chatConnected;
+  }
+
+  /// The id the last message sent was given, so a test can confirm it as the room would.
+  String? lastChatCid;
+
+  @override
+  Future<void> react(Reaction reaction, int count) =>
+      _record('react ${reaction.name} $count');
+
   @override
   Future<List<String>> log() async => ['line one', 'line two'];
 

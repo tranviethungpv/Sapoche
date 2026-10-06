@@ -13,12 +13,34 @@ import 'song_key.dart';
 
 /// Something another member did that moved this device: worth a snackbar, sometimes with a way out.
 class Notice {
-  const Notice(this.text, {this.canKeepPlaying = false});
+  const Notice(
+    this.text, {
+    this.canKeepPlaying = false,
+    this.opensChat = false,
+  });
 
   final String text;
 
   /// The room paused and this device may prefer to go on alone.
   final bool canKeepPlaying;
+
+  /// A message came in the room's chat, which is not open.
+  final bool opensChat;
+}
+
+/// A reaction to show: [name] reacted with [reaction], [count] taps of it. [mine] when it is this device's own.
+class RoomReaction {
+  const RoomReaction({
+    required this.name,
+    required this.reaction,
+    this.count = 1,
+    this.mine = false,
+  });
+
+  final String name;
+  final Reaction reaction;
+  final int count;
+  final bool mine;
 }
 
 /// The room as the UI sees it: latest state from the native side plus the actions a user can take.
@@ -130,6 +152,8 @@ class RoomController extends ChangeNotifier {
         final code = snapshot.room;
         if (code != null) _recents?.touch(code, name: snapshot.name);
         _snapshot = snapshot;
+        // The chat belongs to its room: out of it, or in another one, it is gone
+        if (_chatRoom != null && code != _chatRoom) _forgetChat();
         // A picture is kept while its owner is in the room
         _avatars.removeWhere(
           (id, _) => !snapshot.members.any((m) => m.id == id),
@@ -160,6 +184,18 @@ class RoomController extends ChangeNotifier {
       case SleepEvent(:final sleep):
         _sleep = sleep;
         notifyListeners();
+      case ChatEvent(:final room, :final messages, :final replace):
+        _onChat(room, messages, replace);
+      case ReactionEvent(:final by, reaction: final reaction?, :final count):
+        _reactions.add(
+          RoomReaction(
+            name: _snapshot.nameOf(by),
+            reaction: reaction,
+            count: count,
+          ),
+        );
+      case ReactionEvent():
+        break; // one a newer app sent, which this one cannot show
       case AvatarEvent(:final id, :final bytes):
         if (bytes == null) {
           _avatars.remove(id);
@@ -181,6 +217,194 @@ class RoomController extends ChangeNotifier {
       case ErrorEvent(:final error):
         final text = _describe(error);
         if (text != null) _messages.add(text);
+    }
+  }
+
+  // ------------------------------------------------------------------ chat and reactions
+
+  /// The room's chat, oldest first, with this device's own messages that the room has not confirmed yet at the end.
+  final ValueNotifier<List<ChatMessage>> chat = ValueNotifier(const []);
+
+  /// Messages of the others that came while the chat was not open.
+  final ValueNotifier<int> unreadChat = ValueNotifier(0);
+
+  /// The room whose chat [chat] holds: null outside a room, or in one whose server is too old to keep a chat.
+  String? _chatRoom;
+
+  /// The last message the person has seen, by the room's number for it.
+  int _readUpTo = 0;
+  bool _chatOpen = false;
+  int _chatSequence = 0;
+
+  /// For each message on its way, the moment it is given up on.
+  final _chatDeadlines = <String, Timer>{};
+
+  final _reactions = StreamController<RoomReaction>.broadcast();
+
+  /// Reactions to show as they come, this device's own included.
+  Stream<RoomReaction> get reactions => _reactions.stream;
+
+  /// Taps on each reaction not sent yet; quick taps go together in one message.
+  final _reactionTaps = <Reaction, int>{};
+  Timer? _reactionFlush;
+
+  /// The room can carry a chat and reactions: its server keeps them (protocol 10 or newer).
+  bool get hasChat => _chatRoom != null && _chatRoom == _snapshot.room;
+
+  /// A message of this device that the room has not confirmed in this long is shown as not sent.
+  static const chatDeliveryTimeout = Duration(seconds: 10);
+
+  /// Quick taps on reactions within this long go to the room as one message.
+  static const reactionGathering = Duration(milliseconds: 400);
+
+  /// The most taps one reaction message carries, as the room accepts.
+  static const maxReactionCount = 10;
+
+  /// The longest message the room keeps, in characters.
+  static const maxChatChars = 500;
+
+  void _onChat(String room, List<ChatMessage> messages, bool replace) {
+    final had = hasChat;
+    var list = chat.value;
+    if (replace) {
+      if (room != _chatRoom) {
+        // Arriving in a room: what was said before is there to read, not news
+        _forgetChat();
+        _chatRoom = room;
+        _readUpTo = messages.isEmpty ? 0 : messages.last.id;
+        list = const [];
+      }
+      final arrived = {for (final m in messages) ?m.cid};
+      for (final cid in arrived) {
+        _chatDeadlines.remove(cid)?.cancel();
+      }
+      list = [
+        ...messages,
+        for (final m in list)
+          if (m.delivery != ChatDelivery.sent && !arrived.contains(m.cid)) m,
+      ];
+    } else {
+      if (room != _chatRoom) return;
+      list = [...list];
+      for (final message in messages) {
+        final known = list.any(
+          (m) => m.delivery == ChatDelivery.sent && m.id == message.id,
+        );
+        if (known) continue;
+        final cid = message.cid;
+        if (cid != null) {
+          _chatDeadlines.remove(cid)?.cancel();
+          list.removeWhere(
+            (m) => m.delivery != ChatDelivery.sent && m.cid == cid,
+          );
+        }
+        // Before this device's own that are still on their way
+        final at = list.indexWhere((m) => m.delivery != ChatDelivery.sent);
+        list.insert(at < 0 ? list.length : at, message);
+        if (!_chatOpen && message.by != _snapshot.you) {
+          _notices.add(
+            Notice(S.chatFrom(message.name, message.text), opensChat: true),
+          );
+        }
+      }
+    }
+    chat.value = list;
+    _countUnread();
+    if (hasChat != had) notifyListeners();
+  }
+
+  void _countUnread() {
+    final sent = chat.value.where((m) => m.delivery == ChatDelivery.sent);
+    if (_chatOpen && sent.isNotEmpty) _readUpTo = sent.last.id;
+    unreadChat.value = sent
+        .where((m) => m.id > _readUpTo && m.by != _snapshot.you)
+        .length;
+  }
+
+  void _forgetChat() {
+    for (final timer in _chatDeadlines.values) {
+      timer.cancel();
+    }
+    _chatDeadlines.clear();
+    _chatRoom = null;
+    _readUpTo = 0;
+    chat.value = const [];
+    unreadChat.value = 0;
+  }
+
+  /// The chat is on screen ([open]) or no longer: while it is, what comes in counts as read.
+  void setChatOpen(bool open) {
+    _chatOpen = open;
+    // Closing changes nothing that shows: everything was read while it was open
+    if (open) _countUnread();
+  }
+
+  /// Writes [text] to the room's chat. It shows at once, and as not sent if the room does not confirm it.
+  Future<void> sendChat(String text) async {
+    final clean = text.trim();
+    if (clean.isEmpty || !hasChat) return;
+    final cid = '${DateTime.now().microsecondsSinceEpoch}-${_chatSequence++}';
+    chat.value = [
+      ...chat.value,
+      ChatMessage(
+        id: 0,
+        by: _snapshot.you ?? '',
+        name: _profile.name ?? '',
+        text: clean,
+        at: DateTime.now().millisecondsSinceEpoch,
+        cid: cid,
+        delivery: ChatDelivery.sending,
+      ),
+    ];
+    var sent = false;
+    try {
+      sent = await _backend.sendChat(clean, cid);
+    } on Object {
+      // Shown as not sent, with the way to try again
+    }
+    if (!sent) return _chatFailed(cid);
+    // Already confirmed while the call came back
+    final waiting = chat.value.any(
+      (m) => m.cid == cid && m.delivery == ChatDelivery.sending,
+    );
+    if (!waiting) return;
+    _chatDeadlines[cid] = Timer(chatDeliveryTimeout, () => _chatFailed(cid));
+  }
+
+  /// Tries [message], which did not reach the room, once more.
+  Future<void> resendChat(ChatMessage message) {
+    chat.value = [
+      for (final m in chat.value)
+        if (m.cid != message.cid) m,
+    ];
+    return sendChat(message.text);
+  }
+
+  void _chatFailed(String cid) {
+    _chatDeadlines.remove(cid)?.cancel();
+    chat.value = [
+      for (final m in chat.value)
+        m.cid == cid && m.delivery == ChatDelivery.sending
+            ? m.withDelivery(ChatDelivery.failed)
+            : m,
+    ];
+  }
+
+  /// Sends the room [reaction]. It shows here at once; quick taps go to the room together.
+  void react(Reaction reaction) {
+    if (!hasChat) return;
+    _reactions.add(RoomReaction(name: S.you, reaction: reaction, mine: true));
+    _reactionTaps[reaction] = (_reactionTaps[reaction] ?? 0) + 1;
+    _reactionFlush ??= Timer(reactionGathering, _sendReactions);
+  }
+
+  void _sendReactions() {
+    _reactionFlush = null;
+    final taps = Map.of(_reactionTaps);
+    _reactionTaps.clear();
+    for (final MapEntry(key: reaction, value: count) in taps.entries) {
+      final n = count < maxReactionCount ? count : maxReactionCount;
+      _run(() => _backend.react(reaction, n));
     }
   }
 
@@ -530,6 +754,13 @@ class RoomController extends ChangeNotifier {
     _seekTimer?.cancel();
     _messages.close();
     _notices.close();
+    _reactions.close();
+    _reactionFlush?.cancel();
+    for (final timer in _chatDeadlines.values) {
+      timer.cancel();
+    }
+    chat.dispose();
+    unreadChat.dispose();
     player.dispose();
     playState.dispose();
     invite.dispose();

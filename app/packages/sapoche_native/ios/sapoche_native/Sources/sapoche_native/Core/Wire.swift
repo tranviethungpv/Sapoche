@@ -161,6 +161,32 @@ struct Member: Equatable {
     }
 }
 
+/// A chat message as the room keeps it. [name] is the sender's name when it was sent; [cid] is the id the sending device gave it.
+struct ChatMessage: Equatable {
+    var id: Int64
+    var by: String
+    var name: String
+    var text: String
+    /// Server time it was sent at.
+    var at: Int64
+    var cid: String?
+
+    init(id: Int64, by: String, name: String, text: String, at: Int64, cid: String? = nil) {
+        self.id = id
+        self.by = by
+        self.name = name
+        self.text = text
+        self.at = at
+        self.cid = cid
+    }
+
+    init?(_ json: JSON) {
+        guard let id = json["id"].int64, let by = json["by"].string, let name = json["name"].string,
+              let text = json["text"].string, let at = json["at"].int64 else { return nil }
+        self.init(id: id, by: by, name: name, text: text, at: at, cid: json["cid"].string)
+    }
+}
+
 enum ServerMessage: Equatable {
     case state(serverNow: Int64, you: String, state: RoomState, members: [Member], protocolVersion: Int)
     case members([Member])
@@ -176,6 +202,12 @@ enum ServerMessage: Equatable {
     case autoplayFill(epoch: Int64, videoId: String, title: String)
     /// The picture of member [id] as base64, with its fingerprint [av]; both are nil when the member has none.
     case avatar(id: String, av: String?, data: String?)
+    /// A new chat message, this device's own included. Protocol 10.
+    case chat(ChatMessage)
+    /// The room's last chat messages, oldest first, sent right after the state on joining. Protocol 10.
+    case chatHistory([ChatMessage])
+    /// Member [by] reacted with [e], [n] taps of it. Protocol 10.
+    case react(by: String, e: String, n: Int)
     case error(code: String, message: String)
 }
 
@@ -217,6 +249,14 @@ enum Wire {
         case "avatar":
             guard let id = json["id"].string else { return nil }
             return .avatar(id: id, av: json["av"].string, data: json["data"].string)
+        case "chat":
+            guard let message = ChatMessage(json["msg"]) else { return nil }
+            return .chat(message)
+        case "chat.history":
+            return .chatHistory(json["msgs"].array.compactMap { ChatMessage($0) })
+        case "react":
+            guard let by = json["by"].string, let e = json["e"].string else { return nil }
+            return .react(by: by, e: e, n: json["n"].int ?? 1)
         case "error":
             guard let code = json["code"].string, let message = json["message"].string else { return nil }
             return .error(code: code, message: message)
@@ -253,6 +293,12 @@ enum Wire {
 
     /// Asks for the picture of the member [id].
     static func avatarGet(_ id: String) -> String { msg("avatar.get", ["id": id]) }
+
+    /// A chat message to the room; [cid] comes back with it, so this device knows it arrived. Protocol 10.
+    static func chat(_ text: String, cid: String) -> String { msg("chat", ["text": text, "cid": cid]) }
+
+    /// A reaction ([e] is its name, see `REACTIONS` in server/src/protocol.ts) standing for [n] taps. Protocol 10.
+    static func react(_ e: String, n: Int) -> String { msg("react", ["e": e, "n": n]) }
 
     /// With [playNext] the track goes right after the current one instead of at the end.
     static func queueAdd(_ track: TrackRef, playNext: Bool = false) -> String {

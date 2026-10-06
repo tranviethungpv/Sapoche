@@ -1,0 +1,4 @@
+Trò chuyện và cảm xúc trong phòng nghe nhạc
+- Gửi tin nhắn cho mọi người trong phòng mà nhạc vẫn tiếp tục phát.
+- Gửi nhanh các emoji hoặc chọn từ đầy đủ các cảm xúc.
+- Nhận thông báo tin nhắn và cảm xúc trực tiếp trong phòng.
