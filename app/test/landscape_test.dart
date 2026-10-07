@@ -118,6 +118,85 @@ void main() {
       });
     }
 
+    // Upright, the cover is as wide as the seek bar and the volume; on its side, as tall as the title and the icons
+    for (final room in [false, true]) {
+      for (final (width, height) in [
+        (360.0, 640.0),
+        (375.0, 667.0),
+        (390.0, 844.0),
+      ]) {
+        testWidgets(
+          '${width}x$height${room ? ' in a room' : ''}: the cover lines up with the bar and the volume',
+          (tester) async {
+            await openPlayer(
+              tester,
+              snapshot: room ? sampleRoom() : sampleRoom(local: true),
+            );
+            await resize(tester, width, height);
+            expect(tester.takeException(), isNull);
+            final cover = tester.getRect(find.byType(CoverSlot));
+            final bar = tester.getRect(find.byType(PlaybackBar));
+            final volume = tester.getRect(find.byType(VolumeBar));
+            expect(
+              cover.left,
+              closeTo(bar.left, 0.6),
+              reason: 'seek bar, left',
+            );
+            expect(
+              cover.right,
+              closeTo(bar.right, 0.6),
+              reason: 'seek bar, right',
+            );
+            expect(
+              cover.left,
+              closeTo(volume.left, 0.6),
+              reason: 'volume, left',
+            );
+            expect(
+              cover.right,
+              closeTo(volume.right, 0.6),
+              reason: 'volume, right',
+            );
+          },
+        );
+      }
+    }
+
+    for (final (width, height) in [
+      (844.0, 390.0),
+      (667.0, 375.0),
+      (932.0, 430.0),
+    ]) {
+      testWidgets(
+        '${width}x$height: the cover is as tall as the title and the icons',
+        (tester) async {
+          await openPlayer(tester, snapshot: sampleRoom());
+          await resize(tester, width, height);
+          expect(tester.takeException(), isNull);
+          final cover = tester.getRect(find.byType(CoverSlot));
+          final like = tester.getRect(
+            find
+                .descendant(
+                  of: find.byType(NowPlayingPage),
+                  matching: find.byType(LikeButton),
+                )
+                .first,
+          );
+          final icons = tester.getRect(find.byTooltip(S.lyrics));
+          expect(
+            like.top,
+            closeTo(cover.top, 2),
+            reason: 'title and cover, top',
+          );
+          expect(
+            icons.bottom,
+            closeTo(cover.bottom, 3),
+            reason: 'icons and cover, bottom',
+          );
+        },
+      );
+    }
+
     testWidgets('the volume sits under the buttons, in both positions', (
       tester,
     ) async {

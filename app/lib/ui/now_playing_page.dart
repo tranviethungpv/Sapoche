@@ -86,17 +86,39 @@ class _PlayerPage extends StatelessWidget {
 
 /// Side of the full player's cover. It depends only on the screen, so the cover can be decoded
 /// at this size before the player is ever opened.
-double coverSize(MediaQueryData media) {
-  // Everything except the cover needs about this much height (the seek bar, the buttons, the volume, the icons); the
-  // cover takes what is left. Its side margins are the ones of Apple Music, 32 on each side
-  final otherContent = 460.0 * _scaleOf(media);
+double coverSize(MediaQueryData media, {bool inRoom = false}) {
+  // Everything except the cover needs about this much height (the seek bar, the buttons, the volume, the icons, and in a
+  // room the row of who listens); the cover takes what is left. Its side margins are at least the ones of Apple Music,
+  // 32 on each side
+  final otherContent = (432.0 + (inRoom ? 44 : 0)) * _scaleOf(media);
   return [
     min(media.size.width, _columnMax) - 2 * _margin,
     media.size.height - media.padding.vertical - otherContent,
   ].reduce((a, b) => a < b ? a : b).clamp(140.0, _columnMax - 2 * _margin);
 }
 
-/// The side margin of the full player: the cover, the title, the seek bar and the buttons all start and end on it.
+/// The width that a row of four icons or of the buttons is made for. Where the place is narrower (a short screen has a
+/// small cover and the controls are as wide as it) the row is made smaller as a whole.
+const _rowWidth = 208.0;
+
+/// [child] at its own size, or all of it smaller where the place is narrower than [_rowWidth].
+class _Fit extends StatelessWidget {
+  const _Fit({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => box.maxWidth >= _rowWidth
+        ? child
+        : FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SizedBox(width: _rowWidth, child: child),
+          ),
+  );
+}
+
+/// The least side margin of the full player: the cover, the title, the seek bar and the buttons all start and end on it.
 const _margin = 32.0;
 
 /// How wide the upright player's column gets. On a tablet it does not stretch across the screen: a cover that is a
@@ -201,6 +223,13 @@ class _BodyState extends State<_Body> {
   }
 
   Widget _tallColumn(Palette p, QueueEntry current) {
+    // The cover is as wide as the seek bar, the title and the volume: where the screen is too short for a cover as wide
+    // as the column, all of them are narrower together, so that their edges line up as in Apple Music
+    final media = MediaQuery.of(context);
+    final inRoom = _c.snapshot.inRoom;
+    final column = min(media.size.width, _columnMax);
+    final art = coverSize(media, inRoom: inRoom);
+    final margin = (column - art) / 2;
     return Column(
       children: [
         const SizedBox(height: 6),
@@ -217,11 +246,14 @@ class _BodyState extends State<_Body> {
                 key: const ValueKey('cover'),
                 controller: _c,
                 current: current,
+                artSize: art,
+                margin: margin,
               ),
               _ => _PanelStage(
                 key: ValueKey(_panel),
                 controller: _c,
                 current: current,
+                margin: margin,
                 panel: _panel,
                 onCover: () => setState(() => _panel = _Panel.cover),
               ),
@@ -229,7 +261,7 @@ class _BodyState extends State<_Body> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: _margin),
+          padding: EdgeInsets.symmetric(horizontal: margin),
           child: Column(
             children: [
               const SizedBox(height: 14),
@@ -242,7 +274,7 @@ class _BodyState extends State<_Body> {
               _Toolbar(controller: _c, panel: _panel, onPanel: _show),
               if (_c.snapshot.inRoom) ...[
                 const SizedBox(height: 6),
-                _RoomStrip(controller: _c),
+                _Fit(child: _RoomStrip(controller: _c)),
               ],
               const SizedBox(height: _bottomGap),
             ],
@@ -252,12 +284,15 @@ class _BodyState extends State<_Body> {
     );
   }
 
-  /// The cover on the left, as tall as the screen allows; the controls, or a panel in their place, on the right. The
-  /// title and the row of icons stay where they are when a panel opens: only what is between them changes.
+  /// The cover on the left and the song on the right, with the controls or a panel in the middle of it. The cover is
+  /// exactly as tall as what is on the right from the top of the title to the bottom of the icons, as in Apple Music,
+  /// and that does not change when lyrics or the queue open. The way out, Audio or Video and the room are in a bar above.
   Widget _wide(BoxConstraints box) {
-    const margin = 16.0;
+    const bottom = 16.0;
+    const bar = 52.0;
+    final inRoom = _c.snapshot.inRoom;
     // As tall as the screen allows, but not the size of a wall on a big one
-    final side = (box.maxHeight - 2 * margin).clamp(
+    final side = (box.maxHeight - bar - bottom).clamp(
       100.0,
       (box.maxWidth * 0.46).clamp(100.0, 480.0),
     );
@@ -268,27 +303,62 @@ class _BodyState extends State<_Body> {
     // The cover and the controls stay together in the middle of a wide window instead of drifting to its two sides
     final gutter = ((box.maxWidth - 1040) / 2).clamp(0.0, double.infinity);
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 24 + gutter, vertical: margin),
-      child: Row(
+      padding: EdgeInsets.fromLTRB(24 + gutter, 0, 24 + gutter, bottom),
+      child: Column(
         children: [
           SizedBox(
-            width: left,
-            height: box.maxHeight - 2 * margin,
-            child: Center(
-              child: _CoverArt(
-                controller: _c,
-                current: widget.current,
-                size: side,
-              ),
+            height: bar,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: _CloseButton(),
+                ),
+                _ModePill(controller: _c),
+                if (inRoom)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    // Not under the pill in the middle
+                    child: SizedBox(
+                      width: (box.maxWidth / 2 - 24 - gutter - 70).clamp(
+                        0.0,
+                        380.0,
+                      ),
+                      child: _RoomStrip(controller: _c),
+                    ),
+                  ),
+              ],
             ),
           ),
-          const SizedBox(width: 24),
           Expanded(
-            child: _WideSide(
-              controller: _c,
-              current: widget.current,
-              panel: _panel,
-              onPanel: _show,
+            child: Center(
+              child: SizedBox(
+                height: side,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: left,
+                      child: Center(
+                        child: _CoverArt(
+                          controller: _c,
+                          current: widget.current,
+                          size: side,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      child: _WideSide(
+                        controller: _c,
+                        current: widget.current,
+                        panel: _panel,
+                        onPanel: _show,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -310,26 +380,28 @@ class _TransportRow extends StatelessWidget {
     final scale = _scaleOf(MediaQuery.of(context));
     return ListenableBuilder(
       listenable: controller.playState,
-      builder: (context, _) => Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          SkipButton(
-            forward: false,
-            onPressed: controller.prev,
-            size: 52 * scale,
-          ),
-          PlayPauseButton(
-            playing: controller.isPlaying,
-            starting: controller.isStarting,
-            onPressed: controller.togglePlay,
-            size: playSize * scale,
-          ),
-          SkipButton(
-            forward: true,
-            onPressed: controller.next,
-            size: 52 * scale,
-          ),
-        ],
+      builder: (context, _) => _Fit(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            SkipButton(
+              forward: false,
+              onPressed: controller.prev,
+              size: 52 * scale,
+            ),
+            PlayPauseButton(
+              playing: controller.isPlaying,
+              starting: controller.isStarting,
+              onPressed: controller.togglePlay,
+              size: playSize * scale,
+            ),
+            SkipButton(
+              forward: true,
+              onPressed: controller.next,
+              size: 52 * scale,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -348,9 +420,10 @@ class _CloseButton extends StatelessWidget {
   );
 }
 
-/// The right side of the player on its side. From top to bottom: the way out and Audio or Video, the song, then what
-/// the player shows in the middle (the controls, lyrics or the queue), the row of icons, the room. Everything but the
-/// middle keeps its place when a panel opens, as in Apple Music.
+/// The right side of the player on its side. From top to bottom: the song, then what the player shows in the middle (the
+/// controls, lyrics or the queue), then the row of icons. It is as tall as the cover beside it, so the top of the title
+/// and the bottom of the icons are on the lines of the top and the bottom of the cover, and they keep their place when
+/// a panel opens: only the middle changes.
 class _WideSide extends StatelessWidget {
   const _WideSide({
     required this.controller,
@@ -365,7 +438,7 @@ class _WideSide extends StatelessWidget {
   final ValueChanged<_Panel> onPanel;
 
   /// About the least height the column needs; a place shorter than this scales it down rather than overflow.
-  static const _leastHeight = 380.0;
+  static const _leastHeight = 300.0;
 
   /// The title, the controls and the icons keep 20 from the side, where the lines of the queue start.
   static Widget inset(Widget child) => Padding(
@@ -377,70 +450,61 @@ class _WideSide extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = _scaleOf(MediaQuery.of(context));
     return LayoutBuilder(
-      builder: (context, box) => FittedBox(
-        fit: BoxFit.scaleDown,
-        child: SizedBox(
-          // Never narrower than the row of icons needs, so that a narrow place scales it down instead
-          width: box.maxWidth.clamp(340.0, 480.0 * scale),
-          height: max(box.maxHeight, _leastHeight),
-          child: Column(
-            children: [
-              inset(
-                Row(
-                  children: [
-                    const _CloseButton(),
-                    Expanded(
-                      child: Center(child: _ModePill(controller: controller)),
+      builder: (context, box) {
+        final width = box.maxWidth.clamp(340.0, 480.0 * scale);
+        final ratio = min(1.0, box.maxWidth / width);
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            // Never narrower than the row of icons needs, so that a narrow place scales it down instead
+            width: width,
+            // Scaled down, it is as tall as the place only if it was taller by as much
+            height: max(box.maxHeight / ratio, _leastHeight),
+            child: Column(
+              children: [
+                inset(_TitleRow(controller: controller, current: current)),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 240),
+                    layoutBuilder: (current, previous) => Stack(
+                      fit: StackFit.expand,
+                      children: [...previous, ?current],
                     ),
-                    const SizedBox(width: 48),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              inset(_TitleRow(controller: controller, current: current)),
-              const SizedBox(height: 4),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 240),
-                  layoutBuilder: (current, previous) => Stack(
-                    fit: StackFit.expand,
-                    children: [...previous, ?current],
-                  ),
-                  // The queue has the 20 of its own at each side; lyrics get as much
-                  child: switch (panel) {
-                    _Panel.cover => inset(
-                      _WideControls(
-                        key: const ValueKey('controls'),
+                    // The queue has the 20 of its own at each side; lyrics get as much
+                    child: switch (panel) {
+                      _Panel.cover => inset(
+                        _WideControls(
+                          key: const ValueKey('controls'),
+                          controller: controller,
+                        ),
+                      ),
+                      _Panel.lyrics => Padding(
+                        key: ValueKey(panel),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: LyricsView(
+                          controller: controller,
+                          track: current,
+                        ),
+                      ),
+                      _Panel.upNext => UpNextView(
+                        key: ValueKey(panel),
                         controller: controller,
                       ),
-                    ),
-                    _Panel.lyrics => Padding(
-                      key: ValueKey(panel),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: LyricsView(controller: controller, track: current),
-                    ),
-                    _Panel.upNext => UpNextView(
-                      key: ValueKey(panel),
-                      controller: controller,
-                    ),
-                  },
+                    },
+                  ),
                 ),
-              ),
-              inset(
-                _Toolbar(
-                  controller: controller,
-                  panel: panel,
-                  onPanel: onPanel,
+                inset(
+                  _Toolbar(
+                    controller: controller,
+                    panel: panel,
+                    onPanel: onPanel,
+                  ),
                 ),
-              ),
-              if (controller.snapshot.inRoom) ...[
-                const SizedBox(height: 4),
-                inset(_RoomStrip(controller: controller)),
               ],
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -468,19 +532,24 @@ class _CoverStage extends StatelessWidget {
     super.key,
     required this.controller,
     required this.current,
+    required this.artSize,
+    required this.margin,
   });
 
   final RoomController controller;
   final QueueEntry current;
 
+  /// The side of the cover, and the margin at each side of it that the title and the controls keep too.
+  final double artSize;
+  final double margin;
+
   @override
   Widget build(BuildContext context) {
-    final artSize = coverSize(MediaQuery.of(context));
     if (controller.snapshot.video) {
       // The picture takes all the height there is and keeps its own shape in it: a wide one is as wide as the
       // column, an upright one as tall as the place, never over the title and the controls
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: _margin),
+        padding: EdgeInsets.symmetric(horizontal: margin),
         child: Column(
           children: [
             Expanded(
@@ -512,7 +581,7 @@ class _CoverStage extends StatelessWidget {
           child: FittedBox(
             fit: BoxFit.scaleDown,
             child: SizedBox(
-              width: box.maxWidth - 2 * _margin,
+              width: box.maxWidth - 2 * margin,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -609,12 +678,14 @@ class _PanelStage extends StatelessWidget {
     super.key,
     required this.controller,
     required this.current,
+    required this.margin,
     required this.panel,
     required this.onCover,
   });
 
   final RoomController controller;
   final QueueEntry current;
+  final double margin;
   final _Panel panel;
   final VoidCallback onCover;
 
@@ -625,7 +696,7 @@ class _PanelStage extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(_margin, 14, 20, 8),
+          padding: EdgeInsets.fromLTRB(margin, 14, margin - 12, 8),
           child: Row(
             children: [
               GestureDetector(
@@ -658,12 +729,12 @@ class _PanelStage extends StatelessWidget {
         Expanded(
           child: switch (panel) {
             _Panel.lyrics => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: _margin),
+              padding: EdgeInsets.symmetric(horizontal: margin),
               child: LyricsView(controller: controller, track: current),
             ),
             // The queue has 20 of its own at each side, and the song above it 32: the difference is made up here
             _ => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: _margin - 20),
+              padding: EdgeInsets.symmetric(horizontal: margin - 20),
               child: UpNextView(controller: controller),
             ),
           },
@@ -821,14 +892,16 @@ class _Toolbar extends StatelessWidget {
       );
     }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
-        button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
-        Flexible(child: _SleepButton(controller: controller)),
-        _OutputButton(controller: controller),
-      ],
+    return _Fit(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
+          button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
+          Flexible(child: _SleepButton(controller: controller)),
+          _OutputButton(controller: controller),
+        ],
+      ),
     );
   }
 }
