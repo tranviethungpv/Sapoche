@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -115,8 +117,9 @@ class UpNextView extends StatelessWidget {
   }
 }
 
-/// Mixes up what comes next. It is an action, not a mode, so it says what it did: the icon turns once and a
-/// note follows. Dimmed when there is nothing to mix.
+/// Shuffle, on or off. On, what is still to come is mixed and stays mixed as songs are added; off, the songs go back in
+/// their order. A room whose server is too old for that has only a one-time mix: the icon turns once and a note says
+/// so, as shuffle did before it was a mode.
 class _ShuffleButton extends StatefulWidget {
   const _ShuffleButton({required this.controller});
 
@@ -129,16 +132,18 @@ class _ShuffleButton extends StatefulWidget {
 class _ShuffleButtonState extends State<_ShuffleButton> {
   int _turns = 0;
 
-  void _shuffle() {
+  void _press(bool? shuffle) {
     HapticFeedback.selectionClick();
+    final c = widget.controller;
+    if (shuffle != null) return unawaited(c.setShuffle(!shuffle));
     setState(() => _turns++);
-    widget.controller.shuffle();
+    c.shuffle();
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           content: Text(S.upNextShuffled),
-          duration: Duration(milliseconds: 1400),
+          duration: const Duration(milliseconds: 1400),
         ),
       );
   }
@@ -146,18 +151,29 @@ class _ShuffleButtonState extends State<_ShuffleButton> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final enough = widget.controller.snapshot.upNext.length > 1;
+    final snapshot = widget.controller.snapshot;
+    final shuffle = snapshot.shuffle;
+    final on = shuffle ?? false;
+    // A room that only lets its owner steer: nothing to press for a guest. Without the mode, nothing to mix below two
+    final enabled =
+        snapshot.canControl && (shuffle != null || snapshot.upNext.length > 1);
     return _Pill(
-      onPressed: enough ? _shuffle : null,
-      tooltip: S.shuffle,
-      on: false,
+      onPressed: enabled ? () => _press(shuffle) : null,
+      tooltip: shuffle == null
+          ? S.shuffle
+          : on
+          ? S.shuffleOn
+          : S.shuffleOff,
+      on: on,
       icon: AnimatedRotation(
         turns: _turns.toDouble(),
         duration: const Duration(milliseconds: 420),
         curve: Curves.easeOutCubic,
         child: Icon(
           Icons.shuffle_rounded,
-          color: enough
+          color: on
+              ? p.onPrimary
+              : enabled
               ? p.textSecondary
               : p.textTertiary.withValues(alpha: 0.5),
         ),
@@ -187,7 +203,7 @@ class _RepeatButton extends StatelessWidget {
       on: on,
       icon: Icon(
         mode == Repeat.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-        color: on ? p.onPrimaryContainer : p.textSecondary,
+        color: on ? p.onPrimary : p.textSecondary,
       ),
     );
   }
@@ -218,7 +234,7 @@ class _AutoplayButton extends StatelessWidget {
       icon: Icon(
         Icons.all_inclusive_rounded,
         color: on
-            ? p.onPrimaryContainer
+            ? p.onPrimary
             : canChange
             ? p.textSecondary
             : p.textTertiary.withValues(alpha: 0.5),
@@ -247,7 +263,7 @@ class _Pill extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: on ? p.primaryContainer : p.textTertiary.withValues(alpha: 0.14),
+        color: on ? p.primary : p.primary.withValues(alpha: 0.12),
         shape: const StadiumBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(

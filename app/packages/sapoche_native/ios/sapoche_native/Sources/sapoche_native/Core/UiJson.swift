@@ -26,6 +26,8 @@ enum UiJson {
             "ownerId": (inRoom ? state?.ownerId : nil) ?? NSNull(),
             "guestControl": inRoom ? state?.guestControl ?? "all" : "all",
             "roomAutoplay": (inRoom ? state?.autoplay : nil) ?? NSNull(),
+            // Outside a room this device's own; in one the room's, or null on a server too old to have it
+            "shuffle": (inRoom ? state?.shuffle : Optional(local.shuffle)) ?? NSNull(),
             "trimMs": trimMs,
             "video": video,
             "videoHeight": videoHeight,

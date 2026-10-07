@@ -647,6 +647,7 @@ class SapocheBridge(
                     "jump" -> group.requestJump(call.argument<String>("id").orEmpty())
                     "clear" -> group.requestClearQueue()
                     "shuffle" -> group.requestShuffle()
+                    "setShuffle" -> group.requestShuffleMode(call.argument<Boolean>("on") == true)
                     "radio" -> group.requestRadio(call.argument<String>("videoId").orEmpty())
                     "repeat" -> group.requestRepeat(call.argument<String>("mode").orEmpty())
                     "addMany" -> group.requestAddMany(

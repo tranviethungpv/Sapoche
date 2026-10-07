@@ -376,6 +376,62 @@ final class LocalSessionTests: XCTestCase {
         XCTAssertEqual(h.player.queuedNext?.title, after[2], "and the successor follows the new order")
     }
 
+    func testShuffleAsAModeMixesWhatIsToComeAndOffPutsItBackInOrder() async {
+        let h = harness()
+        h.session.add((1...8).map(track), next: false)
+        await h.step()
+        h.session.next()
+        await h.step()
+        let before = h.titles()
+        h.session.setShuffle(true)
+        await h.step()
+        XCTAssertTrue(h.session.snapshot.value.shuffle)
+        let mixed = h.titles()
+        XCTAssertEqual(Array(before.prefix(2)), Array(mixed.prefix(2)), "what was played and the current song stay put")
+        XCTAssertEqual(Set(before.dropFirst(2)), Set(mixed.dropFirst(2)))
+        XCTAssertNotEqual(before, mixed, "the rest was mixed")
+        XCTAssertEqual(h.player.queuedNext?.title, mixed[2], "and the successor follows the new order")
+
+        h.session.setShuffle(false)
+        await h.step()
+        XCTAssertFalse(h.session.snapshot.value.shuffle)
+        XCTAssertEqual(before, h.titles(), "turning it off puts the songs back in the order they had")
+    }
+
+    func testSongsAddedWhileShuffleIsOnAreMixedInAndFollowTheRestOnceItIsOff() async {
+        let h = harness()
+        h.session.add((1...6).map(track), next: false)
+        await h.step()
+        h.session.setShuffle(true)
+        await h.step()
+        h.session.add([track(7)], next: false)
+        h.session.add([track(8)], next: true)
+        await h.step()
+        let titles = h.titles()
+        XCTAssertEqual(titles[1], "Song 8", "a song added to play next stays next")
+        XCTAssertEqual(titles[0], "Song 1", "the current song stays first")
+        XCTAssertTrue(titles.dropFirst().contains("Song 7"))
+
+        h.session.setShuffle(false)
+        await h.step()
+        let back = h.titles()
+        let original = (1...6).map { "Song \($0)" }
+        XCTAssertEqual(back.filter { original.contains($0) }, original)
+        XCTAssertEqual(Set(back.suffix(2)), ["Song 7", "Song 8"], "the ones added meanwhile come after")
+    }
+
+    func testShuffleModeSurvivesClearingTheQueueAndIsSaved() async {
+        let h = harness()
+        h.session.add((1...4).map(track), next: false)
+        await h.step()
+        h.session.setShuffle(true)
+        await h.step()
+        h.session.clear()
+        await h.step()
+        XCTAssertTrue(h.session.snapshot.value.shuffle, "clearing the queue leaves the mode as it was")
+        XCTAssertEqual(h.saved.last?.shuffle, true)
+    }
+
     func testShuffleAfterTheQueueFinishedMixesEverythingAndPlaysFromTheTop() async {
         let h = harness()
         h.session.add((1...6).map(track), next: false)

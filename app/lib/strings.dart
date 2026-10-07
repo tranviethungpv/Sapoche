@@ -63,6 +63,8 @@ abstract final class S {
   );
   static String get addSongs => _t('Add songs', 'Thêm bài hát');
   static String get shuffle => _t('Shuffle', 'Trộn bài');
+  static String get shuffleOn => _t('Shuffle on', 'Đang bật trộn bài');
+  static String get shuffleOff => _t('Shuffle off', 'Đang tắt trộn bài');
   static String get upNextShuffled =>
       _t('Up Next shuffled', 'Đã trộn các bài tiếp theo');
   static String get noVideoVersion => _t(

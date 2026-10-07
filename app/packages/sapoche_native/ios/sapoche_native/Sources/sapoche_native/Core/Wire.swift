@@ -88,11 +88,13 @@ struct RoomState: Equatable {
     var guestControl: String = "all"
     /// Whether the room carries on with songs like the last one when its queue runs out; nil when the server is older than protocol 9.
     var autoplay: Bool?
+    /// Whether what is still to come is mixed and stays mixed as songs are added; nil when the server is older than protocol 11.
+    var shuffle: Bool?
 
     var current: QueueItem? { queue.indices.contains(index) ? queue[index] : nil }
 
     init(queue: [QueueItem], index: Int, phase: String, startedAt: Int64, positionMs: Int64, epoch: Int64,
-         repeatMode: String = "off", name: String? = nil, ownerId: String? = nil, guestControl: String = "all", autoplay: Bool? = nil) {
+         repeatMode: String = "off", name: String? = nil, ownerId: String? = nil, guestControl: String = "all", autoplay: Bool? = nil, shuffle: Bool? = nil) {
         self.queue = queue
         self.index = index
         self.phase = phase
@@ -104,6 +106,7 @@ struct RoomState: Equatable {
         self.ownerId = ownerId
         self.guestControl = guestControl
         self.autoplay = autoplay
+        self.shuffle = shuffle
     }
 
     init?(_ json: JSON) {
@@ -119,7 +122,8 @@ struct RoomState: Equatable {
             name: json["name"].string,
             ownerId: json["ownerId"].string,
             guestControl: json["guestControl"].string ?? "all",
-            autoplay: json["autoplay"].bool
+            autoplay: json["autoplay"].bool,
+            shuffle: json["shuffle"].bool
         )
     }
 }
@@ -318,6 +322,9 @@ enum Wire {
 
     /// The room's autoplay, on or off. Only servers of protocol 9 or newer know it.
     static func autoplay(_ on: Bool) -> String { msg("autoplay", ["on": on]) }
+
+    /// The room's shuffle, on or off. Only servers of protocol 11 or newer know it.
+    static func shuffle(_ on: Bool) -> String { msg("shuffle", ["on": on]) }
 
     static func queueRemove(_ id: String) -> String { msg("queue.remove", ["id": id]) }
 

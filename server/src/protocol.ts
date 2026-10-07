@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 
 export interface QueueItem {
   id: string;
@@ -57,6 +57,10 @@ export interface RoomState {
   guestControl: GuestControl;
   /** Whether the room carries on with songs like the last one when its queue runs out. */
   autoplay: boolean;
+  /** Whether the songs still to come are mixed up and stay mixed as songs are added. Protocol 11. */
+  shuffle: boolean;
+  /** The ids of the queue in the order it had when shuffle was turned on; turning it off puts the songs back in it. */
+  shuffleOrder?: string[];
   /** When each pending job is due, in server time. */
   alarms: Partial<Record<AlarmKind, number>>;
 }
@@ -162,6 +166,8 @@ export type ClientMessage =
   | { t: "repeat"; mode: Repeat }
   /** Turns the room's autoplay on or off, restricted like [repeat]. Protocol 9. */
   | { t: "autoplay"; on: boolean }
+  /** Turns the room's shuffle on or off, restricted like [repeat]. Protocol 11. */
+  | { t: "shuffle"; on: boolean }
   /** Start or stop listening on one's own. A solo device never holds the room back. */
   | { t: "solo"; on: boolean }
   /** Ask for the room's current state again, e.g. when rejoining after listening alone. */
@@ -209,4 +215,4 @@ export type ServerMessage =
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */
-export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms">;
+export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder">;

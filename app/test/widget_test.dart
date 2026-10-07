@@ -912,7 +912,7 @@ void main() {
     Rect search(WidgetTester tester) =>
         tester.getRect(find.byTooltip('Search'));
 
-    testWidgets('when a page is scrolled down, and come back on scrolling up', (
+    testWidgets('when a page is scrolled down, and come back at its top', (
       tester,
     ) async {
       await longQueue(tester);
@@ -931,8 +931,12 @@ void main() {
         greaterThan(tester.getRect(find.byTooltip('Listen')).right),
       );
 
-      // A little way back up is enough
-      await scroll(tester, 60);
+      // Back up a little, even a good way, does not bring them back: only the top of the page does
+      await scroll(tester, 200);
+      expect(mini(tester).center.dy, closeTo(search(tester).center.dy, 1));
+      expect(find.text('Library'), findsNothing);
+
+      await scroll(tester, 600);
       expect(mini(tester).bottom, lessThan(search(tester).top));
       expect(find.text('Library'), findsOneWidget);
     });
@@ -1139,7 +1143,7 @@ void main() {
       expect(find.byType(Texture), findsNothing);
       expect(backend.calls, isNot(contains('videoSurface')));
 
-      await tester.tap(find.text('Video'));
+      await tester.tap(find.byTooltip('Video'));
       await tester.pump();
       expect(backend.calls, contains('video true'));
 

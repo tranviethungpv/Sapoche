@@ -140,7 +140,7 @@ class PlaybackService : MediaSessionService() {
                     args: Bundle,
                 ): ListenableFuture<SessionResult> {
                     when (customCommand.customAction) {
-                        CMD_SHUFFLE -> group.requestShuffle()
+                        CMD_SHUFFLE -> group.requestShuffleMode(!shuffleOn)
                         CMD_REPEAT -> group.requestRepeat(nextRepeat(repeatMode))
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
@@ -166,10 +166,17 @@ class PlaybackService : MediaSessionService() {
         // expandable: collapsed it shows the three, expanded all five
         scope.launch {
             group.view
-                .map { view -> if (view.roomCode != null) view.snapshot.state?.repeat ?: "off" else view.local.repeat }
+                .map { view ->
+                    if (view.roomCode != null) {
+                        (view.snapshot.state?.repeat ?: "off") to (view.snapshot.state?.shuffle == true)
+                    } else {
+                        view.local.repeat to view.local.shuffle
+                    }
+                }
                 .distinctUntilChanged()
-                .collect { mode ->
+                .collect { (mode, shuffle) ->
                     repeatMode = mode
+                    shuffleOn = shuffle
                     session?.setMediaButtonPreferences(roomButtons(mode))
                 }
         }
@@ -235,9 +242,12 @@ class PlaybackService : MediaSessionService() {
     /** The repeat mode of the queue that is playing: the room's, or the personal one outside a room. */
     private var repeatMode = "off"
 
+    /** Whether shuffle is on in the queue that is playing; the room's, or the personal one outside a room. */
+    private var shuffleOn = false
+
     private fun roomButtons(mode: String): List<CommandButton> {
         return listOf(
-            CommandButton.Builder(CommandButton.ICON_SHUFFLE_OFF)
+            CommandButton.Builder(if (shuffleOn) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF)
                 .setDisplayName(if (SapocheApp.language.value == "vi") "Trộn bài" else "Shuffle")
                 .setSessionCommand(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
                 .build(),

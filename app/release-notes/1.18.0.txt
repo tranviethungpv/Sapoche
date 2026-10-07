@@ -1,0 +1,4 @@
+Balanced player layout and shuffle mode
+- Added persistent shuffle mode for personal queues and rooms.
+- Improved player controls and Up Next layout across phone and tablet sizes.
+- Kept shuffle commands compatible with older room servers.

@@ -32,6 +32,8 @@ object UiJson {
             .put("ownerId", state?.ownerId.takeIf { inRoom } ?: JSONObject.NULL)
             .put("guestControl", if (inRoom) state?.guestControl ?: "all" else "all")
             .put("roomAutoplay", state?.autoplay.takeIf { inRoom } ?: JSONObject.NULL)
+            // Outside a room this device's own; in one the room's, or null on a server too old to have it
+            .put("shuffle", if (inRoom) state?.shuffle ?: JSONObject.NULL else local.shuffle)
             .put("trimMs", trimMs)
             .put("video", video)
             .put("videoHeight", videoHeight)

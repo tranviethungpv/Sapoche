@@ -114,7 +114,7 @@ void main() {
     }
 
     Future<void> tapMode(WidgetTester tester, String label) async {
-      await tester.tap(find.text(label));
+      await tester.tap(find.byTooltip(label));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
@@ -262,12 +262,15 @@ void main() {
 
   group('shuffle and repeat', () {
     testWidgets('are in Up Next, not beside the play button', (tester) async {
-      final backend = await openPlayer(tester);
-      expect(find.byTooltip('Shuffle'), findsNothing);
+      final backend = await openPlayer(
+        tester,
+        snapshot: sampleRoom(shuffle: false),
+      );
+      expect(find.byTooltip('Shuffle off'), findsNothing);
       expect(find.byTooltip('Repeat off'), findsNothing);
 
       await openPanel(tester, 'Up Next');
-      expect(find.byTooltip('Shuffle'), findsOneWidget);
+      expect(find.byTooltip('Shuffle off'), findsOneWidget);
       expect(find.byTooltip('Repeat off'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Repeat off'));
@@ -275,7 +278,40 @@ void main() {
       expect(backend.calls.last, 'repeat all');
     });
 
-    testWidgets('shuffle mixes what comes next and says so', (tester) async {
+    testWidgets('shuffle is turned on and off, and shows which it is', (
+      tester,
+    ) async {
+      final backend = await openPlayer(
+        tester,
+        snapshot: sampleRoom(songs: 4, shuffle: false),
+      );
+      await openPanel(tester, 'Up Next');
+      await tester.tap(find.byTooltip('Shuffle off'));
+      await tester.pump();
+      expect(backend.calls.last, 'setShuffle true');
+
+      backend.emit(StateEvent(sampleRoom(songs: 4, shuffle: true)));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byTooltip('Shuffle on'), findsOneWidget);
+      await tester.tap(find.byTooltip('Shuffle on'));
+      await tester.pump();
+      expect(backend.calls.last, 'setShuffle false');
+    });
+
+    testWidgets('it can be turned on with nothing to mix yet', (tester) async {
+      final backend = await openPlayer(
+        tester,
+        snapshot: sampleRoom(songs: 1, shuffle: false),
+      );
+      await openPanel(tester, 'Up Next');
+      await tester.tap(find.byTooltip('Shuffle off'));
+      await tester.pump();
+      expect(backend.calls.last, 'setShuffle true');
+    });
+
+    testWidgets('a room too old for the mode mixes once and says so', (
+      tester,
+    ) async {
       final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 4));
       await openPanel(tester, 'Up Next');
       await tester.tap(find.byTooltip('Shuffle'));
@@ -286,9 +322,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
     });
 
-    testWidgets('shuffle waits until two songs are left to mix', (
-      tester,
-    ) async {
+    testWidgets('and waits until two songs are left to mix', (tester) async {
       final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 2));
       await openPanel(tester, 'Up Next');
       await tester.tap(find.byTooltip('Shuffle'));

@@ -266,6 +266,7 @@ async function main() {
   await conformanceSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
   await shuffleSection();
+  await shuffleModeSection();
   await existenceSection();
   await fullRoomSection();
   await ownerSection();
@@ -956,6 +957,68 @@ async function shuffleSection() {
   await a.waitFor((m) => m.t === "state" && m.state.queue.length === 0);
   a.send({ t: "queue.shuffle" });
   check("shuffling an empty queue does nothing", await b.stays((m) => m.t === "prepare", 500));
+
+  [a, b].forEach((x) => x.close());
+}
+
+/** Shuffle as a mode: on mixes what is to come and keeps mixing what is added, off puts the songs back in their order. */
+async function shuffleModeSection() {
+  console.log("Shuffle mode");
+  const [a, b] = await freshRoom(["Ma", "Mb"]);
+  const ids = (m) => m.state.queue.map((q) => q.id).join();
+  const titles = Array.from({ length: 12 }, (_, i) => `Song ${i}`);
+  a.send({ t: "queue.addMany", tracks: titles.map((title) => ({ videoId: VIDEO_A, title, artist: "x", durMs: 200000 })) });
+  const first = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+  await all([a, b], (x) => x.send({ t: "ready", epoch: first[0].epoch }));
+  await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+  const before = await a.waitFor((m) => m.t === "state" && m.state.queue.length === 12);
+  check("a new room has shuffle off", before.state.shuffle === false);
+  check("and its remembered order is not sent to anybody", !("shuffleOrder" in before.state));
+
+  b.send({ t: "shuffle", on: true });
+  const on = await a.waitFor((m) => m.t === "state" && m.state.shuffle === true);
+  check("a guest can turn shuffle on for the room", on.state.shuffle === true);
+  check("turning it on mixes what is to come", ids(on) !== ids(before));
+  check("and leaves the same songs, the current one in place", on.state.queue.map((q) => q.id).sort().join() === before.state.queue.map((q) => q.id).sort().join() && on.state.queue[0].id === before.state.queue[0].id);
+  check("the remembered order stays private", !("shuffleOrder" in on.state));
+
+  a.send({ t: "shuffle", on: "yes" });
+  check("anything but true or false is ignored", await a.stays((m) => m.t === "state", 300));
+
+  // A song added at the end is mixed in among those to come, and one added to play next stays next
+  a.send({ t: "queue.add", videoId: VIDEO_B, title: "Added", artist: "x", durMs: 200000 });
+  const added = await b.waitFor((m) => m.t === "state" && m.state.queue.length === 13);
+  const at = added.state.queue.findIndex((q) => q.title === "Added");
+  check("a song added meanwhile is somewhere among those to come", at >= 1);
+  a.send({ t: "queue.add", videoId: VIDEO_C, title: "Next up", artist: "x", durMs: 200000, next: true });
+  const next = await b.waitFor((m) => m.t === "state" && m.state.queue.length === 14);
+  check("one added to play next stays next", next.state.queue[1].title === "Next up");
+
+  [a, b].forEach((x) => (x.inbox.length = 0));
+  a.send({ t: "shuffle", on: false });
+  const off = await b.waitFor((m) => m.t === "state" && m.state.shuffle === false);
+  const titlesOff = off.state.queue.map((q) => q.title);
+  check("turning it off keeps the current song first", titlesOff[0] === "Song 0");
+  const original = titlesOff.slice(1).filter((t) => t.startsWith("Song "));
+  check("and puts the songs back in the order they had", original.join() === titles.slice(1).join());
+  check("songs added while it was on follow them", titlesOff.slice(-2).sort().join() === ["Added", "Next up"].join(), titlesOff.join("|"));
+  [a, b].forEach((x) => (x.inbox.length = 0));
+
+  // Off with nothing remembered is harmless, and the old one-shot message still works
+  await a.waitFor((m) => m.t === "state" && m.state.shuffle === false);
+  [a, b].forEach((x) => (x.inbox.length = 0));
+  a.send({ t: "shuffle", on: false });
+  check("turning it off again does nothing", await a.stays((m) => m.t === "state", 300));
+  a.send({ t: "queue.shuffle" });
+  const mixed = await b.waitFor((m) => m.t === "state" && ids(m) !== ids(off));
+  check("the one-shot shuffle still mixes without turning the mode on", mixed.state.shuffle === false);
+
+  // Guests restricted to adding cannot turn it on
+  a.send({ t: "room.settings", guestControl: "add" });
+  await b.waitFor((m) => m.t === "state" && m.state.guestControl === "add");
+  b.send({ t: "shuffle", on: true });
+  const denied = await b.waitFor((m) => m.t === "error");
+  check("a guest who may only add songs cannot turn it on", denied.code === "forbidden");
 
   [a, b].forEach((x) => x.close());
 }

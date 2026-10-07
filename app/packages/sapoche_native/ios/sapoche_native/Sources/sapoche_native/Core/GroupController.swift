@@ -692,6 +692,13 @@ final class GroupController {
 
     @discardableResult func requestClearQueue() -> Bool { onQueue({ $0.clear() }) { send(Wire.queueClear()) } }
     @discardableResult func requestShuffle() -> Bool { onQueue({ $0.shuffle() }) { send(Wire.queueShuffle()) } }
+    /// Shuffle as a mode. A server older than protocol 11 has none, so there it mixes the queue once, as it always did.
+    @discardableResult func requestShuffleMode(_ on: Bool) -> Bool {
+        onQueue({ $0.setShuffle(on) }) {
+            if session?.snapshot.value.state?.shuffle == nil { return on ? send(Wire.queueShuffle()) : true }
+            return send(Wire.shuffle(on))
+        }
+    }
     @discardableResult func requestRepeat(_ mode: String) -> Bool { onQueue({ $0.setRepeat(mode) }) { send(Wire.repeatMode(mode)) } }
     @discardableResult func requestAddMany(_ tracks: [TrackRef], playNext: Bool) -> Bool {
         onQueue({ $0.add(tracks, next: playNext) }) {

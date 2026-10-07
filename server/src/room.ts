@@ -103,6 +103,7 @@ const CONTROL_MESSAGES = new Set([
   "prev",
   "repeat",
   "autoplay",
+  "shuffle",
   "room.name",
 ]);
 
@@ -135,6 +136,7 @@ function defaultState(): RoomState {
     failedIds: [],
     guestControl: "all",
     autoplay: true,
+    shuffle: false,
     alarms: {},
   };
 }
@@ -230,6 +232,7 @@ export class Room extends DurableObject<Env> {
       case "prev": return this.pressedOnCurrent(msg.from) ? this.onPrev(me.id) : undefined;
       case "repeat": return this.onRepeat(msg.mode);
       case "autoplay": return this.onAutoplay(msg.on);
+      case "shuffle": return this.onShuffle(msg.on);
       case "solo": return this.onSolo(me, msg.on === true);
       case "avatar.set": return this.onAvatarSet(me, msg.data);
       case "avatar.get": return this.onAvatarGet(ws, msg.id);
@@ -549,6 +552,12 @@ export class Room extends DurableObject<Env> {
     // "Play next" only makes sense while something is playing; otherwise the new items simply go last
     const at = playNext && this.s.phase !== "idle" ? this.s.index + 1 : this.s.queue.length;
     this.s.queue.splice(at, 0, ...items);
+    // With shuffle on, songs added at the end are mixed in among those to come instead of waiting behind them
+    if (this.s.shuffle && this.s.phase !== "idle" && !playNext) {
+      const first = this.s.index + 1;
+      this.s.queue.splice(at, items.length);
+      for (const item of items) this.s.queue.splice(randomBelow(this.s.queue.length - first + 1) + first, 0, item);
+    }
 
     if (this.s.phase === "idle") {
       await this.begin(at, 0);
@@ -607,6 +616,31 @@ export class Room extends DurableObject<Env> {
       return this.begin(0, 0, by);
     }
     shuffleInPlace(this.s.queue, this.s.index + 1);
+    await this.save();
+    this.broadcastState();
+  }
+
+  /**
+   * Shuffle as a mode, as Apple Music has it. On: the order the queue has is remembered and what is still to come is
+   * mixed; songs added later are mixed in. Off: what is still to come goes back to the remembered order, and songs that
+   * were added meanwhile follow it.
+   */
+  private async onShuffle(on: unknown): Promise<void> {
+    if (typeof on !== "boolean" || on === this.s.shuffle) return;
+    this.s.shuffle = on;
+    if (on) {
+      this.s.shuffleOrder = this.s.queue.map((q) => q.id);
+      if (this.s.phase !== "idle") shuffleInPlace(this.s.queue, this.s.index + 1);
+    } else {
+      const order = new Map((this.s.shuffleOrder ?? []).map((id, i) => [id, i]));
+      delete this.s.shuffleOrder;
+      const first = this.s.phase === "idle" ? 0 : this.s.index + 1;
+      const rest = this.s.queue.slice(first);
+      const rank = (q: QueueItem) => order.get(q.id) ?? Number.MAX_SAFE_INTEGER;
+      // The sort is stable, so songs that were not there when shuffle went on keep their order, at the end
+      rest.sort((a, b) => rank(a) - rank(b));
+      this.s.queue.splice(first, rest.length, ...rest);
+    }
     await this.save();
     this.broadcastState();
   }
@@ -985,7 +1019,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private publicState(): PublicState {
-    const { readyIds: _r, failedIds: _f, alarms: _a, ...rest } = this.s;
+    const { readyIds: _r, failedIds: _f, alarms: _a, shuffleOrder: _o, ...rest } = this.s;
     return rest;
   }
 
@@ -1084,6 +1118,11 @@ async function fingerprint(text: string): Promise<string> {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** A whole number from 0 up to, not including, [n]. */
+function randomBelow(n: number): number {
+  return Math.floor((crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * n);
 }
 
 /** Fisher-Yates over the items from [from] to the end, with an unbiased random source. */

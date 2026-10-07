@@ -17,11 +17,12 @@ Connection: a WebSocket to `wss://<worker>/room/<CODE>`. Every room is a Durable
   "ownerId": "u1",
   "guestControl": "all | add",
   "autoplay": true,
+  "shuffle": false,
   "members": [{ "id": "u1", "name": "Ann", "ready": true, "solo": false, "away": false, "owner": true, "av": "3fa9c01e" }]
 }
 ```
 
-`name` and `ownerId` may be absent. See section 5c for the owner and the room name. Member ids, `ownerId`, `addedBy`, `by` and `you` are **public ids**, never the `clientId` a device joins with (section 3). `autoplay` says whether the room carries on by itself when its queue runs out (section 5e); it is absent when the server is older than protocol 9. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d.
+`name` and `ownerId` may be absent. See section 5c for the owner and the room name. Member ids, `ownerId`, `addedBy`, `by` and `you` are **public ids**, never the `clientId` a device joins with (section 3). `autoplay` says whether the room carries on by itself when its queue runs out (section 5e); it is absent when the server is older than protocol 9. `shuffle` says whether shuffle is on (section 5g); it is absent when the server is older than protocol 11. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d.
 
 - `phase=playing`: the current position is `serverNow - startedAt`.
 - `phase=paused`: the position is `positionMs`.
@@ -37,7 +38,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 ## 2b. Authentication
 
-`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Sapoche-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":10}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
+`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Sapoche-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":11}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
 
 `GET /room/<CODE>/info` is read-only and creates nothing: `{"exists":true,"name":"Family","members":2,"playing":true,"title":"..."}`; `exists:false` when the room never existed or has expired. The app uses it for the list of recent rooms.
 
@@ -59,6 +60,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 | `queue.swap` | `id`, `track` (`videoId`, `title`, `artist`, `thumb?`, `durMs`) | Replace the entry `id` with another release of the same song (video ↔ audio), keeping its place, its `id` and who added it. If it is the song being played (running, paused or preparing): broadcast a new `prepare` to every device, seek to exactly the current position (clipped to the length of the new release), then `start` once everybody is ready; a paused room plays on after the swap. A `videoId` equal to an existing one or an unknown `id` is ignored; a bad `videoId` gives `bad_video`. Restricted like `queue.move` when the owner lets guests only add songs. Protocol 7 |
 | `queue.clear` | | Clear the whole queue, the room goes `idle` |
 | `queue.shuffle` | | Shuffle the **upcoming** songs, the current one keeps its place. When the room is `idle` (the queue has run out) it shuffles everything and plays from the first song. With fewer than 2 songs it does nothing |
+| `shuffle` | `on` | Turn the room's shuffle on or off (section 5g). Restricted like `repeat`. Anything but `true` or `false` is ignored. Protocol 11: a client sends it only after a `state` that carries `shuffle`, and otherwise falls back to `queue.shuffle` |
 | `jump` | `id` | Play this song from the start now (through the barrier) |
 | `queue.move` | `id`, `toIndex` | Change the position |
 | `play` / `pause` | | Control. `play` when the room is `idle` at the last song (the queue has run out) plays again **from the first song**, not only the last one. `pause` while the room is `preparing` (the song is still loading) holds it there: the phase becomes `paused`, the barrier is dropped, and a later `play` starts it |
@@ -80,7 +82,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 | `t` | Fields | Meaning |
 |---|---|---|
-| `state` | the whole state, `protocol` | Sent on joining and on big changes; `protocol` is the server's protocol version (currently 10) |
+| `state` | the whole state, `protocol` | Sent on joining and on big changes; `protocol` is the server's protocol version (currently 11) |
 | `prepare` | `epoch`, song, `seekToMs`, `by?` | Prepare the song: resolve, buffer, then send `ready`. `by` is the `clientId` of whoever just changed the song; absent when the room moves on by itself |
 | `start` | `epoch`, `startAt` (server time), `by?` | Start playing at this moment |
 | `pause` | `epoch`, `positionMs`, `by?` | Stop at the position |
@@ -149,6 +151,10 @@ The server asks when the room goes `idle` because the last item ended or because
 Members can write to each other and react while they listen. A chat message gets a number from the room (`id`, one more than the last), the server time (`at`), the sender's public id (`by`) and the sender's name as it was then (`name`, so a message keeps its author's name after they leave). The room keeps its last 100 messages in storage, apart from its state, and sends them as `chat.history` to every device right after the `state` it gets on joining or reconnecting; a device replaces what it held with them. The messages go when the room goes (section 5c). Each message costs one storage write; nothing else does.
 
 A reaction is one of these, by name: `heart`, `love`, `kiss`, `hug`, `blush`, `cool`, `wink`, `pleading`, `laugh`, `rofl`, `grin`, `wow`, `mindblown`, `think`, `eyes`, `sad`, `cry`, `skull`, `sleepy`, `fire`, `clap`, `raise`, `party`, `hundred`, `sparkles`, `rocket`, `muscle`, `thumbsup`, `thumbsdown`, `ok`, `pray`, `music`, `dance`, `headphones`, `mic`, `guitar`, `drum`, `speaker`, `replay` (`REACTIONS` in `server/src/protocol.ts`). The app keeps six of them in reach in the chat and all the emoji a tap further. Any emoji of a keyboard can be sent as well, as itself: one pictograph, flag or keycap with its skin tone, variation selector and joiners, at most 32 UTF-16 units (the server tests what an emoji is made of, not a list, so newer ones pass too). Anything that is neither a name nor an emoji is ignored. An app shows the names it knows and any emoji; an app from before emoji could be sent shows only the names, so the app still sends the names for the ones that have them. A server from before this does not pass an emoji on, and drops it without an error. A reaction is passed on to the others at once and kept nowhere, so a device that is not listening simply misses it. The device that reacts shows its own reaction itself. A device gathers quick taps into one message with a count `n` (at most 10), so reacting never runs into the limit of 20 messages a second.
+
+## 5g. Shuffle
+
+`queue.shuffle` mixes the songs to come once. `shuffle` is the mode Apple Music has: **on**, the server remembers the order the queue had (apart from the state, never sent) and mixes the songs still to come, the current one keeping its place; songs added afterwards at the end are put at a random place among those to come, while one added with `next` stays next. **Off**, the songs still to come go back to the remembered order, and the ones added while it was on follow them, in the order they have. `shuffle` stays as it is when the queue is cleared or runs out; turning it on while the room is `idle` only sets the mode. `queue.shuffle` still works, changes no mode and is what a client uses with a server older than protocol 11.
 
 ## 6. Correcting drift while playing
 

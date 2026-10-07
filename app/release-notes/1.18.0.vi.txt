@@ -1,0 +1,4 @@
+Trình phát cân bằng hơn và chế độ trộn bài
+- Thêm chế độ trộn bài cố định cho hàng đợi cá nhân và phòng nghe chung.
+- Cải thiện bố cục điều khiển và mục Tiếp theo trên điện thoại và máy tính bảng.
+- Giữ tương thích lệnh trộn bài với máy chủ phòng phiên bản cũ.

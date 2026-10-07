@@ -49,6 +49,8 @@ data class RoomState(
     val guestControl: String = "all",
     /** Whether the room carries on with songs like the last one when its queue runs out; null when the server is older than protocol 9. */
     val autoplay: Boolean? = null,
+    /** Whether what is still to come is mixed and stays mixed as songs are added; null when the server is older than protocol 11. */
+    val shuffle: Boolean? = null,
 ) {
     val current: QueueItem? get() = queue.getOrNull(index)
 }
@@ -247,6 +249,9 @@ object Protocol {
 
     /** The room's autoplay, on or off. Only servers of protocol 9 or newer know it. */
     fun autoplay(on: Boolean) = msg("autoplay") { put("on", on) }
+
+    /** The room's shuffle, on or off. Only servers of protocol 11 or newer know it. */
+    fun shuffle(on: Boolean) = msg("shuffle") { put("on", on) }
 
     fun queueRemove(id: String) = msg("queue.remove") { put("id", id) }
 
