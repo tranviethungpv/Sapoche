@@ -6,6 +6,7 @@ import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/ui/player_sheet.dart';
 import 'package:sapoche/ui/widgets/mini_player.dart';
 import 'package:sapoche/ui/widgets/player_backdrop.dart';
+import 'package:sapoche/ui/widgets/volume_bar.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';
@@ -68,6 +69,29 @@ void main() {
     await tester.tap(find.byTooltip('Play on · AirPods Pro'));
     await tester.pump();
     expect(backend.calls, contains('pickOutput'));
+  });
+
+  testWidgets('the volume bar sets the volume and follows the buttons', (
+    tester,
+  ) async {
+    final backend = await openPlayer(tester);
+    final bar = find.byType(VolumeBar);
+    expect(bar, findsOneWidget);
+    // A touch at the middle of the bar is half the volume
+    final track = tester.getRect(
+      find.descendant(of: bar, matching: find.byType(LayoutBuilder)).last,
+    );
+    await tester.tapAt(Offset(track.center.dx, track.center.dy));
+    await tester.pump();
+    final set = backend.calls.where((c) => c.startsWith('setVolume')).last;
+    expect(double.parse(set.split(' ').last), closeTo(0.5, 0.05));
+    // The buttons of the phone move the bar
+    backend.emit(const VolumeEvent(0.25));
+    await tester.pump();
+    final fill = tester.widget<FractionallySizedBox>(
+      find.descendant(of: bar, matching: find.byType(FractionallySizedBox)),
+    );
+    expect(fill.widthFactor, 0.25);
   });
 
   testWidgets('the full player wears the theme of the app', (tester) async {

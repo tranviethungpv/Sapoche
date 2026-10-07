@@ -47,6 +47,9 @@ enum UiJson {
     /// The phone is warm or saving power ([on]): the screen should move less.
     static func calm(_ on: Bool) -> String { JSONText.encode(["type": "calm", "on": on]) }
 
+    /// The volume of the device, 0 to 1.
+    static func volume(_ level: Float) -> String { JSONText.encode(["type": "volume", "level": Double(level)]) }
+
     /// Where the sound goes now; see [AudioOutput].
     static func output(_ output: AudioOutput) -> String {
         JSONText.encode(["type": "output", "kind": output.kind, "name": output.name])

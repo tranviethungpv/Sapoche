@@ -1,0 +1,4 @@
+Volume controls and a refined player
+- Added an in-app system volume bar that follows the device volume buttons.
+- Improved player layout and controls across phone and tablet sizes.
+- Updated native bridge data for consistent volume and player state.

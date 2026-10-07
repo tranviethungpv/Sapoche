@@ -5,14 +5,18 @@ import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/strings.dart';
 import 'package:sapoche/ui/home_shell.dart';
+import 'package:sapoche/ui/now_playing_page.dart';
 import 'package:sapoche/ui/player/lyrics_view.dart';
 import 'package:sapoche/ui/player/up_next_view.dart';
 import 'package:sapoche/ui/player_sheet.dart';
 import 'package:sapoche/ui/widgets/artwork.dart';
+import 'package:sapoche/ui/widgets/like_button.dart';
 import 'package:sapoche/ui/widgets/marquee_text.dart';
 import 'package:sapoche/ui/widgets/mini_player.dart';
 import 'package:sapoche/ui/widgets/playback_bar.dart';
+import 'package:sapoche/ui/widgets/transport.dart';
 import 'package:sapoche/ui/widgets/video_view.dart';
+import 'package:sapoche/ui/widgets/volume_bar.dart';
 
 import 'fake_backend.dart';
 import 'player_panels_test.dart' show openPanel, openPlayer;
@@ -81,6 +85,54 @@ void main() {
       expect(find.byTooltip(S.close), findsOneWidget);
     });
 
+    // The song and the row of icons are where they are with the controls when lyrics or the queue open, as in Apple Music
+    for (final (width, height) in [
+      (844.0, 390.0),
+      (667.0, 375.0),
+      (932.0, 430.0),
+    ]) {
+      testWidgets('${width}x$height: the title and the icons stay put', (
+        tester,
+      ) async {
+        await openPlayer(tester, snapshot: sampleRoom());
+        await resize(tester, width, height);
+        final like = find.descendant(
+          of: find.byType(NowPlayingPage),
+          matching: find.byType(LikeButton),
+        );
+        final title = tester.getRect(like.first);
+        final icons = tester.getRect(find.byTooltip(S.lyrics));
+        final cover = tester.getRect(find.byType(CoverSlot));
+        for (final panel in [S.lyrics, S.upNext]) {
+          await openPanel(tester, panel);
+          expect(tester.takeException(), isNull);
+          expect(tester.getRect(like.first), title, reason: panel);
+          expect(
+            tester.getRect(find.byTooltip(S.lyrics)),
+            icons,
+            reason: panel,
+          );
+          expect(tester.getRect(find.byType(CoverSlot)), cover, reason: panel);
+          await openPanel(tester, panel); // back to the controls
+        }
+      });
+    }
+
+    testWidgets('the volume sits under the buttons, in both positions', (
+      tester,
+    ) async {
+      await openPlayer(tester, snapshot: sampleRoom());
+      for (final (width, height) in [(390.0, 844.0), (844.0, 390.0)]) {
+        await resize(tester, width, height);
+        expect(tester.takeException(), isNull);
+        final bar = inside(tester, width, height, find.byType(VolumeBar));
+        final play = tester.getRect(find.byType(PlayPauseButton).last);
+        final icons = tester.getRect(find.byTooltip(S.lyrics));
+        expect(bar.top, greaterThan(play.bottom - 1), reason: '$width');
+        expect(bar.bottom, lessThan(icons.top + 4), reason: '$width');
+      }
+    });
+
     testWidgets('the room strip fits too', (tester) async {
       await openPlayer(tester, snapshot: sampleRoom());
       await resize(tester, 667, 375);
@@ -108,9 +160,15 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.byType(LyricsView), findsOneWidget);
       expect(find.byType(PlaybackBar), findsNothing);
-      // The cover stays, and the song can still be played and skipped
+      // The cover stays, with the song above the lyrics and the icons under them, where they are with the controls
       expect(find.byType(CoverSlot), findsOneWidget);
-      expect(find.byIcon(Icons.skip_next_rounded), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(NowPlayingPage),
+          matching: find.byType(LikeButton),
+        ),
+        findsOneWidget,
+      );
       // The same button again goes back to the controls
       await openPanel(tester, S.lyrics);
       expect(find.byType(PlaybackBar), findsOneWidget);

@@ -1,0 +1,4 @@
+Điều khiển âm lượng và trình phát được cải thiện
+- Thêm thanh âm lượng hệ thống trong ứng dụng, đồng bộ với nút âm lượng của thiết bị.
+- Cải thiện bố cục và điều khiển trình phát trên điện thoại và máy tính bảng.
+- Cập nhật dữ liệu bridge native để trạng thái âm lượng và trình phát nhất quán.

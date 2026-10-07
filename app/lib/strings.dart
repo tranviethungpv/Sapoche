@@ -618,6 +618,7 @@ abstract final class S {
 
   // Full player: lyrics, queue, song and artist pages
   static String get lyrics => _t('Lyrics', 'Lời bài hát');
+  static String get volume => _t('Volume', 'Âm lượng');
   static String get noLyrics =>
       _t('No lyrics for this song', 'Bài này chưa có lời');
   static String get lyricsFailed =>

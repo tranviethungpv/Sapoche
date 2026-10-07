@@ -19,6 +19,12 @@ protocol PlatformServices: AnyObject {
     /// Where the sound goes now: the phone's speaker, headphones, a Bluetooth device, AirPlay.
     var output: StateFlow<AudioOutput> { get }
 
+    /// The volume of the device, 0 to 1; it moves with its buttons too.
+    var volume: StateFlow<Float> { get }
+
+    /// Sets the volume of the device to [level], 0 to 1.
+    func setVolume(_ level: Float)
+
     /// Opens the system's list of places to play to.
     func pickOutput()
 
@@ -90,6 +96,7 @@ final class Bridge {
     private var drainAgain: Set<Bool> = []
     private var calmSubscription: Subscription?
     private var outputSubscription: Subscription?
+    private var volumeSubscription: Subscription?
 
     init(controller: GroupController, prefs: KeyValueStore, platform: PlatformServices, store: LibraryStore, resolver: StreamResolver,
          streams: StreamCache, music: MusicFeed, suggestions: SuggestionFeed, media: MediaLibrary, files: MediaFiles,
@@ -118,6 +125,10 @@ final class Bridge {
             guard let self, self.visible else { return }
             self.emit(UiJson.output(output))
         }
+        volumeSubscription = platform.volume.observe { [weak self] level in
+            guard let self, self.visible else { return }
+            self.emit(UiJson.volume(level))
+        }
     }
 
     private var settings: ServerConfig { ServerConfig.load(prefs) }
@@ -142,6 +153,7 @@ final class Bridge {
             }
             emit(UiJson.calm(platform.calm.value))
             emit(UiJson.output(platform.output.value))
+            emit(UiJson.volume(platform.volume.value))
             for avatar in controller.picturesSeen() { emit(UiJson.avatar(avatar)) }
             if let chat = controller.chatSeen() { emit(UiJson.chat(chat)) }
             for missed in missedReactions.take() { emit(UiJson.reaction(missed)) }
@@ -204,6 +216,7 @@ final class Bridge {
         }
         emit(UiJson.calm(platform.calm.value))
         emit(UiJson.output(platform.output.value))
+        emit(UiJson.volume(platform.volume.value))
         observing?.cancel()
         let observing = Scope()
         self.observing = observing
@@ -319,6 +332,9 @@ final class Bridge {
             return nil
         case "pickOutput":
             platform.pickOutput()
+            return nil
+        case "setVolume":
+            platform.setVolume(Float(JSON(args["level"]).double ?? 1))
             return nil
         case "setLanguage":
             prefs.set(string("code").isEmpty ? "en" : string("code"), for: "language")
