@@ -104,6 +104,7 @@ class SapocheBridge(
         // The screen slows its small moving parts down while the phone is warm
         scope.launch { SapocheApp.heat.calm.collect { if (visible) emit(UiJson.calm(it)) } }
         scope.launch { outputs.current.collect { if (visible) emit(UiJson.output(it)) } }
+        scope.launch { outputs.volume.collect { if (visible) emit(UiJson.volume(it)) } }
         // Progress of an update is only sent while somebody looks; the UI is brought up to date when it returns
         scope.launch { SapocheApp.updater.state.collect { if (visible) emit(UiJson.update(it)) } }
     }
@@ -156,6 +157,7 @@ class SapocheBridge(
             emit(UiJson.calm(SapocheApp.heat.calm.value))
             outputs.refresh()
             emit(UiJson.output(outputs.current.value))
+            emit(UiJson.volume(outputs.volume.value))
             SapocheApp.group.value?.picturesSeen()?.forEach { emit(UiJson.avatar(it)) }
             SapocheApp.group.value?.chatSeen()?.let { emit(UiJson.chat(it)) }
             missedReactions.take().forEach { emit(UiJson.reaction(it)) }
@@ -233,6 +235,7 @@ class SapocheBridge(
         emit(UiJson.update(SapocheApp.updater.state.value))
         emit(UiJson.calm(SapocheApp.heat.calm.value))
         emit(UiJson.output(outputs.current.value))
+        emit(UiJson.volume(outputs.volume.value))
         observing?.cancel()
         observing = scope.launch {
             SapocheApp.group.collectLatest { group ->
@@ -360,6 +363,10 @@ class SapocheBridge(
             }
             "pickOutput" -> {
                 outputs.pick()
+                return null
+            }
+            "setVolume" -> {
+                outputs.setVolume(call.argument<Number>("level")?.toFloat() ?: 1f)
                 return null
             }
             "setLanguage" -> {

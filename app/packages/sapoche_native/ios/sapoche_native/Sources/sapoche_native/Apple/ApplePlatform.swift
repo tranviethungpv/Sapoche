@@ -1,6 +1,7 @@
 import AVFoundation
 import AVKit
 import Foundation
+import MediaPlayer
 import Network
 import UIKit
 import UniformTypeIdentifiers
@@ -10,6 +11,7 @@ import UniformTypeIdentifiers
 final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate {
     let calm = StateFlow<Bool>(false)
     let output = StateFlow<AudioOutput>(AudioOutput(kind: "speaker", name: ""))
+    let volume = StateFlow<Float>(AVAudioSession.sharedInstance().outputVolume)
 
     /// The network changed or came back; [Bool] says whether it is another one than before.
     var onNetwork: ((Bool) -> Void)?
@@ -28,9 +30,26 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
         return view
     }()
 
+    /// The system's own volume slider, kept out of sight: a program may only move the volume of the phone through it.
+    private lazy var volumeView: MPVolumeView = {
+        let view = MPVolumeView(frame: CGRect(x: -2000, y: -2000, width: 1, height: 1))
+        view.alpha = 0.01
+        return view
+    }()
+
+    /// Watches the volume of the phone, buttons included.
+    private var volumeObservation: NSKeyValueObservation?
+
     override init() {
         super.init()
         calm.set(readCalm())
+        // The session has to be active for its volume to be read and to move
+        try? AVAudioSession.sharedInstance().setActive(true)
+        volume.set(AVAudioSession.sharedInstance().outputVolume)
+        volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] _, change in
+            guard let level = change.newValue else { return }
+            Task { @MainActor in self?.volume.set(level) }
+        }
         let center = NotificationCenter.default
         center.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.updateCalm() }
@@ -98,6 +117,17 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
     }
 
     // ------------------------------------------------------------------ where the sound goes
+
+    func setVolume(_ level: Float) {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow }) else { return }
+        if volumeView.superview !== window { window.addSubview(volumeView) }
+        let slider = volumeView.subviews.compactMap { $0 as? UISlider }.first
+        slider?.value = min(max(level, 0), 1)
+        volume.set(slider?.value ?? level)
+    }
 
     func pickOutput() {
         guard let window = UIApplication.shared.connectedScenes

@@ -2,6 +2,7 @@ package app.sapoche
 
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
 import android.media.AudioAttributes
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
@@ -21,12 +22,23 @@ import kotlinx.coroutines.flow.StateFlow
  */
 data class AudioOutput(val kind: String, val name: String)
 
-/** Follows where the music is played to and opens the system's list of places to play to. */
+/** Follows where the music is played to and its volume, and opens the system's list of places to play to. */
 class AudioOutputs(private val context: Context) {
     private val audio = context.getSystemService(AudioManager::class.java)
     private val main = Handler(Looper.getMainLooper())
     private val _current = MutableStateFlow(read())
     val current: StateFlow<AudioOutput> = _current
+
+    private val _volume = MutableStateFlow(readVolume())
+
+    /** The volume of the music, 0 to 1; it moves with the buttons of the phone too. */
+    val volume: StateFlow<Float> = _volume
+
+    private val volumeWatch = object : ContentObserver(main) {
+        override fun onChange(selfChange: Boolean) {
+            _volume.value = readVolume()
+        }
+    }
 
     private val devices = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) = refresh()
@@ -38,6 +50,8 @@ class AudioOutputs(private val context: Context) {
 
     init {
         audio.registerAudioDeviceCallback(devices, main)
+        // The system settings change with the volume, buttons or not
+        context.contentResolver.registerContentObserver(Settings.System.CONTENT_URI, true, volumeWatch)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) watchRoutes()
     }
 
@@ -53,10 +67,24 @@ class AudioOutputs(private val context: Context) {
 
     fun refresh() {
         _current.value = read()
+        _volume.value = readVolume()
+    }
+
+    /** Sets the volume of the music to [level], 0 to 1, as the buttons of the phone would, without the system's slider. */
+    fun setVolume(level: Float) {
+        val top = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(level.coerceIn(0f, 1f) * top), 0)
+        _volume.value = readVolume()
+    }
+
+    private fun readVolume(): Float {
+        val top = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        return if (top <= 0) 1f else audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / top
     }
 
     fun release() {
         audio.unregisterAudioDeviceCallback(devices)
+        context.contentResolver.unregisterContentObserver(volumeWatch)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             (routes as? MediaRouter2.ControllerCallback)?.let { MediaRouter2.getInstance(context).unregisterControllerCallback(it) }
         }

@@ -594,6 +594,9 @@ class FakeBackend implements Backend {
   Future<void> pickOutput() => _record('pickOutput');
 
   @override
+  Future<void> setVolume(double level) => _record('setVolume $level');
+
+  @override
   Future<void> setAvatar(String? base64) => _record('setAvatar $base64');
 
   /// Whether [sendChat] finds a connection to send on.

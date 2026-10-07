@@ -74,6 +74,9 @@ class RoomController extends ChangeNotifier {
   SleepState _sleep = const SleepState();
   AudioOutput _output = const AudioOutput();
 
+  /// The volume of the device, 0 to 1; moves with its buttons too.
+  final volume = ValueNotifier<double>(1);
+
   /// The pictures the other members chose, by member id.
   final _avatars = <String, Uint8List>{};
   Profile _profile = const Profile();
@@ -230,6 +233,8 @@ class RoomController extends ChangeNotifier {
       case OutputEvent(:final output):
         _output = output;
         notifyListeners();
+      case VolumeEvent(:final level):
+        volume.value = level;
       case LibraryEvent():
         break; // LibraryController listens for this itself
       case UpdateEvent():
@@ -664,6 +669,12 @@ class RoomController extends ChangeNotifier {
   /// Opens the system's list of places to play to.
   Future<void> pickOutput() => _run(_backend.pickOutput);
 
+  /// Sets the volume of the device; the slider follows at once and the device's own value comes back as an event.
+  Future<void> setVolume(double level) {
+    volume.value = level.clamp(0.0, 1.0);
+    return _run(() => _backend.setVolume(volume.value));
+  }
+
   /// Shows [picture] to the room as this device's own, or with null takes it away. A picture too big to send stays
   /// on this phone.
   Future<void> shareAvatar(Uint8List? picture) {
@@ -851,6 +862,7 @@ class RoomController extends ChangeNotifier {
     _messages.close();
     _notices.close();
     _reactions.close();
+    volume.dispose();
     _reactionFlush?.cancel();
     for (final timer in _lateTimers) {
       timer.cancel();

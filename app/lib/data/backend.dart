@@ -95,6 +95,12 @@ class OutputEvent extends BackendEvent {
   final AudioOutput output;
 }
 
+/// The volume of the device changed, from the screen or from its buttons: [level] runs from 0 to 1.
+class VolumeEvent extends BackendEvent {
+  const VolumeEvent(this.level);
+  final double level;
+}
+
 /// How far an update of the app has come.
 class UpdateEvent extends BackendEvent {
   const UpdateEvent(this.info);
@@ -146,6 +152,9 @@ abstract class Backend {
 
   /// Opens the system's list of places to play to.
   Future<void> pickOutput();
+
+  /// Sets the volume of the device, 0 to 1.
+  Future<void> setVolume(double level);
 
   /// The picture the room sees of this device, as base64 of a small JPEG; null for none.
   Future<void> setAvatar(String? base64);
@@ -384,6 +393,7 @@ class NativeBackend implements Backend {
       'calm' => CalmEvent(json['on'] as bool),
       'pip' => PipEvent(json['on'] as bool),
       'output' => OutputEvent(AudioOutput.fromJson(json)),
+      'volume' => VolumeEvent((json['level'] as num).toDouble()),
       'avatar' => AvatarEvent(
         json['id'] as String,
         json['data'] == null ? null : base64Decode(json['data'] as String),
@@ -473,6 +483,10 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> pickOutput() => _call<void>('pickOutput');
+
+  @override
+  Future<void> setVolume(double level) =>
+      _call<void>('setVolume', {'level': level});
 
   @override
   Future<void> setAvatar(String? base64) =>
