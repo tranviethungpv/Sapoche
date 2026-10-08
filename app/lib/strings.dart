@@ -731,6 +731,14 @@ abstract final class S {
       '${artists[0]}, ${artists[1]} và nhiều hơn',
     ),
   };
+  static String chipContext(String bucket) => switch (bucket) {
+    'morning' => _t('Morning mix', 'Mix buổi sáng'),
+    'afternoon' => _t('Afternoon mix', 'Mix buổi chiều'),
+    'evening' => _t('Evening mix', 'Mix buổi tối'),
+    _ => _t('Night mix', 'Mix ban đêm'),
+  };
+  static String get chipForgotten => _t('Long unheard', 'Lâu rồi chưa nghe');
+  static String get chipNew => _t('Something new', 'Thử cái mới');
   static String get artistRadio =>
       _t('Radio from your artists', 'Radio từ nghệ sĩ của bạn');
   static String get latestFromArtists =>

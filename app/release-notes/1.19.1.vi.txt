@@ -1,0 +1,4 @@
+Trang chủ bắt đầu từ chính nhạc của bạn
+- Đầu trang chủ nay là những thứ của bạn: bài đã thích, bài đã tải, playlist và các nghệ sĩ bạn hay nghe, mỗi thứ có bìa riêng.
+- Chip mới ở đầu trang phát ngay các mix làm từ nhạc của bạn: mix của bạn, mix hợp giờ hiện tại, bài yêu thích lâu rồi chưa nghe và nhạc mới. Các tâm trạng của YouTube đứng sau.
+- Chip và hàng bạn hay mở nhất được xếp lên trước.

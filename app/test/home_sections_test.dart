@@ -27,6 +27,7 @@ MusicTrack _music(String id, String title, String artist, {String? artistId}) =>
       artist: artist,
       artistId: artistId,
       durMs: 200000,
+      isSong: true,
     );
 
 /// A person with two tastes: mornings are Adele, Beck and Cher (four songs each), nights are Drake and Eminem.
@@ -117,6 +118,41 @@ void main() {
       expect(find.text('Relax'), findsOneWidget);
     });
 
+    testWidgets(
+      'are in the order of what the person opens at this time of day',
+      (tester) async {
+        final counts = jsonEncode({
+          for (final part in ['morning', 'afternoon', 'evening', 'night'])
+            part: {
+              'mood:p-work': [40, 35],
+              'mood:p-relax': [40, 0],
+            },
+        });
+        await openHome(
+          tester,
+          prepare: (b) => b.homeResult = home(),
+          prefs: {'shelf_stats': counts},
+        );
+        expect(
+          tester.getTopLeft(find.text('Workout')).dx,
+          lessThan(tester.getTopLeft(find.text('Relax')).dx),
+        );
+      },
+    );
+
+    testWidgets('a mood that is opened is counted for next time', (
+      tester,
+    ) async {
+      await openHome(tester, prepare: (b) => b.homeResult = home());
+      await tester.tap(find.byKey(const ValueKey('mood-p-work')));
+      await tester.pumpAndSettle();
+      final prefs = await SharedPreferences.getInstance();
+      final stored = jsonDecode(prefs.getString('shelf_stats')!) as Map;
+      final part = stored[dayPartOf(DateTime.now())] as Map;
+      expect(part['mood:p-work'], [1, 1]);
+      expect(part['mood:p-relax'], [1, 0]);
+    });
+
     testWidgets('a mood that cannot be loaded says so and tries again', (
       tester,
     ) async {
@@ -143,24 +179,125 @@ void main() {
     });
   });
 
-  testWidgets('what was heard last is tiles on top, a touch plays it', (
-    tester,
-  ) async {
-    final anna = song('annaaaaaaaa', 'Hello', 'Adele');
-    final beck = song('beckaaaaaaa', 'Loser', 'Beck');
-    final backend = await openHome(
+  group('the tiles at the top are the person\'s own things', () {
+    Track liked() => song('likedaaaaaa', 'Liked One', 'Adele');
+
+    List<HistoryEntry> heard() => [
+      HistoryEntry(
+        track: song('annaaaaaaaa', 'Hello', 'Adele'),
+        at: DateTime.now(),
+        plays: 5,
+      ),
+      HistoryEntry(
+        track: song('beckaaaaaaa', 'Loser', 'Beck'),
+        at: DateTime.now(),
+        plays: 3,
+      ),
+    ];
+
+    testWidgets('are the liked songs, a playlist and the artists played', (
       tester,
-      prepare: (b) => b.recentSongs = [
-        HistoryEntry(track: anna, at: DateTime.now()),
-        HistoryEntry(track: beck, at: DateTime.now()),
-      ],
+    ) async {
+      await openHome(
+        tester,
+        prepare: (b) {
+          b.recentSongs = heard();
+          b.likedSongs = [liked()];
+          b.playlistNames[1] = 'Road Trip';
+          b.playlistSongs[1] = [song('rt1aaaaaaaa', 'On The Road', 'Kerouac')];
+        },
+      );
+      expect(find.byKey(const ValueKey('quick-liked')), findsOneWidget);
+      expect(find.byKey(const ValueKey('quick-playlist-1')), findsOneWidget);
+      expect(find.text('Road Trip'), findsOneWidget);
+      // The artists fill what is left
+      expect(
+        find.byKey(const ValueKey('quick-artist-annaaaaaaaa')),
+        findsOneWidget,
+      );
+      // Nothing was downloaded
+      expect(find.byKey(const ValueKey('quick-downloaded')), findsNothing);
+    });
+
+    testWidgets('are six at most', (tester) async {
+      await openHome(
+        tester,
+        prepare: (b) {
+          b.likedSongs = [liked()];
+          b.downloadList.add(
+            DownloadEntry(
+              track: song('dl1aaaaaaaa', 'Saved', 'Cher'),
+              state: DownloadState.done,
+            ),
+          );
+          b.recentSongs = [
+            for (var i = 0; i < 9; i++)
+              HistoryEntry(
+                track: song('song${i}aaaaaaa', 'Song $i', 'Artist $i'),
+                at: DateTime.now().subtract(Duration(minutes: i)),
+                plays: 9 - i,
+              ),
+          ];
+        },
+      );
+      expect(find.byKey(const ValueKey('quick-liked')), findsOneWidget);
+      expect(find.byKey(const ValueKey('quick-downloaded')), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w.key is ValueKey &&
+              '${(w.key as ValueKey).value}'.startsWith('quick-'),
+        ),
+        findsNWidgets(6),
+      );
+    });
+
+    testWidgets(
+      'are not there for somebody with nothing yet, or with one thing',
+      (tester) async {
+        await openHome(tester, prepare: (b) => b.likedSongs = [liked()]);
+        expect(find.byKey(const ValueKey('quick-liked')), findsNothing);
+      },
     );
-    await tester.tap(find.byKey(ValueKey('jump-${beck.videoId}')));
-    await tester.pump();
-    expect(
-      backend.calls,
-      containsAllInOrder(['clear', 'addMany ${beck.videoId} next=false']),
-    );
+
+    testWidgets('the liked songs open the liked songs', (tester) async {
+      await openHome(
+        tester,
+        prepare: (b) {
+          b.recentSongs = heard();
+          b.likedSongs = [liked()];
+        },
+      );
+      await tester.tap(find.byKey(const ValueKey('quick-liked')));
+      await tester.pumpAndSettle();
+      expect(find.text('Liked One'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('quick-liked')), findsOneWidget);
+    });
+
+    testWidgets('a playlist opens, and an artist starts a mix of theirs', (
+      tester,
+    ) async {
+      final backend = await openHome(
+        tester,
+        prepare: (b) {
+          b.recentSongs = heard();
+          b.likedSongs = [liked()];
+          b.playlistNames[1] = 'Road Trip';
+          b.playlistSongs[1] = [song('rt1aaaaaaaa', 'On The Road', 'Kerouac')];
+        },
+      );
+      await tester.tap(find.byKey(const ValueKey('quick-playlist-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('On The Road'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('quick-artist-annaaaaaaaa')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(backend.calls, contains('musicNext annaaaaaaaa'));
+    });
   });
 
   group('the mixes made for the person', () {
@@ -202,6 +339,129 @@ void main() {
     ) async {
       await openHome(tester);
       expect(find.text('Made for you'), findsNothing);
+    });
+  });
+
+  group('the chips made from the person\'s own music', () {
+    MusicHome moods() => const MusicHome(
+      chips: [MoodChip(label: 'Relax', params: 'p-relax')],
+    );
+
+    testWidgets('are one for each mix, and come before the moods', (
+      tester,
+    ) async {
+      await openHome(
+        tester,
+        prepare: (b) {
+          _twoTastes(b);
+          b.homeResult = moods();
+        },
+      );
+      expect(find.byKey(const ValueKey('chip-mix-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-mix-2')), findsOneWidget);
+      final own = tester
+          .getTopLeft(find.byKey(const ValueKey('chip-mix-2')))
+          .dx;
+      final mood = tester
+          .getTopLeft(find.byKey(const ValueKey('mood-p-relax')))
+          .dx;
+      expect(own, lessThan(mood));
+    });
+
+    testWidgets('are there when YouTube Music cannot be reached', (
+      tester,
+    ) async {
+      await openHome(
+        tester,
+        prepare: (b) {
+          _twoTastes(b);
+          b.musicFailWith = StateError('offline');
+        },
+      );
+      expect(find.byKey(const ValueKey('chip-mix-1')), findsOneWidget);
+    });
+
+    testWidgets('a touch plays the mix and is counted for next time', (
+      tester,
+    ) async {
+      final backend = await openHome(tester, prepare: _twoTastes);
+      await tester.tap(find.byKey(const ValueKey('chip-mix-2')));
+      await tester.pump();
+      final added = backend.calls.firstWhere((c) => c.startsWith('addMany'));
+      expect(added, contains('drake'));
+      expect(backend.calls, contains('clear'));
+      final prefs = await SharedPreferences.getInstance();
+      final stored = jsonDecode(prefs.getString('shelf_stats')!) as Map;
+      final part = stored[dayPartOf(DateTime.now())] as Map;
+      expect(part['me:mix-2'], [1, 1]);
+      expect(part['me:mix-1'], [1, 0]);
+    });
+
+    testWidgets('go on the queue in a room instead of taking its place', (
+      tester,
+    ) async {
+      final backend = await openHome(tester, prepare: _twoTastes, inRoom: true);
+      await tester.tap(find.byKey(const ValueKey('chip-mix-1')));
+      await tester.pump();
+      expect(backend.calls, isNot(contains('clear')));
+      expect(backend.calls.where((c) => c.startsWith('addMany')), isNotEmpty);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets(
+      'the favourites not heard for long and the new songs are chips too',
+      (tester) async {
+        await openHome(
+          tester,
+          prepare: (b) {
+            b.likedSongs = [
+              for (var i = 0; i < 3; i++)
+                song('fav${i}aaaaaaaa', 'Old $i', 'Cher'),
+            ];
+            b.discoverSongs = [
+              for (var i = 0; i < 3; i++)
+                song('new${i}aaaaaaaa', 'New $i', 'Newcomer'),
+            ];
+          },
+        );
+        expect(find.text('Long unheard'), findsOneWidget);
+        expect(find.text('Something new'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a list of fewer than three songs is not a chip', (
+      tester,
+    ) async {
+      await openHome(
+        tester,
+        prepare: (b) {
+          b.likedSongs = [song('fav0aaaaaaaa', 'Old', 'Cher')];
+          b.discoverSongs = [song('new0aaaaaaaa', 'New', 'Newcomer')];
+        },
+      );
+      expect(find.text('Long unheard'), findsNothing);
+      expect(find.text('Something new'), findsNothing);
+    });
+
+    testWidgets('the ones the person touches come first', (tester) async {
+      final counts = jsonEncode({
+        for (final part in ['morning', 'afternoon', 'evening', 'night'])
+          part: {
+            'me:mix-2': [40, 35],
+            'me:mix-1': [40, 0],
+          },
+      });
+      await openHome(
+        tester,
+        prepare: _twoTastes,
+        prefs: {'shelf_stats': counts},
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('chip-mix-2'))).dx,
+        lessThan(
+          tester.getTopLeft(find.byKey(const ValueKey('chip-mix-1'))).dx,
+        ),
+      );
     });
   });
 

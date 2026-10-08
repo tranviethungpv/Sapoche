@@ -11,9 +11,7 @@ import 'home_shell.dart';
 import 'mood_page.dart';
 import 'player/track_section.dart';
 import 'scope.dart';
-import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
-import 'widgets/not_interested.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/playlist_cover.dart';
 import 'widgets/song_card.dart';
@@ -24,57 +22,162 @@ typedef ShelfFrame = Widget Function(Widget shelf);
 
 Widget _plain(Widget shelf) => shelf;
 
-/// The moods YouTube Music offers (Relax, Workout, Focus...) as pills that scroll sideways; a touch opens what suits
-/// the mood. Nothing is drawn while they are being asked for, or when they cannot be had.
-class MoodChips extends StatefulWidget {
-  const MoodChips({super.key});
+/// One of the person's own chips: a list of songs made from their music, which a touch plays.
+class PersonalChip {
+  const PersonalChip({
+    required this.id,
+    required this.label,
+    required this.tracks,
+  });
 
-  @override
-  State<MoodChips> createState() => _MoodChipsState();
+  final String id;
+  final String label;
+  final List<Track> tracks;
 }
 
-class _MoodChipsState extends State<MoodChips> {
-  Future<MusicHome>? _home;
+/// The chips at the top of the page, in a row that scrolls sideways.
+///
+/// First the person's own: their mixes, the mix for this time of day, the favourites they have not heard for a long
+/// while, something new. They are made on the phone from what the person plays, and a touch starts them. Then the moods
+/// YouTube Music offers (Relax, Workout, Focus...), whose touch opens the playlists that suit the mood.
+///
+/// The moods are the same for everybody, and YouTube's playlists of a mood hold hardly any of the songs a person plays
+/// (measured: a handful of 300 to 1300), so a mood cannot be made theirs; the own chips are what is. Both kinds are
+/// shown in the order the person touches them at this time of day (see `ShelfStats`), the own ones first. The moods
+/// are left out while they are asked for, or when they cannot be had.
+class HomeChips extends StatefulWidget {
+  const HomeChips({super.key, this.personal = const []});
+
+  final List<PersonalChip> personal;
+
+  @override
+  State<HomeChips> createState() => _HomeChipsState();
+}
+
+class _HomeChipsState extends State<HomeChips> {
+  Future<List<MoodChip>>? _moods;
+  late String _part;
+
+  /// The own chips as they were last put in order: the order is drawn when the set of chips changes, not each time the
+  /// page is drawn, so that it does not shuffle under the person's finger.
+  String? _key;
+  List<String> _order = const [];
+
+  String _moodId(MoodChip chip) => 'mood:${chip.params}';
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _home ??= AppScope.of(context).music.home();
+    if (_moods != null) return;
+    final model = AppScope.of(context);
+    _part = dayPartOf(DateTime.now());
+    // Drawn once too, when the moods arrive
+    _moods = model.music
+        .home()
+        .then((home) {
+          final byId = {for (final chip in home.chips) _moodId(chip): chip};
+          if (byId.isEmpty) return const <MoodChip>[];
+          model.settings.shelves.shown(_part, byId.keys);
+          return [
+            for (final id in model.settings.shelves.order(
+              byId.keys.toList(),
+              _part,
+            ))
+              byId[id]!,
+          ];
+        })
+        .catchError((_) => const <MoodChip>[]);
+  }
+
+  List<PersonalChip> _personal() {
+    final stats = AppScope.of(context).settings.shelves;
+    final byId = {for (final c in widget.personal) 'me:${c.id}': c};
+    final key = byId.keys.join(',');
+    if (key != _key) {
+      _key = key;
+      if (byId.isNotEmpty) stats.shown(_part, byId.keys);
+      _order = stats.order(byId.keys.toList(), _part);
+    }
+    return [for (final id in _order) byId[id]!];
   }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return FutureBuilder<MusicHome>(
-      future: _home,
+    final stats = AppScope.of(context).settings.shelves;
+    final personal = _personal();
+    return FutureBuilder<List<MoodChip>>(
+      future: _moods,
       builder: (context, async) {
-        final chips = async.data?.chips ?? const <MoodChip>[];
-        if (chips.isEmpty) return const SizedBox.shrink();
+        final moods = async.data ?? const <MoodChip>[];
+        final count = personal.length + moods.length;
+        if (count == 0) return const SizedBox.shrink();
+        Widget pill({
+          required Key key,
+          required String label,
+          required VoidCallback onTap,
+          bool own = false,
+        }) => Material(
+          color: own ? p.primaryContainer : p.text.withValues(alpha: 0.1),
+          shape: const StadiumBorder(),
+          child: InkWell(
+            key: key,
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(own ? 10 : 16, 0, 16, 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // The own chips play at a touch: the arrow says so
+                  if (own) ...[
+                    Icon(
+                      Icons.play_arrow_rounded,
+                      size: 20,
+                      color: p.onPrimaryContainer,
+                    ),
+                    const SizedBox(width: 2),
+                  ],
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelLarge
+                        ?.copyWith(color: own ? p.onPrimaryContainer : null),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
         return SizedBox(
           height: 52,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-            itemCount: chips.length,
+            itemCount: count,
             separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, i) => Material(
-              color: p.text.withValues(alpha: 0.1),
-              shape: const StadiumBorder(),
-              child: InkWell(
-                key: ValueKey('mood-${chips[i].params}'),
-                customBorder: const StadiumBorder(),
-                onTap: () => openMood(context, chips[i]),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Center(
-                    child: Text(
-                      chips[i].label,
-                      style: Theme.of(context).textTheme.labelLarge,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            itemBuilder: (context, i) {
+              if (i < personal.length) {
+                final chip = personal[i];
+                return pill(
+                  key: ValueKey('chip-${chip.id}'),
+                  label: chip.label,
+                  own: true,
+                  onTap: () {
+                    stats.touched(_part, 'me:${chip.id}');
+                    playMix(context, chip.tracks);
+                  },
+                );
+              }
+              final mood = moods[i - personal.length];
+              return pill(
+                key: ValueKey('mood-${mood.params}'),
+                label: mood.label,
+                onTap: () {
+                  stats.touched(_part, _moodId(mood));
+                  openMood(context, mood);
+                },
+              );
+            },
           ),
         );
       },
@@ -82,19 +185,38 @@ class _MoodChipsState extends State<MoodChips> {
   }
 }
 
-/// The songs heard last as small tiles in two columns (three on a wide page), the way Spotify opens: one touch and the
-/// music is back.
-class JumpBackIn extends StatelessWidget {
-  const JumpBackIn({super.key, required this.tracks});
+/// One of the tiles at the top of the page: a way into something of the person's.
+class QuickTile {
+  const QuickTile({
+    required this.id,
+    required this.title,
+    required this.cover,
+    required this.onTap,
+  });
 
-  final List<Track> tracks;
+  final String id;
+  final String title;
+
+  /// The picture of the tile, square, [side] points a side.
+  final Widget Function(double side) cover;
+  final VoidCallback onTap;
+}
+
+/// The person's own things as small tiles in two columns (three on a wide page), the way Spotify opens: the songs
+/// they liked, what they downloaded, their playlists and the artists they play most. One touch and it is open or
+/// playing.
+class QuickAccess extends StatelessWidget {
+  const QuickAccess({super.key, required this.tiles});
+
+  final List<QuickTile> tiles;
 
   static const _gap = 10.0;
   static const _height = 56.0;
 
   @override
   Widget build(BuildContext context) {
-    if (tracks.isEmpty) return const SizedBox.shrink();
+    // A single tile on its own looks like a mistake
+    if (tiles.length < 2) return const SizedBox.shrink();
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     return Padding(
@@ -107,7 +229,7 @@ class JumpBackIn extends StatelessWidget {
             spacing: _gap,
             runSpacing: _gap,
             children: [
-              for (final track in tracks.take(columns * 3))
+              for (final tile in tiles)
                 SizedBox(
                   width: width,
                   height: _height,
@@ -116,16 +238,15 @@ class JumpBackIn extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     clipBehavior: Clip.antiAlias,
                     child: InkWell(
-                      key: ValueKey('jump-${track.videoId}'),
-                      onTap: () => playNow(context, track),
-                      onLongPress: () => showNotInterested(context, track),
+                      key: ValueKey('quick-${tile.id}'),
+                      onTap: tile.onTap,
                       child: Row(
                         children: [
-                          Artwork(url: track.thumb, size: _height, radius: 0),
+                          tile.cover(_height),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              track.title,
+                              tile.title,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: theme.titleSmall,
@@ -141,6 +262,31 @@ class JumpBackIn extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// A tile cover that is a plain icon on the colour of the app: the liked songs and the downloads have no picture.
+class QuickIconCover extends StatelessWidget {
+  const QuickIconCover(this.icon, {super.key, required this.side});
+
+  final IconData icon;
+  final double side;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      width: side,
+      height: side,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [p.primary, p.primary.withValues(alpha: 0.55)],
+        ),
+      ),
+      child: Icon(icon, color: p.onPrimary, size: side * 0.42),
     );
   }
 }

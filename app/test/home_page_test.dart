@@ -101,10 +101,7 @@ void main() {
     expect(find.text('Your music starts here'), findsNothing);
     expect(find.text('Quick picks'), findsOneWidget);
     expect(find.text('Brand New'), findsOneWidget);
-    // What was heard last is the tiles on top; "Listen again" only holds what does not fit among them
-    expect(find.byKey(ValueKey('jump-${anna.videoId}')), findsOneWidget);
-    expect(find.byKey(ValueKey('jump-${beck.videoId}')), findsOneWidget);
-    expect(find.text('Listen again'), findsNothing);
+    expect(find.text('Listen again'), findsOneWidget);
     expect(find.text('Mixed for you'), findsOneWidget);
     // The mix of the artist heard most is the card at the top
     expect(find.text('Adele Mix'), findsOneWidget);

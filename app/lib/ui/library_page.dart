@@ -97,13 +97,7 @@ class _LibraryPageState extends State<LibraryPage> {
 
   void _show(_Open value) {
     if (!mounted) return;
-    if (value is _Playlist) AppScope.of(context).library.openPlaylist(value.id);
-    // A message still showing would be drawn by the new page too, and the two would fight over it
-    ScaffoldMessenger.of(context).removeCurrentSnackBar();
-    TabNavigation.push(
-      context,
-      MaterialPageRoute<void>(builder: (_) => _LibraryScreen(open: value)),
-    );
+    _openScreen(context, value);
   }
 
   @override
@@ -120,6 +114,25 @@ class _LibraryPageState extends State<LibraryPage> {
     );
   }
 }
+
+void _openScreen(BuildContext context, _Open value) {
+  if (value is _Playlist) AppScope.of(context).library.openPlaylist(value.id);
+  // A message still showing would be drawn by the new page too, and the two would fight over it
+  ScaffoldMessenger.of(context).removeCurrentSnackBar();
+  TabNavigation.push(
+    context,
+    MaterialPageRoute<void>(builder: (_) => _LibraryScreen(open: value)),
+  );
+}
+
+/// Opens one list of the library over the tab that is showing, from outside the library: the liked songs
+/// ([LibraryRequests.liked]), the downloads ([LibraryRequests.downloaded]) or the playlist with that id.
+void openLibrarySpot(BuildContext context, int spot) =>
+    _openScreen(context, switch (spot) {
+      LibraryRequests.liked => const _Liked(),
+      LibraryRequests.downloaded => const _Downloaded(),
+      final id => _Playlist(id),
+    });
 
 /// The page of one list of the library.
 class _LibraryScreen extends StatelessWidget {

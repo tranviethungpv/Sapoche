@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../data/home_model.dart';
+import '../data/library_controller.dart';
 import '../data/shelf_stats.dart';
 import '../data/models.dart';
 import '../data/music_controller.dart';
@@ -15,6 +16,7 @@ import 'artist_page.dart';
 import 'home_shell.dart';
 import 'collection_screen.dart';
 import 'home_sections.dart';
+import 'library_page.dart';
 import 'player/track_section.dart';
 import 'rooms_sheet.dart';
 import 'scope.dart';
@@ -23,6 +25,7 @@ import 'widgets/artwork.dart';
 import 'widgets/cached_cover.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
+import 'widgets/playlist_cover.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/song_card.dart';
 
@@ -117,7 +120,6 @@ class _HomePageState extends State<HomePage> {
               final heroes = home.dailyMixes.isEmpty
                   ? _heroCount(box.maxWidth, home.mixes.length)
                   : 0;
-              final recents = home.listenAgain.take(6).toList();
               final shelves = _shelves(context, home, heroes);
               return RefreshIndicator(
                 onRefresh: _refresh,
@@ -131,8 +133,8 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     const _Header(),
                     if (home.isEmpty) const _Welcome(),
-                    const MoodChips(),
-                    JumpBackIn(tracks: recents),
+                    HomeChips(personal: _personalChips(home)),
+                    QuickAccess(tiles: _quickTiles(context, library, home)),
                     MadeForYou(mixes: home.dailyMixes),
                     if (heroes > 0)
                       _Heroes(mixes: home.mixes.take(heroes).toList()),
@@ -145,6 +147,83 @@ class _HomePageState extends State<HomePage> {
         },
       ),
     );
+  }
+
+  /// The person's own chips: each mix made for them, the mix for this time of day, the favourites not heard for a long
+  /// while and something new. A list of fewer than three songs is not worth a chip.
+  List<PersonalChip> _personalChips(HomeShelves home) {
+    final chips = [
+      for (final mix in home.dailyMixes)
+        PersonalChip(
+          id: 'mix-${mix.number}',
+          label: S.dailyMix(mix.number),
+          tracks: mix.tracks,
+        ),
+      PersonalChip(
+        id: 'context',
+        label: S.chipContext(home.contextBucket),
+        tracks: home.context,
+      ),
+      PersonalChip(
+        id: 'forgotten',
+        label: S.chipForgotten,
+        tracks: home.forgotten,
+      ),
+      PersonalChip(id: 'new', label: S.chipNew, tracks: home.discover),
+    ];
+    return [
+      for (final chip in chips)
+        if (chip.tracks.length >= 3) chip,
+    ];
+  }
+
+  /// The tiles at the top, six at most: what the person keeps (the songs they liked, what they downloaded, their
+  /// latest playlists), then the artists they play most to fill the rest.
+  List<QuickTile> _quickTiles(
+    BuildContext context,
+    LibraryController library,
+    HomeShelves home,
+  ) {
+    const most = 6;
+    final tiles = <QuickTile>[
+      if (library.liked.isNotEmpty)
+        QuickTile(
+          id: 'liked',
+          title: S.likedSongs,
+          cover: (side) => QuickIconCover(Icons.favorite_rounded, side: side),
+          onTap: () => openLibrarySpot(context, LibraryRequests.liked),
+        ),
+      if (library.downloads.any((d) => d.state == DownloadState.done))
+        QuickTile(
+          id: 'downloaded',
+          title: S.downloadedSongs,
+          cover: (side) =>
+              QuickIconCover(Icons.download_done_rounded, side: side),
+          onTap: () => openLibrarySpot(context, LibraryRequests.downloaded),
+        ),
+      for (final list in library.playlists.where((l) => l.count > 0).take(2))
+        QuickTile(
+          id: 'playlist-${list.id}',
+          title: list.name,
+          cover: (side) =>
+              PlaylistCover(thumbs: list.thumbs, size: side, radius: 0),
+          onTap: () => openLibrarySpot(context, list.id),
+        ),
+    ];
+    for (final mix in home.mixes) {
+      if (tiles.length >= most) break;
+      tiles.add(
+        QuickTile(
+          id: 'artist-${mix.seed.videoId}',
+          title: mix.artist,
+          // The cover of a song, cropped square and without the black bars a video's picture has
+          cover: (side) =>
+              PlaylistCover(thumbs: [?mix.seed.thumb], size: side, radius: 0),
+          onTap: () => startMix(context, mix.seed),
+        ),
+      );
+    }
+    return tiles.take(most).toList();
   }
 
   /// A row that is drawn the moment it has something to show, and so counted when it is.
@@ -169,15 +248,13 @@ class _HomePageState extends State<HomePage> {
           SongCard.track(context, t, onTap: () => playNow(context, t)),
       ],
     );
-    // The first six of what was heard last are the tiles on top
-    final again = home.listenAgain.skip(6).toList();
     return {
       'quick': home.quickPicks.isEmpty
           ? null
           : _frame('quick', _QuickPicks(tracks: home.quickPicks)),
-      'again': again.isEmpty
+      'again': home.listenAgain.isEmpty
           ? null
-          : _frame('again', songs(S.listenAgain, again)),
+          : _frame('again', songs(S.listenAgain, home.listenAgain)),
       'context': home.context.isEmpty
           ? null
           : _frame(

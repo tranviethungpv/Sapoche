@@ -1,0 +1,4 @@
+A Home that starts from your own music
+- The top of Home is now your own things: liked songs, downloads, playlists and the artists you play most, each with its cover.
+- New chips at the top start mixes made from your music: your mixes, the mix for this time of day, favourites you have not heard for a while, and something new. YouTube's moods follow them.
+- The chips and rows you open most come first.
