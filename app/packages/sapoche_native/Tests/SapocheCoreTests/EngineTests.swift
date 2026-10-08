@@ -769,6 +769,28 @@ final class SmallPartsTests: XCTestCase {
         XCTAssertEqual(VideoPicker.pick([source(720, "avc1.a", 500), source(720, "avc1.b", 900)], maxHeight: 720)?.bitrateKbps, 900)
     }
 
+    func testEachAudioQualityTakesTheBestStreamWithinItsLimit() {
+        func source(_ itag: Int, _ kbps: Int) -> AudioSource {
+            AudioSource(url: "u\(itag)", mimeType: "audio/mp4", bitrateKbps: kbps, contentLength: 1, itag: itag)
+        }
+        let all = [source(251, 160), source(140, 128), source(250, 70), source(249, 50)]
+        XCTAssertEqual(AudioQuality.low.choose(all)?.itag, 249)
+        XCTAssertEqual(AudioQuality.normal.choose(all)?.itag, 250)
+        XCTAssertEqual(AudioQuality.high.choose(all)?.itag, 140)
+        XCTAssertEqual(AudioQuality.max.choose(all)?.itag, 251)
+        for quality in AudioQuality.allCases {
+            XCTAssertEqual(quality.choose(all)?.itag, quality.choose(all.reversed())?.itag, "the order does not matter")
+        }
+        let aac = [source(140, 128)]
+        for quality in AudioQuality.allCases {
+            XCTAssertEqual(quality.choose(aac)?.itag, 140, "a video with nothing that low gets its smallest stream")
+        }
+        XCTAssertNil(AudioQuality.low.choose([]))
+        XCTAssertEqual(AudioQuality(level: 1), .normal)
+        XCTAssertEqual(AudioQuality(level: 9), .max, "an unknown level is the best, as before there was a choice")
+        XCTAssertEqual(AudioQuality(level: -1), .max)
+    }
+
     func testTheVideoStreamsOfAnAnswerAreTheH264OnesInMP4() throws {
         let answer = try XCTUnwrap(JSON.parse(data: fixture("player_visionos")))
         let resolved = try YouTubeResolver.resolved(answer, videoId: "dQw4w9WgXcQ")
@@ -978,6 +1000,29 @@ final class MediaTests: XCTestCase {
         XCTAssertEqual(small.contentLength, 80 * 1024 * 1024)
         let best = try await streams.audio("vid00000001")
         XCTAssertEqual(best.contentLength, 99 * 1024 * 1024)
+    }
+
+    func testTheAudioQualityDecidesWhichStreamIsFetched() async throws {
+        let sizes: [Int64] = [9 * 1024 * 1024, 6 * 1024 * 1024, 3 * 1024 * 1024]
+        let low = try await StreamCache(resolver: Sized(sizes), quality: { .low }).audio("vid00000001")
+        XCTAssertEqual(low.bitrateKbps, 48)
+        let normal = try await StreamCache(resolver: Sized(sizes), quality: { .normal }).audio("vid00000001")
+        XCTAssertEqual(normal.bitrateKbps, 48, "48 is the best within 80; the 88 one is above it")
+        let high = try await StreamCache(resolver: Sized(sizes), quality: { .high }).audio("vid00000001")
+        XCTAssertEqual(high.bitrateKbps, 128)
+        let best = try await StreamCache(resolver: Sized(sizes)).audio("vid00000001")
+        XCTAssertEqual(best.bitrateKbps, 128, "without a choice it is the best, as it was")
+    }
+
+    func testTheQualityIsReadAtEveryFetchSoAChangeHoldsAtOnce() async throws {
+        final class Choice: @unchecked Sendable { var quality = AudioQuality.max }
+        let choice = Choice()
+        let streams = StreamCache(resolver: Sized([9 * 1024 * 1024, 6 * 1024 * 1024, 3 * 1024 * 1024]), quality: { choice.quality })
+        let before = try await streams.audio("vid00000001")
+        XCTAssertEqual(before.bitrateKbps, 128)
+        choice.quality = .low
+        let after = try await streams.audio("vid00000001")
+        XCTAssertEqual(after.bitrateKbps, 48, "the resolve is kept, the choice among its streams is not")
     }
 
     func testAFailedTransferIsTriedAgainWithAFreshAddressAndThenTheStreamIsOffered() async throws {

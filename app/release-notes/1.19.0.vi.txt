@@ -1,0 +1,5 @@
+Trang chủ mới và chọn chất lượng âm thanh
+- Trang chủ mới: tâm trạng như Relax và Workout, các mix làm từ những nghệ sĩ bạn hay nghe cùng nhau, và các hàng tự học xem bạn hay mở hàng nào.
+- Chọn nhanh được xếp hạng theo số bài bạn yêu thích cùng trỏ tới nó.
+- Hàng mới: nhạc mới nhất từ nghệ sĩ của bạn, bảng xếp hạng và nghệ sĩ hàng đầu của nước bạn.
+- Chọn chất lượng âm thanh ở Cài đặt > Phát, từ thấp (khoảng 50 kbps) đến cao nhất YouTube có (160 kbps).

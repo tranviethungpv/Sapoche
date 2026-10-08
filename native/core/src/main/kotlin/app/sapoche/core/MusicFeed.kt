@@ -20,6 +20,8 @@ class MusicFeed(
     private val searches = Recent<String, SearchPage>()
     private val lyricsLock = Mutex()
     private var trendingKept: Triple<String, Long, List<MusicShelf>>? = null
+    private val homes = HashMap<String, Pair<Long, MusicHome>>()
+    private var chartsKept: Pair<Long, List<MusicShelf>>? = null
 
     /** The radio of the song, with where its lyrics and related page are. */
     suspend fun watchNext(videoId: String): WatchNext = next.getOrPut(videoId) { music.watchNext(videoId) }
@@ -41,6 +43,19 @@ class MusicFeed(
     suspend fun trending(language: String = "en"): List<MusicShelf> {
         trendingKept?.let { (kept, at, shelves) -> if (kept == language && now() - at < TRENDING_MS) return shelves }
         return music.trending(language).also { trendingKept = Triple(language, now(), it) }
+    }
+
+    /** The home page with its moods, or the shelves of one mood; kept for [TRENDING_MS] like [trending], one answer per language and mood. */
+    suspend fun home(language: String = "en", params: String? = null): MusicHome {
+        val key = "$language\n${params.orEmpty()}"
+        synchronized(homes) { homes[key] }?.let { (at, home) -> if (now() - at < TRENDING_MS) return home }
+        return music.home(language, params).also { synchronized(homes) { homes[key] = now() to it } }
+    }
+
+    /** The charts of the person's country, kept for [TRENDING_MS]. */
+    suspend fun charts(): List<MusicShelf> {
+        chartsKept?.let { (at, shelves) -> if (now() - at < TRENDING_MS) return shelves }
+        return music.charts().also { chartsKept = now() to it }
     }
 
     /** Everything matching [query], or only what [params] (a filter of the page) keeps; kept, so going back to it is free. */

@@ -152,6 +152,34 @@ object MusicParser {
             if (title == null || tracks.isEmpty() && playlists.isEmpty()) null else MusicShelf(title, tracks, playlists)
         }
 
+    /** The moods the home page offers, and its shelves of anything (songs, playlists, albums, artists). */
+    fun home(root: JsonElement): MusicHome {
+        val chips = root.findAll("chipCloudChipRenderer").mapNotNull { chip ->
+            val label = chip.at("text").text() ?: return@mapNotNull null
+            MoodChip(label, chip.at("navigationEndpoint", "browseEndpoint", "params").string() ?: return@mapNotNull null)
+        }
+        return MusicHome(chips, root.findAll("musicCarouselShelfRenderer").mapNotNull { carousel(it) })
+    }
+
+    /** The charts page: its playlists and the list of the artists played most. */
+    fun charts(root: JsonElement): List<MusicShelf> {
+        val rows = root.findAll("musicCarouselShelfRenderer").mapNotNull { shelf ->
+            val title = shelf.at("header", "musicCarouselShelfBasicHeaderRenderer", "title").text() ?: return@mapNotNull null
+            val artists = shelf.at("contents").elements().mapNotNull { artistRow(it.at("musicResponsiveListItemRenderer")) }
+            if (artists.isNotEmpty()) MusicShelf(title, emptyList(), artists = artists) else carousel(shelf)
+        }
+        return rows
+    }
+
+    /** A row of a list that names an artist, as the charts list them. */
+    private fun artistRow(row: JsonElement?): ArtistCard? {
+        row ?: return null
+        val id = row.at("navigationEndpoint", "browseEndpoint", "browseId").string()?.takeIf { it.startsWith("UC") } ?: return null
+        val columns = row.at("flexColumns").elements().map { it.at("musicResponsiveListItemFlexColumnRenderer", "text") }
+        val name = columns.firstOrNull().text() ?: return null
+        return ArtistCard(id, name, columns.getOrNull(1).text(), row.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails").thumbnail())
+    }
+
     // ------------------------------------------------------------------ search
 
     /** What a search found: the top result, the list of the rest, the filters on offer and where more can be had. */

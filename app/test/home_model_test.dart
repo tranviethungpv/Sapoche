@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/home_model.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
+import 'package:sapoche/data/song_key.dart';
 
 Track t(String id, String artist, [String? title]) => Track(
   videoId: id,
@@ -217,6 +218,249 @@ void main() {
       now: now,
     );
     expect(home.quickPicks.map((s) => s.videoId), ['a', 'c']);
+  });
+
+  group('quick picks ranked by the lists that vote for them', () {
+    SeedList list(String seed, List<Track> tracks) =>
+        SeedList(seed: seed, tracks: tracks);
+
+    test(
+      'a song beside two loved songs beats one at the top of a single list',
+      () {
+        final s1 = t('s1', 'A', 'Seed one');
+        final s2 = t('s2', 'B', 'Seed two');
+        final home = buildHome(
+          recent: [heard(s1, now, plays: 5), heard(s2, now, plays: 5)],
+          liked: const [],
+          forYou: const [],
+          seedLists: [
+            list('s1', [t('solo', 'P'), t('both', 'Q'), t('x1', 'R')]),
+            list('s2', [t('y1', 'S'), t('y2', 'T'), t('both', 'Q')]),
+          ],
+          now: now,
+        );
+        final ids = home.quickPicks.map((s) => s.videoId).toList();
+        expect(ids.first, 'both');
+        expect(ids, containsAll(['solo', 'x1', 'y1', 'y2']));
+      },
+    );
+
+    test('a seed that is loved more counts for more', () {
+      final loved = t('loved', 'A');
+      final meh = t('meh', 'B');
+      final home = buildHome(
+        recent: [heard(loved, now, plays: 20), heard(meh, now, plays: 1)],
+        liked: const [],
+        forYou: const [],
+        seedLists: [
+          list('meh', [t('fromMeh', 'P')]),
+          list('loved', [t('fromLoved', 'Q')]),
+        ],
+        now: now,
+      );
+      expect(home.quickPicks.first.videoId, 'fromLoved');
+    });
+
+    test('no artist comes more than twice, and what is known is left out', () {
+      final seed = t('seed', 'A');
+      final home = buildHome(
+        recent: [
+          heard(seed, now, plays: 5),
+          heard(t('week', 'Z'), now, days: 2),
+          heard(t('old', 'Z'), now, days: 30),
+        ],
+        liked: [t('liked', 'Y')],
+        forYou: const [],
+        seedLists: [
+          list('seed', [
+            for (var i = 0; i < 6; i++) t('p$i', 'P'),
+            t('week', 'Z'),
+            t('liked', 'Y'),
+            t('old', 'Z'),
+          ]),
+        ],
+        now: now,
+      );
+      final ids = home.quickPicks.map((s) => s.videoId).toList();
+      expect(ids.where((id) => id.startsWith('p')).length, 2);
+      expect(ids, isNot(contains('week')), reason: 'heard this week');
+      expect(ids, isNot(contains('liked')), reason: 'already liked');
+      expect(ids, contains('old'), reason: 'heard long ago');
+    });
+
+    test('three places in ten go to artists the person does not play yet', () {
+      final seed = t('seed', 'Known');
+      final home = buildHome(
+        recent: [heard(seed, now, plays: 9)],
+        liked: const [],
+        forYou: const [],
+        seedLists: [
+          list('seed', [
+            // Ten artists the person plays come first in the list, then new ones
+            for (var i = 0; i < 12; i++) t('k$i', 'Known'),
+          ]),
+          list('seed', [for (var i = 0; i < 8; i++) t('n$i', 'New$i')]),
+        ],
+        now: now,
+      );
+      final picks = home.quickPicks.map((s) => s.videoId).toList();
+      // Known is capped at two songs, so most of the list is new anyway; but the new ones come at 3, 6 and 9
+      expect(picks.where((id) => id.startsWith('k')).length, 2);
+      expect(picks.where((id) => id.startsWith('n')).length, greaterThan(5));
+    });
+
+    test(
+      'the lists that were not kept leave the native suggestions as they were',
+      () {
+        final home = buildHome(
+          recent: [heard(t('a', 'A'), now)],
+          liked: const [],
+          forYou: [t('f1', 'X'), t('f2', 'Y')],
+          seedLists: const [],
+          now: now,
+        );
+        expect(home.quickPicks.map((s) => s.videoId), ['f1', 'f2']);
+      },
+    );
+  });
+
+  group('a mix for every taste', () {
+    /// Two tastes: mornings are Adele, Beck and Cher; nights are Drake and Eminem.
+    List<HistoryEntry> listensOf(DateTime now) => [
+      for (var d = 1; d <= 8; d++) ...[
+        for (final (i, a) in ['Adele', 'Beck', 'Cher'].indexed)
+          HistoryEntry(
+            track: t('${a.toLowerCase()}${d % 4}', a),
+            at: DateTime(now.year, now.month, now.day - 2 * d, 8, 4 * i),
+          ),
+        for (final (i, a) in ['Drake', 'Eminem'].indexed)
+          HistoryEntry(
+            track: t('${a.toLowerCase()}${d % 4}', a),
+            at: DateTime(now.year, now.month, now.day - 2 * d, 22, 4 * i),
+          ),
+      ],
+    ];
+
+    List<HistoryEntry> aggregated(List<HistoryEntry> listens) {
+      final byId = <String, HistoryEntry>{};
+      for (final e in listens) {
+        final kept = byId[e.track.videoId];
+        byId[e.track.videoId] = HistoryEntry(
+          track: e.track,
+          at: kept == null || e.at.isAfter(kept.at) ? e.at : kept.at,
+          plays: (kept?.plays ?? 0) + 1,
+        );
+      }
+      return byId.values.toList()..sort((a, b) => b.at.compareTo(a.at));
+    }
+
+    HomeShelves home(DateTime at, {List<SeedList> seedLists = const []}) {
+      final listens = listensOf(at);
+      return buildHome(
+        recent: aggregated(listens),
+        liked: const [],
+        forYou: const [],
+        seedLists: seedLists,
+        now: at,
+        listens: listens,
+      );
+    }
+
+    test('each taste gets its own mix, the one played most first', () {
+      final built = home(now);
+      expect(built.dailyMixes.map((m) => m.number), [1, 2]);
+      expect(built.dailyMixes.first.artists.toSet(), {'Adele', 'Beck', 'Cher'});
+      expect(built.dailyMixes.last.artists.toSet(), {'Drake', 'Eminem'});
+      for (final mix in built.dailyMixes) {
+        final taste = mix.artists.map(mainArtist).toSet();
+        expect(
+          mix.tracks.every((s) => taste.contains(mainArtist(s.artist))),
+          isTrue,
+        );
+      }
+    });
+
+    test('songs they do not know are mixed in beside the ones they do', () {
+      final fresh = [
+        for (var i = 0; i < 6; i++) t('new$i', 'Dua Lipa $i'),
+        t('drakeNew', 'Drake', 'A New Drake'),
+      ];
+      final built = home(
+        now,
+        seedLists: [SeedList(seed: 'adele1', tracks: fresh)],
+      );
+      final first = built.dailyMixes.first;
+      final ids = first.tracks.map((s) => s.videoId).toSet();
+      expect(ids.where((id) => id.startsWith('new')), isNotEmpty);
+      expect(
+        ids,
+        isNot(contains('drakeNew')),
+        reason: 'beside a song of the other taste, by an artist of it',
+      );
+      // Two known songs, then one that is new
+      expect(first.tracks[2].videoId.startsWith('new'), isTrue);
+    });
+
+    test('the mix is the same all day and another the next day', () {
+      final morning = home(DateTime(2026, 9, 30, 7));
+      final evening = home(DateTime(2026, 9, 30, 22));
+      expect(
+        evening.dailyMixes.first.tracks.map((s) => s.videoId),
+        morning.dailyMixes.first.tracks.map((s) => s.videoId),
+      );
+      final tomorrow = home(DateTime(2026, 10, 1, 7));
+      expect(
+        tomorrow.dailyMixes.first.tracks.map((s) => s.videoId).toList(),
+        isNot(morning.dailyMixes.first.tracks.map((s) => s.videoId).toList()),
+      );
+    });
+
+    test('a taste that has too few songs has no mix', () {
+      final built = buildHome(
+        recent: [heard(t('a', 'Adele'), now), heard(t('b', 'Beck'), now)],
+        liked: const [],
+        forYou: const [],
+        seedLists: const [],
+        now: now,
+        listens: [heard(t('a', 'Adele'), now), heard(t('b', 'Beck'), now)],
+      );
+      expect(built.dailyMixes, isEmpty);
+    });
+
+    test('what was blocked is in no mix', () {
+      final listens = listensOf(now);
+      final built = buildHome(
+        recent: aggregated(listens),
+        liked: const [],
+        forYou: const [],
+        seedLists: const [],
+        now: now,
+        listens: listens,
+        blocked: [
+          const BlockedItem(kind: 'artist', key: 'adele', label: 'Adele'),
+        ],
+      );
+      final names = built.dailyMixes.expand((m) => m.artists);
+      expect(names, isNot(contains('Adele')));
+    });
+
+    test('the cover is up to four different pictures', () {
+      final mix = DailyMix(
+        number: 1,
+        artists: const ['A'],
+        tracks: [
+          for (final thumb in ['a', 'a', 'b', null, 'c', 'd', 'e'])
+            Track(
+              videoId: 'v${thumb}x',
+              title: 't',
+              artist: 'A',
+              durMs: 1,
+              thumb: thumb,
+            ),
+        ],
+      );
+      expect(mix.covers, ['a', 'b', 'c', 'd']);
+    });
   });
 
   group('what the person asked not to be offered', () {

@@ -100,6 +100,18 @@ struct ArtistPage {
     var topSongsId: String?
 }
 
+/// A mood or activity on the home page of YouTube Music (Relax, Workout...); [params] asks for the shelves that suit it.
+struct MoodChip: Equatable {
+    let label: String
+    let params: String
+}
+
+/// The home page of YouTube Music: the moods it offers and its shelves, for a mood when one was asked for.
+struct MusicHome {
+    let chips: [MoodChip]
+    let shelves: [MusicShelf]
+}
+
 /// A titled row of a page: songs, albums, playlists or artists, any mix of them.
 struct MusicShelf {
     let title: String
@@ -199,6 +211,12 @@ protocol MusicSource {
 
     /// What YouTube Music shows everybody on its home page, with the shelf names in [language] (a code like "vi").
     func trending(language: String) async throws -> [MusicShelf]
+
+    /// The home page with the moods it offers; with a mood's [params] the shelves that suit that mood.
+    func home(language: String, params: String?) async throws -> MusicHome
+
+    /// The charts of the person's country: playlists of what is played most, and the artists played most.
+    func charts() async throws -> [MusicShelf]
 }
 
 extension MusicSource {

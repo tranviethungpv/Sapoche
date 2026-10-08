@@ -371,6 +371,41 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     ),
     _Group(
+      title: S.soundSection,
+      footer: S.audioQualityHelp,
+      children: [
+        ListenableBuilder(
+          listenable: model.room,
+          builder: (context, _) => Column(
+            children: [
+              for (final (quality, label, rate) in [
+                (AudioQuality.low, S.audioQualityLow, S.audioQualityLowRate),
+                (
+                  AudioQuality.normal,
+                  S.audioQualityNormal,
+                  S.audioQualityNormalRate,
+                ),
+                (AudioQuality.high, S.audioQualityHigh, S.audioQualityHighRate),
+                (AudioQuality.max, S.audioQualityMax, S.audioQualityMaxRate),
+              ])
+                _Row(
+                  key: ValueKey('audio-quality-${quality.name}'),
+                  label: label,
+                  value: rate,
+                  trailing: model.room.audioQuality == quality
+                      ? Icon(
+                          Icons.check_rounded,
+                          color: context.palette.primary,
+                        )
+                      : null,
+                  onTap: () => model.room.setAudioQuality(quality),
+                ),
+            ],
+          ),
+        ),
+      ],
+    ),
+    _Group(
       title: S.videoSection,
       footer: S.videoQualityHelp,
       children: [

@@ -550,6 +550,16 @@ void main() {
     },
   );
 
+  test(
+    'the sound quality is the best until chosen, and the choice goes to the native side',
+    () async {
+      expect(controller.audioQuality, AudioQuality.max);
+      await controller.setAudioQuality(AudioQuality.low);
+      expect(controller.audioQuality, AudioQuality.low);
+      expect(backend.calls.last, 'audioQuality low');
+    },
+  );
+
   test('the sleep timer follows what the native side reports', () async {
     expect(controller.sleep.on, isFalse);
     await controller.setSleep(SleepMode.time, minutes: 30);

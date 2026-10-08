@@ -322,4 +322,32 @@ void main() {
       expect(Profile.fromMap({'name': 'Anna'}).server, isEmpty);
     },
   );
+
+  test(
+    'the sound quality is the best until the native side says otherwise',
+    () {
+      expect(Profile.fromMap({'name': 'Anna'}).audioQuality, AudioQuality.max);
+      expect(
+        Profile.fromMap({'audioQuality': 0}).audioQuality,
+        AudioQuality.low,
+      );
+      expect(
+        Profile.fromMap({'audioQuality': 2}).audioQuality,
+        AudioQuality.high,
+      );
+      expect(
+        Profile.fromMap({'audioQuality': 9}).audioQuality,
+        AudioQuality.max,
+      );
+      expect(
+        Profile.fromMap({'audioQuality': -1}).audioQuality,
+        AudioQuality.max,
+      );
+      // The numbers are the contract with both native sides
+      expect(AudioQuality.values.map((q) => q.index), [0, 1, 2, 3]);
+      final low = const Profile().withAudioQuality(AudioQuality.low);
+      expect(low.withAutoplay(false).audioQuality, AudioQuality.low);
+      expect(low.withAudioQuality(AudioQuality.max).autoplay, isTrue);
+    },
+  );
 }

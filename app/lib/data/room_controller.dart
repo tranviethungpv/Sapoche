@@ -773,6 +773,15 @@ class RoomController extends ChangeNotifier {
     return _run(() => _backend.setAutoplay(on));
   }
 
+  /// How much sound a song that is not kept yet is fetched in.
+  AudioQuality get audioQuality => _profile.audioQuality;
+
+  Future<void> setAudioQuality(AudioQuality quality) {
+    _profile = _profile.withAudioQuality(quality);
+    notifyListeners();
+    return _run(() => _backend.setAudioQuality(quality));
+  }
+
   /// What YouTube would complete a half-typed search to.
   Future<List<String>> suggest(String query) async {
     try {

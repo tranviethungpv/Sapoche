@@ -2460,6 +2460,34 @@ void main() {
       expect(backend.calls.where((c) => c.startsWith('suggest')), isEmpty);
     });
 
+    testWidgets('the sound quality in settings is chosen from four steps', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await openTopic(tester, 'playback');
+
+      bool checked(String quality) => find
+          .descendant(
+            of: find.byKey(ValueKey('audio-quality-$quality')),
+            matching: find.byIcon(Icons.check_rounded),
+          )
+          .evaluate()
+          .isNotEmpty;
+
+      // The best is chosen until the person chooses
+      expect(checked('max'), isTrue);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('audio-quality-low')),
+      );
+      await tester.tap(find.byKey(const ValueKey('audio-quality-low')));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('audioQuality low'));
+      expect(checked('low'), isTrue);
+      expect(checked('max'), isFalse);
+    });
+
     testWidgets('the autoplay switch in settings tells the native side', (
       tester,
     ) async {

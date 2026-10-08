@@ -246,6 +246,9 @@ abstract class Backend {
   /// Songs heard, once each, the most recent first.
   Future<List<HistoryEntry>> recent();
 
+  /// Every listen with its own time, the latest first, up to [limit]: what the sessions of listening are told from.
+  Future<List<HistoryEntry>> listens({int limit = 600});
+
   Future<void> setLiked(Track track, bool liked);
   Future<void> clearHistory();
 
@@ -293,6 +296,9 @@ abstract class Backend {
   /// Whether the music carries on with similar songs when the queue runs out.
   Future<void> setAutoplay(bool on);
 
+  /// How much sound to fetch for the songs that are not kept yet; from the next song on.
+  Future<void> setAudioQuality(AudioQuality quality);
+
   /// The person's playlists, the one changed last first.
   Future<List<SavedPlaylist>> playlists();
   Future<List<Track>> playlistTracks(int id);
@@ -338,6 +344,12 @@ abstract class Backend {
 
   /// What YouTube Music shows everybody on its home page.
   Future<List<MusicShelf>> musicTrending();
+
+  /// The moods YouTube Music offers, with its home page; with a mood's [params] the shelves that suit that mood.
+  Future<MusicHome> musicHome({String? params});
+
+  /// The charts of the person's country: playlists of what is played most, and the artists played most.
+  Future<List<MusicShelf>> musicCharts();
 
   /// Songs (audio releases, with [songs]) or videos matching [query], as YouTube Music lists them.
   Future<List<MusicTrack>> musicSearch(String query, {required bool songs});
@@ -626,6 +638,14 @@ class NativeBackend implements Backend {
   ];
 
   @override
+  Future<List<HistoryEntry>> listens({int limit = 600}) async => [
+    for (final e
+        in await _call<List<Object?>>('libraryListens', {'limit': limit}) ??
+            const [])
+      HistoryEntry.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
   Future<List<HistoryEntry>> recent() async => [
     for (final e in await _call<List<Object?>>('libraryRecent') ?? const [])
       HistoryEntry.fromMap(e as Map<Object?, Object?>),
@@ -727,6 +747,10 @@ class NativeBackend implements Backend {
   Future<void> setAutoplay(bool on) => _call('setAutoplay', {'on': on});
 
   @override
+  Future<void> setAudioQuality(AudioQuality quality) =>
+      _call('setAudioQuality', {'level': quality.index});
+
+  @override
   Future<SongRadio> musicNext(String videoId) async => SongRadio.fromMap(
     (await _call<Map<Object?, Object?>>('musicNext', {'videoId': videoId}))!,
   );
@@ -768,6 +792,19 @@ class NativeBackend implements Backend {
   Future<MoreTracks> musicMore(String token) async => MoreTracks.fromMap(
     (await _call<Map<Object?, Object?>>('musicMore', {'token': token}))!,
   );
+
+  @override
+  Future<MusicHome> musicHome({String? params}) async => MusicHome.fromMap(
+    (await _call<Map<Object?, Object?>>('musicHome', {
+      'params': ?params,
+    }))!,
+  );
+
+  @override
+  Future<List<MusicShelf>> musicCharts() async => [
+    for (final e in await _call<List<Object?>>('musicCharts') ?? const [])
+      MusicShelf.fromMap(e as Map<Object?, Object?>),
+  ];
 
   @override
   Future<List<MusicShelf>> musicTrending() async => [

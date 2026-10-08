@@ -69,6 +69,39 @@ struct VideoSource: Equatable {
     var index: DashRanges? = nil
 }
 
+/// How much sound a song is fetched in, from the least data to the most YouTube offers. [level] is what the settings keep
+/// (the same numbers as on Android), [maxKbps] the most a step may take. A video offers a few streams, so a step takes the
+/// best stream within its limit and, when the video has none that low, the smallest one it has. An iPhone plays only AAC,
+/// so it often has fewer streams to choose from than other phones.
+enum AudioQuality: Int, CaseIterable {
+    case low = 0, normal, high, max
+
+    private var maxKbps: Int {
+        switch self {
+        case .low: return 0
+        case .normal: return 80
+        case .high: return 130
+        case .max: return .max
+        }
+    }
+
+    /// The step for a saved level; anything unknown is the best, which is what the app did before there was a choice.
+    init(level: Int) {
+        self = Self(rawValue: level) ?? .max
+    }
+
+    /// The stream of [sources] this step stands for; nil when there are none.
+    func choose(_ sources: [AudioSource]) -> AudioSource? {
+        switch self {
+        case .max: return sources.max { $0.bitrateKbps < $1.bitrateKbps }
+        case .low: return sources.min { $0.bitrateKbps < $1.bitrateKbps }
+        default:
+            return sources.filter { $0.bitrateKbps <= maxKbps }.max { $0.bitrateKbps < $1.bitrateKbps }
+                ?? sources.min { $0.bitrateKbps < $1.bitrateKbps }
+        }
+    }
+}
+
 /// Chooses which video-only stream to play beside the audio.
 enum VideoPicker {
     /// The tallest stream that fits within [maxHeight]. When nothing fits (the video has only larger streams) the

@@ -153,7 +153,7 @@ class SuggestionFeed(
         const val FOR_YOU = 30
         const val DISCOVER = 20
         const val CONTEXT = 20
-        const val SEEDS = 5
+        const val SEEDS = 8
         const val FRESH_MS = 12L * 60 * 60 * 1000
         const val SONG = "song"
         const val ARTIST = "artist"

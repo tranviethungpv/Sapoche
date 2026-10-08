@@ -1,6 +1,7 @@
 package app.sapoche
 
 import android.net.Uri
+import app.sapoche.core.AudioQuality
 import app.sapoche.core.OkHttpDownloader
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -29,6 +30,7 @@ class MediaData(
     private val caches: MediaCaches,
     private val streams: StreamCache,
     private val maxVideoHeight: () -> Int,
+    private val audioQuality: () -> AudioQuality,
     private val log: (String) -> Unit = {},
 ) {
 
@@ -41,7 +43,7 @@ class MediaData(
         when (spec.uri.scheme) {
             SapocheMediaSourceFactory.AUDIO_SCHEME -> {
                 val pinned = caches.pinned(videoId)
-                val pick = streams.getAudio(videoId, pinned)
+                val pick = streams.getAudio(videoId, pinned, audioQuality())
                 if (pinned != null && !pick.honoursPin) {
                     log("$videoId: stream $pinned is gone, what was kept of it is dropped")
                     caches.forget(videoId)

@@ -1,6 +1,7 @@
 package app.sapoche
 
 import app.sapoche.core.AudioPicker
+import app.sapoche.core.AudioQuality
 import app.sapoche.core.AudioSource
 import app.sapoche.core.Probe
 import app.sapoche.core.StreamResolver
@@ -65,10 +66,11 @@ class StreamCache(
     /**
      * Returns a validated audio stream for [videoId], resolving if needed. With [pinnedItag] (the stream the bytes
      * kept on disk belong to) that stream is used as long as the video offers it and it works; see [AudioPicker].
+     * Without one, [quality] decides which stream.
      */
-    fun getAudio(videoId: String, pinnedItag: Int?): AudioPick {
+    fun getAudio(videoId: String, pinnedItag: Int?, quality: AudioQuality = AudioQuality.MAX): AudioPick {
         val entry = entry(videoId)
-        val pick = AudioPicker.pick(entry.audio, pinnedItag) ?: throw IOException("$videoId has no audio stream")
+        val pick = AudioPicker.pick(entry.audio, pinnedItag, quality) ?: throw IOException("$videoId has no audio stream")
         // The best stream was probed when it was resolved; another one has not been looked at yet
         if (pick.source.itag == entry.best.itag) return AudioPick(pick.source.url, pick.source.itag, pick.honoursPin)
         val probed = runBlocking { probe.check(pick.source) }

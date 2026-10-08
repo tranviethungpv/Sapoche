@@ -249,6 +249,8 @@ actor MusicFeed {
     private var collectionsKept = Recent<String, CollectionPage>()
     private var searchesKept = Recent<String, SearchPage>()
     private var trendingKept: (language: String, at: Int64, shelves: [MusicShelf])?
+    private var homesKept: [String: (at: Int64, home: MusicHome)] = [:]
+    private var chartsKept: (at: Int64, shelves: [MusicShelf])?
     private let lyricsLock = AsyncMutex()
 
     init(music: MusicSource, lyricsClient: LyricsClient, lyricsStore: LyricsStore,
@@ -300,6 +302,23 @@ actor MusicFeed {
         if let kept = trendingKept, kept.language == language, now() - kept.at < Self.trendingMs { return kept.shelves }
         let shelves = try await music.trending(language: language)
         trendingKept = (language, now(), shelves)
+        return shelves
+    }
+
+    /// The home page with its moods, or the shelves of one mood; kept for [trendingMs] like [trending], one answer per language and mood.
+    func home(_ language: String = "en", params: String? = nil) async throws -> MusicHome {
+        let key = language + "\n" + (params ?? "")
+        if let kept = homesKept[key], now() - kept.at < Self.trendingMs { return kept.home }
+        let found = try await music.home(language: language, params: params)
+        homesKept[key] = (now(), found)
+        return found
+    }
+
+    /// The charts of the person's country, kept for [trendingMs].
+    func charts() async throws -> [MusicShelf] {
+        if let kept = chartsKept, now() - kept.at < Self.trendingMs { return kept.shelves }
+        let shelves = try await music.charts()
+        chartsKept = (now(), shelves)
         return shelves
     }
 

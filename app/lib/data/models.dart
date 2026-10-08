@@ -695,6 +695,22 @@ class ServerError {
   final String message;
 }
 
+/// How much sound a song is fetched in, from the least data to the most YouTube offers. The index is what the native
+/// side keeps and what both platforms agree on.
+enum AudioQuality {
+  low,
+  normal,
+  high,
+  max;
+
+  /// The step for a number from the native side; anything unknown is the best, which is what the app did before
+  /// there was a choice.
+  static AudioQuality of(int? level) =>
+      level != null && level >= 0 && level < values.length
+      ? values[level]
+      : max;
+}
+
 class Profile {
   const Profile({
     this.name,
@@ -704,6 +720,7 @@ class Profile {
     this.autoplay = true,
     this.configured = true,
     this.hasKey = true,
+    this.audioQuality = AudioQuality.max,
   });
 
   /// Name used in the last room, to prefill the field asking for it.
@@ -716,6 +733,9 @@ class Profile {
 
   /// The music carries on with similar songs when the queue runs out.
   final bool autoplay;
+
+  /// How much sound a song that is not kept yet is fetched in.
+  final AudioQuality audioQuality;
 
   /// The address of the room server is known. On Android it is built into the app; on iOS the person enters it.
   final bool configured;
@@ -731,6 +751,18 @@ class Profile {
     autoplay: value,
     configured: configured,
     hasKey: hasKey,
+    audioQuality: audioQuality,
+  );
+
+  Profile withAudioQuality(AudioQuality value) => Profile(
+    name: name,
+    device: device,
+    trimMs: trimMs,
+    server: server,
+    autoplay: autoplay,
+    configured: configured,
+    hasKey: hasKey,
+    audioQuality: value,
   );
 
   factory Profile.fromMap(Map<Object?, Object?> map) => Profile(
@@ -741,6 +773,7 @@ class Profile {
     autoplay: map['autoplay'] as bool? ?? true,
     configured: map['configured'] as bool? ?? true,
     hasKey: map['key'] as bool? ?? true,
+    audioQuality: AudioQuality.of((map['audioQuality'] as num?)?.toInt()),
   );
 }
 

@@ -40,4 +40,51 @@ class AudioPickerTest {
         assertNull(AudioPicker.pick(emptyList(), null))
         assertNull(AudioPicker.pick(emptyList(), 251))
     }
+
+    private val middle = source(250, 70)
+    private val all = listOf(opus, aac, middle, low)
+
+    private fun chosen(quality: AudioQuality, sources: List<AudioSource> = all) =
+        AudioPicker.pick(sources, null, quality)!!.source.itag
+
+    @Test
+    fun `each step takes the best stream within its limit`() {
+        assertEquals(249, chosen(AudioQuality.LOW))
+        assertEquals(250, chosen(AudioQuality.NORMAL))
+        assertEquals(140, chosen(AudioQuality.HIGH))
+        assertEquals(251, chosen(AudioQuality.MAX))
+    }
+
+    @Test
+    fun `a video with nothing that low gets its smallest stream`() {
+        assertEquals(140, chosen(AudioQuality.LOW, listOf(opus, aac)))
+        assertEquals(140, chosen(AudioQuality.NORMAL, listOf(opus, aac)))
+        assertEquals(140, chosen(AudioQuality.HIGH, listOf(opus, aac)))
+    }
+
+    @Test
+    fun `the order of the streams does not matter`() {
+        for (quality in AudioQuality.entries) {
+            assertEquals(chosen(quality), chosen(quality, all.reversed()), quality.name)
+        }
+    }
+
+    @Test
+    fun `a pin beats the step`() {
+        assertEquals(251, AudioPicker.pick(all, pinned = 251, quality = AudioQuality.LOW)!!.source.itag)
+    }
+
+    @Test
+    fun `a pin that is gone falls back to the step and says so`() {
+        val pick = AudioPicker.pick(all, pinned = 18, quality = AudioQuality.LOW)!!
+        assertEquals(249, pick.source.itag)
+        assertFalse(pick.honoursPin)
+    }
+
+    @Test
+    fun `a saved level maps back to its step and an unknown one to the best`() {
+        for (quality in AudioQuality.entries) assertEquals(quality, AudioQuality.of(quality.level))
+        assertEquals(AudioQuality.MAX, AudioQuality.of(9))
+        assertEquals(AudioQuality.MAX, AudioQuality.of(-1))
+    }
 }

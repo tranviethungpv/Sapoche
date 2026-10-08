@@ -171,6 +171,33 @@ enum MusicParser {
         }
     }
 
+    /// The moods the home page offers, and its shelves of anything (songs, playlists, albums, artists).
+    static func home(_ root: JSON) -> MusicHome {
+        let chips = root.findAll("chipCloudChipRenderer").compactMap { chip -> MoodChip? in
+            guard let label = chip.at("text").text, let params = chip.at("navigationEndpoint", "browseEndpoint", "params").string else { return nil }
+            return MoodChip(label: label, params: params)
+        }
+        return MusicHome(chips: chips, shelves: root.findAll("musicCarouselShelfRenderer").compactMap(carousel))
+    }
+
+    /// The charts page: its playlists and the list of the artists played most.
+    static func charts(_ root: JSON) -> [MusicShelf] {
+        root.findAll("musicCarouselShelfRenderer").compactMap { shelf in
+            guard let title = shelf.at("header", "musicCarouselShelfBasicHeaderRenderer", "title").text else { return nil }
+            let artists = shelf.at("contents").array.compactMap { artistRow($0.at("musicResponsiveListItemRenderer")) }
+            return artists.isEmpty ? carousel(shelf) : MusicShelf(title: title, tracks: [], artists: artists)
+        }
+    }
+
+    /// A row of a list that names an artist, as the charts list them.
+    private static func artistRow(_ row: JSON?) -> ArtistCard? {
+        guard let row, let id = row.at("navigationEndpoint", "browseEndpoint", "browseId").string, id.hasPrefix("UC") else { return nil }
+        let columns = row.at("flexColumns").array.map { $0.at("musicResponsiveListItemFlexColumnRenderer", "text") }
+        guard let name = columns.first?.text else { return nil }
+        return ArtistCard(id: id, name: name, subtitle: columns.count > 1 ? columns[1].text : nil,
+                          thumbUrl: thumbnail(row.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails")))
+    }
+
     // ------------------------------------------------------------------ search
 
     /// What a search found: the top result, the list of the rest, the filters on offer and where more can be had.

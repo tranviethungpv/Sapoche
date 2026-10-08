@@ -501,6 +501,24 @@ abstract final class S {
     title.isEmpty ? '$name đã chuyển bài' : '$name đã chuyển sang $title',
   );
 
+  // Sound quality
+  static String get soundSection => _t('Sound', 'Âm thanh');
+  static String get audioQualityLow => _t('Low', 'Thấp');
+  static String get audioQualityNormal => _t('Normal', 'Vừa');
+  static String get audioQualityHigh => _t('High', 'Cao');
+  static String get audioQualityMax => _t('Highest', 'Cao nhất');
+  static String get audioQualityLowRate =>
+      _t('about 50 kbps', 'khoảng 50 kbps');
+  static String get audioQualityNormalRate =>
+      _t('about 70 kbps', 'khoảng 70 kbps');
+  static String get audioQualityHighRate =>
+      _t('about 128 kbps', 'khoảng 128 kbps');
+  static String get audioQualityMaxRate => _t('up to 160 kbps', 'đến 160 kbps');
+  static String get audioQualityHelp => _t(
+    'Applies from the next song. YouTube offers nothing above about 160 kbps, so Highest is the best there is. Songs already saved on this phone keep the quality they were fetched in until they are cleared in Storage, and downloaded songs stay as they were downloaded. An iPhone plays only AAC, so some steps can sound the same there.',
+    'Áp dụng từ bài sau. YouTube không có gì cao hơn khoảng 160 kbps, nên Cao nhất là mức tốt nhất có thể. Bài đã lưu sẵn trên máy giữ chất lượng lúc lấy cho đến khi xóa ở Bộ nhớ, và bài đã tải về giữ nguyên như lúc tải. iPhone chỉ phát được AAC nên ở đó vài mức có thể nghe giống nhau.',
+  );
+
   // Picture
   static String get modeAudio => _t('Audio', 'Âm thanh');
   static String get modeVideo => _t('Video', 'Video');
@@ -677,6 +695,8 @@ abstract final class S {
     'Live performances' => _t('Live performances', 'Biểu diễn trực tiếp'),
     'Featured on' => _t('Featured on', 'Xuất hiện trong'),
     'Playlists' => playlists,
+    'Video charts' => _t('Charts', 'Bảng xếp hạng'),
+    'Top artists' => _t('Top artists', 'Nghệ sĩ hàng đầu'),
     _ => title,
   };
   static String get showMore => _t('More', 'Xem thêm');
@@ -695,6 +715,30 @@ abstract final class S {
       _t('Forgotten favorites', 'Bài yêu thích đã lâu không nghe');
   static String get trending => _t('Trending', 'Thịnh hành');
   static String mixOf(String artist) => _t('$artist Mix', 'Mix $artist');
+  static String get madeForYou => _t('Made for you', 'Dành riêng cho bạn');
+  static String dailyMix(int number) => _t('Mix $number', 'Mix $number');
+
+  /// The artists of a mix on one line: the first two, and that there are more when there are.
+  static String mixArtists(List<String> artists) => switch (artists.length) {
+    0 => '',
+    1 => artists[0],
+    2 => _t(
+      '${artists[0]} and ${artists[1]}',
+      '${artists[0]} và ${artists[1]}',
+    ),
+    _ => _t(
+      '${artists[0]}, ${artists[1]} and more',
+      '${artists[0]}, ${artists[1]} và nhiều hơn',
+    ),
+  };
+  static String get artistRadio =>
+      _t('Radio from your artists', 'Radio từ nghệ sĩ của bạn');
+  static String get latestFromArtists =>
+      _t('Latest from your artists', 'Mới nhất từ nghệ sĩ của bạn');
+  static String get moodFailed => _t(
+    'This mood could not be loaded.',
+    'Không tải được danh sách theo tâm trạng này.',
+  );
   static String becauseYouListened(String title) =>
       _t('Because you listened to $title', 'Vì bạn đã nghe $title');
   static String similarTo(String artist) =>

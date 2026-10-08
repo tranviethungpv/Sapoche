@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +35,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
 
   /// Whether the phone can show the picture in a small window.
   bool pipSupported = true,
+
+  /// Sets up what the native side knows before the app is built: the home page asks for some of it as it is drawn.
+  void Function(FakeBackend backend)? prepare,
 }) async {
   // A tall phone-shaped window; the default 800x600 one is not what the app runs on. Test text is
   // drawn with the wide Ahem font, so it is 540 dp wide instead of the usual 360 to avoid false overflows.
@@ -49,11 +54,12 @@ Future<(FakeBackend, RoomController)> pumpApp(
   final backend = FakeBackend();
   if (profile != null) backend.profileValue = profile;
   backend.pipSupportedValue = pipSupported;
+  prepare?.call(backend);
   final recents = await RecentRooms.load();
   final searches = await RecentSearches.load();
   final room = RoomController(backend, recents: recents);
   final library = LibraryController(backend);
-  final settings = await AppSettings.load();
+  final settings = await AppSettings.load(shelfRandom: SteadyRandom());
   await tester.pumpWidget(
     SapocheApp(
       model: AppModel(
@@ -92,4 +98,16 @@ Future<void> openTopic(WidgetTester tester, String topic) async {
   await openSettingsList(tester);
   await tester.tap(find.byKey(ValueKey('settings-$topic')));
   await tester.pumpAndSettle();
+}
+
+/// A "random" that always draws the lowest number, so that the rows of the home page keep the order they were made in.
+class SteadyRandom implements Random {
+  @override
+  bool nextBool() => false;
+
+  @override
+  double nextDouble() => 0;
+
+  @override
+  int nextInt(int max) => 0;
 }

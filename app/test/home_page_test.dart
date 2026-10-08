@@ -29,8 +29,12 @@ Future<FakeBackend> openHome(
   bool inRoom = false,
   Map<String, Object> prefs = const {},
 }) async {
-  final (backend, _) = await pumpApp(tester, listen: false, prefs: prefs);
-  prepare?.call(backend);
+  final (backend, _) = await pumpApp(
+    tester,
+    listen: false,
+    prefs: prefs,
+    prepare: prepare,
+  );
   backend.emit(
     StateEvent(
       inRoom ? sampleRoom(songs: 0, phase: 'idle') : const RoomSnapshot(),
@@ -97,7 +101,10 @@ void main() {
     expect(find.text('Your music starts here'), findsNothing);
     expect(find.text('Quick picks'), findsOneWidget);
     expect(find.text('Brand New'), findsOneWidget);
-    expect(find.text('Listen again'), findsOneWidget);
+    // What was heard last is the tiles on top; "Listen again" only holds what does not fit among them
+    expect(find.byKey(ValueKey('jump-${anna.videoId}')), findsOneWidget);
+    expect(find.byKey(ValueKey('jump-${beck.videoId}')), findsOneWidget);
+    expect(find.text('Listen again'), findsNothing);
     expect(find.text('Mixed for you'), findsOneWidget);
     // The mix of the artist heard most is the card at the top
     expect(find.text('Adele Mix'), findsOneWidget);
@@ -212,11 +219,14 @@ void main() {
   testWidgets(
     'a mix falls back to its song when YouTube Music cannot be reached',
     (tester) async {
+      // YouTube Music cannot be reached from the start: a radio the page asked for already would be kept
       final backend = await openHome(
         tester,
-        prepare: (b) => b.recentSongs = [heard(anna, plays: 5), heard(beck)],
+        prepare: (b) {
+          b.recentSongs = [heard(anna, plays: 5), heard(beck)];
+          b.musicFailWith = StateError('offline');
+        },
       );
-      backend.musicFailWith = StateError('offline');
       await tester.tap(find.text('Adele Mix'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));

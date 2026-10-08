@@ -225,6 +225,10 @@ enum MusicJson {
         }
     }
 
+    static func home(_ home: MusicHome) -> [String: Any] {
+        ["chips": home.chips.map { ["label": $0.label, "params": $0.params] }, "shelves": shelves(home.shelves)]
+    }
+
     private static func artistCard(_ card: ArtistCard) -> [String: Any] {
         ["id": card.id, "name": card.name, "subtitle": card.subtitle ?? NSNull(), "thumb": card.thumbUrl ?? NSNull()]
     }

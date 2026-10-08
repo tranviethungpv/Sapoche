@@ -40,6 +40,8 @@ class MusicFeedTest {
         override suspend fun searchSongs(query: String) = emptyList<MusicTrack>()
         override suspend fun searchVideos(query: String) = emptyList<MusicTrack>()
         override suspend fun trending(language: String) = emptyList<MusicShelf>()
+        override suspend fun home(language: String, params: String?) = MusicHome(emptyList(), emptyList())
+        override suspend fun charts() = emptyList<MusicShelf>()
     }
 
     private class FakeLrclib(var body: String?) : LyricsFetch {
@@ -139,6 +141,39 @@ class MusicFeedTest {
         time += 1
         feed.trending()
         assertEquals(2, asked)
+    }
+
+    @Test
+    fun `each mood of the home page is asked for once for hours, and the charts too`() = runTest {
+        var time = 0L
+        val asked = mutableListOf<String>()
+        var charts = 0
+        val music = object : MusicSource by FakeMusic() {
+            override suspend fun home(language: String, params: String?): MusicHome {
+                asked += "$language/$params"
+                return MusicHome(listOf(MoodChip("Relax", "p1")), listOf(MusicShelf("Shelf $params", listOf(MusicTrack("a", "T", "A")))))
+            }
+
+            override suspend fun charts(): List<MusicShelf> {
+                charts++
+                return listOf(MusicShelf("Charts", emptyList()))
+            }
+        }
+        val feed = MusicFeed(music, LyricsClient(FakeLrclib(null)), LyricsStore(dir)) { time }
+        assertEquals("Relax", feed.home("en").chips.single().label)
+        feed.home("en")
+        feed.home("en", "p1")
+        feed.home("en", "p1")
+        feed.home("vi")
+        assertEquals(listOf("en/null", "en/p1", "vi/null"), asked)
+        feed.charts()
+        feed.charts()
+        assertEquals(1, charts)
+        time += MusicFeed.TRENDING_MS
+        feed.home("en")
+        feed.charts()
+        assertEquals(4, asked.size)
+        assertEquals(2, charts)
     }
 
     @Test

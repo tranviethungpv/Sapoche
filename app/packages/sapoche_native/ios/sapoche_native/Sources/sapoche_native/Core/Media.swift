@@ -277,15 +277,20 @@ actor StreamCache {
     private var entries: [String: Entry] = [:]
     private var pending: [String: Task<Resolved, Error>] = [:]
 
-    init(resolver: StreamResolver) {
+    private let quality: () -> AudioQuality
+
+    init(resolver: StreamResolver, quality: @escaping () -> AudioQuality = { .max }) {
         self.resolver = resolver
+        self.quality = quality
     }
 
-    /// The best audio stream of [videoId], resolving if needed. One resolve per video at a time, so a preload and a play
-    /// do not race. When it is longer than [limit] bytes, the best one that fits is taken, or the smallest if none does.
+    /// The audio stream of [videoId] that the quality asks for, resolving if needed. One resolve per video at a time, so a
+    /// preload and a play do not race. When it is longer than [limit] bytes, the best one that fits is taken, or the smallest
+    /// if none does.
     func audio(_ videoId: String, within limit: Int64 = .max) async throws -> Pick {
         let resolved = try await resolved(videoId)
-        let best = resolved.best.contentLength <= limit ? resolved.best
+        let wanted = quality().choose(resolved.all) ?? resolved.best
+        let best = wanted.contentLength <= limit ? wanted
             : resolved.all.first { $0.contentLength <= limit } ?? resolved.all.last ?? resolved.best
         return Pick(url: best.url, itag: best.itag, contentLength: best.contentLength, userAgent: resolved.userAgent, track: resolved.track,
                     mimeType: best.mimeType, bitrateKbps: best.bitrateKbps, index: best.index)

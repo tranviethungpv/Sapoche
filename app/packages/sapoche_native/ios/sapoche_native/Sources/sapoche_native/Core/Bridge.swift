@@ -135,6 +135,7 @@ final class Bridge {
     private var autoDownload: Bool { prefs.bool(Self.keyAutoDownload, default: false) }
     private var language: String { prefs.string("language") ?? "en" }
     private var videoHeight: Int { Int(prefs.int64("video_height") ?? 720) }
+    private var audioQuality: AudioQuality { AudioQuality(level: Int(prefs.int64("audio_quality") ?? 3)) }
 
     // ------------------------------------------------------------------ lifecycle
 
@@ -316,6 +317,7 @@ final class Bridge {
             return [
                 "name": name, "device": platform.deviceModel, "trimMs": controller.trimMs, "videoHeight": videoHeight,
                 "server": settings.server, "autoplay": controller.autoplayOn, "configured": settings.isSet, "key": !settings.key.isEmpty,
+                "audioQuality": audioQuality.rawValue,
             ] as [String: Any]
         case "configure":
             // What is left out stays as it was
@@ -341,6 +343,10 @@ final class Bridge {
             return nil
         case "setAutoplay":
             controller.autoplayOn = bool("on")
+            return nil
+        case "setAudioQuality":
+            // Songs already kept on disk stay in the stream they were fetched in, so nothing is dropped here
+            prefs.set(Int64(AudioQuality(level: JSON(args["level"]).int ?? AudioQuality.max.rawValue).rawValue), for: "audio_quality")
             return nil
         case "forYou":
             return try await suggestions.forYou().map { $0.toMap() }
@@ -369,6 +375,11 @@ final class Bridge {
             return try await suggestions.seedLists().map { ["seed": $0.seed, "tracks": $0.tracks.map { $0.toMap() }] as [String: Any] }
         case "musicTrending":
             return MusicJson.shelves(try await music.trending(language))
+        case "musicHome":
+            let params = string("params")
+            return MusicJson.home(try await music.home(language, params: params.isEmpty ? nil : params))
+        case "musicCharts":
+            return MusicJson.shelves(try await music.charts())
         case "musicSearch":
             return try await music.search(string("query"), songs: bool("songs")).map(MusicJson.track)
         case "musicNext":
@@ -402,6 +413,8 @@ final class Bridge {
             return try await store.liked().map { $0.track.toMap() }
         case "libraryRecent":
             return try await store.recent().map { $0.track.toMap().merging(["at": $0.at, "plays": $0.plays]) { $1 } }
+        case "libraryListens":
+            return try await store.listens(limit: JSON(args["limit"]).int ?? 600).map { $0.track.toMap().merging(["at": $0.at, "plays": $0.plays]) { $1 } }
         case "libraryLike":
             let on = bool("on")
             try await store.setLiked(try track(args), on)

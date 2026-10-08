@@ -424,6 +424,35 @@ class MusicShelf {
   );
 }
 
+/// A mood or activity YouTube Music offers on its home page (Relax, Workout...); [params] asks for what suits it.
+class MoodChip {
+  const MoodChip({required this.label, required this.params});
+
+  final String label;
+  final String params;
+
+  factory MoodChip.fromMap(Map<Object?, Object?> map) => MoodChip(
+    label: map['label'] as String? ?? '',
+    params: map['params'] as String? ?? '',
+  );
+}
+
+/// The home page of YouTube Music: the moods it offers and its shelves; for a mood, the shelves that suit it.
+class MusicHome {
+  const MusicHome({this.chips = const [], this.shelves = const []});
+
+  final List<MoodChip> chips;
+  final List<MusicShelf> shelves;
+
+  factory MusicHome.fromMap(Map<Object?, Object?> map) => MusicHome(
+    chips: [
+      for (final e in map['chips'] as List<Object?>? ?? const [])
+        MoodChip.fromMap(e as Map<Object?, Object?>),
+    ],
+    shelves: _shelves(map['shelves']),
+  );
+}
+
 List<MusicShelf> _shelves(Object? list) => [
   for (final e in list as List<Object?>? ?? const [])
     MusicShelf.fromMap(e as Map<Object?, Object?>),

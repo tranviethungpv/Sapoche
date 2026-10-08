@@ -41,6 +41,24 @@ void main() {
     expect((notice.kind, notice.by, notice.title), ('paused', 'Binh', null));
   });
 
+  test(
+    'the sound quality crosses as its number, and comes back in the profile',
+    () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(control, (call) async {
+        calls.add(call);
+        return call.method == 'profile'
+            ? {'name': 'Anna', 'audioQuality': 1}
+            : null;
+      });
+      final backend = NativeBackend();
+      await backend.setAudioQuality(AudioQuality.high);
+      expect(calls.single.method, 'setAudioQuality');
+      expect(calls.single.arguments, {'level': 2});
+      expect((await backend.profile()).audioQuality, AudioQuality.normal);
+    },
+  );
+
   test('everyone who listens shares one platform subscription', () async {
     var listens = 0;
     messenger.setMockStreamHandler(

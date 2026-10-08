@@ -66,6 +66,16 @@ class MusicClient(
     override suspend fun trending(language: String): List<MusicShelf> =
         MusicParser.shelves(ask("browse", language) { put("browseId", "FEmusic_home") })
 
+    override suspend fun home(language: String, params: String?): MusicHome =
+        MusicParser.home(
+            ask("browse", language) {
+                put("browseId", "FEmusic_home")
+                if (params != null) put("params", params)
+            },
+        )
+
+    override suspend fun charts(): List<MusicShelf> = MusicParser.charts(browse("FEmusic_charts"))
+
     private suspend fun browse(id: String) = ask("browse") { put("browseId", id) }
 
     private suspend fun search(query: String, filter: String) = ask("search") {

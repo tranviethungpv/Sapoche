@@ -20,6 +20,8 @@ class MusicController {
   final _searchPages = <String, Future<SearchResults>>{};
   final _lyrics = <String, Future<Lyrics?>>{};
   final _trending = <String, Future<List<MusicShelf>>>{};
+  final _homes = <String, Future<MusicHome>>{};
+  final _charts = <String, Future<List<MusicShelf>>>{};
   final _searches = <String, Future<List<MusicTrack>>>{};
 
   static const _keep = 30;
@@ -54,6 +56,22 @@ class MusicController {
   Future<List<MusicShelf>> trending() =>
       _cached(_trending, 'home', _backend.musicTrending);
 
+  /// The moods YouTube Music offers, with its home page; with a mood's [params] the shelves that suit that mood.
+  Future<MusicHome> home({String? params}) => _cached(
+    _homes,
+    params ?? '',
+    () => _backend.musicHome(params: params),
+    keep: (home) => home.chips.isNotEmpty || home.shelves.isNotEmpty,
+  );
+
+  /// The charts of the person's country; the same answer for the rest of the session.
+  Future<List<MusicShelf>> charts() => _cached(
+    _charts,
+    'charts',
+    _backend.musicCharts,
+    keep: (shelves) => shelves.isNotEmpty,
+  );
+
   Future<List<MusicTrack>> search(String query, {required bool songs}) =>
       _cached(
         _searches,
@@ -86,8 +104,9 @@ class MusicController {
   Future<T> _cached<T>(
     Map<String, Future<T>> cache,
     String key,
-    Future<T> Function() load,
-  ) {
+    Future<T> Function() load, {
+    bool Function(T value)? keep,
+  }) {
     final kept = cache.remove(key);
     if (kept != null) {
       // Put back at the end: the most recently used stay
@@ -95,7 +114,10 @@ class MusicController {
     }
     final future = load();
     future.then<void>(
-      (_) {},
+      // An answer that holds nothing is most likely a page that could not be read: it is asked for again
+      (value) {
+        if (keep != null && !keep(value)) cache.remove(key);
+      },
       onError: (_) {
         cache.remove(key);
       },

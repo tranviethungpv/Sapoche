@@ -1,0 +1,5 @@
+A new Home, and a choice of sound quality
+- New Home: moods like Relax and Workout, mixes made from the music you play together, and rows that learn which ones you open.
+- Quick picks are ranked by how many of your favourite songs point to them.
+- New rows: the latest from your artists, and the charts and top artists of your country.
+- Choose the sound quality in Settings > Playback, from low (about 50 kbps) to the highest YouTube offers (160 kbps).

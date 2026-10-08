@@ -94,6 +94,16 @@ struct MusicClient: MusicSource {
         MusicParser.shelves(try await ask("browse", ["browseId": "FEmusic_home"], language: language))
     }
 
+    func home(language: String, params: String?) async throws -> MusicHome {
+        var fields: [String: Any] = ["browseId": "FEmusic_home"]
+        if let params { fields["params"] = params }
+        return MusicParser.home(try await ask("browse", fields, language: language))
+    }
+
+    func charts() async throws -> [MusicShelf] {
+        MusicParser.charts(try await browse("FEmusic_charts"))
+    }
+
     private func browse(_ id: String) async throws -> JSON {
         try await ask("browse", ["browseId": id])
     }

@@ -307,6 +307,43 @@ class MusicParserTest {
     }
 
     @Test
+    fun `the home page offers moods, each with what asks for it`() = runTest {
+        val home = client("browse" to "home_chips").home()
+        assertTrue(home.chips.size >= 5, "${home.chips}")
+        assertTrue(home.chips.any { it.label == "Relax" })
+        assertTrue(home.chips.all { it.label.isNotBlank() && it.params.isNotBlank() })
+        assertEquals(home.chips.size, home.chips.map { it.params }.toSet().size, "every mood asks for its own")
+        assertTrue(home.shelves.isNotEmpty() && home.shelves.all { it.title.isNotBlank() })
+    }
+
+    @Test
+    fun `a mood answers with shelves of playlists`() = runTest {
+        val bodies = mutableListOf<String>()
+        val client = MusicClient { _, body ->
+            bodies += body
+            fixture("mood")
+        }
+        val mood = client.home(params = "ggM8abc")
+        assertTrue(bodies.single().contains("\"params\":\"ggM8abc\""), bodies.single())
+        assertTrue(mood.shelves.isNotEmpty())
+        assertTrue(mood.shelves.flatMap { it.playlists }.isNotEmpty(), "a mood is a set of playlists")
+        assertTrue(mood.shelves.flatMap { it.playlists }.all { it.id.isNotBlank() && it.title.isNotBlank() })
+        // Asked for without a mood, the answer carries no params
+        val plain = mutableListOf<String>()
+        MusicClient { _, body -> plain.also { it += body }; fixture("home_chips") }.home()
+        assertFalse(plain.single().contains("params"), plain.single())
+    }
+
+    @Test
+    fun `the charts hold playlists and the artists played most`() = runTest {
+        val shelves = client("browse" to "charts").charts()
+        assertTrue(shelves.any { it.playlists.isNotEmpty() }, "$shelves")
+        val artists = shelves.flatMap { it.artists }
+        assertTrue(artists.isNotEmpty())
+        assertTrue(artists.all { it.id.startsWith("UC") && it.name.isNotBlank() })
+    }
+
+    @Test
     fun `an answer of a shape that is not known gives nothing instead of failing`() = runTest {
         val client = MusicClient { _, _ -> """{"unexpected":[1,2,{"a":null}]}""" }
         assertEquals(emptyList(), client.watchNext("x").tracks)
@@ -314,6 +351,8 @@ class MusicParserTest {
         assertEquals(emptyList(), client.searchSongs("x"))
         assertEquals("", client.artist("UC").name)
         assertEquals(emptyList(), client.trending())
+        assertEquals(MusicHome(emptyList(), emptyList()), client.home())
+        assertEquals(emptyList(), client.charts())
     }
 
     @Test

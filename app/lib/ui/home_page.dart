@@ -4,7 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../data/home_model.dart';
+import '../data/shelf_stats.dart';
 import '../data/models.dart';
+import '../data/music_controller.dart';
 import '../data/music_models.dart';
 import '../data/song_key.dart';
 import '../strings.dart';
@@ -12,6 +14,7 @@ import '../theme/theme.dart';
 import 'artist_page.dart';
 import 'home_shell.dart';
 import 'collection_screen.dart';
+import 'home_sections.dart';
 import 'player/track_section.dart';
 import 'rooms_sheet.dart';
 import 'scope.dart';
@@ -23,9 +26,68 @@ import 'widgets/play_row.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/song_card.dart';
 
+/// The rows below the ones that are always on top. The order here is the one the page was made in; the order shown is
+/// drawn from what the person touches (see `ShelfStats`).
+const _shelfIds = [
+  'quick',
+  'again',
+  'context',
+  'artists',
+  'releases',
+  'discover',
+  'forgotten',
+  'because',
+  'similar',
+  'charts',
+  'trending',
+];
+
 /// Where the app opens: what to play next, drawn from what the person listens to, like the home of YouTube Music.
-class HomePage extends StatelessWidget {
+///
+/// On top are the things that are always there: the moods, the songs heard last, and the mixes made for the person.
+/// Below them come rows of everything else, in an order that learns which of them the person touches at this time of
+/// day.
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  late String _part;
+  late List<String> _order;
+  bool _sampled = false;
+
+  /// The rows seen since the order was drawn: each counts once, however often it scrolls out of sight and back.
+  final _seen = <String>{};
+
+  ShelfStats get _stats => AppScope.of(context).settings.shelves;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_sampled) _sample();
+  }
+
+  void _sample() {
+    _sampled = true;
+    _part = dayPartOf(DateTime.now());
+    _order = _stats.order(_shelfIds, _part);
+    _seen.clear();
+  }
+
+  void _shown(String id) {
+    if (_seen.add(id)) _stats.shown(_part, [id]);
+  }
+
+  void _touched(String id) => _stats.touched(_part, id);
+
+  Future<void> _refresh() async {
+    await AppScope.of(context).library.refreshForYou();
+    // Pulling the page down asks for a fresh look, and the rows are drawn again too
+    if (mounted) setState(_sample);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,12 +108,19 @@ class HomePage extends StatelessWidget {
             discover: library.discover,
             context: library.context,
             blocked: library.blocked,
+            listens: library.listens,
           );
           return LayoutBuilder(
             builder: (context, box) {
-              final heroes = _heroCount(box.maxWidth, home.mixes.length);
+              // Mixes of the artists go across the top of a wide page, unless the mixes made for the person are
+              // already there
+              final heroes = home.dailyMixes.isEmpty
+                  ? _heroCount(box.maxWidth, home.mixes.length)
+                  : 0;
+              final recents = home.listenAgain.take(6).toList();
+              final shelves = _shelves(context, home, heroes);
               return RefreshIndicator(
-                onRefresh: library.refreshForYou,
+                onRefresh: _refresh,
                 edgeOffset: top,
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -62,86 +131,12 @@ class HomePage extends StatelessWidget {
                   children: [
                     const _Header(),
                     if (home.isEmpty) const _Welcome(),
+                    const MoodChips(),
+                    JumpBackIn(tracks: recents),
+                    MadeForYou(mixes: home.dailyMixes),
                     if (heroes > 0)
                       _Heroes(mixes: home.mixes.take(heroes).toList()),
-                    _QuickPicks(tracks: home.quickPicks),
-                    CardShelf(
-                      title: S.listenAgain,
-                      cards: [
-                        for (final t in home.listenAgain)
-                          SongCard.track(
-                            context,
-                            t,
-                            onTap: () => playNow(context, t),
-                          ),
-                      ],
-                    ),
-                    CardShelf(
-                      title: S.contextMix(home.contextBucket),
-                      cards: [
-                        for (final t in home.context)
-                          SongCard.track(
-                            context,
-                            t,
-                            onTap: () => playNow(context, t),
-                          ),
-                      ],
-                    ),
-                    // A phone swipes along wide cards, as Apple Music does for its picks; a wide window has shown the
-                    // first ones across the top already
-                    if (heroes == 0)
-                      _MixRow(mixes: home.mixes)
-                    else
-                      CardShelf(
-                        title: S.mixedForYou,
-                        cards: [
-                          // The first are the cards at the top
-                          for (final mix in home.mixes.skip(heroes))
-                            SongCard(
-                              title: S.mixOf(mix.artist),
-                              subtitle: '',
-                              thumb: mix.seed.thumb,
-                              onTap: () => startMix(context, mix.seed),
-                            ),
-                        ],
-                      ),
-                    CardShelf(
-                      title: S.discoverShelf,
-                      cards: [
-                        for (final t in home.discover)
-                          SongCard.track(
-                            context,
-                            t,
-                            onTap: () => playNow(context, t),
-                          ),
-                      ],
-                    ),
-                    CardShelf(
-                      title: S.forgottenFavorites,
-                      cards: [
-                        for (final t in home.forgotten)
-                          SongCard.track(
-                            context,
-                            t,
-                            onTap: () => playNow(context, t),
-                          ),
-                      ],
-                    ),
-                    for (final b in home.becauseOf)
-                      CardShelf(
-                        title: S.becauseYouListened(b.seed.title),
-                        cards: [
-                          for (final t in b.tracks)
-                            SongCard.track(
-                              context,
-                              t,
-                              onTap: () => playNow(context, t),
-                            ),
-                        ],
-                      ),
-                    if (home.topSeed != null)
-                      _SimilarArtists(seed: home.topSeed!),
-                    const _Trending(),
+                    for (final id in _order) ?shelves[id],
                   ],
                 ),
               );
@@ -152,12 +147,163 @@ class HomePage extends StatelessWidget {
     );
   }
 
+  /// A row that is drawn the moment it has something to show, and so counted when it is.
+  Widget _frame(String id, Widget shelf) => _Shelf(
+    key: ValueKey('shelf-$id'),
+    id: id,
+    onShown: _shown,
+    onTouched: _touched,
+    child: shelf,
+  );
+
+  /// The rows below the ones that are always on top, by name; a row the person has nothing for is left out.
+  Map<String, Widget?> _shelves(
+    BuildContext context,
+    HomeShelves home,
+    int heroes,
+  ) {
+    Widget songs(String title, List<Track> tracks) => CardShelf(
+      title: title,
+      cards: [
+        for (final t in tracks)
+          SongCard.track(context, t, onTap: () => playNow(context, t)),
+      ],
+    );
+    // The first six of what was heard last are the tiles on top
+    final again = home.listenAgain.skip(6).toList();
+    return {
+      'quick': home.quickPicks.isEmpty
+          ? null
+          : _frame('quick', _QuickPicks(tracks: home.quickPicks)),
+      'again': again.isEmpty
+          ? null
+          : _frame('again', songs(S.listenAgain, again)),
+      'context': home.context.isEmpty
+          ? null
+          : _frame(
+              'context',
+              songs(S.contextMix(home.contextBucket), home.context),
+            ),
+      // A phone swipes along wide cards, as Apple Music does for its picks; a wide window has shown the first ones
+      // across the top already
+      'artists': home.mixes.isEmpty
+          ? null
+          : _frame(
+              'artists',
+              heroes == 0
+                  ? _MixRow(
+                      mixes: home.mixes,
+                      title: home.dailyMixes.isEmpty
+                          ? S.mixedForYou
+                          : S.artistRadio,
+                    )
+                  : CardShelf(
+                      title: S.mixedForYou,
+                      cards: [
+                        // The first are the cards at the top
+                        for (final mix in home.mixes.skip(heroes))
+                          SongCard(
+                            title: S.mixOf(mix.artist),
+                            subtitle: '',
+                            thumb: mix.seed.thumb,
+                            onTap: () => startMix(context, mix.seed),
+                          ),
+                      ],
+                    ),
+            ),
+      'releases': LatestReleasesShelf(
+        artists: home.mixes.take(8).toList(),
+        frame: (shelf) => _frame('releases', shelf),
+      ),
+      'discover': home.discover.isEmpty
+          ? null
+          : _frame('discover', songs(S.discoverShelf, home.discover)),
+      'forgotten': home.forgotten.isEmpty
+          ? null
+          : _frame('forgotten', songs(S.forgottenFavorites, home.forgotten)),
+      'because': home.becauseOf.isEmpty
+          ? null
+          : _frame(
+              'because',
+              Column(
+                children: [
+                  for (final b in home.becauseOf)
+                    songs(S.becauseYouListened(b.seed.title), b.tracks),
+                ],
+              ),
+            ),
+      'similar': home.topSeed == null
+          ? null
+          : _SimilarArtists(
+              seed: home.topSeed!,
+              frame: (shelf) => _frame('similar', shelf),
+            ),
+      'charts': ChartsShelves(frame: (shelf) => _frame('charts', shelf)),
+      'trending': _Trending(frame: (shelf) => _frame('trending', shelf)),
+    };
+  }
+
   /// How many mixes go across the top: none on a phone, which swipes through them further down, more where the page
   /// is wide.
   static int _heroCount(double width, int mixes) {
     final fit = width >= 1000 ? 3 : (width >= 640 ? 2 : 0);
     return math.min(fit, mixes);
   }
+}
+
+/// A row of the home page, which tells the page when it is first drawn (the lists scroll, so a row far down is only
+/// drawn when the person gets near it) and when something in it is touched.
+class _Shelf extends StatefulWidget {
+  const _Shelf({
+    super.key,
+    required this.id,
+    required this.onShown,
+    required this.onTouched,
+    required this.child,
+  });
+
+  final String id;
+  final ValueChanged<String> onShown;
+  final ValueChanged<String> onTouched;
+  final Widget child;
+
+  @override
+  State<_Shelf> createState() => _ShelfState();
+}
+
+class _ShelfState extends State<_Shelf> {
+  Offset? _down;
+  Duration _at = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onShown(widget.id);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    // It watches the touches and takes no part in what they do: the cards and lists answer them as they always did
+    behavior: HitTestBehavior.translucent,
+    onPointerDown: (e) {
+      _down = e.position;
+      _at = e.timeStamp;
+    },
+    onPointerUp: (e) {
+      final down = _down;
+      _down = null;
+      // A short touch that stayed where it began is a tap; a finger that dragged the row sideways is not
+      if (down != null &&
+          (e.position - down).distance < 18 &&
+          e.timeStamp - _at < const Duration(milliseconds: 500)) {
+        widget.onTouched(widget.id);
+      }
+    },
+    onPointerCancel: (_) => _down = null,
+    child: widget.child,
+  );
 }
 
 class _Header extends StatelessWidget {
@@ -216,9 +362,10 @@ class _Header extends StatelessWidget {
 /// Mixes of the artists the person plays, as wide cards that scroll sideways: part of the next one shows, which says
 /// there is more.
 class _MixRow extends StatelessWidget {
-  const _MixRow({required this.mixes});
+  const _MixRow({required this.mixes, required this.title});
 
   final List<ArtistMix> mixes;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -227,7 +374,7 @@ class _MixRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeading(S.mixedForYou),
+        SectionHeading(title),
         SizedBox(
           height: 168,
           child: ListView.separated(
@@ -765,9 +912,10 @@ class _QuickRow extends StatelessWidget {
 
 /// Artists like the one the person plays most. Asked for when the page shows, and left out if it fails.
 class _SimilarArtists extends StatefulWidget {
-  const _SimilarArtists({required this.seed});
+  const _SimilarArtists({required this.seed, required this.frame});
 
   final Track seed;
+  final ShelfFrame frame;
 
   @override
   State<_SimilarArtists> createState() => _SimilarArtistsState();
@@ -801,52 +949,105 @@ class _SimilarArtistsState extends State<_SimilarArtists> {
     builder: (context, async) {
       final artists = async.data?.artists ?? const <ArtistCard>[];
       if (artists.isEmpty) return const SizedBox.shrink();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SectionHeading(S.similarTo(displayArtist(widget.seed.artist))),
-          ArtistRow(artists: artists, onOpen: (id) => openArtist(context, id)),
-        ],
+      return widget.frame(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SectionHeading(S.similarTo(displayArtist(widget.seed.artist))),
+            ArtistRow(
+              artists: artists,
+              onOpen: (id) => openArtist(context, id),
+            ),
+          ],
+        ),
       );
     },
   );
 }
 
-/// What YouTube Music shows everybody: the same for all, so it is the only thing there is at first.
-class _Trending extends StatelessWidget {
-  const _Trending();
+/// What YouTube Music shows everybody: the same for all, so it is the only thing there is at first. What the charts row
+/// shows already is left out, as YouTube Music lists the charts of the country among these too.
+class _Trending extends StatefulWidget {
+  const _Trending({required this.frame});
+
+  final ShelfFrame frame;
+
+  @override
+  State<_Trending> createState() => _TrendingState();
+}
+
+class _TrendingState extends State<_Trending> {
+  Future<List<MusicShelf>>? _shelves;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _shelves ??= _load(AppScope.of(context).music);
+  }
+
+  static Future<List<MusicShelf>> _load(MusicController music) async {
+    final trending = await music.trending();
+    final charts = await music.charts().then(
+      (shelves) => shelves,
+      onError: (_) => const <MusicShelf>[],
+    );
+    final charted = {
+      for (final shelf in charts)
+        for (final list in shelf.playlists) list.id,
+    };
+    return [
+      for (final shelf in trending)
+        if (shelf.tracks.isNotEmpty ||
+            shelf.playlists.any((l) => !charted.contains(l.id)))
+          MusicShelf(
+            title: shelf.title,
+            tracks: shelf.tracks,
+            playlists: [
+              for (final list in shelf.playlists)
+                if (!charted.contains(list.id)) list,
+            ],
+          ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<MusicShelf>>(
-    future: AppScope.of(context).music.trending(),
+    future: _shelves,
     builder: (context, async) {
       final shelves = async.data ?? const <MusicShelf>[];
-      return Column(
-        children: [
-          for (final shelf in shelves.take(3)) ...[
-            CardShelf(
-              title: shelf.tracks.isNotEmpty && shelves.first == shelf
-                  ? S.trending
-                  : shelf.title,
-              cards: [
-                for (final t in shelf.tracks)
-                  SongCard.track(context, t, onTap: () => playNow(context, t)),
-                for (final list in shelf.playlists)
-                  SongCard(
-                    title: list.title,
-                    subtitle: list.subtitle ?? '',
-                    thumb: list.thumb,
-                    onTap: () => openCollection(
+      if (shelves.isEmpty) return const SizedBox.shrink();
+      return widget.frame(
+        Column(
+          children: [
+            for (final shelf in shelves.take(3)) ...[
+              CardShelf(
+                title: shelf.tracks.isNotEmpty && shelves.first == shelf
+                    ? S.trending
+                    : shelf.title,
+                cards: [
+                  for (final t in shelf.tracks)
+                    SongCard.track(
                       context,
-                      id: list.id,
-                      title: list.title,
-                      thumb: list.thumb,
+                      t,
+                      onTap: () => playNow(context, t),
                     ),
-                  ),
-              ],
-            ),
+                  for (final list in shelf.playlists)
+                    SongCard(
+                      title: list.title,
+                      subtitle: list.subtitle ?? '',
+                      thumb: list.thumb,
+                      onTap: () => openCollection(
+                        context,
+                        id: list.id,
+                        title: list.title,
+                        thumb: list.thumb,
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ],
-        ],
+        ),
       );
     },
   );

@@ -7,7 +7,7 @@ actor SuggestionFeed {
     static let forYouCount = 30
     static let discoverCount = 20
     static let contextCount = 20
-    static let seedCount = 5
+    static let seedCount = 8
     static let freshMs: Int64 = 12 * 60 * 60 * 1000
     static let song = "song"
     static let artist = "artist"

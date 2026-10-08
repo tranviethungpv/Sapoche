@@ -9,6 +9,7 @@ import android.os.SystemClock
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import app.sapoche.core.AudioQuality
 import app.sapoche.core.TrackInfo
 import app.sapoche.core.YoutubeLinks
 import app.sapoche.sync.MissedReactions
@@ -354,6 +355,7 @@ class SapocheBridge(
                 "videoHeight" to SapocheApp.videoMaxHeight,
                 "server" to Config.SERVER,
                 "autoplay" to prefs.getBoolean("autoplay", true),
+                "audioQuality" to SapocheApp.audioQuality.level,
             )
             "setupLink" -> return Config.setupLink()
             "cacheFolder" -> return activity.cacheDir.path
@@ -391,6 +393,13 @@ class SapocheBridge(
                 prefs.edit().putBoolean("autoplay", call.argument<Boolean>("on") == true).apply()
                 return null
             }
+            "setAudioQuality" -> {
+                // Songs already kept on disk stay in the stream they were fetched in (see MediaCaches), so nothing is dropped here
+                val quality = AudioQuality.of((call.argument<Number>("level") ?: AudioQuality.MAX.level).toInt())
+                SapocheApp.audioQuality = quality
+                prefs.edit().putInt("audio_quality", quality.level).apply()
+                return null
+            }
             "forYou" -> return SapocheApp.suggestions.forYou().map { it.toMap() }
             "refreshSuggestions" -> {
                 SapocheApp.suggestions.renew(force = true)
@@ -420,6 +429,8 @@ class SapocheBridge(
             }
             "blocked" -> return SapocheApp.library.blocked().map { mapOf("kind" to it.kind, "key" to it.key, "label" to it.label) }
             "musicTrending" -> return MusicJson.shelves(SapocheApp.musicFeed.trending(SapocheApp.language.value))
+            "musicHome" -> return MusicJson.home(SapocheApp.musicFeed.home(SapocheApp.language.value, call.argument<String>("params")?.ifEmpty { null }))
+            "musicCharts" -> return MusicJson.shelves(SapocheApp.musicFeed.charts())
             "musicSearch" -> return SapocheApp.musicFeed.search(
                 call.argument<String>("query").orEmpty(),
                 call.argument<Boolean>("songs") == true,
@@ -448,6 +459,7 @@ class SapocheBridge(
             "roomInfo" -> return roomInfo(call.argument<String>("code").orEmpty())
             "libraryLiked" -> return SapocheApp.library.liked().map { it.toMap() }
             "libraryRecent" -> return SapocheApp.library.recent().map { it.toMap() }
+            "libraryListens" -> return SapocheApp.library.listens((call.argument<Number>("limit") ?: 600).toInt()).map { it.toMap() }
             "libraryLike" -> {
                 val on = call.argument<Boolean>("on") == true
                 SapocheApp.library.setLiked(trackRef(call.arguments()!!), on)

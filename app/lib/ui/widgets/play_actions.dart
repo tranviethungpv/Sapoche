@@ -45,3 +45,13 @@ Future<void> startMix(BuildContext context, Track seed) async {
   }
   await scope.room.playTracks(songs);
 }
+
+/// Plays [tracks], a mix that was made for the person: outside a room it takes the place of the queue, in a room
+/// it is put on the queue.
+Future<void> playMix(BuildContext context, List<Track> tracks) async {
+  if (AppScope.roomOf(context).snapshot.inRoom) {
+    return queueTracks(context, tracks);
+  }
+  HapticFeedback.selectionClick();
+  await AppScope.roomOf(context).playTracks(tracks);
+}

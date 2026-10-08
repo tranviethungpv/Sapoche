@@ -6,6 +6,7 @@ import app.sapoche.core.ArtistPage
 import app.sapoche.core.CollectionPage
 import app.sapoche.core.Continuation
 import app.sapoche.core.Lyrics
+import app.sapoche.core.MusicHome
 import app.sapoche.core.MusicShelf
 import app.sapoche.core.MusicTrack
 import app.sapoche.core.PlaylistCard
@@ -111,6 +112,11 @@ object MusicJson {
             "artists" to it.artists.map(::artistCard),
         )
     }
+
+    fun home(home: MusicHome): Map<String, Any?> = mapOf(
+        "chips" to home.chips.map { mapOf("label" to it.label, "params" to it.params) },
+        "shelves" to shelves(home.shelves),
+    )
 
     private fun artistCard(card: ArtistCard) = mapOf("id" to card.id, "name" to card.name, "subtitle" to card.subtitle, "thumb" to card.thumbUrl)
 

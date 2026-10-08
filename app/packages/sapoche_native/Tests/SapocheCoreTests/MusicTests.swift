@@ -285,6 +285,40 @@ final class MusicParserTests: XCTestCase {
         XCTAssertTrue(shelves.flatMap(\.playlists).allSatisfy { !$0.id.isEmpty })
     }
 
+    func testTheHomePageOffersMoodsEachWithWhatAsksForIt() async throws {
+        let home = try await client(["browse": "home_chips"]).home(language: "en", params: nil)
+        XCTAssertGreaterThanOrEqual(home.chips.count, 5)
+        XCTAssertTrue(home.chips.contains { $0.label == "Relax" })
+        XCTAssertTrue(home.chips.allSatisfy { !$0.label.isEmpty && !$0.params.isEmpty })
+        XCTAssertEqual(Set(home.chips.map(\.params)).count, home.chips.count, "every mood asks for its own")
+        XCTAssertFalse(home.shelves.isEmpty)
+        XCTAssertTrue(home.shelves.allSatisfy { !$0.title.isEmpty })
+    }
+
+    func testAMoodAnswersWithShelvesOfPlaylists() async throws {
+        let asked = Asked()
+        let music = MusicClient { _, body in
+            asked.bodies.append(body)
+            return JSON.parse(data: try fixture("mood"))!
+        }
+        let mood = try await music.home(language: "en", params: "ggM8abc")
+        XCTAssertEqual(asked.bodies.first?["params"] as? String, "ggM8abc")
+        XCTAssertFalse(mood.shelves.isEmpty)
+        let playlists = mood.shelves.flatMap(\.playlists)
+        XCTAssertFalse(playlists.isEmpty, "a mood is a set of playlists")
+        XCTAssertTrue(playlists.allSatisfy { !$0.id.isEmpty && !$0.title.isEmpty })
+        _ = try await music.home(language: "en", params: nil)
+        XCTAssertNil(asked.bodies.last?["params"], "asked for without a mood, the answer carries no params")
+    }
+
+    func testTheChartsHoldPlaylistsAndTheArtistsPlayedMost() async throws {
+        let shelves = try await client(["browse": "charts"]).charts()
+        XCTAssertTrue(shelves.contains { !$0.playlists.isEmpty })
+        let artists = shelves.flatMap(\.artists)
+        XCTAssertFalse(artists.isEmpty)
+        XCTAssertTrue(artists.allSatisfy { $0.id.hasPrefix("UC") && !$0.name.isEmpty })
+    }
+
     func testAPlaylistPageGivesItsSongsAndName() async throws {
         let found = try await client(["browse": "music_playlist"]).playlist("PLx")
         XCTAssertEqual(found.title, "Popular Music Videos")
@@ -304,6 +338,10 @@ final class MusicParserTests: XCTestCase {
         XCTAssertEqual(artist.name, "")
         let shelves = try await client.trending(language: "en")
         XCTAssertTrue(shelves.isEmpty)
+        let home = try await client.home(language: "en", params: nil)
+        XCTAssertTrue(home.chips.isEmpty && home.shelves.isEmpty)
+        let charts = try await client.charts()
+        XCTAssertTrue(charts.isEmpty)
     }
 
     func testTheOtherReleaseIsReadWhenYouTubeNamesIt() async throws {
@@ -509,6 +547,8 @@ final class MusicFeedTests: XCTestCase {
         var nextCalls = 0
         var lyricsCalls = 0
         var trendingCalls: [String] = []
+        var homeCalls: [String] = []
+        var chartsCalls = 0
         var collectionCalls = 0
         var searchCalls: [String] = []
         var moreCalls = 0
@@ -562,6 +602,17 @@ final class MusicFeedTests: XCTestCase {
         func trending(language: String) async throws -> [MusicShelf] {
             trendingCalls.append(language)
             return [MusicShelf(title: "Hits in \(language)", tracks: [MusicTrack(videoId: "a", title: "T", artist: "A")])]
+        }
+
+        func home(language: String, params: String?) async throws -> MusicHome {
+            homeCalls.append("\(language)/\(params ?? "nil")")
+            return MusicHome(chips: [MoodChip(label: "Relax", params: "p1")],
+                             shelves: [MusicShelf(title: "Shelf \(params ?? "nil")", tracks: [MusicTrack(videoId: "a", title: "T", artist: "A")])])
+        }
+
+        func charts() async throws -> [MusicShelf] {
+            chartsCalls += 1
+            return [MusicShelf(title: "Charts", tracks: [])]
         }
     }
 
@@ -689,6 +740,27 @@ final class MusicFeedTests: XCTestCase {
         clock.time += 1
         _ = try await feed.trending()
         XCTAssertEqual(music.trendingCalls.count, 2)
+    }
+
+    func testEachMoodOfTheHomePageIsAskedForOnceForHoursAndTheChartsToo() async throws {
+        let clock = Clock()
+        let music = FakeMusic()
+        let feed = feed(music, FakeLrclib(nil), clock)
+        let first = try await feed.home("en")
+        XCTAssertEqual(first.chips.first?.label, "Relax")
+        _ = try await feed.home("en")
+        _ = try await feed.home("en", params: "p1")
+        _ = try await feed.home("en", params: "p1")
+        _ = try await feed.home("vi")
+        XCTAssertEqual(music.homeCalls, ["en/nil", "en/p1", "vi/nil"])
+        _ = try await feed.charts()
+        _ = try await feed.charts()
+        XCTAssertEqual(music.chartsCalls, 1)
+        clock.time += MusicFeed.trendingMs
+        _ = try await feed.home("en")
+        _ = try await feed.charts()
+        XCTAssertEqual(music.homeCalls.count, 4)
+        XCTAssertEqual(music.chartsCalls, 2)
     }
 
     func testTrendingIsAskedAgainWhenTheLanguageChangesAndNotShownInTheWrongOne() async throws {

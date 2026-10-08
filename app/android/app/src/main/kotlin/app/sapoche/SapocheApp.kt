@@ -1,6 +1,7 @@
 package app.sapoche
 
 import android.app.Application
+import app.sapoche.core.AudioQuality
 import app.sapoche.core.LyricsClient
 import app.sapoche.core.LyricsStore
 import app.sapoche.core.MusicClient
@@ -21,13 +22,14 @@ class SapocheApp : Application() {
         instance = this
         EventLog.init(filesDir)
         videoMaxHeight = getSharedPreferences("sapoche", MODE_PRIVATE).getInt("video_height", DEFAULT_VIDEO_HEIGHT)
+        audioQuality = AudioQuality.of(getSharedPreferences("sapoche", MODE_PRIVATE).getInt("audio_quality", AudioQuality.MAX.level))
         language.value = getSharedPreferences("sapoche", MODE_PRIVATE).getString("language", null) ?: "en"
         resolver = NewPipeResolver(region = phoneRegion())
         streams = StreamCache(resolver, Probe())
         library = LibraryStore(this)
         val limitMb = getSharedPreferences("sapoche", MODE_PRIVATE).getInt("cache_limit_mb", DEFAULT_CACHE_MB)
         caches = MediaCaches(this, limitMb * 1024L * 1024L)
-        mediaData = MediaData(caches, streams, { videoMaxHeight }) { EventLog.d("cache", it) }
+        mediaData = MediaData(caches, streams, { videoMaxHeight }, { audioQuality }) { EventLog.d("cache", it) }
         downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
@@ -46,6 +48,10 @@ class SapocheApp : Application() {
         /** Tallest picture to fetch; read by the loader thread, so it is volatile. */
         @Volatile
         var videoMaxHeight = DEFAULT_VIDEO_HEIGHT
+
+        /** How much sound to fetch for a song that is not kept yet; read by the loader thread, so it is volatile. */
+        @Volatile
+        var audioQuality = AudioQuality.MAX
 
         lateinit var resolver: NewPipeResolver
             private set

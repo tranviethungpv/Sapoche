@@ -61,6 +61,12 @@ data class ArtistPage(
     val topSongsId: String? = null,
 )
 
+/** A mood or activity on the home page of YouTube Music (Relax, Workout...); [params] asks for the shelves that suit it. */
+data class MoodChip(val label: String, val params: String)
+
+/** The home page of YouTube Music: the moods it offers and its shelves, for a mood when one was asked for. */
+data class MusicHome(val chips: List<MoodChip>, val shelves: List<MusicShelf>)
+
 /** A titled row of a page: songs, albums, playlists or artists, any mix of them. */
 data class MusicShelf(
     val title: String,
@@ -152,4 +158,10 @@ interface MusicSource {
 
     /** What YouTube Music shows everybody on its home page, with the shelf names in [language] (a code like "vi"). */
     suspend fun trending(language: String = "en"): List<MusicShelf>
+
+    /** The home page with the moods it offers; with a mood's [params] the shelves that suit that mood. */
+    suspend fun home(language: String = "en", params: String? = null): MusicHome
+
+    /** The charts of the person's country: playlists of what is played most, and the artists played most. */
+    suspend fun charts(): List<MusicShelf>
 }

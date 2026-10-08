@@ -1,23 +1,31 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'shelf_stats.dart';
+
 /// Preferences that only concern how the app looks on this phone.
 class AppSettings extends ChangeNotifier {
-  AppSettings._(this._prefs)
+  AppSettings._(this._prefs, Random? shelfRandom)
     : _themeMode = _read(_prefs),
       _language = _prefs.getString(_languageKey),
-      _avatar = _readAvatar(_prefs);
+      _avatar = _readAvatar(_prefs),
+      shelves = ShelfStats(_prefs, random: shelfRandom);
 
   final SharedPreferences _prefs;
+
+  /// Which rows of the home page the person touches, and so the order to show them in.
+  final ShelfStats shelves;
   ThemeMode _themeMode;
   String? _language;
   Uint8List? _avatar;
 
-  static Future<AppSettings> load() async =>
-      AppSettings._(await SharedPreferences.getInstance());
+  /// [shelfRandom] draws the order of the rows of the home page; a test gives it one that always draws the same.
+  static Future<AppSettings> load({Random? shelfRandom}) async =>
+      AppSettings._(await SharedPreferences.getInstance(), shelfRandom);
 
   ThemeMode get themeMode => _themeMode;
 

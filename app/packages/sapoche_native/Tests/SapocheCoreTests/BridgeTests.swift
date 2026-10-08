@@ -201,6 +201,28 @@ final class BridgeTests: XCTestCase {
         XCTAssertNil(again["secret"])
     }
 
+    func testTheAudioQualityIsKeptAndTold() async throws {
+        let first = try await result("profile", as: [String: Any].self)
+        XCTAssertEqual(first["audioQuality"] as? Int, 3, "the best until the person chooses")
+        _ = try await call("setAudioQuality", ["level": 1])
+        let chosen = try await result("profile", as: [String: Any].self)
+        XCTAssertEqual(chosen["audioQuality"] as? Int, 1)
+        XCTAssertEqual(prefs.int64("audio_quality"), 1)
+        _ = try await call("setAudioQuality", ["level": 42])
+        let unknown = try await result("profile", as: [String: Any].self)
+        XCTAssertEqual(unknown["audioQuality"] as? Int, 3, "a level nobody knows is the best")
+    }
+
+    func testTheMoodsAndTheChartsAreAskedFor() async throws {
+        let home = try await result("musicHome", ["params": "ggM8abc"], as: [String: Any].self)
+        XCTAssertEqual((home["chips"] as? [Any])?.count, 0)
+        XCTAssertEqual((home["shelves"] as? [Any])?.count, 0)
+        let plain = try await result("musicHome", as: [String: Any].self)
+        XCTAssertNotNil(plain["chips"])
+        let charts = try await result("musicCharts", as: [Any].self)
+        XCTAssertTrue(charts.isEmpty)
+    }
+
     func testTheFirstStateIsSentWhenTheScreenListens() async throws {
         let first = try XCTUnwrap(states().first)
         XCTAssertEqual(first["phase"] as? String, "idle")

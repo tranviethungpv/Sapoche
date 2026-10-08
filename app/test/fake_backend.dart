@@ -207,6 +207,14 @@ class FakeBackend implements Backend {
     return [...recentSongs];
   }
 
+  List<HistoryEntry> listenResults = [];
+
+  @override
+  Future<List<HistoryEntry>> listens({int limit = 600}) async {
+    await _record('listens');
+    return [...listenResults];
+  }
+
   @override
   Future<void> setLiked(Track track, bool liked) async {
     await _record('like ${track.videoId} $liked');
@@ -363,6 +371,10 @@ class FakeBackend implements Backend {
   @override
   Future<void> setAutoplay(bool on) => _record('autoplay $on');
 
+  @override
+  Future<void> setAudioQuality(AudioQuality quality) =>
+      _record('audioQuality ${quality.name}');
+
   SongRadio radioResult = const SongRadio();
   RelatedPage relatedResult = const RelatedPage();
   ArtistPage artistResult = const ArtistPage(id: 'UC1', name: 'Artist');
@@ -408,6 +420,20 @@ class FakeBackend implements Backend {
   @override
   Future<List<MusicShelf>> musicTrending() =>
       _music('musicTrending', trendingResult);
+
+  MusicHome homeResult = const MusicHome();
+  Map<String, MusicHome> moodResults = {};
+  List<MusicShelf> chartsResult = const [];
+
+  @override
+  Future<MusicHome> musicHome({String? params}) => _music(
+    params == null ? 'musicHome' : 'musicHome $params',
+    params == null ? homeResult : (moodResults[params] ?? const MusicHome()),
+  );
+
+  @override
+  Future<List<MusicShelf>> musicCharts() =>
+      _music('musicCharts', chartsResult);
 
   @override
   Future<List<MusicTrack>> musicSearch(String query, {required bool songs}) =>

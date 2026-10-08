@@ -22,6 +22,7 @@ class LibraryController extends ChangeNotifier {
   List<Track> _likedSongs = const [];
   Map<String, List<Track>> _likedByKey = const {};
   List<HistoryEntry> _recent = const [];
+  List<HistoryEntry> _listens = const [];
   List<SavedPlaylist> _playlists = const [];
   List<Track> _forYou = const [];
   List<SeedList> _seedLists = const [];
@@ -39,6 +40,9 @@ class LibraryController extends ChangeNotifier {
 
   /// What was heard, the most recent first, a song heard as audio and as video only once.
   List<HistoryEntry> get recent => _recent;
+
+  /// Every recent listen with its own time, the latest first: sessions of listening are told from these.
+  List<HistoryEntry> get listens => _listens;
 
   /// The person's playlists, the one changed last first.
   List<SavedPlaylist> get playlists => _playlists;
@@ -91,6 +95,8 @@ class LibraryController extends ChangeNotifier {
     try {
       final liked = await _backend.liked();
       final recent = await _backend.recent();
+      // Only the mixes of a taste need them: without them the rest of the library is still shown
+      final listens = await _backend.listens().catchError((_) => _listens);
       final playlists = await _backend.playlists();
       final forYou = await _backend.forYou();
       final seedLists = await _backend.seedLists();
@@ -106,6 +112,7 @@ class LibraryController extends ChangeNotifier {
       }
       _setLiked(liked);
       _recent = _oncePerSong(recent);
+      _listens = listens;
       _playlists = playlists;
       _forYou = forYou;
       _seedLists = seedLists;
