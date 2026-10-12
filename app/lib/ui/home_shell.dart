@@ -71,6 +71,14 @@ class HomeShell extends StatefulWidget {
         ShellLayout.sidebar => 112,
       };
 
+  /// Like [bottomInsetOf], but with the mini player open above the tabs: the room a page needs under its last line when
+  /// that line must be seen with the bars as they are, because the page is too short to scroll and so never folds them.
+  static double openBottomInsetOf(BuildContext context) =>
+      switch (layoutOf(context)) {
+        ShellLayout.bars => bottomInsetOf(context) + MiniPlayer.heightOf(context),
+        _ => bottomInsetOf(context),
+      };
+
   /// The system's own bar under the pages (the home indicator, the navigation bar). Read from the view: the bars are
   /// drawn by the scaffold around the pages, which takes that room off the media a page sees, so a page would find none.
   static double _systemBottomOf(BuildContext context) {

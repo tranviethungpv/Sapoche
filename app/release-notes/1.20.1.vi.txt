@@ -1,0 +1,2 @@
+Trên máy này: nút luôn hiện đủ
+- Khi chưa có gì để liệt kê, trang nhạc trong máy giữ nút (Thêm tệp trên iPhone, Cho phép trên Android) ở gần đầu trang, nơi mini player không còn che mất.

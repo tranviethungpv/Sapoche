@@ -1,11 +1,12 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/library_controller.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/room_controller.dart';
 import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/ui/collection_screen.dart' show CollectionCover;
+import 'package:sapoche/ui/widgets/mini_player.dart';
 import 'package:sapoche/ui/widgets/cached_cover.dart';
 
 import 'fake_backend.dart';
@@ -509,6 +510,66 @@ void main() {
       expect(find.text('Add to playlist'), findsOneWidget);
       expect(find.text('Download'), findsNothing);
       expect(find.text('Not interested'), findsNothing);
+    });
+
+    /// An iPhone: the system keeps a bar under the app, a song waits in the queue (so the mini player is there), and the
+    /// page is the one with nothing in it, which is too short to scroll and so never folds the bars.
+    Future<FakeBackend> openEmptyOnAnIPhone(
+      WidgetTester tester, {
+      LocalStatus status = const LocalStatus(),
+      bool ios = true,
+    }) async {
+      final (backend, _) = await pumpApp(
+        tester,
+        prepare: (b) => b.localState = status,
+      );
+      tester.view.physicalSize = const Size(1179, 2556);
+      tester.view.devicePixelRatio = 3;
+      tester.view.padding = const FakeViewPadding(top: 177, bottom: 102);
+      tester.view.viewPadding = const FakeViewPadding(top: 177, bottom: 102);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
+      // Put back by the test itself, before the framework checks that nothing was left changed
+      debugDefaultTargetPlatformOverride = ios
+          ? TargetPlatform.iOS
+          : TargetPlatform.android;
+      backend.emit(StateEvent(sampleRoom(local: true, songs: 3, phase: 'paused')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('On this phone'));
+      await tester.pumpAndSettle();
+      return backend;
+    }
+
+    testWidgets('on an iPhone the button to add files is above the open mini player, with nothing to scroll', (tester) async {
+      await openEmptyOnAnIPhone(tester);
+      final button = tester.getRect(find.text('Add files'));
+      final mini = tester.getRect(find.byType(MiniPlayerCapsule));
+      debugDefaultTargetPlatformOverride = null;
+      expect(find.byType(MiniPlayerCapsule), findsOneWidget);
+      expect(button.bottom, lessThan(mini.top - 8));
+      // And the page is not asking for a scroll that the person would have to know to make
+      expect(find.text('Library'), findsWidgets, reason: 'the bars are as they were: open');
+    });
+
+    testWidgets('the button to allow the music is too, on an Android phone that asks for it', (tester) async {
+      await openEmptyOnAnIPhone(
+        tester,
+        status: const LocalStatus(access: LocalAccess.ask),
+        ios: false,
+      );
+      final button = tester.getRect(find.text('Allow'));
+      final mini = tester.getRect(find.byType(MiniPlayerCapsule));
+      debugDefaultTargetPlatformOverride = null;
+      expect(button.bottom, lessThan(mini.top - 8));
+    });
+
+    testWidgets('the cover and the count are left out of a page with nothing to list, but not while searching', (tester) async {
+      await openEmptyOnAnIPhone(tester);
+      debugDefaultTargetPlatformOverride = null;
+      expect(find.text('0 songs'), findsNothing);
+      expect(find.byType(CollectionCover), findsNothing);
     });
 
     testWidgets('an empty phone says what to do', (tester) async {

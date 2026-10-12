@@ -999,6 +999,12 @@ class _TrackList extends StatelessWidget {
                           ),
                       ],
                     );
+                    // A list with nothing in it that has its own words to say (not what the songs are for, but what is to
+                    // be done about it) is only the title and those words, at the top: the cover and the count would
+                    // push the one thing to do under the bars, and a page this short never scrolls to fold them
+                    // (Not while a box to search them is above: a search that finds nothing keeps the page as it was)
+                    final bare =
+                        tracks.isEmpty && emptyView != null && filterBar == null;
                     return CustomScrollView(
                       physics: const BouncingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics(),
@@ -1009,7 +1015,23 @@ class _TrackList extends StatelessWidget {
                           sliver: SliverMainAxisGroup(
                             slivers: [
                               SliverToBoxAdapter(
-                                child: wide
+                                child: bare
+                                    ? Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          24,
+                                          4,
+                                          24,
+                                          0,
+                                        ),
+                                        child: Text(
+                                          title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                          style: theme.headlineSmall,
+                                        ),
+                                      )
+                                    : wide
                                     ? Padding(
                                         padding: const EdgeInsets.fromLTRB(
                                           20,
@@ -1082,7 +1104,11 @@ class _TrackList extends StatelessWidget {
                                 ),
                               SliverToBoxAdapter(
                                 child: SizedBox(
-                                  height: HomeShell.bottomInsetOf(context) + 8,
+                                  // With the mini player open, and not as the bars are once a long page has folded
+                                  // them: this one has nothing to scroll
+                                  height: bare
+                                      ? HomeShell.openBottomInsetOf(context)
+                                      : HomeShell.bottomInsetOf(context) + 8,
                                 ),
                               ),
                             ],

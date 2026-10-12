@@ -1,0 +1,2 @@
+On this phone: the button is always in view
+- When there is nothing to list yet, the page of the music on your phone now keeps its button (Add files on iPhone, Allow on Android) at the top, where the mini player no longer covers it.
