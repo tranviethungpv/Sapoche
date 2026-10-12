@@ -9,6 +9,9 @@ import UIKit
 final class NowPlaying {
     private let controller: GroupController
     private let engine: PlayerEngine
+
+    /// The picture inside the music file of a song from this phone, by the id of the song.
+    private let localCover: (String) async -> Data?
     private var shownVideoId: String?
     private var artwork: MPMediaItemArtwork?
     private var artworkTask: Task<Void, Never>?
@@ -19,9 +22,10 @@ final class NowPlaying {
     /// player changes twice a second (its drift), and each of those woke the lock screen for nothing, screen off or on.
     private var given: (signature: String, positionMs: Int64, at: TimeInterval)?
 
-    init(controller: GroupController, engine: PlayerEngine) {
+    init(controller: GroupController, engine: PlayerEngine, localCover: @escaping (String) async -> Data? = { _ in nil }) {
         self.controller = controller
         self.engine = engine
+        self.localCover = localCover
         connectButtons()
     }
 
@@ -116,7 +120,14 @@ final class NowPlaying {
             return
         }
         artworkTask = Task { [weak self] in
-            guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else { return }
+            // A song from a file has its picture inside the file; any other has an address to fetch it from
+            let data: Data?
+            if address.hasPrefix(LocalMusic.coverPrefix), let self {
+                data = await self.localCover(String(address.dropFirst(LocalMusic.coverPrefix.count)))
+            } else {
+                data = try? await URLSession.shared.data(from: url).0
+            }
+            guard let data, let image = UIImage(data: data) else { return }
             guard let self, !Task.isCancelled else { return }
             if self.artworkCache.count > 20 { self.artworkCache.removeAll() }
             self.artworkCache[address] = image

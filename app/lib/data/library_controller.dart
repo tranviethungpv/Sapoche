@@ -31,6 +31,14 @@ class LibraryController extends ChangeNotifier {
   List<BlockedItem> _blocked = const [];
   List<DownloadEntry> _downloads = const [];
   Map<String, DownloadState> _downloadStates = const {};
+  LocalStatus _localStatus = const LocalStatus();
+  LocalScan _lastScan = const LocalScan();
+  bool _localOpen = false;
+
+  /// The music files on this phone. It has its own notifier, apart from the library's: the page of the music on the phone
+  /// reads and scans as it opens, and telling every screen that listens to the library each time would make the home
+  /// page work out all its rows again (a tenth of a second on a phone) for nothing, with the page stuttering as it opens.
+  final localSongs = ValueNotifier<List<LocalSong>>(const []);
 
   /// Songs of the playlists that were opened, kept up to date while they are.
   final _items = <int, List<Track>>{};
@@ -49,6 +57,18 @@ class LibraryController extends ChangeNotifier {
 
   /// Songs on the list of downloads, what is on the phone first.
   List<DownloadEntry> get downloads => _downloads;
+
+  /// Where the list of the music on this phone stands.
+  LocalStatus get localStatus => _localStatus;
+
+  /// What the last reading of the music on this phone found.
+  LocalScan get lastScan => _lastScan;
+
+  /// The music files on this phone, the one added last first; read while [watchLocal] says the list is on show.
+  List<LocalSong> get local => localSongs.value;
+
+  /// The song comes from a file that is not on this phone any more.
+  bool isMissing(Track track) => _localStatus.missing.contains(track.videoId);
 
   /// Where a song stands, or null when it was never asked for.
   DownloadState? downloadState(String videoId) => _downloadStates[videoId];
@@ -104,6 +124,13 @@ class LibraryController extends ChangeNotifier {
       final discover = await _backend.discover().catchError((_) => _discover);
       final blocked = await _backend.blocked().catchError((_) => _blocked);
       final downloads = await _backend.downloads();
+      // The music on the phone is extra, and its list is only read while someone looks at it
+      final localStatus = await _backend.localStatus().catchError(
+        (_) => _localStatus,
+      );
+      final local = _localOpen
+          ? await _backend.localTracks().catchError((_) => localSongs.value)
+          : localSongs.value;
       final items = <int, List<Track>>{};
       for (final id in _items.keys.toList()) {
         if (playlists.any((p) => p.id == id)) {
@@ -120,6 +147,8 @@ class LibraryController extends ChangeNotifier {
       _blocked = blocked;
       _downloads = downloads;
       _downloadStates = {for (final d in downloads) d.track.videoId: d.state};
+      _localStatus = localStatus;
+      if (!listEquals(local, localSongs.value)) localSongs.value = local;
       _items
         ..clear()
         ..addAll(items);
@@ -128,6 +157,70 @@ class LibraryController extends ChangeNotifier {
     } on Object {
       // Nothing to show is better than an error on every screen
     }
+  }
+
+  /// The list of the music on this phone is on show (or not any more): while it is, it is kept up to date.
+  Future<void> watchLocal(bool on) async {
+    _localOpen = on;
+    if (on) await _loadLocal();
+  }
+
+  /// Reads the status and the files of the music on this phone and nothing else. What changed is told: the list to the
+  /// page that shows it, and the status (the count, the switch) to those that show that.
+  Future<void> _loadLocal() async {
+    try {
+      final status = await _backend.localStatus();
+      final list = _localOpen ? await _backend.localTracks() : localSongs.value;
+      final statusChanged = status != _localStatus;
+      _localStatus = status;
+      if (!listEquals(list, localSongs.value)) localSongs.value = list;
+      if (statusChanged) notifyListeners();
+    } on Object {
+      // What is shown stays as it was
+    }
+  }
+
+  /// Reads the music on this phone again, if the person allowed it and has the list on. Does nothing otherwise.
+  Future<void> scanLocal() async {
+    if (!_localStatus.enabled || _localStatus.access != LocalAccess.granted) {
+      return;
+    }
+    try {
+      _lastScan = await _backend.localScan();
+    } on Object catch (e) {
+      _messages.add('$e');
+    }
+    // The native side tells the library when a scan changed something, which reads everything again; a scan that found
+    // the same files says nothing, and costs the screens nothing
+    await _loadLocal();
+  }
+
+  /// Asks to read the music on this phone, and reads it when that was allowed.
+  Future<void> requestLocalAccess() async {
+    try {
+      await _backend.localAccess();
+    } on Object catch (e) {
+      _messages.add('$e');
+    }
+    await _loadLocal();
+    await scanLocal();
+  }
+
+  /// Copies music files the person chooses into the folder of the app (an iPhone); gives back how many, or null.
+  Future<int?> importLocal() async {
+    try {
+      final copied = await _backend.localImport();
+      if (copied != null && copied > 0) await scanLocal();
+      return copied;
+    } on Object catch (e) {
+      _messages.add('$e');
+      return null;
+    }
+  }
+
+  Future<void> setLocalEnabled(bool on) async {
+    await _run(() => _backend.setLocalEnabled(on));
+    await _loadLocal();
   }
 
   /// Reads the mix for this time of day, which may have to fetch a list: it must not hold the other lists back.
@@ -376,6 +469,7 @@ class LibraryController extends ChangeNotifier {
   void dispose() {
     _subscription?.cancel();
     _messages.close();
+    localSongs.dispose();
     super.dispose();
   }
 }

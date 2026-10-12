@@ -1012,6 +1012,20 @@ class _StorageGroupState extends State<_StorageGroup> {
             },
           ),
         ),
+        // Whether the list of the music on this phone is offered; on its own it is read only when opened
+        ListenableBuilder(
+          listenable: library,
+          builder: (context, _) => Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              key: const ValueKey('local-music-switch'),
+              title: Text(S.localMusicSwitch),
+              subtitle: Text(S.localMusicSwitchBody),
+              value: library.localStatus.enabled,
+              onChanged: library.setLocalEnabled,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1035,7 +1049,10 @@ class _BackupGroup extends StatelessWidget {
       context,
       saved.isEmpty
           ? S.backupEmpty
-          : S.backupSaved(saved.liked, saved.playlists, saved.listens),
+          : [
+              S.backupSaved(saved.liked, saved.playlists, saved.listens),
+              if (saved.local > 0) S.backupLocalLeftOut(saved.local),
+            ].join('. '),
     );
   }
 

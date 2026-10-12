@@ -47,6 +47,37 @@ void main() {
   });
 
   group('mixes', () {
+    test('an artist whose songs are all files on the phone has no mix: it would have no radio', () {
+      final mine = t('local:0123456789abcdef', 'Mine');
+      final home = buildHome(
+        recent: [
+          heard(mine, now, plays: 9),
+          heard(t('a', 'Adele'), now, plays: 3),
+          heard(t('b', 'Beck'), now, plays: 2),
+        ],
+        liked: const [],
+        forYou: const [],
+        seedLists: const [],
+        now: now,
+      );
+      expect(home.mixes.map((m) => m.artist), ['Adele', 'Beck']);
+    });
+
+    test('a mix begins with the song of the artist that has a radio', () {
+      final home = buildHome(
+        recent: [
+          heard(t('local:0123456789abcdef', 'Adele'), now, plays: 9),
+          heard(t('a', 'Adele'), now, plays: 1),
+          heard(t('b', 'Beck'), now, plays: 2),
+        ],
+        liked: const [],
+        forYou: const [],
+        seedLists: const [],
+        now: now,
+      );
+      expect(home.mixes.first.seed.videoId, 'a');
+    });
+
     test(
       'go to the artists heard most, each starting from their best song',
       () {

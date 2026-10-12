@@ -26,6 +26,13 @@ class MainActivity : FlutterActivity() {
         bridge?.onActivityResult(requestCode, resultCode, data)
     }
 
+    @Deprecated("The permission dialog answers through the framework callback")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        @Suppress("DEPRECATION")
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        SapocheApp.deviceMusic.onPermissionResult(requestCode)
+    }
+
     /** Rotation and other changes are handled here without recreating the activity; note when they happen. */
     override fun onConfigurationChanged(newConfig: Configuration) {
         EventLog.d("ui", "configuration changed: orientation=${newConfig.orientation} size=${newConfig.screenWidthDp}x${newConfig.screenHeightDp}dp")

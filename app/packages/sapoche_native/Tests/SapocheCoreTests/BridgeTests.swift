@@ -17,6 +17,22 @@ final class FakePlatform: PlatformServices {
     var exported: [(String, String)] = []
     var toImport: String?
 
+    /// The folder with the music, what the tags of each file in it say, and what the person picks to copy in.
+    var musicFolder = FileManager.default.temporaryDirectory.appendingPathComponent("music-\(UUID().uuidString)")
+    var tags: [String: MusicTags] = [:]
+    var covers: [String: Data] = [:]
+    var picked: [URL] = []
+
+    init() {
+        try? FileManager.default.createDirectory(at: musicFolder, withIntermediateDirectories: true)
+    }
+
+    func musicTags(_ url: URL) async -> MusicTags? { tags[url.lastPathComponent] }
+
+    func musicCover(_ url: URL) async -> Data? { covers[url.lastPathComponent] }
+
+    func pickMusicFiles() async throws -> [URL] { picked }
+
     func pickOutput() { outputPicked += 1 }
 
     func setVolume(_ level: Float) { volume.set(level) }
@@ -182,6 +198,105 @@ final class BridgeTests: XCTestCase {
             await time.settle()
             try? await Task.sleep(nanoseconds: 2_000_000)
         }
+    }
+
+    // ------------------------------------------------------------------ music on this phone
+
+    private func addMusic(_ name: String, durMs: Int64 = 60_000, title: String? = nil, artist: String? = nil) throws {
+        try Data([1, 2, 3]).write(to: platform.musicFolder.appendingPathComponent(name))
+        platform.tags[name] = MusicTags(title: title, artist: artist, album: nil, durMs: durMs)
+    }
+
+    func testTheMusicOnThePhoneNeedsNoPermissionAndIsOnByDefault() async throws {
+        let status = try await result("localStatus", as: [String: Any].self)
+        XCTAssertEqual(status["enabled"] as? Bool, true)
+        XCTAssertEqual(status["access"] as? String, "granted")
+        XCTAssertEqual(status["count"] as? Int, 0)
+        let access = try await result("localAccess", as: String.self)
+        XCTAssertEqual(access, "granted")
+
+        _ = try await call("localEnable", ["on": false])
+        let off = try await result("localStatus", as: [String: Any].self)
+        XCTAssertEqual(off["enabled"] as? Bool, false)
+        _ = try await call("localEnable", ["on": true])
+        let on = try await result("localStatus", as: [String: Any].self)
+        XCTAssertEqual(on["enabled"] as? Bool, true)
+    }
+
+    func testAScanListsWhatIsInTheFolderAndTheListIsReadBack() async throws {
+        try addMusic("one.mp3", title: "One", artist: "Ann")
+        try addMusic("two.flac", title: "Two")
+        try addMusic("a.ogg")
+        let scan = try await result("localScan", as: [String: Any].self)
+        XCTAssertEqual(scan["total"] as? Int, 2)
+        XCTAssertEqual(scan["unsupported"] as? Int, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: platform.musicFolder.appendingPathComponent(MusicFolder.helpName).path))
+
+        let songs = try await result("localTracks", as: [[String: Any]].self)
+        XCTAssertEqual(Set(songs.compactMap { $0["title"] as? String }), ["One", "Two"])
+        let one = try XCTUnwrap(songs.first { $0["title"] as? String == "One" })
+        XCTAssertEqual(one["artist"] as? String, "Ann")
+        XCTAssertEqual(one["mime"] as? String, "audio/mpeg")
+        XCTAssertEqual(one["missing"] as? Bool, false)
+        XCTAssertTrue((one["videoId"] as? String ?? "").hasPrefix("local:"))
+        XCTAssertTrue((one["thumb"] as? String ?? "").hasPrefix("sapoche-local:"))
+        let status = try await result("localStatus", as: [String: Any].self)
+        XCTAssertEqual(status["count"] as? Int, 2)
+    }
+
+    func testAFileTakenOutOfTheFolderIsMissingOnlyWhileSomethingPointsToIt() async throws {
+        try addMusic("one.mp3", title: "One")
+        try addMusic("two.mp3", title: "Two")
+        _ = try await call("localScan")
+        let songs = try await result("localTracks", as: [[String: Any]].self)
+        let one = try XCTUnwrap(songs.first { $0["title"] as? String == "One" })
+        _ = try await call("libraryLike", one.merging(["on": true]) { $1 })
+        try FileManager.default.removeItem(at: platform.musicFolder.appendingPathComponent("one.mp3"))
+        try FileManager.default.removeItem(at: platform.musicFolder.appendingPathComponent("two.mp3"))
+        _ = try await call("localScan")
+        let left = try await result("localTracks", as: [[String: Any]].self)
+        XCTAssertEqual(left.map { $0["title"] as? String }, ["One"])
+        XCTAssertEqual(left.first?["missing"] as? Bool, true)
+        let status = try await result("localStatus", as: [String: Any].self)
+        XCTAssertEqual(status["count"] as? Int, 0)
+        XCTAssertEqual(status["missing"] as? [String], [one["videoId"] as? String ?? ""])
+    }
+
+    func testTheCoverInsideAFileIsAskedForByTheSong() async throws {
+        try addMusic("one.mp3", title: "One")
+        platform.covers["one.mp3"] = Data([9, 9])
+        _ = try await call("localScan")
+        let listed = try await result("localTracks", as: [[String: Any]].self)
+        let id = try XCTUnwrap(listed.first?["videoId"] as? String)
+        let cover = try await call("localCover", ["videoId": id])
+        XCTAssertEqual(cover as? Data, Data([9, 9]))
+        let none = try await call("localCover", ["videoId": "local:ffffffffffffffff"])
+        XCTAssertNil(none)
+    }
+
+    func testFilesThePersonPicksAreCopiedIntoTheFolder() async throws {
+        let picked = FileManager.default.temporaryDirectory.appendingPathComponent("pick-\(UUID().uuidString).mp3")
+        try Data([1]).write(to: picked)
+        defer { try? FileManager.default.removeItem(at: picked) }
+        platform.picked = []
+        let nothing = try await call("localImport")
+        XCTAssertNil(nothing, "backing out gives nothing")
+        platform.picked = [picked]
+        let copied = try await call("localImport")
+        XCTAssertEqual(copied as? Int, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: platform.musicFolder.appendingPathComponent(picked.lastPathComponent).path))
+    }
+
+    func testABackupSaysHowManySongsFromThisPhoneItLeftOut() async throws {
+        try addMusic("one.mp3", title: "One")
+        _ = try await call("localScan")
+        let listed = try await result("localTracks", as: [[String: Any]].self)
+        let one = try XCTUnwrap(listed.first)
+        _ = try await call("libraryLike", one.merging(["on": true]) { $1 })
+        _ = try await call("libraryLike", song(1).merging(["on": true]) { $1 })
+        let saved = try await result("backupExport", as: [String: Any].self)
+        XCTAssertEqual(saved["liked"] as? Int, 1)
+        XCTAssertEqual(saved["local"] as? Int, 1)
     }
 
     func testTheProfileTellsWhatTheUIAsksFor() async throws {

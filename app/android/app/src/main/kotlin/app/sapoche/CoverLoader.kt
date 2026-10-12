@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.LruCache
 import androidx.media3.common.util.BitmapLoader
+import app.sapoche.sync.LocalMusic
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -37,6 +38,7 @@ class CoverLoader : BitmapLoader {
     }
 
     private fun load(url: String): Bitmap {
+        if (url.startsWith(LocalMusic.COVER_PREFIX)) return fromFile(url.removePrefix(LocalMusic.COVER_PREFIX))
         val sharp = Thumbnails.sharp(url)
         if (sharp == url) return download(url)
         return try {
@@ -44,6 +46,12 @@ class CoverLoader : BitmapLoader {
         } catch (e: IOException) {
             download(url) // not every video has the big picture
         }
+    }
+
+    /** The picture inside a music file on this phone. */
+    private fun fromFile(videoId: String): Bitmap {
+        val bytes = SapocheApp.deviceMusic.coverNow(videoId) ?: throw IOException("No picture in the file of $videoId")
+        return decode(bytes)
     }
 
     private fun download(url: String): Bitmap {

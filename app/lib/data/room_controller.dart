@@ -710,6 +710,11 @@ class RoomController extends ChangeNotifier {
   /// Songs that are waiting in the queue already are not added again.
   Future<void> add(Track track, {bool playNext = false}) async {
     if (_snapshot.isQueued(track)) return;
+    // The others in a room do not have the file
+    if (_snapshot.inRoom && track.isLocal) {
+      _messages.add(S.localNoRoom);
+      return;
+    }
     await _run(() => _backend.add(track, playNext: playNext));
   }
 
@@ -726,7 +731,22 @@ class RoomController extends ChangeNotifier {
 
   Future<void> setShuffle(bool on) => _run(() => _backend.setShuffle(on));
   Future<void> addMany(List<Track> tracks, {bool playNext = false}) async {
-    final fresh = _snapshot.fresh(tracks);
+    var fresh = _snapshot.fresh(tracks);
+    // The others in a room do not have the files: only what is on YouTube goes in, and the rest is said
+    if (_snapshot.inRoom) {
+      final sendable = [
+        for (final t in fresh)
+          if (!t.isLocal) t,
+      ];
+      if (sendable.length != fresh.length) {
+        _messages.add(
+          sendable.isEmpty
+              ? S.localNoRoom
+              : S.localLeftOut(fresh.length - sendable.length),
+        );
+      }
+      fresh = sendable;
+    }
     if (fresh.isEmpty) return;
     await _run(() => _backend.addMany(fresh, playNext: playNext));
   }
@@ -748,6 +768,8 @@ class RoomController extends ChangeNotifier {
   /// when a song is tapped.
   Future<void> playSong(Track track) async {
     await playTracks([track]);
+    // A song from a file has no radio
+    if (track.isLocal) return;
     await _run(() => _backend.fillRadio(track.videoId));
   }
 

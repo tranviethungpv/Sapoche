@@ -64,6 +64,19 @@ class TasteTest {
     }
 
     @Test
+    fun `a song from a file on this phone is never a seed, but still tells what is liked`() {
+        val taste = taste(heard = listOf(heard("local:0123456789abcdef", 1, "Mine"), heard("b", 2, "Other")))
+        assertEquals(listOf("b"), taste.seeds(5))
+        assertTrue(taste.knows("Mine"))
+    }
+
+    @Test
+    fun `what is played at this hour does not seed from a file on this phone`() {
+        val plays = (1..6).map { heard("local:0123456789abcdef", it, "Mine") }
+        assertTrue(taste(heard = plays).contextSeeds("afternoon").isEmpty())
+    }
+
+    @Test
     fun `a second song of an artist fills a seed that would be empty`() {
         val listens = listOf(heard("a1", 1, "A"), heard("a1", 2, "A"), heard("a2", 1, "A"), heard("b1", 1, "B"))
         assertEquals(listOf("a1", "b1", "a2"), taste(heard = listens).seeds(3))

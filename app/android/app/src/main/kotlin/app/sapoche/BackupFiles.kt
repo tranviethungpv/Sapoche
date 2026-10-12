@@ -33,7 +33,7 @@ class BackupFiles(private val activity: Activity, private val library: LibrarySt
             val out = activity.contentResolver.openOutputStream(uri, "wt") ?: error("Could not write the file")
             out.use { it.write(text.toByteArray()) }
         }
-        return LibraryStore.Restored(backup.liked.size, backup.playlists.size, backup.listens.size)
+        return LibraryStore.Restored(backup.liked.size, backup.playlists.size, backup.listens.size, backup.skippedLocal)
     }
 
     /** Adds what a chosen file holds to the library. Gives back how much was new, or null when the person backed out. */

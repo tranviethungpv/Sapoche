@@ -3,6 +3,8 @@ package app.sapoche
 import android.net.Uri
 import app.sapoche.core.AudioQuality
 import app.sapoche.core.OkHttpDownloader
+import app.sapoche.sync.LoadFailure
+import app.sapoche.sync.LocalMusic
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.DataSpec
@@ -31,6 +33,7 @@ class MediaData(
     private val streams: StreamCache,
     private val maxVideoHeight: () -> Int,
     private val audioQuality: () -> AudioQuality,
+    private val device: DeviceMusic,
     private val log: (String) -> Unit = {},
 ) {
 
@@ -70,7 +73,7 @@ class MediaData(
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
             .setUpstreamDataSourceFactory(played)
         val picture = resolving(http, caches.play)
-        return DataSource.Factory { Routed(sound.createDataSource(), picture.createDataSource()) }
+        return DataSource.Factory { Routed(sound.createDataSource(), picture.createDataSource(), device) }
     }
 
     /**
@@ -125,16 +128,33 @@ class MediaData(
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    /** Sound goes to [sound], anything else to [picture]. */
-    private class Routed(private val sound: DataSource, private val picture: DataSource) : DataSource {
+    /**
+     * Sound goes to [sound], anything else to [picture]. The sound of a music file on this phone is read from the file
+     * itself: it is not in any cache, and needs no resolving.
+     */
+    private class Routed(private val sound: DataSource, private val picture: DataSource, private val device: DeviceMusic) : DataSource {
         private var active: DataSource? = null
+        private val file by lazy { device.fileSource() }
 
         override fun addTransferListener(listener: TransferListener) {
             sound.addTransferListener(listener)
             picture.addTransferListener(listener)
+            file.addTransferListener(listener)
         }
 
         override fun open(dataSpec: DataSpec): Long {
+            val videoId = dataSpec.uri.schemeSpecificPart
+            if (dataSpec.uri.scheme == SapocheMediaSourceFactory.AUDIO_SCHEME && LocalMusic.isLocal(videoId)) {
+                // A file that is gone or cannot be read will not be there the next time either: the song is skipped
+                val uri = device.uriNow(videoId) ?: throw LoadFailure(LoadFailure.Reason.UNPLAYABLE, "The file of $videoId is not on this phone")
+                active = file
+                try {
+                    return file.open(dataSpec.buildUpon().setUri(Uri.parse(uri)).build())
+                } catch (e: IOException) {
+                    active = null
+                    throw LoadFailure(LoadFailure.Reason.UNPLAYABLE, "The file of $videoId cannot be read: ${e.message}", e)
+                }
+            }
             val source = if (dataSpec.uri.scheme == SapocheMediaSourceFactory.AUDIO_SCHEME) sound else picture
             active = source
             return source.open(dataSpec)

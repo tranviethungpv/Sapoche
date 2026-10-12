@@ -769,9 +769,11 @@ class _MoreButton extends StatelessWidget {
       },
       itemBuilder: (context) => [
         PopupMenuItem(value: 'info', child: Text(S.songInfo)),
-        PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
+        // A file on this phone has no YouTube artist, is not downloaded, and is not to be blocked
+        if (!current.isLocal)
+          PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
         PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
-        ...switch (library.downloadState(current.videoId)) {
+        if (!current.isLocal) ...switch (library.downloadState(current.videoId)) {
           DownloadState.done => [
             PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
           ],
@@ -784,7 +786,8 @@ class _MoreButton extends StatelessWidget {
           ],
           _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
         },
-        PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
+        if (!current.isLocal)
+          PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
       ],
     );
   }
@@ -955,6 +958,10 @@ class _ModePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A file on this phone has no video
+    if (controller.snapshot.current?.isLocal ?? false) {
+      return const SizedBox.shrink();
+    }
     final p = context.palette;
     final video = controller.snapshot.video;
     Widget segment(

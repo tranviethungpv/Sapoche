@@ -49,7 +49,8 @@ class TrackMenu extends StatelessWidget {
         PopupMenuItem(value: 'next', child: Text(S.playNext)),
         PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
         PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
-        ...switch (library.downloadState(track.videoId)) {
+        // A file on this phone is not downloaded, and has no YouTube artist to be tired of
+        if (!track.isLocal) ...switch (library.downloadState(track.videoId)) {
           DownloadState.done => [
             PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
           ],
@@ -66,7 +67,8 @@ class TrackMenu extends StatelessWidget {
           value: 'like',
           child: Text(library.isLikedSong(track) ? S.unlike : S.like),
         ),
-        PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
+        if (!track.isLocal)
+          PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
       ],
     );
   }

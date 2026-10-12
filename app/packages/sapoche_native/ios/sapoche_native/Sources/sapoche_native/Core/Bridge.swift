@@ -39,6 +39,18 @@ protocol PlatformServices: AnyObject {
 
     /// Runs [work] and asks the system to let it finish if the app goes to the background meanwhile.
     func whileInBackground(_ work: @escaping () async -> Void) async
+
+    /// The folder of the app that the Files app shows as On My iPhone › Sapoche: where the music on this phone is.
+    var musicFolder: URL { get }
+
+    /// What the tags of the music file at [url] say; nil when it is not music or cannot be read.
+    func musicTags(_ url: URL) async -> MusicTags?
+
+    /// The picture inside the music file at [url], or nil.
+    func musicCover(_ url: URL) async -> Data?
+
+    /// Lets the person choose music files; gives back copies of them that are theirs to keep, nothing when they backed out.
+    func pickMusicFiles() async throws -> [URL]
 }
 
 /// Where the sound goes. [kind] is `speaker`, `headphones`, `bluetooth`, `airplay`, `car` or `other`; [name] is what the
@@ -415,6 +427,31 @@ final class Bridge {
             return try await store.recent().map { $0.track.toMap().merging(["at": $0.at, "plays": $0.plays]) { $1 } }
         case "libraryListens":
             return try await store.listens(limit: JSON(args["limit"]).int ?? 600).map { $0.track.toMap().merging(["at": $0.at, "plays": $0.plays]) { $1 } }
+        case "localStatus":
+            let summary = try await store.localSummary()
+            return ["enabled": prefs.bool(Self.keyLocalEnabled, default: true), "access": "granted", "count": summary.count,
+                    "missing": summary.missing]
+        case "localEnable":
+            prefs.set(args["on"] as? Bool != false, for: Self.keyLocalEnabled)
+            return nil
+        case "localAccess":
+            return "granted" // the music is in the folder of the app: nothing to ask the phone for
+        case "localScan":
+            let folder = musicFolder()
+            folder.prepare()
+            let scan = await folder.scan()
+            return ["total": try await store.applyLocalScan(scan.files), "unsupported": scan.unsupported]
+        case "localTracks":
+            return try await store.localSongs().map {
+                $0.track.toMap().merging(["album": $0.album, "mime": $0.mime, "size": $0.size, "addedAt": $0.addedAt, "missing": $0.missing]) { $1 }
+            }
+        case "localCover":
+            guard let uri = try await store.localUri(string("videoId")) else { return nil }
+            return await platform.musicCover(musicFolder().url(forKey: uri))
+        case "localImport":
+            let picked = try await platform.pickMusicFiles()
+            if picked.isEmpty { return nil }
+            return musicFolder().copyIn(picked)
         case "libraryLike":
             let on = bool("on")
             try await store.setLiked(try track(args), on)
@@ -702,6 +739,11 @@ final class Bridge {
 
     // ------------------------------------------------------------------ backup
 
+    /// The folder with the music on this phone, and how to read what is in it.
+    private func musicFolder() -> MusicFolder {
+        MusicFolder(root: platform.musicFolder, readTags: { [platform] url in await platform.musicTags(url) })
+    }
+
     private func exportBackup() async throws -> [String: Any]? {
         let backup = try await store.backup()
         let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -710,7 +752,7 @@ final class Bridge {
         day.dateFormat = "yyyy-MM-dd"
         day.locale = Locale(identifier: "en_US_POSIX")
         guard try await platform.exportFile(name: "sapoche-library-\(day.string(from: Date())).json", contents: text) else { return nil }
-        return ["liked": backup.liked.count, "playlists": backup.playlists.count, "listens": backup.listens.count]
+        return ["liked": backup.liked.count, "playlists": backup.playlists.count, "listens": backup.listens.count, "local": backup.skippedLocal]
     }
 
     private func importBackup() async throws -> [String: Any]? {
@@ -734,6 +776,7 @@ final class Bridge {
     }
 
     private static let keyAutoDownload = "auto_download"
+    private static let keyLocalEnabled = "local_enabled"
     private static let keyCacheLimit = "cache_limit_mb"
     private static let keyRoomName = "room_name"
     private static let defaultCacheMb: Int64 = 256

@@ -56,6 +56,15 @@ abstract final class CoverFiles {
   static final _pending = <String, Future<Uint8List>>{};
   static Future<Directory>? _folder;
 
+  /// What a cover for a song from a file on this phone ([localPrefix]) is read with: the picture inside the file.
+  static Future<Uint8List?> Function(String videoId)? localCover;
+
+  /// What a cover address starts with when the picture is inside a music file; the rest is the id of the song.
+  static const localPrefix = 'sapoche-local:';
+
+  /// Songs whose file has no picture, so that a list does not ask the phone again at every redraw.
+  static final _noPicture = <String>{};
+
   /// Keeps the covers in a folder inside [cache], the cache folder of the app as the native side names it.
   static void useFolder(String? cache) {
     _folder = cache == null ? null : _open(cache);
@@ -121,9 +130,21 @@ abstract final class CoverFiles {
     }
   }
 
+  static Future<Uint8List> _fromFile(String videoId) async {
+    final bytes = _noPicture.contains(videoId)
+        ? null
+        : await localCover?.call(videoId);
+    if (bytes == null || bytes.isEmpty) {
+      _noPicture.add(videoId);
+      throw StateError('$videoId has no picture in its file');
+    }
+    return bytes;
+  }
+
   static final _client = HttpClient()..autoUncompress = false;
 
   static Future<Uint8List> _fetch(String url) async {
+    if (url.startsWith(localPrefix)) return _fromFile(url.substring(localPrefix.length));
     final uri = Uri.parse(url);
     final response = await (await _client.getUrl(uri)).close();
     if (response.statusCode != HttpStatus.ok) {

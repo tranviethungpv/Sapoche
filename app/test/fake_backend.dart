@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
@@ -230,6 +231,18 @@ class FakeBackend implements Backend {
 
   final downloadList = <DownloadEntry>[];
 
+  /// The music on the phone: what the status says, what a scan finds, and what is listed.
+  LocalStatus localState = const LocalStatus();
+  LocalScan localScanResult = const LocalScan();
+  final localSongs = <LocalSong>[];
+
+  /// What [localAccess] gives back when the person is asked.
+  LocalAccess localAnswer = LocalAccess.granted;
+
+  /// How many files [localImport] copies; null is the person backing out.
+  int? localImported;
+  final localCovers = <String, Uint8List>{};
+
   /// Set to pretend the phone is on mobile data.
   bool metered = false;
   StorageInfo storageInfo = const StorageInfo();
@@ -351,6 +364,57 @@ class FakeBackend implements Backend {
 
   /// What the file the person "picks" holds; null stands for backing out.
   BackupCounts? backupCounts = const BackupCounts(liked: 2, playlists: 1);
+
+  @override
+  Future<LocalStatus> localStatus() async {
+    await _record('localStatus');
+    return LocalStatus(
+      enabled: localState.enabled,
+      access: localState.access,
+      count: localSongs.where((s) => !s.missing).length,
+      missing: {
+        for (final s in localSongs)
+          if (s.missing) s.track.videoId,
+      },
+    );
+  }
+
+  @override
+  Future<void> setLocalEnabled(bool on) async {
+    await _record('setLocalEnabled');
+    localState = LocalStatus(enabled: on, access: localState.access);
+  }
+
+  @override
+  Future<LocalAccess> localAccess() async {
+    await _record('localAccess');
+    localState = LocalStatus(enabled: localState.enabled, access: localAnswer);
+    return localAnswer;
+  }
+
+  @override
+  Future<LocalScan> localScan() async {
+    await _record('localScan');
+    return localScanResult;
+  }
+
+  @override
+  Future<int?> localImport() async {
+    await _record('localImport');
+    return localImported;
+  }
+
+  @override
+  Future<List<LocalSong>> localTracks() async {
+    await _record('localTracks');
+    return [...localSongs];
+  }
+
+  @override
+  Future<Uint8List?> localCover(String videoId) async {
+    await _record('localCover');
+    return localCovers[videoId];
+  }
 
   @override
   Future<BackupCounts?> exportBackup() async {

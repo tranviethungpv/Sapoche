@@ -1,6 +1,8 @@
 package app.sapoche
 
 import androidx.test.core.app.ApplicationProvider
+import app.sapoche.sync.LocalFile
+import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.TrackRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -521,5 +523,131 @@ class LibraryStoreTest {
             upgraded.close()
             context.deleteDatabase(file)
         }
+    }
+
+    private fun file(key: String, title: String = "Local $key", durMs: Long = 200_000, addedAt: Long = 1) =
+        LocalFile(key, "content://media/$key", title, "Mine", "Album", durMs, "audio/mpeg", 1_000, addedAt)
+
+    private fun tracksOf(songs: List<LibraryStore.LocalSong>) = songs.map { it.track.videoId }
+
+    @Test
+    fun aDatabaseFromVersionFiveGainsLocalFilesAndKeepsItsData() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = "upgrade-test5.db"
+        context.deleteDatabase(file)
+        context.openOrCreateDatabase(file, android.content.Context.MODE_PRIVATE, null).use { db ->
+            db.execSQL("CREATE TABLE tracks(video_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, thumb TEXT, dur_ms INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE likes(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), liked_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), played_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE playlists(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE playlist_items(playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, video_id TEXT NOT NULL REFERENCES tracks(video_id), position INTEGER NOT NULL, PRIMARY KEY(playlist_id, video_id))")
+            db.execSQL("CREATE TABLE suggestions(seed_video_id TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE downloads(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), state TEXT NOT NULL, bytes INTEGER NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE skips(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), skipped_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE blocked(kind TEXT NOT NULL, key TEXT NOT NULL, label TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(kind, key))")
+            db.execSQL("INSERT INTO tracks VALUES('old', 'Old song', 'Old artist', NULL, 1000)")
+            db.execSQL("INSERT INTO likes VALUES('old', 5)")
+            db.version = 5
+        }
+        val upgraded = LibraryStore(context, file)
+        try {
+            assertEquals("Old song", upgraded.liked().single().track.title)
+            assertEquals(1, upgraded.applyLocalScan(listOf(file("k1"))))
+            assertEquals("Old song", upgraded.liked().single().track.title)
+        } finally {
+            upgraded.close()
+            context.deleteDatabase(file)
+        }
+    }
+
+    @Test
+    fun aScanListsTheFilesAsSongsWithTheirCoverMarker() = runTest {
+        assertEquals(2, store.applyLocalScan(listOf(file("a", addedAt = 10), file("b", addedAt = 20))))
+        val listed = store.localSongs()
+        // The one added last comes first
+        assertEquals(listOf(LocalMusic.id("b"), LocalMusic.id("a")), tracksOf(listed))
+        assertEquals(LocalMusic.cover(LocalMusic.id("b")), listed.first().track.thumb)
+        assertEquals("content://media/b", store.localUri(LocalMusic.id("b")))
+        assertEquals(2 to emptyList<String>(), store.localSummary())
+    }
+
+    @Test
+    fun aSecondScanOfTheSameFilesChangesNothingAndSaysNothing() = runTest {
+        store.applyLocalScan(listOf(file("a")))
+        var announced = false
+        val watcher = launch(Dispatchers.Unconfined) { store.changes.collect { announced = true } }
+        try {
+            store.applyLocalScan(listOf(file("a")))
+            assertFalse(announced)
+            store.applyLocalScan(listOf(file("a", title = "Renamed")))
+            assertTrue(announced)
+        } finally {
+            watcher.cancel()
+        }
+        assertEquals("Renamed", store.localSongs().single().track.title)
+    }
+
+    @Test
+    fun aFileThatIsGoneIsForgottenUnlessSomethingPointsToItsSong() = runTest {
+        store.applyLocalScan(listOf(file("a"), file("b")))
+        store.setLiked(store.localSongs().first { it.track.title == "Local a" }.track, true, at = 5)
+        assertEquals(0, store.applyLocalScan(emptyList()))
+        val kept = store.localSongs()
+        assertEquals(listOf(LocalMusic.id("a")), tracksOf(kept))
+        assertTrue(kept.single().missing)
+        assertNull(store.localUri(LocalMusic.id("a")))
+        assertEquals(0 to listOf(LocalMusic.id("a")), store.localSummary())
+        // The like survives, and the song of the other file is gone for good
+        assertEquals(listOf(LocalMusic.id("a")), store.liked().map { it.track.videoId })
+        store.setLiked(store.liked().single().track, false)
+        assertEquals(emptyList<String>(), tracksOf(store.localSongs()).filter { it == LocalMusic.id("b") })
+    }
+
+    @Test
+    fun aFileThatMovedKeepsItsLikesAndItsPlaylists() = runTest {
+        store.applyLocalScan(listOf(file("old/place.mp3", title = "Same song")))
+        val id = store.localSongs().single().track.videoId
+        store.setLiked(store.localSongs().single().track, true, at = 5)
+        val playlist = store.createPlaylist("Mine", listOf(store.localSongs().single().track))
+        store.applyLocalScan(listOf(file("new/place.mp3", title = "Same song", durMs = 201_000)))
+        val moved = store.localSongs().single()
+        assertEquals(id, moved.track.videoId)
+        assertFalse(moved.missing)
+        assertEquals("content://media/new/place.mp3", store.localUri(id))
+        assertEquals(listOf(id), store.liked().map { it.track.videoId })
+        assertEquals(listOf(id), store.playlistTracks(playlist).map { it.videoId })
+    }
+
+    @Test
+    fun aFileThatComesBackIsNotMissingAnyMore() = runTest {
+        store.applyLocalScan(listOf(file("a")))
+        store.setLiked(store.localSongs().single().track, true, at = 5)
+        store.applyLocalScan(emptyList())
+        assertTrue(store.localSongs().single().missing)
+        store.applyLocalScan(listOf(file("a")))
+        assertFalse(store.localSongs().single().missing)
+    }
+
+    @Test
+    fun songsFromFilesAreLeftOutOfABackupAndCounted() = runTest {
+        store.applyLocalScan(listOf(file("a")))
+        val local = store.localSongs().single().track
+        store.setLiked(local, true, at = 1)
+        store.recordListen(local, at = 2)
+        store.createPlaylist("Mixed", listOf(local, song("yt")))
+        store.setLiked(song("yt"), true, at = 3)
+        val backup = store.backup()
+        assertEquals(listOf("yt"), backup.liked.map { it.track.videoId })
+        assertEquals(emptyList<String>(), backup.listens.map { it.track.videoId })
+        assertEquals(listOf("yt"), backup.playlists.single().tracks.map { it.videoId })
+        assertEquals(1, backup.skippedLocal)
+    }
+
+    @Test
+    fun songsFromFilesAreNeverOfferedForAutomaticDownload() = runTest {
+        store.applyLocalScan(listOf(file("a")))
+        store.setLiked(store.localSongs().single().track, true, at = 1)
+        store.setLiked(song("yt"), true, at = 2)
+        assertEquals(listOf("yt"), store.likedToDownload().map { it.videoId })
     }
 }

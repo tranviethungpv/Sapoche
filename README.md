@@ -12,6 +12,7 @@ An Android and iPhone app for a small group of friends. Every phone fetches the 
 - Rooms: create a room or join one with a code; everybody hears the same song at the same moment, and anyone can add songs and steer playback (the room owner can limit guests to adding songs).
 - Suggestions that learn from what you hear, like and skip, on the phone only: a home page with a mix for each kind of music you play, moods, charts, the latest from your artists and something new, and a way to say "not interested".
 - A choice of sound quality, from little data to the best YouTube offers (about 160 kbps).
+- Plays the music files that are already on the phone, next to YouTube songs, in the personal queue and in playlists. On Android they are read from the phone's music library once you allow it; on an iPhone they live in the Sapoche folder of the Files app. They stay on the phone: they cannot be added to a room and they are not part of a backup.
 - Over-the-air updates for the app, English and Vietnamese interface, battery and heat saving modes.
 
 ## Layout

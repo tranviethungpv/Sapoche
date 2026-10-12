@@ -460,6 +460,34 @@ class SapocheBridge(
             "libraryLiked" -> return SapocheApp.library.liked().map { it.toMap() }
             "libraryRecent" -> return SapocheApp.library.recent().map { it.toMap() }
             "libraryListens" -> return SapocheApp.library.listens((call.argument<Number>("limit") ?: 600).toInt()).map { it.toMap() }
+            "localStatus" -> {
+                val (count, missing) = SapocheApp.library.localSummary()
+                return mapOf(
+                    "enabled" to prefs.getBoolean(KEY_LOCAL_ENABLED, true),
+                    "access" to SapocheApp.deviceMusic.access(activity),
+                    "count" to count,
+                    "missing" to missing,
+                )
+            }
+            "localEnable" -> {
+                prefs.edit().putBoolean(KEY_LOCAL_ENABLED, call.argument<Boolean>("on") != false).apply()
+                return null
+            }
+            "localAccess" -> {
+                val before = SapocheApp.deviceMusic.access(activity)
+                if (before == "blocked") {
+                    SapocheApp.deviceMusic.openSettings(activity)
+                    return before
+                }
+                return SapocheApp.deviceMusic.request(activity)
+            }
+            // An Android phone lists its own music: there is no folder of the app to copy into
+            "localImport" -> return null
+            "localScan" -> return mapOf("total" to SapocheApp.deviceMusic.scan(), "unsupported" to 0)
+            "localTracks" -> return SapocheApp.library.localSongs().map {
+                it.track.toMap() + mapOf("album" to it.album, "mime" to it.mime, "size" to it.size, "addedAt" to it.addedAt, "missing" to it.missing)
+            }
+            "localCover" -> return SapocheApp.deviceMusic.cover(call.argument<String>("videoId").orEmpty())
             "libraryLike" -> {
                 val on = call.argument<Boolean>("on") == true
                 SapocheApp.library.setLiked(trackRef(call.arguments()!!), on)
@@ -794,7 +822,7 @@ class SapocheBridge(
         activity.startActivity(Intent.createChooser(send, null))
     }
 
-    private fun LibraryStore.Restored.toMap() = mapOf("liked" to liked, "playlists" to playlists, "listens" to listens)
+    private fun LibraryStore.Restored.toMap() = mapOf("liked" to liked, "playlists" to playlists, "listens" to listens, "local" to skippedLocal)
 
     private fun playlistId(call: MethodCall): Long = call.argument<Number>("id")!!.toLong()
 
@@ -834,6 +862,7 @@ class SapocheBridge(
     )
 
     private companion object {
+        const val KEY_LOCAL_ENABLED = "local_enabled"
         const val POSITION_TICK_MS = 1_000L
 
         /** The longest name the UI lets a person type. */

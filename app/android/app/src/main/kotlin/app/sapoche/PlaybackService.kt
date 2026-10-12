@@ -28,6 +28,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import app.sapoche.core.OkHttpDownloader
+import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.IdleAction
 import app.sapoche.sync.QueueFile
 import app.sapoche.sync.idleActions
@@ -221,7 +222,7 @@ class PlaybackService : MediaSessionService() {
      * awake for it: only the CPU.
      */
     private fun updateWakeMode(item: MediaItem?) {
-        val local = item != null && SapocheApp.caches.isComplete(item.mediaId)
+        val local = item != null && (LocalMusic.isLocal(item.mediaId) || SapocheApp.caches.isComplete(item.mediaId))
         val mode = if (local) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK
         if (mode == wakeMode) return
         wakeMode = mode

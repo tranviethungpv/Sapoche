@@ -27,9 +27,10 @@ class SapocheApp : Application() {
         resolver = NewPipeResolver(region = phoneRegion())
         streams = StreamCache(resolver, Probe())
         library = LibraryStore(this)
+        deviceMusic = DeviceMusic(this, library)
         val limitMb = getSharedPreferences("sapoche", MODE_PRIVATE).getInt("cache_limit_mb", DEFAULT_CACHE_MB)
         caches = MediaCaches(this, limitMb * 1024L * 1024L)
-        mediaData = MediaData(caches, streams, { videoMaxHeight }, { audioQuality }) { EventLog.d("cache", it) }
+        mediaData = MediaData(caches, streams, { videoMaxHeight }, { audioQuality }, deviceMusic) { EventLog.d("cache", it) }
         downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
@@ -60,6 +61,10 @@ class SapocheApp : Application() {
 
         /** Liked songs and listening history; opened when first used. */
         lateinit var library: LibraryStore
+            private set
+
+        /** The music files on this phone. */
+        lateinit var deviceMusic: DeviceMusic
             private set
 
         /** Songs kept on disk: the downloads and what was played. */

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -23,13 +24,14 @@ import 'widgets/track_tile.dart';
 
 /// What a person keeps: liked songs, what they heard lately, and their playlists. Opening one puts its page
 /// over the tab, as the page of an album is, with a way back.
-/// What the sidebar of a wide screen asks the library to open: [liked], [downloaded] or the id of a playlist (never
+/// What the sidebar of a wide screen asks the library to open: [liked], [downloaded], [local] or the id of a playlist (never
 /// negative). Set to a value to ask, and the page forgets it once it has been shown.
 class LibraryRequests extends ValueNotifier<int?> {
   LibraryRequests() : super(null);
 
   static const liked = -1;
   static const downloaded = -2;
+  static const local = -3;
 }
 
 class LibraryPage extends StatefulWidget {
@@ -55,6 +57,10 @@ class _Recent extends _Open {
 
 class _Downloaded extends _Open {
   const _Downloaded();
+}
+
+class _Local extends _Open {
+  const _Local();
 }
 
 class _Playlist extends _Open {
@@ -91,6 +97,7 @@ class _LibraryPageState extends State<LibraryPage> {
     _show(switch (request) {
       LibraryRequests.liked => const _Liked(),
       LibraryRequests.downloaded => const _Downloaded(),
+      LibraryRequests.local => const _Local(),
       final id => _Playlist(id),
     });
   }
@@ -131,6 +138,7 @@ void openLibrarySpot(BuildContext context, int spot) =>
     _openScreen(context, switch (spot) {
       LibraryRequests.liked => const _Liked(),
       LibraryRequests.downloaded => const _Downloaded(),
+      LibraryRequests.local => const _Local(),
       final id => _Playlist(id),
     });
 
@@ -212,6 +220,7 @@ class _LibraryScreen extends StatelessWidget {
               ),
           ],
         ),
+        _Local() => const _LocalPage(),
         _Playlist(:final id) => _PlaylistPage(library: library, id: id),
       },
     );
@@ -318,6 +327,15 @@ class _Overview extends StatelessWidget {
             ),
             onTap: () => onOpen(const _Downloaded()),
           ),
+          if (library.localStatus.enabled)
+            _CollectionRow(
+              leading: const _IconTile(Icons.smartphone_rounded),
+              title: S.localMusic,
+              subtitle: library.localStatus.access == LocalAccess.granted
+                  ? S.songCount(library.localStatus.count)
+                  : S.localAllowTitle,
+              onTap: () => onOpen(const _Local()),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 22, 16, 4),
             child: Row(
@@ -553,6 +571,254 @@ class _PlaylistPage extends StatelessWidget {
   }
 }
 
+enum _LocalSort { recent, title, artist, album }
+
+/// The music files on this phone, laid out as the other lists are, with a box to search them and a way to order them.
+class _LocalPage extends StatefulWidget {
+  const _LocalPage();
+
+  @override
+  State<_LocalPage> createState() => _LocalPageState();
+}
+
+class _LocalPageState extends State<_LocalPage> with WidgetsBindingObserver {
+  final _query = TextEditingController();
+  _LocalSort _sort = _LocalSort.recent;
+  LibraryController? _library;
+
+  bool get _ios => defaultTargetPlatform == TargetPlatform.iOS;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_library != null) return;
+    final library = _library = AppScope.of(context).library;
+    // The list is read while this page is open, and read again from the files: they may have changed since
+    library.watchLocal(true).then((_) => library.scanLocal());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Music copied in, or the permission given in the settings of the phone, while the app was away
+    if (state == AppLifecycleState.resumed) {
+      _library?.watchLocal(true).then((_) => _library?.scanLocal());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _library?.watchLocal(false);
+    _query.dispose();
+    super.dispose();
+  }
+
+  List<LocalSong> _shown(List<LocalSong> all) {
+    final q = _query.text.trim().toLowerCase();
+    final list = [
+      for (final s in all)
+        if (!s.missing &&
+            (q.isEmpty ||
+                s.track.title.toLowerCase().contains(q) ||
+                s.track.artist.toLowerCase().contains(q) ||
+                s.album.toLowerCase().contains(q)))
+          s,
+    ];
+    int by(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+    list.sort(
+      (a, b) => switch (_sort) {
+        _LocalSort.recent => b.addedAt.compareTo(a.addedAt),
+        _LocalSort.title => by(a.track.title, b.track.title),
+        _LocalSort.artist => by(a.track.artist, b.track.artist),
+        _LocalSort.album => by(a.album, b.album),
+      },
+    );
+    return list;
+  }
+
+  String _sortName(_LocalSort sort) => switch (sort) {
+    _LocalSort.recent => S.sortRecent,
+    _LocalSort.title => S.sortTitle,
+    _LocalSort.artist => S.sortArtist,
+    _LocalSort.album => S.sortAlbum,
+  };
+
+  Future<void> _addFiles(LibraryController library) async {
+    final copied = await library.importLocal();
+    if (copied == null || copied == 0 || !mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(S.localAdded(copied))));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final library = AppScope.of(context).library;
+    return ListenableBuilder(
+      // The files have a notifier of their own, apart from the library's (see [LibraryController.localSongs])
+      listenable: Listenable.merge([library, library.localSongs]),
+      builder: (context, _) {
+        final status = library.localStatus;
+        // An iPhone needs no permission: its music is in the folder of the app
+        final granted = _ios || status.access == LocalAccess.granted;
+        final shown = granted ? _shown(library.local) : const <LocalSong>[];
+        final searching = _query.text.trim().isNotEmpty;
+        return _TrackList(
+          title: S.localMusic,
+          tracks: [for (final s in shown) s.track],
+          subtitles: [
+            for (final s in shown)
+              [s.track.artist, s.album].where((t) => t.isNotEmpty).join(' · '),
+          ],
+          cover: (side) => _IconTile(
+            Icons.smartphone_rounded,
+            size: side,
+            radius: 16,
+            iconSize: side * 0.4,
+          ),
+          menu: [
+            if (granted) ...[
+              for (final sort in _LocalSort.values)
+                _MenuAction(
+                  '${S.sortBy}: ${_sortName(sort)}',
+                  () => setState(() => _sort = sort),
+                ),
+              _MenuAction(S.localRefresh, library.scanLocal),
+              if (_ios) _MenuAction(S.localAddFiles, () => _addFiles(library)),
+            ],
+          ],
+          filterBar: granted && library.local.any((s) => !s.missing)
+              ? _LocalFilter(
+                  controller: _query,
+                  unsupported: library.lastScan.unsupported,
+                  onChanged: () => setState(() {}),
+                )
+              : null,
+          emptyView: granted
+              ? _LocalEmpty(
+                  title: S.localEmptyTitle,
+                  body: searching
+                      ? null
+                      : _ios
+                      ? S.localEmptyIos
+                      : S.localEmptyAndroid,
+                  action: _ios && !searching ? S.localAddFiles : null,
+                  onAction: () => _addFiles(library),
+                )
+              : _LocalEmpty(
+                  title: S.localAllowTitle,
+                  body: status.access == LocalAccess.blocked
+                      ? S.localBlockedBody
+                      : S.localAllowBody,
+                  action: status.access == LocalAccess.blocked
+                      ? S.localOpenSettings
+                      : S.localAllow,
+                  onAction: library.requestLocalAccess,
+                ),
+        );
+      },
+    );
+  }
+}
+
+/// The box that narrows the songs on this phone, and a word about the files that cannot be played here.
+class _LocalFilter extends StatelessWidget {
+  const _LocalFilter({
+    required this.controller,
+    required this.unsupported,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final int unsupported;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
+      child: Column(
+        children: [
+          TextField(
+            controller: controller,
+            onChanged: (_) => onChanged(),
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: S.localFilter,
+              prefixIcon: const Icon(Icons.search_rounded),
+              isDense: true,
+            ),
+          ),
+          if (unsupported > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                S.localUnsupported(unsupported),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: p.textSecondary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the list of the music on this phone says when there is nothing to list, with the one thing to do about it.
+class _LocalEmpty extends StatelessWidget {
+  const _LocalEmpty({
+    required this.title,
+    this.body,
+    this.action,
+    this.onAction,
+  });
+
+  final String title;
+  final String? body;
+  final String? action;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(36, 40, 36, 0),
+      child: Column(
+        children: [
+          Icon(
+            Icons.smartphone_rounded,
+            size: 44,
+            color: p.primary.withValues(alpha: 0.55),
+          ),
+          const SizedBox(height: 14),
+          Text(title, style: theme.titleMedium, textAlign: TextAlign.center),
+          if (body != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              body!,
+              textAlign: TextAlign.center,
+              style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+            ),
+          ],
+          if (action != null) ...[
+            const SizedBox(height: 18),
+            FilledButton(onPressed: onAction, child: Text(action!)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// One thing the "…" button of a list offers.
 class _MenuAction {
   const _MenuAction(this.label, this.run);
@@ -573,6 +839,8 @@ class _TrackList extends StatelessWidget {
     this.menu = const [],
     this.emptyTitle,
     this.emptyBody,
+    this.emptyView,
+    this.filterBar,
     this.onRemove,
     this.onMove,
   });
@@ -590,6 +858,12 @@ class _TrackList extends StatelessWidget {
   final List<_MenuAction> menu;
   final String? emptyTitle;
   final String? emptyBody;
+
+  /// Shown in place of [emptyTitle] and [emptyBody] when there are no songs.
+  final Widget? emptyView;
+
+  /// Drawn between the play buttons and the songs, e.g. a box to search the songs in.
+  final Widget? filterBar;
   final ValueChanged<Track>? onRemove;
   final void Function(Track track, int toIndex)? onMove;
 
@@ -611,6 +885,11 @@ class _TrackList extends StatelessWidget {
         confirm(S.alreadyInQueue);
         return;
       }
+      // The others in a room do not have the file
+      if (room.snapshot.inRoom && track.isLocal) {
+        confirm(S.localNoRoom);
+        return;
+      }
       await room.add(track, playNext: playNext);
       if (context.mounted) {
         confirm(playNext ? S.willPlayNext : S.addedToQueue);
@@ -629,13 +908,19 @@ class _TrackList extends StatelessWidget {
           if (inRoom) confirm(S.playlistAdded);
         }
 
+        final library = AppScope.of(context).library;
         Widget row(int i) {
           final track = tracks[i];
+          // A song whose file is gone is dimmed and says so; there is nothing to play
+          final missing = library.isMissing(track);
           final tile = TrackTile(
             track: track,
-            subtitle: subtitles?[i],
+            subtitle: missing ? S.fileMissing : subtitles?[i],
+            dimmed: missing,
             // Outside a room the song plays with the rest of the list behind it; in a room it is queued
-            onTap: inRoom
+            onTap: missing
+                ? () => confirm(S.fileMissing)
+                : inRoom
                 ? () => add(track)
                 : () => room.playTracks(tracks.sublist(i)),
             trailing: TrackMenu(
@@ -757,8 +1042,13 @@ class _TrackList extends StatelessWidget {
                                         ],
                                       ),
                               ),
-                              if (tracks.isEmpty && emptyTitle != null)
-                                SliverToBoxAdapter(child: _empty(context))
+                              if (filterBar != null)
+                                SliverToBoxAdapter(child: filterBar),
+                              if (tracks.isEmpty &&
+                                  (emptyTitle != null || emptyView != null))
+                                SliverToBoxAdapter(
+                                  child: emptyView ?? _empty(context),
+                                )
                               else if (onMove != null)
                                 SliverReorderableList(
                                   itemCount: tracks.length,

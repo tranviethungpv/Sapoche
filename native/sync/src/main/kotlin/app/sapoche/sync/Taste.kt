@@ -53,7 +53,8 @@ class Taste(
      */
     fun seeds(count: Int, block: Blocklist = Blocklist()): List<String> {
         val ranked = songs.entries
-            .filter { it.value >= MIN_SEED }
+            // A song from a file on this phone has no radio to ask for: it tells what is liked, but is never a seed
+            .filter { it.value >= MIN_SEED && !LocalMusic.isLocal(it.key) }
             .mapNotNull { e -> tracks[e.key]?.takeIf { block.allows(it) && !dislikes(it.artist) }?.let { it to e.value } }
             .sortedWith(compareByDescending<Pair<TrackRef, Double>> { it.second }.thenBy { it.first.videoId })
             .map { it.first }
@@ -90,7 +91,7 @@ class Taste(
         for (id in plays.keys.sortedWith(compareByDescending<String> { plays[it] }.thenBy { it })) {
             val track = seen.getValue(id)
             if (picked.size >= count) break
-            if (!block.allows(track) || (songs[id] ?: 0.0) <= 0.0 || !artistsTaken.add(artistKey(track.artist))) continue
+            if (LocalMusic.isLocal(id) || !block.allows(track) || (songs[id] ?: 0.0) <= 0.0 || !artistsTaken.add(artistKey(track.artist))) continue
             picked += track
         }
         return picked

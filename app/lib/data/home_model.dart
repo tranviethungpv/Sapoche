@@ -165,15 +165,15 @@ HomeShelves buildHome({
   }
   final topArtists = byArtist.keys.toList()
     ..sort((a, b) => artistScore[b]!.compareTo(artistScore[a]!));
+  // A mix of an artist begins with a radio, which a song from a file on the phone has none of
   final mixes = topArtists.length < 2
       ? <ArtistMix>[]
       : [
-          for (final artist in topArtists.take(6))
-            ArtistMix(
-              artist: displayArtist(byArtist[artist]!.first.artist),
-              seed: byArtist[artist]!.first,
-            ),
-        ];
+          for (final artist in topArtists)
+            if (byArtist[artist]!.where((t) => !t.isLocal).firstOrNull
+                case final seed?)
+              ArtistMix(artist: displayArtist(seed.artist), seed: seed),
+        ].take(6).toList();
 
   // Liked songs the person has not been near for a month
   final heardByKey = <String, List<HistoryEntry>>{};

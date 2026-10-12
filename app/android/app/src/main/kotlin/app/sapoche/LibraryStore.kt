@@ -5,6 +5,9 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import app.sapoche.sync.KnownLocal
+import app.sapoche.sync.LocalFile
+import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.TrackRef
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.BufferOverflow
@@ -35,6 +38,9 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** A song to keep: [state] is queued, waiting (for Wi-Fi and a charger), done or failed. */
     data class Download(val track: TrackRef, val state: String, val bytes: Long)
 
+    /** A music file on this phone as listed: the song, and what the file adds to it. A [missing] file was there once and is not now. */
+    data class LocalSong(val track: TrackRef, val album: String, val mime: String, val size: Long, val addedAt: Long, val missing: Boolean)
+
     /** Songs YouTube suggested for a seed, and when they were fetched. */
     data class Cached(val tracks: List<TrackRef>, val fetchedAt: Long)
 
@@ -45,10 +51,10 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     data class SavedPlaylist(val name: String, val createdAt: Long, val updatedAt: Long, val tracks: List<TrackRef>)
 
     /** What is worth carrying to another phone: likes, playlists and every listen, each with its time. */
-    data class Backup(val liked: List<Entry>, val playlists: List<SavedPlaylist>, val listens: List<Entry>)
+    data class Backup(val liked: List<Entry>, val playlists: List<SavedPlaylist>, val listens: List<Entry>, val skippedLocal: Int = 0)
 
     /** How much of a backup was new to this phone. */
-    data class Restored(val liked: Int, val playlists: Int, val listens: Int)
+    data class Restored(val liked: Int, val playlists: Int, val listens: Int, val skippedLocal: Int = 0)
 
     private val io = Executors.newSingleThreadExecutor { Thread(it, "library").apply { isDaemon = true } }.asCoroutineDispatcher()
 
@@ -78,6 +84,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         createSuggestionsTable(db)
         createDownloadsTable(db)
         createTasteTables(db)
+        createLocalFilesTable(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -86,6 +93,16 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         if (oldVersion < 3) createSuggestionsTable(db)
         if (oldVersion < 4) createDownloadsTable(db)
         if (oldVersion < 5) createTasteTables(db)
+        if (oldVersion < 6) createLocalFilesTable(db)
+    }
+
+    /** Music files on this phone: the song is in [tracks] like any other, this says where its file is. */
+    private fun createLocalFilesTable(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE local_files(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), source_key TEXT NOT NULL UNIQUE, " +
+                "uri TEXT NOT NULL, album TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, " +
+                "added_at INTEGER NOT NULL, missing INTEGER NOT NULL DEFAULT 0)",
+        )
     }
 
     /** What tells the suggestions what not to offer: songs left after a few seconds, and what was blocked on purpose. */
@@ -373,17 +390,22 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
 
     // ------------------------------------------------------------------ backup
 
-    /** Everything that [restore] can put back. Downloads are not in it: they are the audio itself, and can be fetched again. */
+    /**
+     * Everything that [restore] can put back. Downloads are not in it: they are the audio itself, and can be fetched again.
+     * Nor are songs from files on this phone: a file is not on another phone, and its path means nothing there.
+     */
     suspend fun backup(): Backup = withContext(io) {
         val db = readableDatabase
         val liked = db.rawQuery(
             "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, l.liked_at, 0 " +
-                "FROM likes l JOIN tracks t ON t.video_id = l.video_id ORDER BY l.liked_at, t.video_id",
+                "FROM likes l JOIN tracks t ON t.video_id = l.video_id WHERE t.video_id NOT LIKE '${LocalMusic.PREFIX}%' " +
+                "ORDER BY l.liked_at, t.video_id",
             null,
         ).use(::entries)
         val listens = db.rawQuery(
             "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 0 " +
-                "FROM history h JOIN tracks t ON t.video_id = h.video_id ORDER BY h.played_at, h.id",
+                "FROM history h JOIN tracks t ON t.video_id = h.video_id WHERE t.video_id NOT LIKE '${LocalMusic.PREFIX}%' " +
+                "ORDER BY h.played_at, h.id",
             null,
         ).use(::entries)
         val playlists = ArrayList<SavedPlaylist>()
@@ -392,13 +414,19 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
                 val id = c.getLong(0)
                 val songs = db.rawQuery(
                     "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, 0, 0 " +
-                        "FROM playlist_items i JOIN tracks t ON t.video_id = i.video_id WHERE i.playlist_id = ? ORDER BY i.position",
+                        "FROM playlist_items i JOIN tracks t ON t.video_id = i.video_id WHERE i.playlist_id = ? " +
+                        "AND t.video_id NOT LIKE '${LocalMusic.PREFIX}%' ORDER BY i.position",
                     arrayOf(id.toString()),
                 ).use(::entries).map { it.track }
                 playlists += SavedPlaylist(c.getString(1), c.getLong(2), c.getLong(3), songs)
             }
         }
-        Backup(liked, playlists, listens)
+        val skipped = db.rawQuery(
+            "SELECT COUNT(*) FROM (SELECT video_id FROM likes UNION SELECT video_id FROM history UNION SELECT video_id FROM playlist_items) " +
+                "WHERE video_id LIKE '${LocalMusic.PREFIX}%'",
+            null,
+        ).use { it.moveToFirst(); it.getInt(0) }
+        Backup(liked, playlists, listens, skipped)
     }
 
     /**
@@ -659,9 +687,104 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         readableDatabase.rawQuery(
             "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, 0, 0 FROM likes l " +
                 "JOIN tracks t ON t.video_id = l.video_id LEFT JOIN downloads d ON d.video_id = l.video_id " +
-                "WHERE d.video_id IS NULL ORDER BY l.liked_at DESC",
+                "WHERE d.video_id IS NULL AND l.video_id NOT LIKE '${LocalMusic.PREFIX}%' ORDER BY l.liked_at DESC",
             null,
         ).use { c -> entries(c).map { it.track } }
+    }
+
+    // ------------------------------------------------------------------ local files
+
+    /**
+     * Brings the list of music files up to date with what a scan [found]: see [LocalMusic.plan]. Returns how many files
+     * are there now. Only what changed is written, and nothing is announced when nothing did, so a scan that finds the
+     * same files costs no redraw and next to no time.
+     */
+    suspend fun applyLocalScan(found: List<LocalFile>): Int = withContext(io) {
+        val db = writableDatabase
+        val known = ArrayList<KnownLocal>()
+        val stored = HashMap<String, LocalFile>() // what each file that is there looks like now, by song id
+        val gone = HashSet<String>()
+        db.rawQuery(
+            "SELECT l.video_id, l.source_key, l.uri, l.album, l.mime, l.size, l.added_at, l.missing, t.title, t.artist, t.dur_ms, " +
+                "(EXISTS(SELECT 1 FROM likes WHERE video_id = l.video_id) OR EXISTS(SELECT 1 FROM history WHERE video_id = l.video_id) " +
+                "OR EXISTS(SELECT 1 FROM playlist_items WHERE video_id = l.video_id) OR EXISTS(SELECT 1 FROM skips WHERE video_id = l.video_id)) " +
+                "FROM local_files l JOIN tracks t ON t.video_id = l.video_id",
+            null,
+        ).use { c ->
+            while (c.moveToNext()) {
+                val id = c.getString(0)
+                known += KnownLocal(id, c.getString(1), c.getString(8), c.getString(9), c.getLong(10), c.getInt(11) != 0)
+                if (c.getInt(7) != 0) gone += id
+                else stored[id] = LocalFile(c.getString(1), c.getString(2), c.getString(8), c.getString(9), c.getString(3), c.getLong(10), c.getString(4), c.getLong(5), c.getLong(6))
+            }
+        }
+        val plan = LocalMusic.plan(found, known)
+        val changed = plan.files.filter { (id, file) -> stored[id] != file }
+        val newlyGone = plan.missing.filter { it !in gone }
+        if (changed.isNotEmpty() || newlyGone.isNotEmpty() || plan.forget.isNotEmpty()) {
+            db.transaction {
+                for ((id, file) in changed) {
+                    upsertTrack(TrackRef(id, file.title, file.artist, LocalMusic.cover(id), file.durMs))
+                    insertWithOnConflict(
+                        "local_files",
+                        null,
+                        ContentValues().apply {
+                            put("video_id", id)
+                            put("source_key", file.key)
+                            put("uri", file.uri)
+                            put("album", file.album)
+                            put("mime", file.mime)
+                            put("size", file.size)
+                            put("added_at", file.addedAt)
+                            put("missing", 0)
+                        },
+                        SQLiteDatabase.CONFLICT_REPLACE,
+                    )
+                }
+                for (id in newlyGone) execSQL("UPDATE local_files SET missing = 1 WHERE video_id = ?", arrayOf<Any?>(id))
+                for (id in plan.forget) delete("local_files", "video_id = ?", arrayOf(id))
+                dropUnusedTracks()
+            }
+            _changes.tryEmit(Unit)
+        }
+        plan.files.size
+    }
+
+    /** The music files on this phone, the one added last first; those that are gone are at the end. */
+    suspend fun localSongs(): List<LocalSong> = withContext(io) { localSongs(readableDatabase) }
+
+    private fun localSongs(db: SQLiteDatabase): List<LocalSong> = db.rawQuery(
+        "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, l.album, l.mime, l.size, l.added_at, l.missing " +
+            "FROM local_files l JOIN tracks t ON t.video_id = l.video_id ORDER BY l.missing, l.added_at DESC, t.video_id",
+        null,
+    ).use { c ->
+        val list = ArrayList<LocalSong>(c.count)
+        while (c.moveToNext()) {
+            list += LocalSong(
+                TrackRef(c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4)),
+                c.getString(5), c.getString(6), c.getLong(7), c.getLong(8), c.getInt(9) != 0,
+            )
+        }
+        list
+    }
+
+    /** How many music files are there, and which songs have lost theirs: all that is needed to draw a list that points to them. */
+    suspend fun localSummary(): Pair<Int, List<String>> = withContext(io) {
+        val db = readableDatabase
+        val count = db.rawQuery("SELECT COUNT(*) FROM local_files WHERE missing = 0", null).use { it.moveToFirst(); it.getInt(0) }
+        val missing = db.rawQuery("SELECT video_id FROM local_files WHERE missing = 1", null).use { c ->
+            val list = ArrayList<String>(c.count)
+            while (c.moveToNext()) list += c.getString(0)
+            list
+        }
+        count to missing
+    }
+
+    /** Where the file of a local song is, or null when it has none or is gone. */
+    suspend fun localUri(videoId: String): String? = withContext(io) {
+        readableDatabase.rawQuery("SELECT uri FROM local_files WHERE video_id = ? AND missing = 0", arrayOf(videoId)).use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
     }
 
     // ------------------------------------------------------------------ helpers
@@ -692,7 +815,8 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
                 "AND video_id NOT IN (SELECT video_id FROM history) " +
                 "AND video_id NOT IN (SELECT video_id FROM playlist_items) " +
                 "AND video_id NOT IN (SELECT video_id FROM downloads) " +
-                "AND video_id NOT IN (SELECT video_id FROM skips)",
+                "AND video_id NOT IN (SELECT video_id FROM skips) " +
+                "AND video_id NOT IN (SELECT video_id FROM local_files)",
         )
     }
 
@@ -725,7 +849,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     companion object {
-        private const val VERSION = 5
+        private const val VERSION = 6
         const val RECENT_LIMIT = 100
         const val HISTORY_KEEP = 2000
         const val MAX_PLAYLIST = 500

@@ -23,6 +23,8 @@ Future<void> main() async {
   CoverFiles.useFolder(
     await backend.cacheFolder().catchError((Object _) => null),
   );
+  // The pictures inside music files on this phone are read by the native side
+  CoverFiles.localCover = (id) => backend.localCover(id).catchError((Object _) => null);
   // Where there is no cable to read the frame statistics from, they go into the log of the app
   watchFrames(report: backend.note);
   final settings = await AppSettings.load();

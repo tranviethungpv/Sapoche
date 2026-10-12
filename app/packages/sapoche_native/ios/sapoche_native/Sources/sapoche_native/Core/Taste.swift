@@ -73,7 +73,8 @@ struct Taste {
     /// artists, so the mix is not all one voice. A song of an artist that is disliked or blocked is never one.
     func seeds(_ count: Int, block: Blocklist = Blocklist()) -> [String] {
         var scored: [(track: TrackRef, score: Double)] = []
-        for (id, score) in songs where score >= Self.minSeed {
+        // A song from a file on this phone has no radio to ask for: it tells what is liked, but is never a seed
+        for (id, score) in songs where score >= Self.minSeed && !LocalMusic.isLocal(id) {
             guard let track = tracks[id], block.allows(track), !dislikes(track.artist) else { continue }
             scored.append((track, score))
         }
@@ -110,7 +111,7 @@ struct Taste {
         for id in order {
             if picked.count >= count { break }
             guard let track = seen[id] else { continue }
-            if !block.allows(track) || (songs[id] ?? 0) <= 0 || !taken.insert(Taste.artistKey(track.artist)).inserted { continue }
+            if LocalMusic.isLocal(id) || !block.allows(track) || (songs[id] ?? 0) <= 0 || !taken.insert(Taste.artistKey(track.artist)).inserted { continue }
             picked.append(track)
         }
         return picked

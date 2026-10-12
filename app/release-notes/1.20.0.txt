@@ -1,0 +1,5 @@
+Play the music that is on your phone
+- A new "On this phone" in your Library plays the music files already on your phone, next to your YouTube songs: in the queue, in playlists and in your likes.
+- Android reads the phone's music library once you allow it. iPhone uses the Sapoche folder in the Files app (On My iPhone), or "Add files" in the list.
+- Songs from files show their own cover and tags, work with no network, and are found again if you move the file.
+- They stay on your phone: they cannot be added to a room and are not part of a backup.

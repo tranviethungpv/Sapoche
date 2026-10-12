@@ -1,0 +1,5 @@
+Phát nhạc có sẵn trong máy
+- Mục "Trên máy này" mới ở Thư viện phát các tệp nhạc có sẵn trong điện thoại, cùng với bài YouTube: trong hàng đợi, trong playlist và trong bài đã thích.
+- Android đọc thư viện nhạc của máy sau khi bạn cho phép. iPhone dùng thư mục Sapoche trong app Tệp (Trên iPhone), hoặc nút "Thêm tệp" trong danh sách.
+- Bài từ tệp có ảnh bìa và thông tin riêng, phát được khi không có mạng, và vẫn được nhận ra nếu bạn dời tệp sang chỗ khác.
+- Chúng chỉ nằm trên máy bạn: không thêm được vào phòng và không nằm trong bản sao lưu.

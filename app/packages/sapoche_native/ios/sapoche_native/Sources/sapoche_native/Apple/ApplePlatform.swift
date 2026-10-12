@@ -21,6 +21,7 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
     private var satisfied = false
     private var interfaces: Set<NWInterface.InterfaceType> = []
     private var picking: CheckedContinuation<URL?, Never>?
+    private var pickingMany: CheckedContinuation<[URL], Never>?
 
     /// The system's own button for choosing where to play to, kept out of sight: it is pressed by [pickOutput], for the
     /// system draws the list of places and nothing else can.
@@ -116,6 +117,52 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
         if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
     }
 
+    // ------------------------------------------------------------------ music on this phone
+
+    /// The folder of the app that the Files app shows as On My iPhone › Sapoche (the app lists it in its Info.plist).
+    var musicFolder: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+    }
+
+    func musicTags(_ url: URL) async -> MusicTags? {
+        let asset = AVURLAsset(url: url)
+        do {
+            let (playable, duration, metadata) = try await asset.load(.isPlayable, .duration, .commonMetadata)
+            // A file that does not play (a damaged one, one with copy protection) is not offered
+            guard playable, duration.isNumeric, !duration.isIndefinite else { return nil }
+            func text(_ identifier: AVMetadataIdentifier) async -> String? {
+                guard let item = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: identifier).first else { return nil }
+                return try? await item.load(.stringValue)
+            }
+            return MusicTags(
+                title: await text(.commonIdentifierTitle),
+                artist: await text(.commonIdentifierArtist),
+                album: await text(.commonIdentifierAlbumName),
+                durMs: Int64(CMTimeGetSeconds(duration) * 1000)
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    func musicCover(_ url: URL) async -> Data? {
+        let asset = AVURLAsset(url: url)
+        guard let metadata = try? await asset.load(.commonMetadata),
+              let item = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtwork).first else { return nil }
+        return try? await item.load(.dataValue)
+    }
+
+    func pickMusicFiles() async throws -> [URL] {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.audio], asCopy: true)
+        picker.allowsMultipleSelection = true
+        picker.delegate = self
+        pickingMany?.resume(returning: [])
+        return await withCheckedContinuation { continuation in
+            pickingMany = continuation
+            present(picker)
+        }
+    }
+
     // ------------------------------------------------------------------ where the sound goes
 
     func setVolume(_ level: Float) {
@@ -193,6 +240,8 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
         Task { @MainActor in
             self.picking?.resume(returning: urls.first)
             self.picking = nil
+            self.pickingMany?.resume(returning: urls)
+            self.pickingMany = nil
         }
     }
 
@@ -200,6 +249,8 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
         Task { @MainActor in
             self.picking?.resume(returning: nil)
             self.picking = nil
+            self.pickingMany?.resume(returning: [])
+            self.pickingMany = nil
         }
     }
 

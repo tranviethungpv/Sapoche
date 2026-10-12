@@ -795,6 +795,16 @@ class _Sidebar extends StatelessWidget {
                       label: S.downloadedSongs,
                       onTap: () => onLibrary(LibraryRequests.downloaded),
                     ),
+                    if (library.localStatus.enabled)
+                      _SideRow(
+                        leading: _SideTile(
+                          icon: Icons.smartphone_rounded,
+                          color: p.veilStrong,
+                          on: p.text,
+                        ),
+                        label: S.localMusic,
+                        onTap: () => onLibrary(LibraryRequests.local),
+                      ),
                     for (final playlist in library.playlists)
                       _SideRow(
                         leading: PlaylistCover(

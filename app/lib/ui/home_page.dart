@@ -201,6 +201,15 @@ class _HomePageState extends State<HomePage> {
               QuickIconCover(Icons.download_done_rounded, side: side),
           onTap: () => openLibrarySpot(context, LibraryRequests.downloaded),
         ),
+      // Only when there is music on the phone to open
+      if (library.localStatus.enabled && library.localStatus.count > 0)
+        QuickTile(
+          id: 'local',
+          title: S.localMusic,
+          cover: (side) =>
+              QuickIconCover(Icons.smartphone_rounded, side: side),
+          onTap: () => openLibrarySpot(context, LibraryRequests.local),
+        ),
       for (final list in library.playlists.where((l) => l.count > 0).take(2))
         QuickTile(
           id: 'playlist-${list.id}',

@@ -144,6 +144,17 @@ void main() {
       expect(find.byTooltip(S.downloadAll), findsNothing);
     });
 
+    testWidgets('the music on the phone has a row, which opens its list', (
+      tester,
+    ) async {
+      await pumpAt(tester, 1280, 800);
+      expect(find.text(S.localMusic), findsOneWidget);
+      await tester.tap(find.text(S.localMusic));
+      await tester.pumpAndSettle();
+      // The page that opened, and the row of the sidebar
+      expect(find.text(S.localMusic), findsNWidgets(2));
+    });
+
     testWidgets('the player bar runs along the bottom, right of the sidebar', (
       tester,
     ) async {

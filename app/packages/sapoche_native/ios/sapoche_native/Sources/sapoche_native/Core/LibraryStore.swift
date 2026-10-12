@@ -42,6 +42,16 @@ actor LibraryStore {
         let updatedAt: Int64
     }
 
+    /// A music file on this phone as listed: the song, and what the file adds to it. A [missing] file was there once and is not now.
+    struct LocalSong: Equatable {
+        let track: TrackRef
+        let album: String
+        let mime: String
+        let size: Int64
+        let addedAt: Int64
+        let missing: Bool
+    }
+
     /// A playlist as kept in a backup: what it is called, when, and its songs in order.
     struct SavedPlaylist: Equatable {
         let name: String
@@ -55,6 +65,8 @@ actor LibraryStore {
         let liked: [Entry]
         let playlists: [SavedPlaylist]
         let listens: [Entry]
+        /// Songs from files on this phone, left out: a file is not on another phone, and its path means nothing there.
+        var skippedLocal = 0
     }
 
     /// How much of a backup was new to this phone.
@@ -62,6 +74,7 @@ actor LibraryStore {
         let liked: Int
         let playlists: Int
         let listens: Int
+        var skippedLocal = 0
     }
 
     static let recentLimit = 100
@@ -75,7 +88,7 @@ actor LibraryStore {
     static let done = "done"
     static let failed = "failed"
     static let maxTries = 3
-    private static let version = 5
+    private static let version = 6
 
     private let db: SQLite
     private let onChange: @Sendable () -> Void
@@ -119,6 +132,14 @@ actor LibraryStore {
                 // What tells the suggestions what not to offer: songs left after a few seconds, and what was blocked on purpose
                 try db.run("CREATE TABLE skips(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), skipped_at INTEGER NOT NULL)")
                 try db.run("CREATE TABLE blocked(kind TEXT NOT NULL, key TEXT NOT NULL, label TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(kind, key))")
+            }
+            if found < 6 {
+                // Music files on this phone: the song is in tracks like any other, this says where its file is
+                try db.run("""
+                    CREATE TABLE local_files(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), source_key TEXT NOT NULL UNIQUE,
+                    uri TEXT NOT NULL, album TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
+                    added_at INTEGER NOT NULL, missing INTEGER NOT NULL DEFAULT 0)
+                    """)
             }
         }
         db.version = version
@@ -322,24 +343,32 @@ actor LibraryStore {
     // ------------------------------------------------------------------ backup
 
     /// Everything that [restore] can put back. Downloads are not in it: they are the audio itself, and can be fetched again.
+    /// Nor are songs from files on this phone: a file is not on another phone, and its path means nothing there.
     func backup() throws -> Backup {
         let liked = try entries(db.rows("""
             SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, l.liked_at, 0
-            FROM likes l JOIN tracks t ON t.video_id = l.video_id ORDER BY l.liked_at, t.video_id
+            FROM likes l JOIN tracks t ON t.video_id = l.video_id WHERE t.video_id NOT LIKE '\(LocalMusic.prefix)%'
+            ORDER BY l.liked_at, t.video_id
             """))
         let listens = try entries(db.rows("""
             SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 0
-            FROM history h JOIN tracks t ON t.video_id = h.video_id ORDER BY h.played_at, h.id
+            FROM history h JOIN tracks t ON t.video_id = h.video_id WHERE t.video_id NOT LIKE '\(LocalMusic.prefix)%'
+            ORDER BY h.played_at, h.id
             """))
         var playlists: [SavedPlaylist] = []
         for row in try db.rows("SELECT id, name, created_at, updated_at FROM playlists ORDER BY id") {
             let songs = try entries(db.rows("""
                 SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, 0, 0
-                FROM playlist_items i JOIN tracks t ON t.video_id = i.video_id WHERE i.playlist_id = ? ORDER BY i.position
+                FROM playlist_items i JOIN tracks t ON t.video_id = i.video_id WHERE i.playlist_id = ?
+                AND t.video_id NOT LIKE '\(LocalMusic.prefix)%' ORDER BY i.position
                 """, [.int(row[0].int)])).map(\.track)
             playlists.append(SavedPlaylist(name: row[1].text ?? "", createdAt: row[2].int, updatedAt: row[3].int, tracks: songs))
         }
-        return Backup(liked: liked, playlists: playlists, listens: listens)
+        let skipped = try db.rows("""
+            SELECT COUNT(*) FROM (SELECT video_id FROM likes UNION SELECT video_id FROM history UNION SELECT video_id FROM playlist_items)
+            WHERE video_id LIKE '\(LocalMusic.prefix)%'
+            """)[0][0].int
+        return Backup(liked: liked, playlists: playlists, listens: listens, skippedLocal: Int(skipped))
     }
 
     /// Adds what [backup] holds to what is here; nothing is removed or overwritten, so restoring twice, or on the phone
@@ -512,8 +541,81 @@ actor LibraryStore {
         try entries(db.rows("""
             SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, 0, 0 FROM likes l
             JOIN tracks t ON t.video_id = l.video_id LEFT JOIN downloads d ON d.video_id = l.video_id
-            WHERE d.video_id IS NULL ORDER BY l.liked_at DESC
+            WHERE d.video_id IS NULL AND l.video_id NOT LIKE '\(LocalMusic.prefix)%' ORDER BY l.liked_at DESC
             """)).map(\.track)
+    }
+
+    // ------------------------------------------------------------------ local files
+
+    /// Brings the list of music files up to date with what a scan [found]: see `LocalMusic.plan`. Returns how many files are
+    /// there now. Only what changed is written, and nothing is announced when nothing did, so a scan that finds the same
+    /// files costs no redraw and next to no time.
+    func applyLocalScan(_ found: [LocalFile]) throws -> Int {
+        var known: [KnownLocal] = []
+        var stored: [String: LocalFile] = [:] // what each file that is there looks like now, by song id
+        var gone = Set<String>()
+        for row in try db.rows("""
+            SELECT l.video_id, l.source_key, l.uri, l.album, l.mime, l.size, l.added_at, l.missing, t.title, t.artist, t.dur_ms,
+            (EXISTS(SELECT 1 FROM likes WHERE video_id = l.video_id) OR EXISTS(SELECT 1 FROM history WHERE video_id = l.video_id)
+            OR EXISTS(SELECT 1 FROM playlist_items WHERE video_id = l.video_id) OR EXISTS(SELECT 1 FROM skips WHERE video_id = l.video_id))
+            FROM local_files l JOIN tracks t ON t.video_id = l.video_id
+            """) {
+            let id = row[0].text ?? ""
+            known.append(KnownLocal(id: id, key: row[1].text ?? "", title: row[8].text ?? "", artist: row[9].text ?? "",
+                                    durMs: row[10].int, referenced: row[11].int != 0))
+            if row[7].int != 0 {
+                gone.insert(id)
+            } else {
+                stored[id] = LocalFile(key: row[1].text ?? "", uri: row[2].text ?? "", title: row[8].text ?? "", artist: row[9].text ?? "",
+                                       album: row[3].text ?? "", durMs: row[10].int, mime: row[4].text ?? "", size: row[5].int,
+                                       addedAt: row[6].int)
+            }
+        }
+        let plan = LocalMusic.plan(found: found, known: known)
+        let changed = plan.files.filter { stored[$0.id] != $0.file }
+        let newlyGone = plan.missing.filter { !gone.contains($0) }
+        if !changed.isEmpty || !newlyGone.isEmpty || !plan.forget.isEmpty {
+            try db.transaction {
+                for placed in changed {
+                    let file = placed.file
+                    try upsertTrack(TrackRef(videoId: placed.id, title: file.title, artist: file.artist,
+                                             thumb: LocalMusic.cover(placed.id), durMs: file.durMs))
+                    try db.run("""
+                        INSERT OR REPLACE INTO local_files(video_id, source_key, uri, album, mime, size, added_at, missing)
+                        VALUES(?, ?, ?, ?, ?, ?, ?, 0)
+                        """, [.text(placed.id), .text(file.key), .text(file.uri), .text(file.album), .text(file.mime),
+                              .int(file.size), .int(file.addedAt)])
+                }
+                for id in newlyGone { try db.run("UPDATE local_files SET missing = 1 WHERE video_id = ?", [.text(id)]) }
+                for id in plan.forget { try db.run("DELETE FROM local_files WHERE video_id = ?", [.text(id)]) }
+                try dropUnusedTracks()
+            }
+            onChange()
+        }
+        return plan.files.count
+    }
+
+    /// The music files on this phone, the one added last first; those that are gone are at the end.
+    func localSongs() throws -> [LocalSong] {
+        try db.rows("""
+            SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, l.album, l.mime, l.size, l.added_at, l.missing
+            FROM local_files l JOIN tracks t ON t.video_id = l.video_id ORDER BY l.missing, l.added_at DESC, t.video_id
+            """).map {
+            LocalSong(track: track($0), album: $0[5].text ?? "", mime: $0[6].text ?? "", size: $0[7].int,
+                      addedAt: $0[8].int, missing: $0[9].int != 0)
+        }
+    }
+
+    /// How many music files are there, and which songs have lost theirs: all that is needed to draw a list that points to them.
+    func localSummary() throws -> (count: Int, missing: [String]) {
+        let count = try db.rows("SELECT COUNT(*) FROM local_files WHERE missing = 0")[0][0].int
+        let missing = try db.rows("SELECT video_id FROM local_files WHERE missing = 1").compactMap { $0[0].text }
+        return (Int(count), missing)
+    }
+
+    /// Where the file of a local song is, or nil when it has none or is gone.
+    func localUri(_ videoId: String) throws -> String? {
+        try db.rows("SELECT uri FROM local_files WHERE video_id = ? AND missing = 0", [.text(videoId)]).first?[0].text
     }
 
     // ------------------------------------------------------------------ helpers
@@ -536,6 +638,7 @@ actor LibraryStore {
             AND video_id NOT IN (SELECT video_id FROM playlist_items)
             AND video_id NOT IN (SELECT video_id FROM downloads)
             AND video_id NOT IN (SELECT video_id FROM skips)
+            AND video_id NOT IN (SELECT video_id FROM local_files)
             """)
     }
 

@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.ChatMessage
 import app.sapoche.sync.ClockSync
 import app.sapoche.sync.Connection
@@ -208,11 +209,13 @@ class GroupController(
      */
     private fun autoplay(last: QueueItem) {
         if (!autoplayOn || session != null || autoplayJob?.isActive == true || sleep.state.value == Sleep.SongEnd) return
+        // A song from a file on this phone has no radio: the last song from YouTube in the queue stands in for it
+        val like = if (!LocalMusic.isLocal(last.videoId)) last else local.snapshot.value.queue.lastOrNull { !LocalMusic.isLocal(it.videoId) } ?: return
         autoplayJob = ownScope.launch {
             try {
-                val more = moreLike(last.videoId, local.snapshot.value.queue.map { it.videoId }.toSet(), AUTOPLAY_COUNT)
+                val more = moreLike(like.videoId, local.snapshot.value.queue.map { it.videoId }.toSet(), AUTOPLAY_COUNT)
                 if (more.isEmpty() || session != null || !local.snapshot.value.finished) return@launch
-                EventLog.d("local", "autoplay adds ${more.size} songs like '${last.title}'")
+                EventLog.d("local", "autoplay adds ${more.size} songs like '${like.title}'")
                 // A queue that has grown long by carrying on is started afresh rather than filling up
                 if (local.snapshot.value.queue.size > AUTOPLAY_RESTART_AT) local.clear()
                 local.add(more, next = false)

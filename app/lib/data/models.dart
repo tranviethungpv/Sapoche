@@ -27,6 +27,12 @@ class Track {
     durMs: (map['durMs'] as num?)?.toInt() ?? 0,
   );
 
+  /// The song is a music file on this phone, not a YouTube video: it plays from the file and cannot go to a room.
+  bool get isLocal => videoId.startsWith(Track.localPrefix);
+
+  /// What the id of a song from a file on this phone starts with; no video id of YouTube has a colon.
+  static const localPrefix = 'local:';
+
   /// The shape the native side reads a song in.
   Map<String, Object?> toMap() => {
     'videoId': videoId,
@@ -819,13 +825,20 @@ class AudioOutput {
   );
 }
 
-/// How many songs, playlists and listens a backup file holds, or how many of them a restore added.
+/// How many songs, playlists and listens a backup file holds, or how many of them a restore added. [local] is how many
+/// songs from files on this phone were left out of a backup: such a file is not on another phone.
 class BackupCounts {
-  const BackupCounts({this.liked = 0, this.playlists = 0, this.listens = 0});
+  const BackupCounts({
+    this.liked = 0,
+    this.playlists = 0,
+    this.listens = 0,
+    this.local = 0,
+  });
 
   final int liked;
   final int playlists;
   final int listens;
+  final int local;
 
   bool get isEmpty => liked == 0 && playlists == 0 && listens == 0;
 
@@ -833,5 +846,117 @@ class BackupCounts {
     liked: (map['liked'] as num?)?.toInt() ?? 0,
     playlists: (map['playlists'] as num?)?.toInt() ?? 0,
     listens: (map['listens'] as num?)?.toInt() ?? 0,
+    local: (map['local'] as num?)?.toInt() ?? 0,
+  );
+}
+
+/// Whether the app may read the music on this phone: [granted]; [ask] (not asked yet, or not refused for good); or
+/// [blocked] (refused for good: only the phone's settings can change it).
+enum LocalAccess {
+  granted,
+  ask,
+  blocked;
+
+  static LocalAccess parse(String? name) =>
+      LocalAccess.values.asNameMap()[name] ?? LocalAccess.ask;
+}
+
+/// Where the list of the music on this phone stands: [enabled] is the person's switch, [count] the files that are there,
+/// [missing] the songs whose file is gone.
+class LocalStatus {
+  const LocalStatus({
+    this.enabled = true,
+    this.access = LocalAccess.ask,
+    this.count = 0,
+    this.missing = const {},
+  });
+
+  final bool enabled;
+  final LocalAccess access;
+  final int count;
+  final Set<String> missing;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LocalStatus &&
+      other.enabled == enabled &&
+      other.access == access &&
+      other.count == count &&
+      other.missing.length == missing.length &&
+      other.missing.containsAll(missing);
+
+  @override
+  int get hashCode => Object.hash(enabled, access, count, missing.length);
+
+  factory LocalStatus.fromMap(Map<Object?, Object?> map) => LocalStatus(
+    enabled: map['enabled'] as bool? ?? true,
+    access: LocalAccess.parse(map['access'] as String?),
+    count: (map['count'] as num?)?.toInt() ?? 0,
+    missing: {
+      for (final id in map['missing'] as List<Object?>? ?? const []) '$id',
+    },
+  );
+}
+
+/// A music file on this phone: its song, and what the file adds to it.
+class LocalSong {
+  const LocalSong({
+    required this.track,
+    this.album = '',
+    this.mime = '',
+    this.size = 0,
+    this.addedAt = 0,
+    this.missing = false,
+  });
+
+  final Track track;
+  final String album;
+  final String mime;
+  final int size;
+
+  /// Milliseconds since the epoch.
+  final int addedAt;
+
+  /// The file was there once and is not now; its song is still in the playlists and likes that point to it.
+  final bool missing;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LocalSong &&
+      other.track.videoId == track.videoId &&
+      other.track.title == track.title &&
+      other.track.artist == track.artist &&
+      other.track.thumb == track.thumb &&
+      other.track.durMs == track.durMs &&
+      other.album == album &&
+      other.mime == mime &&
+      other.size == size &&
+      other.addedAt == addedAt &&
+      other.missing == missing;
+
+  @override
+  int get hashCode =>
+      Object.hash(track.videoId, track.title, track.artist, album, addedAt, missing);
+
+  factory LocalSong.fromMap(Map<Object?, Object?> map) => LocalSong(
+    track: Track.fromMap(map),
+    album: map['album'] as String? ?? '',
+    mime: map['mime'] as String? ?? '',
+    size: (map['size'] as num?)?.toInt() ?? 0,
+    addedAt: (map['addedAt'] as num?)?.toInt() ?? 0,
+    missing: map['missing'] as bool? ?? false,
+  );
+}
+
+/// What a scan of the music on this phone found: how many files are there, and how many cannot be played here.
+class LocalScan {
+  const LocalScan({this.total = 0, this.unsupported = 0});
+
+  final int total;
+  final int unsupported;
+
+  factory LocalScan.fromMap(Map<Object?, Object?> map) => LocalScan(
+    total: (map['total'] as num?)?.toInt() ?? 0,
+    unsupported: (map['unsupported'] as num?)?.toInt() ?? 0,
   );
 }

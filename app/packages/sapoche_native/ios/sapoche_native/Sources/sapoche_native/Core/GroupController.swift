@@ -304,13 +304,16 @@ final class GroupController {
     /// the meantime.
     private func autoplay(after last: QueueItem) {
         if !autoplayOn || session != nil || autoplayJob?.isActive == true || sleep.state.value == .songEnd { return }
+        // A song from a file on this phone has no radio: the last song from YouTube in the queue stands in for it
+        let like = LocalMusic.isLocal(last.videoId) ? local.snapshot.value.queue.last { !LocalMusic.isLocal($0.videoId) } : last
+        guard let like else { return }
         autoplayJob = ownScope.launch { [weak self] in
             guard let self else { return }
             do {
                 let queued = Set(self.local.snapshot.value.queue.map(\.videoId))
-                let more = try await self.moreLike(last.videoId, queued, Self.autoplayCount)
+                let more = try await self.moreLike(like.videoId, queued, Self.autoplayCount)
                 if more.isEmpty || self.session != nil || !self.local.snapshot.value.finished { return }
-                EventLog.d("local", "autoplay adds \(more.count) songs like '\(last.title)'")
+                EventLog.d("local", "autoplay adds \(more.count) songs like '\(like.title)'")
                 // A queue that has grown long by carrying on is started afresh rather than filling up
                 if self.local.snapshot.value.queue.count > Self.autoplayRestartAt { self.local.clear() }
                 self.local.add(more, next: false)

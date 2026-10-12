@@ -7,11 +7,13 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.LoadFailure
 import app.sapoche.sync.PlayerPort
 import app.sapoche.sync.QueueItem
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
@@ -37,6 +39,9 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
     private var waitingToLoad = false
 
     /** The song the player is on and the one queued behind it, so either can be rebuilt with or without the picture. */
+    /** Reads the pictures inside music files for the songs about to play; on the thread of the player. */
+    private val pictures = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+
     private var loaded: QueueItem? = null
     private var queuedNext: QueueItem? = null
 
@@ -121,6 +126,8 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
     override fun refresh(videoId: String) = SapocheApp.streams.invalidate(videoId)
 
     private suspend fun load(item: QueueItem, seekToMs: Long, withVideo: Boolean) {
+        // Read before the item is made, so that it carries its picture
+        if (LocalMusic.isLocal(item.videoId)) SapocheApp.deviceMusic.cover(item.videoId)
         player.playWhenReady = false
         loaded = item
         queuedNext = null
@@ -175,6 +182,16 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
         val count = player.mediaItemCount
         if (count == 0) return
         queuedNext = item
+        if (item != null && LocalMusic.isLocal(item.videoId) && SapocheApp.deviceMusic.coverIfRead(item.videoId) == null) {
+            // Its picture is read now and put on the item once it is known, unless something else became the next song
+            pictures.launch {
+                if (SapocheApp.deviceMusic.cover(item.videoId) == null || queuedNext?.id != item.id) return@launch
+                val at = player.currentMediaItemIndex + 1
+                if (player.mediaItemCount > at && player.getMediaItemAt(at).mediaId == item.videoId) {
+                    player.replaceMediaItem(at, mediaItem(item, videoOn))
+                }
+            }
+        }
         val nextIndex = player.currentMediaItemIndex + 1
         when {
             item == null -> if (count > nextIndex) player.removeMediaItems(nextIndex, count)
@@ -276,7 +293,13 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
             MediaMetadata.Builder()
                 .setTitle(item.title)
                 .setArtist(item.artist)
-                .apply { item.thumb?.let { setArtworkUri(android.net.Uri.parse(it)) } }
+                .apply {
+                    // The system draws pictures from addresses it knows how to read, which the one of a song from a file is
+                    // not: the picture itself goes along, when it has been read
+                    val inside = if (LocalMusic.isLocal(item.videoId)) SapocheApp.deviceMusic.coverIfRead(item.videoId) else null
+                    if (inside != null) setArtworkData(inside, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                    else item.thumb?.let { setArtworkUri(android.net.Uri.parse(it)) }
+                }
                 .build(),
         )
         .build()

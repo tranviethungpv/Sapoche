@@ -358,6 +358,10 @@ actor MediaLibrary {
     private let fetcher: FileFetcher
     private let log: @Sendable (String) -> Void
 
+    /// Where the file of a song from this phone is, by its id; nil when it has none. Songs from files are played from where
+    /// they are: they are never fetched, kept, or swapped for a stream of YouTube.
+    private let localFile: @Sendable (String) async -> URL?
+
     /// A transfer that is going on, and how many are waiting for it.
     private struct Transfer {
         let task: Task<Int64, Error>
@@ -366,16 +370,28 @@ actor MediaLibrary {
 
     private var running: [String: Transfer] = [:]
 
-    init(files: MediaFiles, streams: StreamCache, fetcher: FileFetcher, log: @escaping @Sendable (String) -> Void = { _ in }) {
+    init(files: MediaFiles, streams: StreamCache, fetcher: FileFetcher, log: @escaping @Sendable (String) -> Void = { _ in },
+         localFile: @escaping @Sendable (String) async -> URL? = { _ in nil }) {
         self.files = files
         self.streams = streams
         self.fetcher = fetcher
         self.log = log
+        self.localFile = localFile
+    }
+
+    /// The file of a song from this phone as something to play; fails the way a song YouTube will not play does, so that it is
+    /// skipped, when its file is not there any more.
+    private func local(_ videoId: String) async throws -> Playable {
+        guard let url = await localFile(videoId), FileManager.default.fileExists(atPath: url.path) else {
+            throw LoadFailure(reason: .unplayable, message: "The file of \(videoId) is not on this phone")
+        }
+        return Playable(url: url, isFile: true, headers: [:])
     }
 
     /// Where to play [videoId] from with the least wait: its file when it is on the disk, else its stream in pieces, so
     /// that it starts once the first piece is there. When the stream cannot be laid out in pieces, as [playable].
     func playableAtOnce(_ videoId: String) async throws -> Playable {
+        if LocalMusic.isLocal(videoId) { return try await local(videoId) }
         if let file = files.file(videoId) { return Playable(url: ordinary(file), isFile: true, headers: [:]) }
         if let pieces = try await inPieces(videoId) { return pieces }
         return try await playable(videoId, piecesWhenLong: false)
@@ -384,6 +400,7 @@ actor MediaLibrary {
     /// Where to play [videoId] from, fetching it first when it is not on the disk; the stream when it cannot be fetched.
     /// A song too long to keep is played from its stream in pieces instead, when [piecesWhenLong] and that works out.
     func playable(_ videoId: String, piecesWhenLong: Bool = true) async throws -> Playable {
+        if LocalMusic.isLocal(videoId) { return try await local(videoId) }
         if let file = files.file(videoId) { return Playable(url: ordinary(file), isFile: true, headers: [:]) }
         if piecesWhenLong, let pick = try? await streams.audio(videoId), pick.contentLength > Self.keepLimitBytes,
            let pieces = try await inPieces(videoId) {
@@ -424,6 +441,8 @@ actor MediaLibrary {
 
     /// Where [videoId] is streamed from, without a file; the way out when a file will not play.
     func streamed(_ videoId: String) async throws -> Playable {
+        // A file the player would not open has no stream to fall back on
+        if LocalMusic.isLocal(videoId) { throw LoadFailure(reason: .unplayable, message: "\(videoId) has no stream") }
         let pick = try await streams.audio(videoId)
         guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
         return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
@@ -431,6 +450,7 @@ actor MediaLibrary {
 
     /// Throws away the file of [videoId] that was played, so that the next play fetches it again. A downloaded file stays.
     func forget(_ videoId: String) async {
+        if LocalMusic.isLocal(videoId) { return }
         try? FileManager.default.removeItem(at: files.played(videoId))
         await streams.invalidate(videoId)
     }
@@ -438,11 +458,13 @@ actor MediaLibrary {
     /// Drops the address [videoId] was streamed from, so that the next load resolves it again: an address that stopped
     /// working in the middle of a song (expired, or tied to a network the phone has left) does not mend by being retried.
     func refresh(_ videoId: String) async {
+        if LocalMusic.isLocal(videoId) { return }
         await streams.invalidate(videoId)
     }
 
     /// Where the picture of [videoId] is streamed from, at most [maxHeight] tall; nil when it has none that plays.
     func video(_ videoId: String, maxHeight: Int) async throws -> Playable? {
+        if LocalMusic.isLocal(videoId) { return nil }
         guard let pick = try await streams.video(videoId, maxHeight: maxHeight), let url = URL(string: pick.source.url) else { return nil }
         return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
     }
@@ -451,6 +473,7 @@ actor MediaLibrary {
     /// playlist of the two. Nil when the video has no picture an iPhone plays or the picture has no index; throws
     /// when the pieces cannot be laid out.
     func pictured(_ videoId: String, maxHeight: Int) async throws -> Playable? {
+        if LocalMusic.isLocal(videoId) { return nil }
         guard let picture = try await streams.video(videoId, maxHeight: maxHeight), let index = picture.source.index,
               let pictureURL = URL(string: picture.source.url) else { return nil }
         let sound = try await soundInPieces(videoId)
@@ -466,7 +489,7 @@ actor MediaLibrary {
     /// Brings [videoId] onto the disk for next time while it plays from its stream, when it is short enough to keep.
     /// Stops when the calling task is cancelled.
     func keep(_ videoId: String) async {
-        guard files.file(videoId) == nil else { return }
+        guard !LocalMusic.isLocal(videoId), files.file(videoId) == nil else { return }
         do {
             let pick = try await streams.audio(videoId)
             guard pick.contentLength > 0, pick.contentLength <= Self.keepLimitBytes else { return }

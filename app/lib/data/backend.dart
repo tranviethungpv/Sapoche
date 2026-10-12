@@ -262,6 +262,27 @@ abstract class Backend {
   Future<void> removeDownload(String videoId);
   Future<void> clearDownloads();
 
+  /// Where the list of the music on this phone stands.
+  Future<LocalStatus> localStatus();
+  Future<void> setLocalEnabled(bool on);
+
+  /// Asks the person to allow reading their music (or sends them to the phone's settings when they refused for good);
+  /// gives back the access afterwards.
+  Future<LocalAccess> localAccess();
+
+  /// Reads the music on this phone again and brings the library up to date with it.
+  Future<LocalScan> localScan();
+
+  /// Lets the person choose music files to copy into the folder of the app; gives back how many were copied, or null when
+  /// they backed out or the phone has no such folder (only an iPhone does: an Android phone lists its own music).
+  Future<int?> localImport();
+
+  /// The music files on this phone, the one added last first.
+  Future<List<LocalSong>> localTracks();
+
+  /// The picture inside the file of [videoId], or null when it has none.
+  Future<Uint8List?> localCover(String videoId);
+
   Future<StorageInfo> storage();
   Future<void> clearPlayCache();
 
@@ -681,6 +702,34 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> clearDownloads() => _call('downloadClear');
+
+  @override
+  Future<LocalStatus> localStatus() async =>
+      LocalStatus.fromMap((await _call<Map<Object?, Object?>>('localStatus'))!);
+
+  @override
+  Future<void> setLocalEnabled(bool on) => _call('localEnable', {'on': on});
+
+  @override
+  Future<LocalAccess> localAccess() async =>
+      LocalAccess.parse(await _call<String>('localAccess'));
+
+  @override
+  Future<LocalScan> localScan() async =>
+      LocalScan.fromMap((await _call<Map<Object?, Object?>>('localScan'))!);
+
+  @override
+  Future<int?> localImport() => _call<int>('localImport');
+
+  @override
+  Future<List<LocalSong>> localTracks() async => [
+    for (final e in await _call<List<Object?>>('localTracks') ?? const [])
+      LocalSong.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<Uint8List?> localCover(String videoId) =>
+      _call<Uint8List>('localCover', {'videoId': videoId});
 
   @override
   Future<StorageInfo> storage() async =>

@@ -63,7 +63,10 @@ final class SapocheRuntime {
         excluded.isExcludedFromBackup = true
         try? downloadsURL.setResourceValues(excluded)
 
-        let media = MediaLibrary(files: files, streams: streams, fetcher: URLSessionFetcher(), log: { EventLog.d("media", $0) })
+        // Where the music files of this phone are, read from the library once it is open (a song from a file is found by its id)
+        let localFiles = LocalFileBox()
+        let media = MediaLibrary(files: files, streams: streams, fetcher: URLSessionFetcher(), log: { EventLog.d("media", $0) },
+                                 localFile: { await localFiles.url(for: $0) })
         let lyrics = LyricsStore(dir: caches.appendingPathComponent("lyrics", isDirectory: true))
         let feed = MusicFeed(music: music, lyricsClient: LyricsClient(http: http), lyricsStore: lyrics)
 
@@ -81,6 +84,8 @@ final class SapocheRuntime {
             store = try! LibraryStore(path: ":memory:")
         }
 
+        let folder = platform.musicFolder
+        localFiles.set { id in try? await store.localUri(id).map { MusicFolder.url(in: folder, key: $0) } }
         let suggestions = SuggestionFeed(store: store, resolver: resolver, music: feed, log: { EventLog.d("suggest", $0) })
         let downloader = Downloader(store: store, fetch: { try await media.download($0) }, log: { EventLog.d("download", $0) })
 
@@ -105,7 +110,10 @@ final class SapocheRuntime {
         )
         bridge = Bridge(controller: controller, prefs: prefs, platform: platform, store: store, resolver: resolver, streams: streams,
                         music: feed, suggestions: suggestions, media: media, files: files, downloader: downloader, http: http)
-        nowPlaying = NowPlaying(controller: controller, engine: engine)
+        let bridge = bridge
+        nowPlaying = NowPlaying(controller: controller, engine: engine, localCover: { id in
+            try? await bridge.handle("localCover", ["videoId": id]) as? Data
+        })
     }
 
     /// Where the picture of a song is drawn for Flutter.
@@ -221,5 +229,25 @@ public final class SapocheNativePlugin: NSObject, FlutterPlugin, FlutterStreamHa
             UserDefaults.standard.removeObject(forKey: Self.pendingKey)
             Task { @MainActor in self?.runtime.bridge.onLink(url) }
         }
+    }
+}
+
+/// Tells where the file of a song from this phone is. The media library that plays the songs is made before the library of
+/// what the person keeps, which knows where the files are, so this is filled in once that is open.
+final class LocalFileBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var find: (@Sendable (String) async -> URL?)?
+
+    func set(_ find: @escaping @Sendable (String) async -> URL?) {
+        lock.lock()
+        self.find = find
+        lock.unlock()
+    }
+
+    func url(for id: String) async -> URL? {
+        lock.lock()
+        let find = self.find
+        lock.unlock()
+        return await find?(id)
     }
 }

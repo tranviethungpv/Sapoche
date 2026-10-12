@@ -285,6 +285,73 @@ abstract final class S {
     'Khi hàng đợi hết, tiếp tục phát những bài giống bài vừa rồi.',
   );
 
+  // Music on this phone
+  static String get localMusic => _t('On this phone', 'Trên máy này');
+  static String get localMusicSwitch =>
+      _t('Show music on this phone', 'Hiện nhạc trên máy này');
+  static String get localMusicSwitchBody => _t(
+    'Plays the music files stored on this phone. They stay on it: they cannot be added to a room.',
+    'Phát các tệp nhạc có trong máy. Chúng chỉ nằm trên máy này: không thể thêm vào phòng.',
+  );
+  static String get localAllowTitle =>
+      _t('Play the music on your phone', 'Phát nhạc có trong máy');
+  static String get localAllowBody => _t(
+    'Allow Sapoche to read the music files on this phone to play them next to your YouTube songs. Nothing leaves your phone.',
+    'Cho phép Sapoche đọc các tệp nhạc trong máy để phát cùng các bài YouTube. Không có gì rời khỏi máy.',
+  );
+  static String get localAllow => _t('Allow', 'Cho phép');
+  static String get localBlockedBody => _t(
+    'Access to your music was refused. You can allow it in the settings of your phone.',
+    'Quyền đọc nhạc đã bị từ chối. Bạn có thể cho phép lại trong cài đặt của điện thoại.',
+  );
+  static String get localOpenSettings =>
+      _t('Open phone settings', 'Mở cài đặt điện thoại');
+  static String get localEmptyTitle =>
+      _t('No music found', 'Không thấy bài nhạc nào');
+  static String get localEmptyAndroid => _t(
+    'Music files on this phone show up here. Songs shorter than 30 seconds are left out.',
+    'Các tệp nhạc trong máy sẽ hiện ở đây. Bài ngắn hơn 30 giây được bỏ qua.',
+  );
+  static String get localEmptyIos => _t(
+    'Copy music into Files › On My iPhone › Sapoche, or tap Add files.',
+    'Chép nhạc vào Tệp › Trên iPhone › Sapoche, hoặc bấm Thêm tệp.',
+  );
+  static String get localAddFiles => _t('Add files', 'Thêm tệp');
+  static String localAdded(int n) => _t(
+    n == 1 ? 'Added 1 file' : 'Added $n files',
+    'Đã thêm $n tệp',
+  );
+  static String localUnsupported(int n) => _t(
+    n == 1
+        ? '1 file cannot be played on an iPhone'
+        : '$n files cannot be played on an iPhone',
+    '$n tệp không phát được trên iPhone',
+  );
+  static String get localFilter => _t('Search this phone', 'Tìm trong máy');
+  static String get localRefresh => _t('Refresh', 'Làm mới');
+  static String get sortBy => _t('Sort by', 'Sắp xếp theo');
+  static String get sortRecent => _t('Recently added', 'Mới thêm');
+  static String get sortTitle => _t('Title', 'Tên');
+  static String get sortArtist => _t('Artist', 'Nghệ sĩ');
+  static String get sortAlbum => _t('Album', 'Album');
+  static String get fileMissing => _t('File not found', 'Không tìm thấy tệp');
+  static String get localNoRoom => _t(
+    'This song is a file on your phone: others in the room do not have it',
+    'Bài này là tệp trong máy bạn: người khác trong phòng không có',
+  );
+  static String localLeftOut(int n) => _t(
+    n == 1
+        ? 'Left out 1 song that is only on this phone'
+        : 'Left out $n songs that are only on this phone',
+    'Đã bỏ $n bài chỉ có trên máy này',
+  );
+  static String backupLocalLeftOut(int n) => _t(
+    n == 1
+        ? '1 song from this phone was not saved'
+        : '$n songs from this phone were not saved',
+    '$n bài trên máy này không được lưu',
+  );
+
   // Library
   static String get likedSongs => _t('Liked songs', 'Bài đã thích');
   static String get recentlyPlayed => _t('Recently played', 'Nghe gần đây');
