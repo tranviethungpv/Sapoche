@@ -240,6 +240,85 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(lists.map(\.name), ["First", "Second"])
     }
 
+    func testAPlaylistIsInOneFolderAtMostAndLeavesWithoutLosingSongs() async throws {
+        let trip = try await store.createPlaylist("Trip", [song("a"), song("b")], at: 10)
+        let gym = try await store.createPlaylist("Gym", [song("c")], at: 20)
+        let folder = try await store.createFolder("Mixes", at: 30)
+        var folderIds = try await store.playlists().map(\.folderId)
+        XCTAssertEqual(folderIds, [nil, nil])
+
+        try await store.setPlaylistFolder(trip, folder, at: 40)
+        try await store.setPlaylistFolder(gym, folder, at: 50)
+        folderIds = try await store.playlists().map(\.folderId)
+        XCTAssertEqual(folderIds, [folder, folder])
+        let mixes = try await store.folders()
+        XCTAssertEqual(mixes.map(\.updatedAt), [50])
+        // Putting a playlist in a folder does not count as changing it, so the list does not reorder
+        let order = try await store.playlists().map(\.name)
+        XCTAssertEqual(order, ["Gym", "Trip"])
+
+        let other = try await store.createFolder("Other", at: 60)
+        try await store.setPlaylistFolder(trip, other, at: 70)
+        let placed = Dictionary(uniqueKeysWithValues: try await store.playlists().map { ($0.name, $0.folderId) })
+        XCTAssertEqual(placed, ["Trip": other, "Gym": folder])
+        let names = try await store.folders().map(\.name)
+        XCTAssertEqual(names, ["Other", "Mixes"])
+
+        try await store.renameFolder(folder, "  Workout  ", at: 80)
+        let renamed = try await store.folders().first?.name
+        XCTAssertEqual(renamed, "Workout")
+
+        // Deleting a folder frees its playlists and keeps them whole
+        try await store.deleteFolder(folder)
+        let left = try await store.folders().map(\.name)
+        XCTAssertEqual(left, ["Other"])
+        let gymAfter = try await store.playlists().first { $0.name == "Gym" }
+        XCTAssertNil(gymAfter?.folderId)
+        let gymSongs = try await ids(gym)
+        XCTAssertEqual(gymSongs, ["c"])
+
+        try await store.setPlaylistFolder(trip, nil, at: 90)
+        folderIds = try await store.playlists().map(\.folderId)
+        XCTAssertEqual(folderIds, [nil, nil])
+    }
+
+    func testDeletingAPlaylistLeavesItsFolder() async throws {
+        let folder = try await store.createFolder("Mixes")
+        let trip = try await store.createPlaylist("Trip", [song("a")])
+        try await store.setPlaylistFolder(trip, folder)
+        try await store.deletePlaylist(trip)
+        let names = try await store.folders().map(\.name)
+        XCTAssertEqual(names, ["Mixes"])
+        let lists = try await store.playlists()
+        XCTAssertTrue(lists.isEmpty)
+    }
+
+    func testADatabaseFromBeforeFoldersGainsThemAndKeepsItsPlaylists() async throws {
+        let path = NSTemporaryDirectory() + "library-\(UUID().uuidString).db"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        do {
+            // The tables as version 6 had them
+            let old = try SQLite(path: path)
+            try old.run("CREATE TABLE tracks(video_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, thumb TEXT, dur_ms INTEGER NOT NULL)")
+            try old.run("CREATE TABLE playlists(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            try old.run("CREATE TABLE playlist_items(playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, video_id TEXT NOT NULL REFERENCES tracks(video_id), position INTEGER NOT NULL, PRIMARY KEY(playlist_id, video_id))")
+            try old.run("INSERT INTO tracks VALUES('a', 'Old song', 'Old artist', NULL, 1000)")
+            try old.run("INSERT INTO playlists(name, created_at, updated_at) VALUES('Old list', 1, 2)")
+            try old.run("INSERT INTO playlist_items VALUES(1, 'a', 0)")
+            old.version = 6
+        }
+        let upgraded = try LibraryStore(path: path)
+        let before = try await upgraded.playlists()
+        XCTAssertEqual(before.map(\.name), ["Old list"])
+        XCTAssertNil(before[0].folderId)
+        let folder = try await upgraded.createFolder("Mixes")
+        try await upgraded.setPlaylistFolder(before[0].id, folder)
+        let after = try await upgraded.playlists()
+        XCTAssertEqual(after.map(\.folderId), [folder])
+        let songs = try await upgraded.playlistTracks(before[0].id).map(\.videoId)
+        XCTAssertEqual(songs, ["a"])
+    }
+
     // ------------------------------------------------------------------ suggestions
 
     func testEveryListenComesBackWithItsOwnTime() async throws {
@@ -481,6 +560,8 @@ final class LibraryBackupTests: XCTestCase {
         try await from.setLiked(song("b"), true, at: 200)
         _ = try await from.createPlaylist("Road trip", [song("c"), song("a"), song("d")], at: 50)
         _ = try await from.createPlaylist("Empty", [], at: 60)
+        let mixes = try await from.createFolder("Mixes", at: 70)
+        try await from.setPlaylistFolder(try await from.playlists().first { $0.name == "Road trip" }!.id, mixes, at: 80)
         try await from.recordListen(song("a"), at: 10)
         try await from.recordListen(song("e"), at: 20)
         try await from.recordListen(song("a"), at: 30)
@@ -492,6 +573,8 @@ final class LibraryBackupTests: XCTestCase {
         for entry in try await store.liked() { text += "like \(entry.track) \(entry.at)\n" }
         for list in try await store.playlists().sorted(by: { $0.name < $1.name }) {
             text += "list \(list.name) \(try await store.playlistTracks(list.id))\n"
+            let folder = try await store.folders().first { $0.id == list.folderId }?.name ?? "-"
+            text += "in \(folder)\n"
         }
         for entry in try await store.recent() { text += "heard \(entry.track) \(entry.at) \(entry.plays)\n" }
         return text

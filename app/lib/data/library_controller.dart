@@ -24,6 +24,7 @@ class LibraryController extends ChangeNotifier {
   List<HistoryEntry> _recent = const [];
   List<HistoryEntry> _listens = const [];
   List<SavedPlaylist> _playlists = const [];
+  List<PlaylistFolder> _folders = const [];
   List<Track> _forYou = const [];
   List<SeedList> _seedLists = const [];
   List<Track> _discover = const [];
@@ -54,6 +55,21 @@ class LibraryController extends ChangeNotifier {
 
   /// The person's playlists, the one changed last first.
   List<SavedPlaylist> get playlists => _playlists;
+
+  /// The folders of playlists, the one changed last first.
+  List<PlaylistFolder> get folders => _folders;
+
+  /// The playlists that are in no folder: the ones the library lists beside the folders.
+  List<SavedPlaylist> get loosePlaylists => [
+    for (final p in _playlists)
+      if (_folders.every((f) => f.id != p.folderId)) p,
+  ];
+
+  /// The playlists kept in a folder, in the order the library lists playlists.
+  List<SavedPlaylist> playlistsIn(int folderId) => [
+    for (final p in _playlists)
+      if (p.folderId == folderId) p,
+  ];
 
   /// Songs on the list of downloads, what is on the phone first.
   List<DownloadEntry> get downloads => _downloads;
@@ -118,6 +134,8 @@ class LibraryController extends ChangeNotifier {
       // Only the mixes of a taste need them: without them the rest of the library is still shown
       final listens = await _backend.listens().catchError((_) => _listens);
       final playlists = await _backend.playlists();
+      // Folders only group the playlists: without them the playlists are still all there
+      final folders = await _backend.folders().catchError((_) => _folders);
       final forYou = await _backend.forYou();
       final seedLists = await _backend.seedLists();
       // Suggestions are extras: if they cannot be read, the library is still shown
@@ -141,6 +159,7 @@ class LibraryController extends ChangeNotifier {
       _recent = _oncePerSong(recent);
       _listens = listens;
       _playlists = playlists;
+      _folders = folders;
       _forYou = forYou;
       _seedLists = seedLists;
       _discover = discover;
@@ -389,6 +408,33 @@ class LibraryController extends ChangeNotifier {
       return null;
     }
   }
+
+  /// The songs of each of the playlists, read as they are now, in the order of [ids].
+  Future<List<List<Track>>> songsOfPlaylists(List<int> ids) async => [
+    for (final id in ids) await _backend.playlistTracks(id),
+  ];
+
+  /// Makes a folder. Gives back its id, or null when it could not be made.
+  Future<int?> createFolder(String name) async {
+    try {
+      final id = await _backend.createFolder(name);
+      await refresh();
+      return id;
+    } on Object catch (e) {
+      _messages.add('$e');
+      return null;
+    }
+  }
+
+  Future<void> renameFolder(int id, String name) =>
+      _change(() => _backend.renameFolder(id, name));
+
+  /// Deletes the folder; its playlists stay, out of any folder.
+  Future<void> deleteFolder(int id) => _change(() => _backend.deleteFolder(id));
+
+  /// Puts the playlist in the folder, or out of any folder with a null [folderId].
+  Future<void> moveToFolder(int playlistId, int? folderId) =>
+      _change(() => _backend.setPlaylistFolder(playlistId, folderId));
 
   /// Adds songs to a playlist. Gives back how many were new to it.
   Future<int> addToPlaylist(int id, List<Track> tracks) async {

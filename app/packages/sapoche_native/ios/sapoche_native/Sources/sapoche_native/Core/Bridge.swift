@@ -497,8 +497,23 @@ final class Bridge {
             return nil
         case "playlists":
             return try await store.playlists().map {
-                ["id": $0.id, "name": $0.name, "count": $0.count, "thumbs": $0.thumbs, "updatedAt": $0.updatedAt] as [String: Any]
+                ["id": $0.id, "name": $0.name, "count": $0.count, "thumbs": $0.thumbs, "updatedAt": $0.updatedAt, "folderId": $0.folderId.map { $0 as Any } ?? NSNull()] as [String: Any]
             }
+        case "folders":
+            return try await store.folders().map {
+                ["id": $0.id, "name": $0.name, "updatedAt": $0.updatedAt] as [String: Any]
+            }
+        case "folderCreate":
+            return try await store.createFolder(string("name"))
+        case "folderRename":
+            try await store.renameFolder(int64("id"), string("name"))
+            return nil
+        case "folderDelete":
+            try await store.deleteFolder(int64("id"))
+            return nil
+        case "playlistFolder":
+            try await store.setPlaylistFolder(int64("id"), JSON(args["folderId"]).int64)
+            return nil
         case "playlistTracks":
             return try await store.playlistTracks(int64("id")).map { $0.toMap() }
         case "playlistCreate":

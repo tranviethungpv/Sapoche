@@ -44,11 +44,17 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** Songs YouTube suggested for a seed, and when they were fetched. */
     data class Cached(val tracks: List<TrackRef>, val fetchedAt: Long)
 
-    /** A playlist as listed: its cover is made of the pictures of its first songs, [COVER_PARTS] at most, each once. */
-    data class Playlist(val id: Long, val name: String, val count: Int, val thumbs: List<String>, val updatedAt: Long)
+    /**
+     * A playlist as listed: its cover is made of the pictures of its first songs, [COVER_PARTS] at most, each once.
+     * It may be kept in a [Folder].
+     */
+    data class Playlist(val id: Long, val name: String, val count: Int, val thumbs: List<String>, val updatedAt: Long, val folderId: Long? = null)
 
-    /** A playlist as kept in a backup: what it is called, when, and its songs in order. */
-    data class SavedPlaylist(val name: String, val createdAt: Long, val updatedAt: Long, val tracks: List<TrackRef>)
+    /** A folder of playlists, as Spotify has them: a playlist is in one at most, and playing the folder plays them all. */
+    data class Folder(val id: Long, val name: String, val updatedAt: Long)
+
+    /** A playlist as kept in a backup: what it is called, when, its songs in order, and the folder it was in by name. */
+    data class SavedPlaylist(val name: String, val createdAt: Long, val updatedAt: Long, val tracks: List<TrackRef>, val folder: String? = null)
 
     /** What is worth carrying to another phone: likes, playlists and every listen, each with its time. */
     data class Backup(val liked: List<Entry>, val playlists: List<SavedPlaylist>, val listens: List<Entry>, val skippedLocal: Int = 0)
@@ -85,6 +91,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         createDownloadsTable(db)
         createTasteTables(db)
         createLocalFilesTable(db)
+        createFolders(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -94,6 +101,13 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         if (oldVersion < 4) createDownloadsTable(db)
         if (oldVersion < 5) createTasteTables(db)
         if (oldVersion < 6) createLocalFilesTable(db)
+        if (oldVersion < 7) createFolders(db)
+    }
+
+    /** Folders of playlists: a playlist points to its folder, or to none. */
+    private fun createFolders(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE folders(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+        db.execSQL("ALTER TABLE playlists ADD COLUMN folder_id INTEGER REFERENCES folders(id)")
     }
 
     /** Music files on this phone: the song is in [tracks] like any other, this says where its file is. */
@@ -255,15 +269,78 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** Playlists, the one changed last first. */
     suspend fun playlists(): List<Playlist> = withContext(io) {
         readableDatabase.rawQuery(
-            "SELECT p.id, p.name, p.updated_at, COUNT(i.video_id) " +
+            "SELECT p.id, p.name, p.updated_at, COUNT(i.video_id), p.folder_id " +
                 "FROM playlists p LEFT JOIN playlist_items i ON i.playlist_id = p.id " +
                 "GROUP BY p.id ORDER BY p.updated_at DESC, p.id DESC",
             null,
         ).use { c ->
             val list = ArrayList<Playlist>(c.count)
-            while (c.moveToNext()) list += Playlist(c.getLong(0), c.getString(1), c.getInt(3), coverThumbs(c.getLong(0)), c.getLong(2))
+            while (c.moveToNext()) {
+                val folder = if (c.isNull(4)) null else c.getLong(4)
+                list += Playlist(c.getLong(0), c.getString(1), c.getInt(3), coverThumbs(c.getLong(0)), c.getLong(2), folder)
+            }
             list
         }
+    }
+
+    // ------------------------------------------------------------------ folders
+
+    /** Folders, the one changed last first. */
+    suspend fun folders(): List<Folder> = withContext(io) {
+        readableDatabase.rawQuery("SELECT id, name, updated_at FROM folders ORDER BY updated_at DESC, id DESC", null).use { c ->
+            val list = ArrayList<Folder>(c.count)
+            while (c.moveToNext()) list += Folder(c.getLong(0), c.getString(1), c.getLong(2))
+            list
+        }
+    }
+
+    /** Makes a folder and returns its id. */
+    suspend fun createFolder(name: String, at: Long = System.currentTimeMillis()): Long = withContext(io) {
+        val id = writableDatabase.insertOrThrow(
+            "folders",
+            null,
+            ContentValues().apply {
+                put("name", cleanName(name))
+                put("created_at", at)
+                put("updated_at", at)
+            },
+        )
+        _changes.tryEmit(Unit)
+        id
+    }
+
+    suspend fun renameFolder(id: Long, name: String, at: Long = System.currentTimeMillis()) = withContext(io) {
+        writableDatabase.update(
+            "folders",
+            ContentValues().apply {
+                put("name", cleanName(name))
+                put("updated_at", at)
+            },
+            "id = ?",
+            arrayOf(id.toString()),
+        )
+        _changes.tryEmit(Unit)
+    }
+
+    /** Deletes the folder; its playlists stay, out of any folder. */
+    suspend fun deleteFolder(id: Long) = withContext(io) {
+        writableDatabase.transaction {
+            execSQL("UPDATE playlists SET folder_id = NULL WHERE folder_id = ?", arrayOf<Any?>(id))
+            delete("folders", "id = ?", arrayOf(id.toString()))
+        }
+        _changes.tryEmit(Unit)
+    }
+
+    /** Puts the playlist in the folder, or out of any with a null [folderId]. The playlist is not counted as changed, but the folder is. */
+    suspend fun setPlaylistFolder(id: Long, folderId: Long?, at: Long = System.currentTimeMillis()) = withContext(io) {
+        writableDatabase.transaction {
+            val before = rawQuery("SELECT folder_id FROM playlists WHERE id = ?", arrayOf(id.toString())).use { c ->
+                if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+            }
+            execSQL("UPDATE playlists SET folder_id = ? WHERE id = ?", arrayOf<Any?>(folderId, id))
+            for (folder in setOfNotNull(before, folderId)) execSQL("UPDATE folders SET updated_at = ? WHERE id = ?", arrayOf<Any?>(at, folder))
+        }
+        _changes.tryEmit(Unit)
     }
 
     private fun coverThumbs(playlistId: Long): List<String> = readableDatabase.rawQuery(
@@ -409,7 +486,10 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
             null,
         ).use(::entries)
         val playlists = ArrayList<SavedPlaylist>()
-        db.rawQuery("SELECT id, name, created_at, updated_at FROM playlists ORDER BY id", null).use { c ->
+        db.rawQuery(
+            "SELECT p.id, p.name, p.created_at, p.updated_at, f.name FROM playlists p LEFT JOIN folders f ON f.id = p.folder_id ORDER BY p.id",
+            null,
+        ).use { c ->
             while (c.moveToNext()) {
                 val id = c.getLong(0)
                 val songs = db.rawQuery(
@@ -418,7 +498,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
                         "AND t.video_id NOT LIKE '${LocalMusic.PREFIX}%' ORDER BY i.position",
                     arrayOf(id.toString()),
                 ).use(::entries).map { it.track }
-                playlists += SavedPlaylist(c.getString(1), c.getLong(2), c.getLong(3), songs)
+                playlists += SavedPlaylist(c.getString(1), c.getLong(2), c.getLong(3), songs, c.getString(4))
             }
         }
         val skipped = db.rawQuery(
@@ -455,10 +535,26 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
             // Names of the playlists there were before: two in the backup with one name stay two
             val here = HashMap<String, Long>()
             rawQuery("SELECT name, id FROM playlists ORDER BY id DESC", null).use { while (it.moveToNext()) here[it.getString(0)] = it.getLong(1) }
+            // The folders there are, by name; one a playlist of the backup was in is made when it is not here
+            val folders = HashMap<String, Long>()
+            rawQuery("SELECT name, id FROM folders ORDER BY id DESC", null).use { while (it.moveToNext()) folders[it.getString(0)] = it.getLong(1) }
             for (playlist in backup.playlists) {
                 val name = cleanName(playlist.name)
                 val id = here[name]
                 if (id == null) {
+                    val folder = playlist.folder?.takeIf { it.isNotBlank() }?.let { cleanName(it) }?.let { folderName ->
+                        folders.getOrPut(folderName) {
+                            insertOrThrow(
+                                "folders",
+                                null,
+                                ContentValues().apply {
+                                    put("name", folderName)
+                                    put("created_at", playlist.createdAt)
+                                    put("updated_at", playlist.updatedAt)
+                                },
+                            )
+                        }
+                    }
                     val created = insertOrThrow(
                         "playlists",
                         null,
@@ -466,6 +562,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
                             put("name", name)
                             put("created_at", playlist.createdAt)
                             put("updated_at", playlist.updatedAt)
+                            put("folder_id", folder)
                         },
                     )
                     appendTracks(created, playlist.tracks)
@@ -849,7 +946,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     companion object {
-        private const val VERSION = 6
+        private const val VERSION = 7
         const val RECENT_LIMIT = 100
         const val HISTORY_KEEP = 2000
         const val MAX_PLAYLIST = 500

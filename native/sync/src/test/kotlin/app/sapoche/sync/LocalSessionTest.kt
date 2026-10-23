@@ -792,14 +792,14 @@ class LocalSessionTest {
     }
 
     @Test
-    fun `the queue is capped like the room's`() = runTest {
+    fun `the queue holds a thousand songs and then says it is full`() = runTest {
         val h = harness()
-        h.session.add((1..150).map(::track), next = false)
+        h.session.add((1..600).map(::track), next = false)
         step()
-        h.session.add((151..300).map(::track), next = false)
+        h.session.add((601..1200).map(::track), next = false)
         step()
-        assertEquals(200, h.session.snapshot.value.queue.size)
-        h.session.add(listOf(track(301)), next = false)
+        assertEquals(1000, h.session.snapshot.value.queue.size)
+        h.session.add(listOf(track(1201)), next = false)
         assertTrue(h.problems.any { it.kind == LocalSession.Problem.Kind.QUEUE_FULL })
     }
 

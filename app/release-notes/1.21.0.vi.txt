@@ -1,0 +1,5 @@
+Thư mục cho danh sách phát, và hàng đợi dài hơn
+- Gom các danh sách phát vào một thư mục (dấu + cạnh Danh sách phát > Thư mục mới, hoặc "Chuyển vào thư mục" ở một danh sách phát), rồi phát cả thư mục: Phát đi lần lượt từng danh sách, Trộn bài trộn chung mọi bài và rải đều từng danh sách.
+- Thư mục mở ra như một album: thêm hoặc bỏ danh sách phát, đổi tên, hoặc xóa thư mục (các danh sách phát vẫn được giữ). Thư mục cũng nằm trong bản sao lưu.
+- Hàng đợi ngoài phòng nay chứa được 1.000 bài, và báo khi thư mục dài hơn thế. Hàng đợi của phòng vẫn chứa 200 bài.
+- Thêm một danh sách phát dài vào phòng không còn mất các bài sau 100 bài đầu.

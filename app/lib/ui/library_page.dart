@@ -13,7 +13,10 @@ import 'scope.dart';
 import 'settings_page.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
+import 'widgets/folder_cover.dart';
+import 'widgets/folder_sheets.dart';
 import 'widgets/page_width.dart';
+import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
 import 'widgets/player_backdrop.dart';
 import 'widgets/playlist_cover.dart';
@@ -65,6 +68,11 @@ class _Local extends _Open {
 
 class _Playlist extends _Open {
   const _Playlist(this.id);
+  final int id;
+}
+
+class _Folder extends _Open {
+  const _Folder(this.id);
   final int id;
 }
 
@@ -222,6 +230,7 @@ class _LibraryScreen extends StatelessWidget {
         ),
         _Local() => const _LocalPage(),
         _Playlist(:final id) => _PlaylistPage(library: library, id: id),
+        _Folder(:final id) => _FolderPage(library: library, id: id),
       },
     );
   }
@@ -353,11 +362,14 @@ class _Overview extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  onSelected: (value) => value == 'new'
-                      ? _create(context, library)
-                      : _import(context, library),
+                  onSelected: (value) => switch (value) {
+                    'new' => _create(context, library),
+                    'folder' => _createFolder(context, library),
+                    _ => _import(context, library),
+                  },
                   itemBuilder: (context) => [
                     PopupMenuItem(value: 'new', child: Text(S.newPlaylist)),
+                    PopupMenuItem(value: 'folder', child: Text(S.newFolder)),
                     PopupMenuItem(
                       value: 'import',
                       child: Text(S.importFromLink),
@@ -367,7 +379,17 @@ class _Overview extends StatelessWidget {
               ],
             ),
           ),
-          for (final playlist in library.playlists)
+          for (final folder in library.folders)
+            _CollectionRow(
+              leading: FolderCover(
+                thumbs: _folderThumbs(library.playlistsIn(folder.id)),
+                size: 54,
+              ),
+              title: folder.name,
+              subtitle: _folderSummary(library.playlistsIn(folder.id)),
+              onTap: () => onOpen(_Folder(folder.id)),
+            ),
+          for (final playlist in library.loosePlaylists)
             _CollectionRow(
               leading: PlaylistCover(thumbs: playlist.thumbs, size: 54),
               title: playlist.name,
@@ -389,6 +411,21 @@ class _Overview extends StatelessWidget {
     if (name == null || name.isEmpty) return;
     final id = await library.createPlaylist(name);
     if (id != null) onOpen(_Playlist(id));
+  }
+
+  Future<void> _createFolder(
+    BuildContext context,
+    LibraryController library,
+  ) async {
+    final name = await showTextDialog(
+      context,
+      title: S.newFolder,
+      hint: S.folderName,
+      maxLength: 60,
+    );
+    if (name == null || name.isEmpty) return;
+    final id = await library.createFolder(name);
+    if (id != null) onOpen(_Folder(id));
   }
 
   /// Makes a playlist out of a YouTube link: the songs of a playlist, or the one song of a video.
@@ -456,12 +493,16 @@ class _CollectionRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.trailing,
   });
 
   final Widget leading;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+
+  /// In place of the arrow that says the row opens something.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -493,13 +534,35 @@ class _CollectionRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: p.textTertiary),
+            trailing ??
+                Icon(Icons.chevron_right_rounded, color: p.textTertiary),
           ],
         ),
       ),
     );
   }
 }
+
+/// The pictures a folder's cover is made of: one from each of its playlists in turn, then a second from each, and so on,
+/// each picture once, up to four, so that a folder of two playlists still has a grid and not the cover of the first.
+List<String> _folderThumbs(List<SavedPlaylist> playlists) {
+  final thumbs = <String>[];
+  for (var round = 0; round < 4 && thumbs.length < 4; round++) {
+    for (final p in playlists) {
+      if (round < p.thumbs.length &&
+          thumbs.length < 4 &&
+          !thumbs.contains(p.thumbs[round])) {
+        thumbs.add(p.thumbs[round]);
+      }
+    }
+  }
+  return thumbs;
+}
+
+String _folderSummary(List<SavedPlaylist> playlists) => S.folderSummary(
+  playlists.length,
+  playlists.fold(0, (songs, p) => songs + p.count),
+);
 
 /// A playlist: its songs can be dragged into another order and swiped away, and it can be renamed or deleted.
 class _PlaylistPage extends StatelessWidget {
@@ -528,6 +591,11 @@ class _PlaylistPage extends StatelessWidget {
       menu: [
         if (tracks.isNotEmpty)
           _MenuAction(S.downloadAll, () => startDownload(context, tracks)),
+        if (playlist != null)
+          _MenuAction(
+            S.moveToFolder,
+            () => showMoveToFolder(context, playlist),
+          ),
         _MenuAction(S.rename, () => _rename(context, playlist)),
         _MenuAction(S.deletePlaylist, () => _delete(context, playlist)),
       ],
@@ -568,6 +636,278 @@ class _PlaylistPage extends StatelessWidget {
     Navigator.pop(context);
     await route.completed;
     library.deletePlaylist(id);
+  }
+}
+
+/// The "…" button of a page or a row, with what it offers: a soft round disc beside Play, or a plain icon in a row.
+class _MoreButton extends StatelessWidget {
+  const _MoreButton(this.menu, {this.round = true});
+
+  final List<_MenuAction> menu;
+  final bool round;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return PopupMenuButton<VoidCallback>(
+      tooltip: S.showMore,
+      icon: Icon(
+        Icons.more_horiz_rounded,
+        color: round ? null : p.textTertiary,
+      ),
+      style: round ? roundButtonStyle(context) : null,
+      color: p.brightness == Brightness.light
+          ? const Color(0xFFFFF7F9)
+          : const Color(0xFF2B1F25),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      onSelected: (run) => run(),
+      itemBuilder: (context) => [
+        for (final action in menu)
+          PopupMenuItem(value: action.run, child: Text(action.label)),
+      ],
+    );
+  }
+}
+
+/// A folder of playlists: Play goes through all of them one after the other, Shuffle mixes their songs together with
+/// each playlist spread along the whole, and the playlists it keeps are listed below.
+class _FolderPage extends StatelessWidget {
+  const _FolderPage({required this.library, required this.id});
+
+  final LibraryController library;
+  final int id;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final folder = library.folders.where((f) => f.id == id).firstOrNull;
+    final playlists = library.playlistsIn(id);
+    final thumbs = _folderThumbs(playlists);
+    final menu = [
+      if (folder != null) ...[
+        _MenuAction(S.addPlaylists, () => showAddPlaylists(context, folder)),
+        _MenuAction(S.rename, () => _rename(context, folder)),
+        _MenuAction(S.deleteFolder, () => _delete(context, folder)),
+      ],
+    ];
+    // The page takes its colours from the first cover, as the page of an album does
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PlayerBackdrop(coverUrl: playlists.firstOrNull?.thumbs.firstOrNull),
+        Padding(
+          padding: EdgeInsets.only(left: SideInset.of(context)),
+          child: Scaffold(
+            appBar: AppBar(leading: const RoundBackButton()),
+            body: LayoutBuilder(
+              builder: (context, box) {
+                final gutter = ((box.maxWidth - 1100) / 2).clamp(
+                  0.0,
+                  double.infinity,
+                );
+                return CustomScrollView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(horizontal: gutter),
+                      sliver: SliverMainAxisGroup(
+                        slivers: [
+                          SliverToBoxAdapter(
+                            child: Column(
+                              children: [
+                                Center(
+                                  child: CollectionCover(
+                                    picture: (side) => FolderCover(
+                                      thumbs: thumbs,
+                                      size: side,
+                                      radius: 16,
+                                      sharp: true,
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    18,
+                                    24,
+                                    0,
+                                  ),
+                                  child: Text(
+                                    folder?.name ?? '',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: theme.headlineSmall,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    _folderSummary(playlists),
+                                    style: theme.bodySmall?.copyWith(
+                                      color: p.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                                if (playlists.isNotEmpty)
+                                  PlayRow(
+                                    onPlay: () => playPlaylists(
+                                      context,
+                                      playlists,
+                                      shuffle: false,
+                                    ),
+                                    onShuffle: () => playPlaylists(
+                                      context,
+                                      playlists,
+                                      shuffle: true,
+                                    ),
+                                    more: _MoreButton(menu),
+                                  )
+                                else
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 18),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        if (folder != null)
+                                          FilledButton.icon(
+                                            onPressed: () => showAddPlaylists(
+                                              context,
+                                              folder,
+                                            ),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: p.text,
+                                              foregroundColor: p.base,
+                                              shape: const StadiumBorder(),
+                                            ),
+                                            icon: const Icon(Icons.add_rounded),
+                                            label: Text(S.addPlaylists),
+                                          ),
+                                        const SizedBox(width: 12),
+                                        _MoreButton(menu),
+                                      ],
+                                    ),
+                                  ),
+                                const SizedBox(height: 6),
+                              ],
+                            ),
+                          ),
+                          if (playlists.isEmpty)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  36,
+                                  36,
+                                  36,
+                                  0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      S.emptyFolderTitle,
+                                      style: theme.titleMedium,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      S.emptyFolderBody,
+                                      textAlign: TextAlign.center,
+                                      style: theme.bodyMedium?.copyWith(
+                                        color: p.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          else
+                            SliverList.builder(
+                              itemCount: playlists.length,
+                              itemBuilder: (context, i) {
+                                final playlist = playlists[i];
+                                return _CollectionRow(
+                                  leading: PlaylistCover(
+                                    thumbs: playlist.thumbs,
+                                    size: 54,
+                                  ),
+                                  title: playlist.name,
+                                  subtitle: S.songCount(playlist.count),
+                                  onTap: () => _openScreen(
+                                    context,
+                                    _Playlist(playlist.id),
+                                  ),
+                                  trailing: _MoreButton([
+                                    _MenuAction(
+                                      S.moveToFolder,
+                                      () => showMoveToFolder(context, playlist),
+                                    ),
+                                    _MenuAction(
+                                      S.removeFromFolder,
+                                      () => library.moveToFolder(
+                                        playlist.id,
+                                        null,
+                                      ),
+                                    ),
+                                  ], round: false),
+                                );
+                              },
+                            ),
+                          SliverToBoxAdapter(
+                            child: SizedBox(
+                              height: HomeShell.bottomInsetOf(context) + 8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _rename(BuildContext context, PlaylistFolder folder) async {
+    final name = await showTextDialog(
+      context,
+      title: S.rename,
+      hint: S.folderName,
+      initial: folder.name,
+      maxLength: 60,
+    );
+    if (name != null && name.isNotEmpty) library.renameFolder(id, name);
+  }
+
+  Future<void> _delete(BuildContext context, PlaylistFolder folder) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(S.deleteFolderQuestion(folder.name)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(S.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(S.delete),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    // The page leaves first and the folder goes once it has, so that the page is not seen empty on its way out
+    final route = ModalRoute.of(context)! as TransitionRoute<void>;
+    Navigator.pop(context);
+    await route.completed;
+    library.deleteFolder(id);
   }
 }
 
@@ -995,7 +1335,7 @@ class _TrackList extends StatelessWidget {
                             inline: wide,
                             onPlay: () => playAll(shuffle: false),
                             onShuffle: () => playAll(shuffle: true),
-                            more: menu.isEmpty ? null : _moreButton(context),
+                            more: menu.isEmpty ? null : _MoreButton(menu),
                           ),
                       ],
                     );
@@ -1123,26 +1463,6 @@ class _TrackList extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-
-  /// The round "…" beside Play, with what the list offers.
-  Widget _moreButton(BuildContext context) {
-    final p = context.palette;
-    return PopupMenuButton<VoidCallback>(
-      tooltip: S.showMore,
-      icon: const Icon(Icons.more_horiz_rounded),
-      style: roundButtonStyle(context),
-      color: p.brightness == Brightness.light
-          ? const Color(0xFFFFF7F9)
-          : const Color(0xFF2B1F25),
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      onSelected: (run) => run(),
-      itemBuilder: (context) => [
-        for (final action in menu)
-          PopupMenuItem(value: action.run, child: Text(action.label)),
-      ],
     );
   }
 

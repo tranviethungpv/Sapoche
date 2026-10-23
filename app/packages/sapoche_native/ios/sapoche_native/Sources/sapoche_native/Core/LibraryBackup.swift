@@ -33,7 +33,7 @@ enum LibraryBackup {
             "songs": songs,
             "liked": backup.liked.map { ["id": $0.track.videoId, "at": $0.at] as [String: Any] },
             "playlists": backup.playlists.map {
-                ["name": $0.name, "createdAt": $0.createdAt, "updatedAt": $0.updatedAt, "songs": $0.tracks.map(\.videoId)] as [String: Any]
+                ["name": $0.name, "createdAt": $0.createdAt, "updatedAt": $0.updatedAt, "folder": $0.folder ?? NSNull(), "songs": $0.tracks.map(\.videoId)] as [String: Any]
             },
             "history": backup.listens.map { ["id": $0.track.videoId, "at": $0.at] as [String: Any] },
         ]
@@ -64,7 +64,8 @@ enum LibraryBackup {
                 name: playlist.at("name").string ?? "",
                 createdAt: playlist.at("createdAt").int64 ?? 0,
                 updatedAt: playlist.at("updatedAt").int64 ?? 0,
-                tracks: playlist.at("songs").array.compactMap { songs[$0.string ?? ""] }
+                tracks: playlist.at("songs").array.compactMap { songs[$0.string ?? ""] },
+                folder: playlist.at("folder").string.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : String($0.prefix(maxText)) }
             )
         }
         return LibraryStore.Backup(liked: entries(root.at("liked")), playlists: playlists, listens: entries(root.at("history")))

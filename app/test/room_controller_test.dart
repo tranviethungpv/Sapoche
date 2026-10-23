@@ -348,6 +348,80 @@ void main() {
     });
   });
 
+  group('how many songs a queue takes', () {
+    Track song(int i) => Track(
+      videoId: 'v${i.toString().padLeft(10, '0')}',
+      title: 'Song $i',
+      artist: 'x',
+      durMs: 1,
+    );
+    List<int> sizes(Iterable<String> calls) => [
+      for (final c in calls) c.split(' ')[1].split(',').length,
+    ];
+
+    test(
+      'a room is sent the songs a hundred at a time, as far as it holds',
+      () async {
+        backend.emit(StateEvent(sampleRoom()));
+        await settle();
+        backend.calls.clear();
+        final sent = await controller.addMany([
+          for (var i = 10; i < 260; i++) song(i),
+        ]);
+        // 3 songs are queued; 197 more fit
+        expect(sent, 197);
+        expect(sizes(backend.calls.where((c) => c.startsWith('addMany'))), [
+          100,
+          97,
+        ]);
+      },
+    );
+
+    test(
+      'songs to play next are sent last lot first, so they stay in order',
+      () async {
+        backend.emit(StateEvent(sampleRoom()));
+        await settle();
+        backend.calls.clear();
+        await controller.addMany([
+          for (var i = 10; i < 160; i++) song(i),
+        ], playNext: true);
+        final calls = backend.calls
+            .where((c) => c.startsWith('addMany'))
+            .toList();
+        expect(calls.first, contains(song(110).videoId));
+        expect(calls.last, contains(song(10).videoId));
+      },
+    );
+
+    test('a full room is asked for one song, so that it says so', () async {
+      backend.emit(StateEvent(sampleRoom(songs: 200)));
+      await settle();
+      backend.calls.clear();
+      final sent = await controller.addMany([
+        for (var i = 300; i < 340; i++) song(i),
+      ]);
+      expect(sent, 1);
+      expect(sizes(backend.calls.where((c) => c.startsWith('addMany'))), [1]);
+    });
+
+    test(
+      'outside a room a thousand songs go in one call and the rest are left',
+      () async {
+        backend.emit(StateEvent(sampleRoom(local: true)));
+        await settle();
+        backend.calls.clear();
+        final kept = await controller.playTracks([
+          for (var i = 0; i < 1200; i++) song(i),
+        ]);
+        expect(kept, 1000);
+        expect(sizes(backend.calls.where((c) => c.startsWith('addMany'))), [
+          1000,
+        ]);
+      },
+    );
+  });
+
   group('listening alone', () {
     test(
       'a pause by someone else offers to keep playing, a skip does not',

@@ -747,14 +747,14 @@ final class LocalSessionTests: XCTestCase {
         XCTAssertEqual(h.player.loaded?.title, "Song 2", "repeating must not load the broken stream for ever")
     }
 
-    func testTheQueueIsCappedLikeTheRooms() async {
+    func testTheQueueHoldsAThousandSongsAndThenSaysItIsFull() async {
         let h = harness()
-        h.session.add((1...150).map(track), next: false)
+        h.session.add((1...600).map(track), next: false)
         await h.step()
-        h.session.add((151...300).map(track), next: false)
+        h.session.add((601...1200).map(track), next: false)
         await h.step()
-        XCTAssertEqual(h.session.snapshot.value.queue.count, 200)
-        h.session.add([track(301)], next: false)
+        XCTAssertEqual(h.session.snapshot.value.queue.count, 1000)
+        h.session.add([track(1201)], next: false)
         XCTAssertTrue(h.problems.contains { $0.kind == .queueFull })
     }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/models.dart';
+import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../scope.dart';
 
@@ -42,6 +43,9 @@ Future<void> queueTracks(
   final room = AppScope.roomOf(context);
   final messenger = ScaffoldMessenger.of(context);
   final fresh = room.snapshot.fresh(tracks);
+  // What the queue has room for; a full one is told by the room itself
+  final space =
+      queueMax(inRoom: room.snapshot.inRoom) - room.snapshot.queue.length;
   if (fresh.isNotEmpty) await room.addMany(fresh, playNext: playNext);
   messenger
     ..hideCurrentSnackBar()
@@ -50,6 +54,8 @@ Future<void> queueTracks(
         content: Text(
           fresh.isEmpty
               ? S.alreadyInQueue
+              : fresh.length > space && space > 0
+              ? S.addedSome(space, fresh.length)
               : fresh.length < tracks.length
               ? S.addedSkipped(fresh.length, tracks.length - fresh.length)
               : S.playlistAdded,

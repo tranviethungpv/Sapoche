@@ -1,0 +1,5 @@
+Folders for your playlists, and longer queues
+- Put playlists in a folder (the + beside Playlists > New folder, or "Move to folder" on a playlist), then play the whole folder: Play goes through the playlists one after the other, Shuffle mixes all their songs together and spreads each playlist evenly.
+- Folders open like an album: add or remove playlists, rename, or delete a folder (its playlists are kept). They are kept in your backup too.
+- The queue outside a room now holds 1,000 songs, and tells you when a folder is longer than that. A room's queue still holds 200.
+- Adding a long playlist to a room no longer loses the songs past the first 100.

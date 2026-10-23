@@ -117,6 +117,7 @@ class SavedPlaylist {
     required this.name,
     this.count = 0,
     this.thumbs = const [],
+    this.folderId,
   });
 
   final int id;
@@ -126,11 +127,28 @@ class SavedPlaylist {
   /// Pictures of the first songs, up to four, each once: what the cover of the playlist is made of.
   final List<String> thumbs;
 
+  /// The [PlaylistFolder] it is kept in, or null when it is in none.
+  final int? folderId;
+
   factory SavedPlaylist.fromMap(Map<Object?, Object?> map) => SavedPlaylist(
     id: (map['id'] as num).toInt(),
     name: map['name'] as String,
     count: (map['count'] as num?)?.toInt() ?? 0,
     thumbs: [...?(map['thumbs'] as List?)?.cast<String>()],
+    folderId: (map['folderId'] as num?)?.toInt(),
+  );
+}
+
+/// A folder of playlists, as Spotify has them: a playlist is in one at most, and playing the folder plays them all.
+class PlaylistFolder {
+  const PlaylistFolder({required this.id, required this.name});
+
+  final int id;
+  final String name;
+
+  factory PlaylistFolder.fromMap(Map<Object?, Object?> map) => PlaylistFolder(
+    id: (map['id'] as num).toInt(),
+    name: map['name'] as String,
   );
 }
 
@@ -396,9 +414,26 @@ class RoomSnapshot {
     return queue.skip(index).any((e) => sameSong(e, track));
   }
 
-  /// [tracks] without those that are waiting in the queue already, and without repeats.
-  List<T> fresh<T extends Track>(List<T> tracks) =>
-      uniqueSongs(tracks.where((t) => !isQueued(t)));
+  /// [tracks] without those that are waiting in the queue already, and without repeats. The same as asking [isQueued] of
+  /// each, but the queue is looked through once: a folder of a thousand songs put on a queue of a thousand would otherwise
+  /// compare a million pairs.
+  List<T> fresh<T extends Track>(List<T> tracks) {
+    if (!inRoom && phase == 'idle') return uniqueSongs(tracks);
+    final ids = <String>{};
+    final byKey = <String, List<QueueEntry>>{};
+    for (final e in queue.skip(index)) {
+      ids.add(e.videoId);
+      byKey.putIfAbsent(songKey(e.title, e.artist), () => []).add(e);
+    }
+    return uniqueSongs(
+      tracks.where(
+        (t) =>
+            !ids.contains(t.videoId) &&
+            !(byKey[songKey(t.title, t.artist)]?.any((e) => sameSong(e, t)) ??
+                false),
+      ),
+    );
+  }
 
   /// People who are really there; someone whose connection went quiet does not count.
   int get listeningCount => members.where((m) => !m.away).length;

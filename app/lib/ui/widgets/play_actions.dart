@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/models.dart';
+import '../../data/song_key.dart';
+import '../../data/spread_shuffle.dart';
 import '../../strings.dart';
 import '../scope.dart';
 import 'queue_actions.dart';
@@ -54,4 +56,34 @@ Future<void> playMix(BuildContext context, List<Track> tracks) async {
   }
   HapticFeedback.selectionClick();
   await AppScope.roomOf(context).playTracks(tracks);
+}
+
+/// Plays the songs of [playlists] (the playlists of a folder) as one list: the playlists one after the other, or with
+/// [shuffle] mixed together, each spread evenly along the whole. Outside a room it takes the place of the queue, in a
+/// room it is put on the queue. Says when the queue could not hold them all.
+Future<void> playPlaylists(
+  BuildContext context,
+  List<SavedPlaylist> playlists, {
+  required bool shuffle,
+}) async {
+  HapticFeedback.selectionClick();
+  final scope = AppScope.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  void say(String text) => messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text)));
+
+  final lists = await scope.library.songsOfPlaylists([
+    for (final p in playlists) p.id,
+  ]);
+  final songs = uniqueSongs(
+    shuffle ? spreadShuffle(lists) : [for (final list in lists) ...list],
+  );
+  if (songs.isEmpty) return say(S.folderNoSongs);
+  if (scope.room.snapshot.inRoom) {
+    if (context.mounted) await queueTracks(context, songs);
+    return;
+  }
+  final kept = await scope.room.playTracks(songs);
+  if (kept < songs.length) say(S.playingSome(kept, songs.length));
 }

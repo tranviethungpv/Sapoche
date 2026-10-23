@@ -569,6 +569,11 @@ class FakeBackend implements Backend {
   final playlistNames = <int, String>{};
   int _nextPlaylist = 1;
 
+  /// Folders by id, in the order they were made, and the folder each playlist is in.
+  final folderNames = <int, String>{};
+  final playlistFolders = <int, int>{};
+  int _nextFolder = 1;
+
   @override
   Future<List<SavedPlaylist>> playlists() async {
     await _record('playlists');
@@ -582,8 +587,49 @@ class FakeBackend implements Backend {
             for (final track in playlistSongs[id]!)
               if (track.thumb != null) track.thumb!,
           }.take(4).toList(),
+          folderId: playlistFolders[id],
         ),
     ];
+  }
+
+  @override
+  Future<List<PlaylistFolder>> folders() async {
+    await _record('folders');
+    return [
+      for (final id in folderNames.keys.toList().reversed)
+        PlaylistFolder(id: id, name: folderNames[id]!),
+    ];
+  }
+
+  @override
+  Future<int> createFolder(String name) async {
+    await _record('createFolder $name');
+    final id = _nextFolder++;
+    folderNames[id] = name;
+    return id;
+  }
+
+  @override
+  Future<void> renameFolder(int id, String name) async {
+    await _record('renameFolder $id $name');
+    folderNames[id] = name;
+  }
+
+  @override
+  Future<void> deleteFolder(int id) async {
+    await _record('deleteFolder $id');
+    folderNames.remove(id);
+    playlistFolders.removeWhere((_, folder) => folder == id);
+  }
+
+  @override
+  Future<void> setPlaylistFolder(int id, int? folderId) async {
+    await _record('setPlaylistFolder $id $folderId');
+    if (folderId == null) {
+      playlistFolders.remove(id);
+    } else {
+      playlistFolders[id] = folderId;
+    }
   }
 
   @override
@@ -614,6 +660,7 @@ class FakeBackend implements Backend {
     await _record('deletePlaylist $id');
     playlistNames.remove(id);
     playlistSongs.remove(id);
+    playlistFolders.remove(id);
   }
 
   @override

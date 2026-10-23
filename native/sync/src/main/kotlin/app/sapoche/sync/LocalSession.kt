@@ -517,7 +517,8 @@ class LocalSession(
     }
 
     private companion object {
-        const val MAX_QUEUE = 200
+        /** What the queue outside a room holds. A room's holds 200 (`MAX_QUEUE` in `server/src/room.ts`); `queueMax` in `room_controller.dart` says both. */
+        const val MAX_QUEUE = 1000
         const val MAX_RECOVERIES = 3
         const val MAX_SKIPPED_IN_A_ROW = 3
         const val PREV_RESTARTS_AFTER_MS = 3000L

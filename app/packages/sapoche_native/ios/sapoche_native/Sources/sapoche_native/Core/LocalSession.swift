@@ -590,7 +590,8 @@ final class LocalSession {
         )
     }
 
-    private static let maxQueue = 200
+    /// What the queue outside a room holds. A room's holds 200 (`MAX_QUEUE` in `server/src/room.ts`); `queueMax` in `room_controller.dart` says both.
+    private static let maxQueue = 1000
     private static let maxRecoveries = 3
     private static let maxSkippedInARow = 3
     private static let prevRestartsAfterMs: Int64 = 3000

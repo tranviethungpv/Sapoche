@@ -35,6 +35,8 @@ class LibraryBackupTest {
         from.setLiked(song("b"), true, at = 200)
         from.createPlaylist("Road trip", listOf(song("c"), song("a"), song("d")), at = 50)
         from.createPlaylist("Empty", emptyList(), at = 60)
+        val mixes = from.createFolder("Mixes", at = 70)
+        from.setPlaylistFolder(from.playlists().first { it.name == "Road trip" }.id, mixes, at = 80)
         from.recordListen(song("a"), at = 10)
         from.recordListen(song("e"), at = 20)
         from.recordListen(song("a"), at = 30)
@@ -44,6 +46,7 @@ class LibraryBackupTest {
     private suspend fun view(store: LibraryStore) = listOf(
         store.liked().map { it.track to it.at },
         store.playlists().sortedBy { it.name }.map { it.name to store.playlistTracks(it.id) },
+        store.playlists().sortedBy { it.name }.map { p -> p.name to store.folders().firstOrNull { it.id == p.folderId }?.name },
         store.recent().map { Triple(it.track, it.at, it.plays) },
     )
 

@@ -324,6 +324,19 @@ abstract class Backend {
   Future<List<SavedPlaylist>> playlists();
   Future<List<Track>> playlistTracks(int id);
 
+  /// The folders of playlists, the one changed last first.
+  Future<List<PlaylistFolder>> folders();
+
+  /// Makes a folder and gives back its id.
+  Future<int> createFolder(String name);
+  Future<void> renameFolder(int id, String name);
+
+  /// Deletes the folder; its playlists stay, out of any folder.
+  Future<void> deleteFolder(int id);
+
+  /// Puts the playlist in the folder, or in none with a null [folderId].
+  Future<void> setPlaylistFolder(int id, int? folderId);
+
   /// Makes a playlist and gives back its id.
   Future<int> createPlaylist(String name, List<Track> tracks);
   Future<void> renamePlaylist(int id, String name);
@@ -904,6 +917,27 @@ class NativeBackend implements Backend {
         in await _call<List<Object?>>('playlistTracks', {'id': id}) ?? const [])
       Track.fromMap(e as Map<Object?, Object?>),
   ];
+
+  @override
+  Future<List<PlaylistFolder>> folders() async => [
+    for (final e in await _call<List<Object?>>('folders') ?? const [])
+      PlaylistFolder.fromMap(e as Map<Object?, Object?>),
+  ];
+
+  @override
+  Future<int> createFolder(String name) async =>
+      (await _call<int>('folderCreate', {'name': name}))!;
+
+  @override
+  Future<void> renameFolder(int id, String name) =>
+      _call('folderRename', {'id': id, 'name': name});
+
+  @override
+  Future<void> deleteFolder(int id) => _call('folderDelete', {'id': id});
+
+  @override
+  Future<void> setPlaylistFolder(int id, int? folderId) =>
+      _call('playlistFolder', {'id': id, 'folderId': folderId});
 
   @override
   Future<int> createPlaylist(String name, List<Track> tracks) async =>

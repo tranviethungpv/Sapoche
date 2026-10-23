@@ -268,10 +268,56 @@ class LibraryStoreTest {
             // and the tables of the versions after it are there too
             upgraded.putSuggestions("old", listOf(song("s")), at = 9)
             assertEquals(9L, upgraded.cachedSuggestions("old")?.fetchedAt)
+            val folder = upgraded.createFolder("Mixes")
+            val made = upgraded.createPlaylist("In a folder")
+            upgraded.setPlaylistFolder(made, folder)
+            assertEquals(folder, upgraded.playlists().single().folderId)
         } finally {
             upgraded.close()
             context.deleteDatabase(file)
         }
+    }
+
+    @Test
+    fun aPlaylistIsInOneFolderAtMostAndLeavesWithoutLosingSongs() = runTest {
+        val trip = store.createPlaylist("Trip", listOf(song("a"), song("b")), at = 10)
+        val gym = store.createPlaylist("Gym", listOf(song("c")), at = 20)
+        val folder = store.createFolder("Mixes", at = 30)
+        assertEquals(listOf(null, null), store.playlists().map { it.folderId })
+
+        store.setPlaylistFolder(trip, folder, at = 40)
+        store.setPlaylistFolder(gym, folder, at = 50)
+        assertEquals(listOf(folder, folder), store.playlists().map { it.folderId })
+        assertEquals(50L, store.folders().single().updatedAt)
+        // Putting a playlist in a folder does not count as changing it, so the list does not reorder
+        assertEquals(listOf("Gym", "Trip"), store.playlists().map { it.name })
+
+        val other = store.createFolder("Other", at = 60)
+        store.setPlaylistFolder(trip, other, at = 70)
+        assertEquals(mapOf("Trip" to other, "Gym" to folder), store.playlists().associate { it.name to it.folderId })
+        assertEquals(listOf("Other", "Mixes"), store.folders().map { it.name })
+
+        store.renameFolder(folder, "  Workout  ", at = 80)
+        assertEquals("Workout", store.folders().first().name)
+
+        // Deleting a folder frees its playlists and keeps them whole
+        store.deleteFolder(folder)
+        assertEquals(listOf("Other"), store.folders().map { it.name })
+        assertNull(store.playlists().first { it.name == "Gym" }.folderId)
+        assertEquals(listOf("c"), store.playlistTracks(gym).map { it.videoId })
+
+        store.setPlaylistFolder(trip, null, at = 90)
+        assertEquals(listOf(null, null), store.playlists().map { it.folderId })
+    }
+
+    @Test
+    fun deletingAPlaylistLeavesItsFolder() = runTest {
+        val folder = store.createFolder("Mixes")
+        val trip = store.createPlaylist("Trip", listOf(song("a")))
+        store.setPlaylistFolder(trip, folder)
+        store.deletePlaylist(trip)
+        assertEquals(listOf("Mixes"), store.folders().map { it.name })
+        assertTrue(store.playlists().isEmpty())
     }
 
     // ------------------------------------------------------------------ suggestions

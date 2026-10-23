@@ -542,7 +542,21 @@ class SapocheBridge(
                 return null
             }
             "playlists" -> return SapocheApp.library.playlists().map {
-                mapOf("id" to it.id, "name" to it.name, "count" to it.count, "thumbs" to it.thumbs, "updatedAt" to it.updatedAt)
+                mapOf("id" to it.id, "name" to it.name, "count" to it.count, "thumbs" to it.thumbs, "updatedAt" to it.updatedAt, "folderId" to it.folderId)
+            }
+            "folders" -> return SapocheApp.library.folders().map { mapOf("id" to it.id, "name" to it.name, "updatedAt" to it.updatedAt) }
+            "folderCreate" -> return SapocheApp.library.createFolder(call.argument<String>("name").orEmpty())
+            "folderRename" -> {
+                SapocheApp.library.renameFolder(playlistId(call), call.argument<String>("name").orEmpty())
+                return null
+            }
+            "folderDelete" -> {
+                SapocheApp.library.deleteFolder(playlistId(call))
+                return null
+            }
+            "playlistFolder" -> {
+                SapocheApp.library.setPlaylistFolder(playlistId(call), call.argument<Number>("folderId")?.toLong())
+                return null
             }
             "playlistTracks" -> return SapocheApp.library.playlistTracks(playlistId(call)).map { it.toMap() }
             "playlistCreate" -> return SapocheApp.library.createPlaylist(

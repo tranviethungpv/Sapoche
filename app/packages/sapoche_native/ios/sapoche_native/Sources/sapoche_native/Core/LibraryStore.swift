@@ -34,11 +34,20 @@ actor LibraryStore {
     }
 
     /// A playlist as listed: its cover is made of the pictures of its first songs, `coverParts` at most, each once.
+    /// It may be kept in a `Folder`.
     struct Playlist: Equatable {
         let id: Int64
         let name: String
         let count: Int
         let thumbs: [String]
+        let updatedAt: Int64
+        var folderId: Int64?
+    }
+
+    /// A folder of playlists, as Spotify has them: a playlist is in one at most, and playing the folder plays them all.
+    struct Folder: Equatable {
+        let id: Int64
+        let name: String
         let updatedAt: Int64
     }
 
@@ -52,12 +61,13 @@ actor LibraryStore {
         let missing: Bool
     }
 
-    /// A playlist as kept in a backup: what it is called, when, and its songs in order.
+    /// A playlist as kept in a backup: what it is called, when, its songs in order, and the folder it was in by name.
     struct SavedPlaylist: Equatable {
         let name: String
         let createdAt: Int64
         let updatedAt: Int64
         let tracks: [TrackRef]
+        var folder: String?
     }
 
     /// What is worth carrying to another phone: likes, playlists and every listen, each with its time.
@@ -88,7 +98,7 @@ actor LibraryStore {
     static let done = "done"
     static let failed = "failed"
     static let maxTries = 3
-    private static let version = 6
+    private static let version = 7
 
     private let db: SQLite
     private let onChange: @Sendable () -> Void
@@ -140,6 +150,11 @@ actor LibraryStore {
                     uri TEXT NOT NULL, album TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
                     added_at INTEGER NOT NULL, missing INTEGER NOT NULL DEFAULT 0)
                     """)
+            }
+            if found < 7 {
+                // Folders of playlists: a playlist points to its folder, or to none
+                try db.run("CREATE TABLE folders(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+                try db.run("ALTER TABLE playlists ADD COLUMN folder_id INTEGER REFERENCES folders(id)")
             }
         }
         db.version = version
@@ -234,10 +249,55 @@ actor LibraryStore {
     /// Playlists, the one changed last first.
     func playlists() throws -> [Playlist] {
         try db.rows("""
-            SELECT p.id, p.name, p.updated_at, COUNT(i.video_id)
+            SELECT p.id, p.name, p.updated_at, COUNT(i.video_id), p.folder_id
             FROM playlists p LEFT JOIN playlist_items i ON i.playlist_id = p.id
             GROUP BY p.id ORDER BY p.updated_at DESC, p.id DESC
-            """).map { Playlist(id: $0[0].int, name: $0[1].text ?? "", count: Int($0[3].int), thumbs: try coverThumbs($0[0].int), updatedAt: $0[2].int) }
+            """).map {
+            Playlist(id: $0[0].int, name: $0[1].text ?? "", count: Int($0[3].int), thumbs: try coverThumbs($0[0].int), updatedAt: $0[2].int,
+                     folderId: $0[4] == .null ? nil : $0[4].int)
+        }
+    }
+
+    // ------------------------------------------------------------------ folders
+
+    /// Folders, the one changed last first.
+    func folders() throws -> [Folder] {
+        try db.rows("SELECT id, name, updated_at FROM folders ORDER BY updated_at DESC, id DESC")
+            .map { Folder(id: $0[0].int, name: $0[1].text ?? "", updatedAt: $0[2].int) }
+    }
+
+    /// Makes a folder and returns its id.
+    func createFolder(_ name: String, at: Int64 = LibraryStore.now()) throws -> Int64 {
+        try db.run("INSERT INTO folders(name, created_at, updated_at) VALUES(?, ?, ?)", [.text(cleanName(name)), .int(at), .int(at)])
+        let id = db.lastInsertRowId
+        onChange()
+        return id
+    }
+
+    func renameFolder(_ id: Int64, _ name: String, at: Int64 = LibraryStore.now()) throws {
+        try db.run("UPDATE folders SET name = ?, updated_at = ? WHERE id = ?", [.text(cleanName(name)), .int(at), .int(id)])
+        onChange()
+    }
+
+    /// Deletes the folder; its playlists stay, out of any folder.
+    func deleteFolder(_ id: Int64) throws {
+        try db.transaction {
+            try db.run("UPDATE playlists SET folder_id = NULL WHERE folder_id = ?", [.int(id)])
+            try db.run("DELETE FROM folders WHERE id = ?", [.int(id)])
+        }
+        onChange()
+    }
+
+    /// Puts the playlist in the folder, or out of any with a nil `folderId`. The playlist is not counted as changed, but the folder is.
+    func setPlaylistFolder(_ id: Int64, _ folderId: Int64?, at: Int64 = LibraryStore.now()) throws {
+        try db.transaction {
+            let before = try db.rows("SELECT folder_id FROM playlists WHERE id = ?", [.int(id)]).first.flatMap { $0[0] == .null ? nil : $0[0].int }
+            try db.run("UPDATE playlists SET folder_id = ? WHERE id = ?", [folderId.map { SQLValue.int($0) } ?? SQLValue.null, .int(id)])
+            for folder in Set([before, folderId].compactMap { $0 }) {
+                try db.run("UPDATE folders SET updated_at = ? WHERE id = ?", [.int(at), .int(folder)])
+            }
+        }
+        onChange()
     }
 
     private func coverThumbs(_ playlistId: Int64) throws -> [String] {
@@ -356,13 +416,13 @@ actor LibraryStore {
             ORDER BY h.played_at, h.id
             """))
         var playlists: [SavedPlaylist] = []
-        for row in try db.rows("SELECT id, name, created_at, updated_at FROM playlists ORDER BY id") {
+        for row in try db.rows("SELECT p.id, p.name, p.created_at, p.updated_at, f.name FROM playlists p LEFT JOIN folders f ON f.id = p.folder_id ORDER BY p.id") {
             let songs = try entries(db.rows("""
                 SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, 0, 0
                 FROM playlist_items i JOIN tracks t ON t.video_id = i.video_id WHERE i.playlist_id = ?
                 AND t.video_id NOT LIKE '\(LocalMusic.prefix)%' ORDER BY i.position
                 """, [.int(row[0].int)])).map(\.track)
-            playlists.append(SavedPlaylist(name: row[1].text ?? "", createdAt: row[2].int, updatedAt: row[3].int, tracks: songs))
+            playlists.append(SavedPlaylist(name: row[1].text ?? "", createdAt: row[2].int, updatedAt: row[3].int, tracks: songs, folder: row[4].text))
         }
         let skipped = try db.rows("""
             SELECT COUNT(*) FROM (SELECT video_id FROM likes UNION SELECT video_id FROM history UNION SELECT video_id FROM playlist_items)
@@ -388,13 +448,30 @@ actor LibraryStore {
             for row in try db.rows("SELECT name, id FROM playlists ORDER BY id DESC") {
                 if let name = row[0].text { here[name] = row[1].int }
             }
+            // The folders there are, by name; one a playlist of the backup was in is made when it is not here
+            var folders: [String: Int64] = [:]
+            for row in try db.rows("SELECT name, id FROM folders ORDER BY id DESC") {
+                if let name = row[0].text { folders[name] = row[1].int }
+            }
             for playlist in backup.playlists {
                 let name = cleanName(playlist.name)
                 if let id = here[name] {
                     // An old playlist that gained songs is not moved to the top
                     if try appendTracks(id, playlist.tracks) > 0 { playlists += 1 }
                 } else {
-                    try db.run("INSERT INTO playlists(name, created_at, updated_at) VALUES(?, ?, ?)", [.text(name), .int(playlist.createdAt), .int(playlist.updatedAt)])
+                    var folder: Int64?
+                    if let wanted = playlist.folder, !wanted.trimmingCharacters(in: .whitespaces).isEmpty {
+                        let folderName = cleanName(wanted)
+                        if let known = folders[folderName] {
+                            folder = known
+                        } else {
+                            try db.run("INSERT INTO folders(name, created_at, updated_at) VALUES(?, ?, ?)", [.text(folderName), .int(playlist.createdAt), .int(playlist.updatedAt)])
+                            folder = db.lastInsertRowId
+                            folders[folderName] = db.lastInsertRowId
+                        }
+                    }
+                    try db.run("INSERT INTO playlists(name, created_at, updated_at, folder_id) VALUES(?, ?, ?, ?)",
+                               [.text(name), .int(playlist.createdAt), .int(playlist.updatedAt), folder.map { SQLValue.int($0) } ?? SQLValue.null])
                     _ = try appendTracks(db.lastInsertRowId, playlist.tracks)
                     playlists += 1
                 }

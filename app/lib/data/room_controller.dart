@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -10,6 +11,13 @@ import 'models.dart';
 import 'recent_rooms.dart';
 import 'setup_link.dart';
 import 'song_key.dart';
+
+/// How many songs a queue holds: a room's is what the server keeps (`MAX_QUEUE` in `server/src/room.ts`), the one outside
+/// a room is larger (`LocalSession.MAX_QUEUE` in Kotlin, `maxQueue` in Swift). A song past it is not taken.
+int queueMax({required bool inRoom}) => inRoom ? 200 : 1000;
+
+/// How many songs the server takes from one `queue.addMany`; more are sent in several.
+const _serverAddMany = 100;
 
 /// Something another member did that moved this device: worth a snackbar, sometimes with a way out.
 class Notice {
@@ -730,10 +738,14 @@ class RoomController extends ChangeNotifier {
   Future<void> shuffle() => _run(_backend.shuffle);
 
   Future<void> setShuffle(bool on) => _run(() => _backend.setShuffle(on));
-  Future<void> addMany(List<Track> tracks, {bool playNext = false}) async {
+
+  /// Puts [tracks] on the queue and says how many went on: those that were there already, those from files in a room
+  /// and those past what the queue holds are left out.
+  Future<int> addMany(List<Track> tracks, {bool playNext = false}) async {
     var fresh = _snapshot.fresh(tracks);
+    final inRoom = _snapshot.inRoom;
     // The others in a room do not have the files: only what is on YouTube goes in, and the rest is said
-    if (_snapshot.inRoom) {
+    if (inRoom) {
       final sendable = [
         for (final t in fresh)
           if (!t.isLocal) t,
@@ -747,21 +759,42 @@ class RoomController extends ChangeNotifier {
       }
       fresh = sendable;
     }
-    if (fresh.isEmpty) return;
-    await _run(() => _backend.addMany(fresh, playNext: playNext));
+    // A queue that is full says so itself, asked for one song
+    final space = max(1, queueMax(inRoom: inRoom) - _snapshot.queue.length);
+    if (fresh.length > space) fresh = fresh.sublist(0, space);
+    if (fresh.isEmpty) return 0;
+    if (!inRoom) {
+      await _run(() => _backend.addMany(fresh, playNext: playNext));
+      return fresh.length;
+    }
+    // The server takes so many at a time. Each lot goes right after the song playing when they play next, so the
+    // last lot is sent first
+    final lots = [
+      for (var i = 0; i < fresh.length; i += _serverAddMany)
+        fresh.sublist(i, min(i + _serverAddMany, fresh.length)),
+    ];
+    for (final lot in playNext ? lots.reversed : lots) {
+      await _run(() => _backend.addMany(lot, playNext: playNext));
+    }
+    return fresh.length;
   }
 
   /// Outside a room: replaces the queue with [tracks] and starts them. In a room the queue belongs
-  /// to everybody, so they are only added to it.
-  Future<void> playTracks(List<Track> tracks) {
+  /// to everybody, so they are only added to it. Says how many are on the queue now.
+  Future<int> playTracks(List<Track> tracks) {
     if (_snapshot.inRoom) return addMany(tracks);
+    final songs = uniqueSongs(tracks);
+    final kept = songs.length > queueMax(inRoom: false)
+        ? songs.sublist(0, queueMax(inRoom: false))
+        : songs;
     // Taps in quick succession are taken in turn, so that each empties the queue before its songs go in and the
     // last one is what plays. The songs are not checked against the queue here: until the native side reports
     // the emptied queue, the snapshot still holds the old one, and every song in it would be left out
-    return _replacing = _replacing.then((_) async {
+    _replacing = _replacing.then((_) async {
       await _run(_backend.clear);
-      await _run(() => _backend.addMany(uniqueSongs(tracks)));
+      await _run(() => _backend.addMany(kept));
     });
+    return _replacing.then((_) => kept.length);
   }
 
   /// Outside a room: plays [track] in place of the queue and lets songs like it follow, as YouTube Music does

@@ -41,6 +41,7 @@ object LibraryBackup {
                     backup.playlists.forEach { p ->
                         a.put(
                             JSONObject().put("name", p.name).put("createdAt", p.createdAt).put("updatedAt", p.updatedAt)
+                                .put("folder", p.folder ?: JSONObject.NULL)
                                 .put("songs", JSONArray().also { ids -> p.tracks.forEach { ids.put(it.videoId) } }),
                         )
                     }
@@ -75,6 +76,7 @@ object LibraryBackup {
                         name = p.optString("name"),
                         createdAt = p.optLong("createdAt"),
                         updatedAt = p.optLong("updatedAt"),
+                        folder = p.optString("folder").takeIf { it.isNotBlank() && !p.isNull("folder") }?.take(MAX_TEXT),
                         tracks = p.optJSONArray("songs")?.let { ids -> (0 until ids.length()).mapNotNull { songs[ids.optString(it)] } }.orEmpty(),
                     )
                 },

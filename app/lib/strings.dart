@@ -397,6 +397,48 @@ abstract final class S {
     'Choose “Add to playlist” on any song to put it here.',
     'Chọn “Thêm vào danh sách phát” ở bất kỳ bài nào để đưa vào đây.',
   );
+  static String get newFolder => _t('New folder', 'Thư mục mới');
+  static String get folderName => _t('Folder name', 'Tên thư mục');
+  static String folderSummary(int playlists, int songs) => _t(
+    '${playlists == 1 ? '1 playlist' : '$playlists playlists'} · ${songCount(songs)}',
+    '$playlists danh sách phát · ${songCount(songs)}',
+  );
+  static String get addPlaylists => _t('Add playlists', 'Thêm danh sách phát');
+  static String get addPlaylistsHint => _t(
+    'Pick the playlists to keep in this folder',
+    'Chọn các danh sách phát để giữ trong thư mục này',
+  );
+  static String inFolder(String name) => _t('In $name', 'Trong $name');
+  static String get noPlaylistsToAdd => _t(
+    'Every playlist is in this folder already',
+    'Mọi danh sách phát đã nằm trong thư mục này',
+  );
+  static String get moveToFolder => _t('Move to folder', 'Chuyển vào thư mục');
+  static String get removeFromFolder =>
+      _t('Remove from folder', 'Đưa ra khỏi thư mục');
+  static String movedToFolder(String name) =>
+      _t('Moved to $name', 'Đã chuyển vào $name');
+  static String get deleteFolder => _t('Delete folder', 'Xóa thư mục');
+  static String deleteFolderQuestion(String name) => _t(
+    'Delete the folder “$name”? Its playlists are kept.',
+    'Xóa thư mục “$name”? Các danh sách phát trong đó vẫn được giữ.',
+  );
+  static String get emptyFolderTitle =>
+      _t('This folder is empty', 'Thư mục này trống');
+  static String get emptyFolderBody => _t(
+    'Add playlists to play them together, or to shuffle across them.',
+    'Thêm danh sách phát để phát cùng nhau, hoặc trộn bài giữa chúng.',
+  );
+  static String get folderNoSongs =>
+      _t('No songs in this folder yet', 'Chưa có bài nào trong thư mục này');
+  static String playingSome(int kept, int total) => _t(
+    'Playing $kept of $total songs, as many as a queue holds',
+    'Đang phát $kept trên $total bài, số bài tối đa của một hàng đợi',
+  );
+  static String addedSome(int kept, int total) => _t(
+    'Added $kept of $total songs, as many as the queue holds',
+    'Đã thêm $kept trên $total bài, hàng đợi chỉ chứa được bấy nhiêu',
+  );
   static String get saveAsPlaylist =>
       _t('Save as playlist', 'Lưu thành danh sách phát');
   static String get playlistSaved =>
