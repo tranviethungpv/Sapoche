@@ -177,6 +177,35 @@ class MusicParserTest {
     }
 
     @Test
+    fun `a podcast show lists its episodes, whose rows are not those of songs`() = runTest {
+        val asked = mutableListOf<String>()
+        val music = MusicClient { _, body ->
+            asked += body
+            fixture("podcast_show")
+        }
+        val page = music.collection("MPSPPLycTNLUo2y2EAKEhVfxB9gYo6r0OTMgM0")
+        assertTrue(asked.single().contains("""browseId":"MPSPPLycTNLUo2y2EAKEhVfxB9gYo6r0OTMgM0"""), "a show is browsed as it is, without VL")
+        assertEquals("InnerFrench Podcast", page.title)
+        assertEquals(3, page.tracks.size)
+        val first = page.tracks.first()
+        assertEquals("idcUTDJWCEk", first.videoId)
+        assertEquals("E200 Toutes les bonnes choses ont une fin", first.title)
+        assertEquals("InnerFrench Podcast", first.artist, "the row does not say the show, the page does")
+        assertEquals(3660, first.durationSec, "1 hr 1 min")
+        assertEquals(29 * 60L, page.tracks[1].durationSec)
+        assertNotNull(first.thumbUrl)
+        assertNotNull(page.more, "a show comes a hundred episodes at a time")
+    }
+
+    @Test
+    fun `the next episodes of a show come with where the ones after them are`() = runTest {
+        val next = MusicClient { _, _ -> fixture("podcast_more") }.more("TOKEN")
+        assertEquals(3, next.tracks.size)
+        assertTrue(next.tracks.all { it.videoId.length == 11 && it.title.isNotEmpty() && it.durationSec > 0 })
+        assertNotNull(next.more)
+    }
+
+    @Test
     fun `a search lists what YouTube Music finds, a top result and the filters on offer`() = runTest {
         val page = client("search" to "search_top_song").searchPage("never gonna give you up", null)
         // YouTube puts first the kind that suits the search best, so the order is its own

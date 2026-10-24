@@ -105,10 +105,10 @@ enum MusicParser {
         let ownerId = strapline.compactMap { $0.at("navigationEndpoint", "browseEndpoint", "browseId").string }.first { $0.hasPrefix("UC") }
         let shelf = root.findAll("musicPlaylistShelfRenderer").first ?? root.findAll("musicShelfRenderer").first
         let rows = shelf?.at("contents").array ?? []
-        let isAlbum = id.hasPrefix("MPRE") || ["Album", "Single", "EP"].contains(kind ?? "")
         let title = header.at("title").text ?? ""
+        let isAlbum = id.hasPrefix("MPRE") || ["Album", "Single", "EP"].contains(kind ?? "")
         let cover = thumbnail(header.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails"))
-        let tracks = rows.compactMap { listTrack($0.at("musicResponsiveListItemRenderer")) }.map { song -> MusicTrack in
+        let tracks = rows.compactMap { listRow($0, show: title) }.map { song -> MusicTrack in
             // The rows of an album leave out what the page says once: whose songs they are, which album and its cover
             guard isAlbum else { return song }
             let anonymous = song.artist.isEmpty
@@ -131,16 +131,34 @@ enum MusicParser {
             thumbUrl: cover,
             stats: header.at("secondSubtitle").parts,
             tracks: tracks,
-            more: continuationToken(rows),
+            more: shelf.flatMap(shelfToken),
             shelves: root.findAll("musicCarouselShelfRenderer").compactMap(carousel)
+        )
+    }
+
+    /// A row of a list of songs: a song or video, or an episode of a podcast, which has a row of its own kind.
+    private static func listRow(_ row: JSON, show: String = "") -> MusicTrack? {
+        listTrack(row.at("musicResponsiveListItemRenderer")) ?? episode(row.at("musicMultiRowListItemRenderer"), show: show)
+    }
+
+    /// An episode in the list of a podcast show. Its row has a title, a line with the views and the date, the length as
+    /// words ("1 hr 1 min") and a text; it does not say which show it is of, so the page's name is given as `show`.
+    private static func episode(_ row: JSON, show: String) -> MusicTrack? {
+        guard !row.isNull, let videoId = row.at("onTap", "watchEndpoint", "videoId").string, let title = row.at("title").text else { return nil }
+        return MusicTrack(
+            videoId: videoId, title: title, artist: show,
+            durationSec: spokenSeconds(row.at("playbackProgress", "musicPlaybackProgressRenderer", "durationText").text),
+            thumbUrl: thumbnail(row.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails"))
         )
     }
 
     /// What comes after the first songs of a long playlist.
     static func continuation(_ root: JSON) -> Continuation {
+        let shelf = [root.at("continuationContents", "musicPlaylistShelfContinuation"), root.at("continuationContents", "musicShelfContinuation")]
+            .first { !$0.isNull }
         var items = root.at("onResponseReceivedActions", "0", "appendContinuationItemsAction", "continuationItems").array
-        if items.isEmpty { items = root.at("continuationContents", "musicPlaylistShelfContinuation", "contents").array }
-        return Continuation(tracks: items.compactMap { listTrack($0.at("musicResponsiveListItemRenderer")) }, more: continuationToken(items))
+        if items.isEmpty { items = shelf?.at("contents").array ?? [] }
+        return Continuation(tracks: items.compactMap { listRow($0) }, more: continuationToken(items) ?? shelf.flatMap(shelfToken))
     }
 
     private static func continuationToken(_ items: [JSON]) -> String? {
@@ -209,17 +227,18 @@ enum MusicParser {
         let top = root.findAll("musicCardShelfRenderer").first.flatMap(cardItem)
         // The songs shown inside the card of the top result are in the list below it too, so they are left out here
         let items = root.findAll("musicResponsiveListItemRenderer", skipping: "musicCardShelfRenderer").compactMap(searchItem)
-        return SearchPage(chips: chips, top: top, items: items, more: root.findAll("musicShelfRenderer").first.flatMap(searchToken))
+        return SearchPage(chips: chips, top: top, items: items, more: root.findAll("musicShelfRenderer").first.flatMap(shelfToken))
     }
 
     /// The results after the first ones of a search.
     static func searchMore(_ root: JSON) -> SearchPage {
         let shelf = root.at("continuationContents", "musicShelfContinuation")
         let items = shelf.at("contents").array.compactMap { searchItem($0.at("musicResponsiveListItemRenderer")) }
-        return SearchPage(chips: [], top: nil, items: items, more: shelf.isNull ? nil : searchToken(shelf))
+        return SearchPage(chips: [], top: nil, items: items, more: shelf.isNull ? nil : shelfToken(shelf))
     }
 
-    private static func searchToken(_ shelf: JSON) -> String? {
+    /// Where the rest of a shelf is asked for, in the older way of saying it or the newer one.
+    private static func shelfToken(_ shelf: JSON) -> String? {
         shelf.at("continuations", "0", "nextContinuationData", "continuation").string ?? continuationToken(shelf.at("contents").array)
     }
 
@@ -482,6 +501,16 @@ enum MusicParser {
     static func seconds(_ text: String?) -> Int64 {
         guard let text, isDuration(text) else { return 0 }
         return text.split(separator: ":").reduce(Int64(0)) { total, part in total * 60 + (Int64(part) ?? 0) }
+    }
+
+    /// "1 hr 1 min", "29 min" or "45 sec" in seconds; 0 for anything else.
+    private static func spokenSeconds(_ text: String?) -> Int64 {
+        guard let text else { return 0 }
+        func of(_ unit: String) -> Int64 {
+            guard let match = text.range(of: "(\\d+)\\s*\(unit)", options: .regularExpression) else { return 0 }
+            return Int64(text[match].prefix { $0.isNumber }) ?? 0
+        }
+        return of("hr") * 3600 + of("min") * 60 + of("sec")
     }
 
     /// The biggest picture of a list, and in a size fit for a cover: YouTube serves any square size by its address.

@@ -183,6 +183,19 @@ final class YouTubeTests: XCTestCase {
         XCTAssertEqual(YouTubeResolver.suggestions("not it"), [])
     }
 
+    func testSuggestionsKeepTheVietnameseLettersOfALatin1Answer() async throws {
+        // As Google sends it: "â" and "á" are single bytes (0xE2, 0xE1), "ỹ" and "ổ" are escapes
+        var bytes = Data(#"window.google.ac.h(["m",[["m\u1EF9 t"#.utf8)
+        bytes.append(0xE2)
+        bytes.append(contentsOf: Data(#"m",0],["h"#.utf8))
+        bytes.append(0xE1)
+        bytes.append(contentsOf: Data(#"t t\u1ED5ng",0]]])"#.utf8))
+        let http = FakeHTTP()
+        http.answers.append(("suggestqueries", 200, bytes))
+        let found = try await resolver(http).suggest("m")
+        XCTAssertEqual(found, ["mỹ tâm", "hát tổng"])
+    }
+
     func testAPlaylistIsListedByItsSongsWithoutTheOnesThatHaveNoLength() async throws {
         let http = FakeHTTP()
         try http.answer("music.youtube.com", fixture: "music_playlist")

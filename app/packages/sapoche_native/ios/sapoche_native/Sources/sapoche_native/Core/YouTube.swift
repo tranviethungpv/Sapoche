@@ -366,7 +366,9 @@ actor YouTubeResolver: StreamResolver {
         guard let url = components.url else { return [] }
         let reply = try await http.send(URLRequest(url: url))
         guard (200..<300).contains(reply.status) else { throw HTTPFailure(status: reply.status, service: "YouTube") }
-        return Self.suggestions(reply.text)
+        // The answer says it is ISO-8859-1: "â" or "á" come as one raw byte, which UTF-8 reads as "�". The rest of the
+        // alphabet comes as \u escapes, so Latin-1 reads the whole of it
+        return Self.suggestions(String(data: reply.data, encoding: .isoLatin1) ?? reply.text)
     }
 
     private func web(_ endpoint: String, _ fields: [String: Any]) async throws -> JSON {

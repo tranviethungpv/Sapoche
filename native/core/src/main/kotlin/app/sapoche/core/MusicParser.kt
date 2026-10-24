@@ -97,11 +97,12 @@ object MusicParser {
         val owner = strapline.joinToString("") { it.at("text").string().orEmpty() }.takeIf { it.isNotEmpty() }
             ?: header.at("facepile", "avatarStackViewModel", "text", "content").string()
         val ownerId = strapline.firstNotNullOfOrNull { it.at("navigationEndpoint", "browseEndpoint", "browseId").string()?.takeIf { page -> page.startsWith("UC") } }
-        val rows = (root.findAll("musicPlaylistShelfRenderer").firstOrNull() ?: root.findAll("musicShelfRenderer").firstOrNull()).at("contents").elements()
+        val shelf = root.findAll("musicPlaylistShelfRenderer").firstOrNull() ?: root.findAll("musicShelfRenderer").firstOrNull()
+        val rows = shelf.at("contents").elements()
         val isAlbum = id.startsWith("MPRE") || kind in ALBUM_KINDS
         val title = header.at("title").text().orEmpty()
         val cover = header.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails").thumbnail()
-        val tracks = rows.mapNotNull { listTrack(it.at("musicResponsiveListItemRenderer")) }.map { song ->
+        val tracks = rows.mapNotNull { listRow(it, show = title) }.map { song ->
             // The rows of an album leave out what the page says once: whose songs they are, which album and its cover
             if (!isAlbum) song else song.copy(
                 thumbUrl = song.thumbUrl ?: cover,
@@ -123,16 +124,36 @@ object MusicParser {
             thumbUrl = cover,
             stats = header.at("secondSubtitle").parts(),
             tracks = tracks,
-            more = continuationToken(rows),
+            more = shelf?.let { shelfToken(it) },
             shelves = root.findAll("musicCarouselShelfRenderer").mapNotNull { carousel(it) },
+        )
+    }
+
+    /** A row of a list of songs: a song or video, or an episode of a podcast, which has a row of its own kind. */
+    private fun listRow(row: JsonElement, show: String = ""): MusicTrack? =
+        listTrack(row.at("musicResponsiveListItemRenderer")) ?: episode(row.at("musicMultiRowListItemRenderer"), show)
+
+    /**
+     * An episode in the list of a podcast show. Its row has a title, a line with the views and the date, the length
+     * as words ("1 hr 1 min") and a text; it does not say which show it is of, so the page's name is given as [show].
+     */
+    private fun episode(row: JsonElement?, show: String): MusicTrack? {
+        row ?: return null
+        return MusicTrack(
+            videoId = row.at("onTap", "watchEndpoint", "videoId").string() ?: return null,
+            title = row.at("title").text() ?: return null,
+            artist = show,
+            durationSec = spokenSeconds(row.at("playbackProgress", "musicPlaybackProgressRenderer", "durationText").text()),
+            thumbUrl = row.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails").thumbnail(),
         )
     }
 
     /** What comes after the first songs of a long playlist. */
     fun continuation(root: JsonElement): Continuation {
+        val shelf = root.at("continuationContents", "musicPlaylistShelfContinuation") ?: root.at("continuationContents", "musicShelfContinuation")
         val items = root.at("onResponseReceivedActions", "0", "appendContinuationItemsAction", "continuationItems").elements()
-            .ifEmpty { root.at("continuationContents", "musicPlaylistShelfContinuation", "contents").elements() }
-        return Continuation(items.mapNotNull { listTrack(it.at("musicResponsiveListItemRenderer")) }, continuationToken(items))
+            .ifEmpty { shelf.at("contents").elements() }
+        return Continuation(items.mapNotNull { listRow(it) }, continuationToken(items) ?: shelf?.let { shelfToken(it) })
     }
 
     private fun continuationToken(items: List<JsonElement>): String? =
@@ -191,17 +212,18 @@ object MusicParser {
         val top = root.findAll("musicCardShelfRenderer").firstOrNull()?.let { cardItem(it) }
         // The songs shown inside the card of the top result are in the list below it too, so they are left out here
         val items = root.findAll("musicResponsiveListItemRenderer", skip = "musicCardShelfRenderer").mapNotNull { searchItem(it) }
-        return SearchPage(chips, top, items, root.findAll("musicShelfRenderer").firstOrNull()?.let { searchToken(it) })
+        return SearchPage(chips, top, items, root.findAll("musicShelfRenderer").firstOrNull()?.let { shelfToken(it) })
     }
 
     /** The results after the first ones of a search. */
     fun searchMore(root: JsonElement): SearchPage {
         val shelf = root.at("continuationContents", "musicShelfContinuation")
         val items = shelf.at("contents").elements().mapNotNull { searchItem(it.at("musicResponsiveListItemRenderer")) }
-        return SearchPage(emptyList(), null, items, shelf?.let { searchToken(it) })
+        return SearchPage(emptyList(), null, items, shelf?.let { shelfToken(it) })
     }
 
-    private fun searchToken(shelf: JsonElement): String? =
+    /** Where the rest of a shelf is asked for, in the older way of saying it or the newer one. */
+    private fun shelfToken(shelf: JsonElement): String? =
         shelf.at("continuations", "0", "nextContinuationData", "continuation").string() ?: continuationToken(shelf.at("contents").elements())
 
     private fun searchItem(row: JsonElement?): SearchItem? {
@@ -424,12 +446,22 @@ object MusicParser {
 
     private val DURATION = Regex("""\d{1,2}(:\d{2}){1,2}""")
     private val YEAR = Regex("""\d{4}""")
+    private val HOURS = Regex("""(\d+)\s*hr""")
+    private val MINUTES = Regex("""(\d+)\s*min""")
+    private val SECONDS = Regex("""(\d+)\s*sec""")
     private val SIZE = Regex("""=w\d+-h\d+""")
 
     /** "3:34" or "1:02:03" in seconds; 0 for anything else. */
     internal fun seconds(text: String?): Long {
         if (text == null || !DURATION.matches(text)) return 0
         return text.split(':').fold(0L) { total, part -> total * 60 + part.toLong() }
+    }
+
+    /** "1 hr 1 min", "29 min" or "45 sec" in seconds; 0 for anything else. */
+    private fun spokenSeconds(text: String?): Long {
+        text ?: return 0
+        fun of(unit: Regex) = unit.find(text)?.groupValues?.get(1)?.toLong() ?: 0L
+        return of(HOURS) * 3600 + of(MINUTES) * 60 + of(SECONDS)
     }
 
     /** The biggest picture of a list, and in a size fit for a cover: YouTube serves any square size by its address. */

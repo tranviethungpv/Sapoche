@@ -269,6 +269,30 @@ void main() {
       expect(find.text('Tail'), findsOneWidget);
     });
 
+    testWidgets('the episodes of a podcast take the name of the show', (
+      tester,
+    ) async {
+      final (backend, context) = await start(tester);
+      backend.collectionResult = CollectionPage(
+        id: 'MPSPshow',
+        title: 'The Show',
+        tracks: [music('e0aaaaaaaaa', 'Episode 0', artist: 'The Show')],
+        more: 'TOKEN1',
+      );
+      // The rows after the first ones do not say which show they are of
+      backend.moreResults['TOKEN1'] = MoreTracks(
+        tracks: [music('e1aaaaaaaaa', 'Episode 1', artist: '')],
+      );
+      await openAlbum(tester, context, id: 'MPSPshow');
+      await tester.tap(find.text('Play'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('musicMore TOKEN1'));
+      expect(backend.lastAddedMany.map((t) => t.artist), [
+        'The Show',
+        'The Show',
+      ]);
+    });
+
     testWidgets('a page that cannot be opened can be tried again', (
       tester,
     ) async {

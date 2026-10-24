@@ -28,6 +28,21 @@ class MusicTrack extends Track {
   /// The audio release of a song, as against a video of it.
   final bool isSong;
 
+  /// The same track under another name, for a podcast episode that comes without the show it is of.
+  MusicTrack byArtist(String artist) => MusicTrack(
+    videoId: videoId,
+    title: title,
+    artist: artist,
+    durMs: durMs,
+    thumb: thumb,
+    artistId: artistId,
+    album: album,
+    albumId: albumId,
+    year: year,
+    stats: stats,
+    isSong: isSong,
+  );
+
   factory MusicTrack.fromMap(Map<Object?, Object?> map) => MusicTrack(
     videoId: map['videoId'] as String,
     title: map['title'] as String,

@@ -1,0 +1,5 @@
+Podcast mở được, tìm kiếm cuộn tiếp, và vuốt app đi thì nhạc tắt
+- Podcast hiện lại các tập: trước đây mở một show chỉ thấy trang rỗng. Show dài sẽ nạp thêm tập khi bạn cuộn.
+- Tìm kiếm "tất cả" cuộn tiếp khi hết danh sách: nạp thêm bài hát thay vì dừng sau khoảng 25 kết quả.
+- Vuốt Sapoche khỏi danh sách ứng dụng gần đây thì nhạc tắt và thông báo biến mất, như các app nghe nhạc khác.
+- iPhone: gợi ý khi gõ tìm kiếm không còn biến chữ tiếng Việt như "â", "á" thành ký tự lỗi.

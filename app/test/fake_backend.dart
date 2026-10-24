@@ -85,10 +85,16 @@ class FakeBackend implements Backend {
   Future<void> add(Track track, {bool playNext = false}) =>
       _record('add ${track.videoId} next=$playNext');
 
+  /// The songs of the last [addMany], as they were given.
+  List<Track> lastAddedMany = const [];
+
   @override
-  Future<void> addMany(List<Track> tracks, {bool playNext = false}) => _record(
-    'addMany ${tracks.map((t) => t.videoId).join(',')} next=$playNext',
-  );
+  Future<void> addMany(List<Track> tracks, {bool playNext = false}) {
+    lastAddedMany = tracks;
+    return _record(
+      'addMany ${tracks.map((t) => t.videoId).join(',')} next=$playNext',
+    );
+  }
 
   @override
   Future<void> setRepeat(Repeat mode) => _record('repeat ${mode.name}');

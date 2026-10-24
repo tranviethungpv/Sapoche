@@ -70,6 +70,10 @@ class _SearchPageState extends State<SearchPage> {
   String? _more;
   bool _loadingMore = false;
 
+  /// The search for everything has no results after its own, so once they are read to the end, the songs filter's
+  /// give more: this is its code, null when the results are not those of a search for everything or it was used.
+  String? _tail;
+
   /// Guards against a slow answer for an old search replacing a newer one.
   int _generation = 0;
 
@@ -99,7 +103,9 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   void _onScroll() {
-    if (_more != null && !_loadingMore && _scroll.position.extentAfter < 600) {
+    if ((_more != null || _tail != null) &&
+        !_loadingMore &&
+        _scroll.position.extentAfter < 600) {
       _loadMore();
     }
   }
@@ -117,6 +123,7 @@ class _SearchPageState extends State<SearchPage> {
         _top = null;
         _items = const [];
         _more = null;
+        _tail = null;
         _suggestions = const [];
       });
       return;
@@ -219,6 +226,9 @@ class _SearchPageState extends State<SearchPage> {
         // The filters are those of the search for everything; a filtered answer repeats them
         chips: _params == null ? found.chips : null,
         more: found.more,
+        tail: _params == null && found.more == null
+            ? found.chips.where((c) => c.label == 'Songs').firstOrNull?.params
+            : null,
       );
     } on Object {
       if (!mounted || generation != _generation) return;
@@ -231,10 +241,12 @@ class _SearchPageState extends State<SearchPage> {
     required List<SearchItem> items,
     List<SearchChip>? chips,
     String? more,
+    String? tail,
   }) => setState(() {
     _top = top;
     _items = items;
     _more = more;
+    _tail = tail;
     if (chips != null) _chips = chips;
     _phase = _Phase.results;
   });
@@ -250,11 +262,18 @@ class _SearchPageState extends State<SearchPage> {
 
   Future<void> _loadMore() async {
     final token = _more;
-    if (token == null || _loadingMore) return;
+    final tail = _tail;
+    final query = _asked;
+    if ((token == null && (tail == null || query == null)) || _loadingMore) {
+      return;
+    }
     final generation = _generation;
     setState(() => _loadingMore = true);
     try {
-      final next = await AppScope.of(context).music.searchMore(token);
+      final music = AppScope.of(context).music;
+      final next = token != null
+          ? await music.searchMore(token)
+          : await music.searchPage(query!, params: tail);
       if (!mounted || generation != _generation) return;
       final known = {for (final i in _items) '${i.kind} ${i.id}'};
       setState(() {
@@ -264,6 +283,7 @@ class _SearchPageState extends State<SearchPage> {
             if (!known.contains('${i.kind} ${i.id}')) i,
         ];
         _more = next.more;
+        _tail = null;
         _loadingMore = false;
       });
     } on Object {
@@ -283,6 +303,7 @@ class _SearchPageState extends State<SearchPage> {
       _top = null;
       _items = const [];
       _more = null;
+      _tail = null;
     });
     if (_scroll.hasClients) _scroll.jumpTo(0);
     final text = _field.text.trim();

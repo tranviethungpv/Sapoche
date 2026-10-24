@@ -1381,6 +1381,45 @@ void main() {
     expect(find.text('Tail Artist'), findsOneWidget);
   });
 
+  testWidgets(
+    'the search for everything goes on with the songs once its own results end',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      backend.searchPageResult = SearchResults(
+        chips: const [SearchChip(label: 'Songs', params: 'SONGS')],
+        items: [
+          for (var i = 0; i < 14; i++)
+            SearchItem(kind: 'artist', id: 'UC$i', title: 'Artist $i'),
+        ],
+      );
+      backend.searchPageResults['SONGS'] = const SearchResults(
+        items: [SearchItem(kind: 'artist', id: 'UCtail', title: 'Tail Artist')],
+        more: 'NEXT',
+      );
+      backend.searchMoreResults['NEXT'] = const SearchResults(
+        items: [SearchItem(kind: 'artist', id: 'UCend', title: 'End Artist')],
+      );
+      await tester.tap(find.byTooltip('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'many');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(backend.calls, isNot(contains('musicSearchPage SONGS many')));
+      await tester.drag(find.byType(ListView).last, const Offset(0, -4000));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('musicSearchPage SONGS many'));
+      expect(find.text('Tail Artist'), findsOneWidget);
+      // and on through the pages of that list
+      await tester.drag(find.byType(ListView).last, const Offset(0, -4000));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('musicSearchMore NEXT'));
+      expect(find.text('End Artist'), findsOneWidget);
+    },
+  );
+
   testWidgets('a song that is queued already cannot be added from search', (
     tester,
   ) async {

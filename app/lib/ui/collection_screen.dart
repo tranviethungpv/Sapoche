@@ -202,6 +202,11 @@ class _ContentState extends State<_Content> {
     super.dispose();
   }
 
+  /// The episodes after the first ones of a podcast come without the name of the show: the page's name stands for it.
+  List<MusicTrack> _named(List<MusicTrack> tracks) => [
+    for (final t in tracks) t.artist.isEmpty ? t.byArtist(_page.title) : t,
+  ];
+
   void _onScroll() {
     if (_more != null &&
         !_loadingMore &&
@@ -222,7 +227,7 @@ class _ContentState extends State<_Content> {
       final next = await AppScope.of(context).music.more(token);
       if (!mounted) return;
       setState(() {
-        _tracks.addAll(next.tracks);
+        _tracks.addAll(_named(next.tracks));
         _more = next.more;
         _loadingMore = false;
       });
@@ -244,7 +249,7 @@ class _ContentState extends State<_Content> {
     try {
       while (token != null && songs.length < _cap) {
         final next = await music.more(token);
-        songs.addAll(next.tracks);
+        songs.addAll(_named(next.tracks));
         token = next.more;
       }
     } on Object {

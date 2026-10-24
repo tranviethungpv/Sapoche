@@ -1,0 +1,5 @@
+Podcasts open, search goes on, and swiping the app away stops the music
+- Podcasts show their episodes again: opening a show used to give an empty page. Long shows load more episodes as you scroll.
+- Search for everything keeps going when you reach the end of the list: it continues with more songs instead of stopping after about 25 results.
+- Swiping Sapoche away from the recent apps now stops the music and removes the notification, like other music apps.
+- iPhone: suggestions while you type no longer turn Vietnamese letters like "â" or "á" into a broken character.

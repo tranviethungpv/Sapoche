@@ -274,9 +274,11 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Swiping the app away should not stop music that is playing or a room we are part of
-        if (group.isActive) return
-        if (!player.playWhenReady || player.mediaItemCount == 0) stopSelf()
+        // Swiping the app out of the recents ends the session, as it does in YouTube Music and Spotify: the sound
+        // stops and the notification goes. The queue is kept on disk, and a room is rejoined if the app is opened again soon
+        EventLog.d("service", "app removed from the recents, stopping")
+        SapocheApp.announceServiceStop()
+        stopSelf()
     }
 
     override fun onDestroy() {

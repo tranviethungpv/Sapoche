@@ -161,6 +161,34 @@ final class MusicParserTests: XCTestCase {
         XCTAssertNotNil(next.more)
     }
 
+    func testAPodcastShowListsItsEpisodesWhoseRowsAreNotThoseOfSongs() async throws {
+        let asked = Asked()
+        let music = MusicClient { _, body in
+            asked.bodies.append(body)
+            return JSON.parse(data: try fixture("podcast_show"))!
+        }
+        let page = try await music.collection("MPSPPLycTNLUo2y2EAKEhVfxB9gYo6r0OTMgM0")
+        XCTAssertEqual(asked.bodies.first?["browseId"] as? String, "MPSPPLycTNLUo2y2EAKEhVfxB9gYo6r0OTMgM0", "a show is browsed as it is, without VL")
+        XCTAssertEqual(page.title, "InnerFrench Podcast")
+        XCTAssertEqual(page.tracks.count, 3)
+        let first = try XCTUnwrap(page.tracks.first)
+        XCTAssertEqual(first.videoId, "idcUTDJWCEk")
+        XCTAssertEqual(first.title, "E200 Toutes les bonnes choses ont une fin")
+        XCTAssertEqual(first.artist, "InnerFrench Podcast", "the row does not say the show, the page does")
+        XCTAssertEqual(first.durationSec, 3660, "1 hr 1 min")
+        XCTAssertEqual(page.tracks[1].durationSec, 29 * 60)
+        XCTAssertNotNil(first.thumbUrl)
+        XCTAssertNotNil(page.more, "a show comes a hundred episodes at a time")
+    }
+
+    func testTheNextEpisodesOfAShowComeWithWhereTheOnesAfterThemAre() async throws {
+        let music = MusicClient { _, _ in JSON.parse(data: try fixture("podcast_more"))! }
+        let next = try await music.more("TOKEN")
+        XCTAssertEqual(next.tracks.count, 3)
+        XCTAssertTrue(next.tracks.allSatisfy { $0.videoId.count == 11 && !$0.title.isEmpty && $0.durationSec > 0 })
+        XCTAssertNotNil(next.more)
+    }
+
     func testASearchListsWhatYouTubeMusicFindsATopResultAndTheFiltersOnOffer() async throws {
         let page = try await client(["search": "search_top_song"]).searchPage("never gonna give you up", params: nil)
         // YouTube puts first the kind that suits the search best, so the order is its own
