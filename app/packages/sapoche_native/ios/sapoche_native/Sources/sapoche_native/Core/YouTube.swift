@@ -127,7 +127,7 @@ struct Resolved: Equatable {
 
 /// Swappable stream source: this device, a home host, etc. The rest of the app only knows this interface.
 protocol StreamResolver {
-    /// Videos matching [query]; with [songsOnly] only what YouTube Music lists as songs.
+    /// Up to [limit] videos matching [query], over as many pages as it takes; with [songsOnly] only what YouTube Music lists as songs.
     func search(_ query: String, limit: Int, songsOnly: Bool) async throws -> [TrackInfo]
     func resolve(_ videoId: String) async throws -> Resolved
 
@@ -336,9 +336,21 @@ actor YouTubeResolver: StreamResolver {
         if songsOnly {
             return try await music.searchSongs(query).filter { $0.durationSec > 0 }.prefix(limit).map(Self.info)
         }
-        let answer = try await web("search", ["query": query, "params": "EgIQAQ%3D%3D"])
-        return Array(Self.videos(answer).prefix(limit))
+        // The pages after the first are asked for until there are as many as wanted
+        var found = [TrackInfo]()
+        var answer = try await web("search", ["query": query, "params": "EgIQAQ%3D%3D"])
+        for _ in 1...Self.maxSearchPages {
+            found += Self.videos(answer)
+            guard found.count < limit,
+                  let next = answer.findAll("continuationItemRenderer").first?.at("continuationEndpoint", "continuationCommand", "token").string
+            else { break }
+            answer = try await web("search", ["continuation": next])
+        }
+        return Array(found.prefix(limit))
     }
+
+    /// How many pages of a search are read to get as many results as asked for.
+    private static let maxSearchPages = 10
 
     func searchPlaylists(_ query: String, limit: Int) async throws -> [PlaylistRef] {
         let answer = try await web("search", ["query": query, "params": "EgIQAw%3D%3D"])

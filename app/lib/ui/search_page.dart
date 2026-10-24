@@ -41,6 +41,9 @@ class _SearchPageState extends State<SearchPage> {
   /// How many completions are offered.
   static const _completions = 3;
 
+  /// How many videos YouTube itself gives for one page of the search.
+  static const _youtubePage = 20;
+
   static const _capsule = OutlineInputBorder(
     borderRadius: BorderRadius.all(Radius.circular(999)),
     borderSide: BorderSide.none,
@@ -74,6 +77,10 @@ class _SearchPageState extends State<SearchPage> {
   /// give more: this is its code, null when the results are not those of a search for everything or it was used.
   String? _tail;
 
+  /// How many videos were asked of YouTube itself when there may be more of them, else 0: it gives them over as many
+  /// pages as are wanted, so more are asked for by asking for a larger number.
+  int _youtubeLimit = 0;
+
   /// Guards against a slow answer for an old search replacing a newer one.
   int _generation = 0;
 
@@ -103,7 +110,7 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   void _onScroll() {
-    if ((_more != null || _tail != null) &&
+    if ((_more != null || _tail != null || _youtubeLimit > 0) &&
         !_loadingMore &&
         _scroll.position.extentAfter < 600) {
       _loadMore();
@@ -124,6 +131,7 @@ class _SearchPageState extends State<SearchPage> {
         _items = const [];
         _more = null;
         _tail = null;
+        _youtubeLimit = 0;
         _suggestions = const [];
       });
       return;
@@ -214,7 +222,10 @@ class _SearchPageState extends State<SearchPage> {
         final found = await _room.search(query, songsOnly: false);
         if (!mounted || generation != _generation) return;
         // A song and its official video come up side by side: one row is enough
-        _show(items: [for (final t in uniqueSongs(found)) _videoItem(t)]);
+        _show(
+          items: [for (final t in uniqueSongs(found)) _videoItem(t)],
+          youtubeLimit: found.length >= _youtubePage ? _youtubePage : 0,
+        );
         return;
       }
       final found = await AppScope.of(context).music
@@ -242,11 +253,13 @@ class _SearchPageState extends State<SearchPage> {
     List<SearchChip>? chips,
     String? more,
     String? tail,
+    int youtubeLimit = 0,
   }) => setState(() {
     _top = top;
     _items = items;
     _more = more;
     _tail = tail;
+    _youtubeLimit = youtubeLimit;
     if (chips != null) _chips = chips;
     _phase = _Phase.results;
   });
@@ -260,7 +273,35 @@ class _SearchPageState extends State<SearchPage> {
     track: track,
   );
 
+  /// The next videos of the search of YouTube itself, which has no token: the same search is asked for a larger number,
+  /// and what is new in it is put at the end.
+  Future<void> _loadMoreYoutube() async {
+    final query = _asked;
+    if (query == null || _loadingMore) return;
+    final wanted = _youtubeLimit + _youtubePage;
+    final generation = _generation;
+    setState(() => _loadingMore = true);
+    try {
+      final found = await _room.search(query, songsOnly: false, limit: wanted);
+      if (!mounted || generation != _generation) return;
+      final known = {for (final i in _items) i.id};
+      setState(() {
+        _items = [
+          ..._items,
+          for (final t in uniqueSongs(found))
+            if (!known.contains(t.videoId)) _videoItem(t),
+        ];
+        _youtubeLimit = found.length >= wanted ? wanted : 0;
+        _loadingMore = false;
+      });
+    } on Object {
+      if (!mounted || generation != _generation) return;
+      setState(() => _loadingMore = false);
+    }
+  }
+
   Future<void> _loadMore() async {
+    if (_youtubeLimit > 0) return _loadMoreYoutube();
     final token = _more;
     final tail = _tail;
     final query = _asked;
@@ -304,6 +345,7 @@ class _SearchPageState extends State<SearchPage> {
       _items = const [];
       _more = null;
       _tail = null;
+      _youtubeLimit = 0;
     });
     if (_scroll.hasClients) _scroll.jumpTo(0);
     final text = _field.text.trim();

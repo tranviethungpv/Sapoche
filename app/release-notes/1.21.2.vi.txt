@@ -1,0 +1,2 @@
+Tìm kiếm YouTube cuộn tiếp được
+- Trong tìm kiếm, bộ lọc YouTube nay nạp thêm video khi bạn cuộn tới cuối danh sách, như các bộ lọc khác.

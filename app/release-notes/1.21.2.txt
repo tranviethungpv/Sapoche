@@ -1,0 +1,2 @@
+YouTube search keeps loading
+- In search, the YouTube filter now loads more videos as you scroll to the end of the list, like the other filters.

@@ -33,12 +33,23 @@ class NewPipeResolver(
         withContext(Dispatchers.IO) {
             val filter = if (songsOnly) YoutubeSearchQueryHandlerFactory.MUSIC_SONGS else YoutubeSearchQueryHandlerFactory.VIDEOS
             val handler = youtube.searchQHFactory.fromQuery(query, listOf(filter), "")
-            SearchInfo.getInfo(youtube, handler).relatedItems
-                .filterIsInstance<StreamInfoItem>()
-                // Live streams have no length and cannot be put on a shared queue
-                .filter { it.duration > 0 && it.streamType != StreamType.LIVE_STREAM }
-                .take(limit)
-                .map { it.toTrack() }
+            val info = SearchInfo.getInfo(youtube, handler)
+            val found = ArrayList<TrackInfo>()
+            var items = info.relatedItems
+            var next = info.nextPage
+            var pages = 1
+            while (true) {
+                items.filterIsInstance<StreamInfoItem>()
+                    // Live streams have no length and cannot be put on a shared queue
+                    .filter { it.duration > 0 && it.streamType != StreamType.LIVE_STREAM }
+                    .forEach { found += it.toTrack() }
+                // The pages after the first are asked for until there are as many as wanted
+                if (found.size >= limit || next == null || ++pages > MAX_PAGES) break
+                val page = SearchInfo.getMoreItems(youtube, handler, next)
+                items = page.items
+                next = page.nextPage
+            }
+            found.take(limit)
         }
 
     override suspend fun searchPlaylists(query: String, limit: Int): List<PlaylistRef> =
@@ -149,4 +160,9 @@ class NewPipeResolver(
         contentLength = itagItem?.contentLength ?: -1,
         itag = id.toIntOrNull() ?: itagItem?.id ?: -1,
     )
+
+    private companion object {
+        /** How many pages of a search are read to get as many results as asked for. */
+        const val MAX_PAGES = 10
+    }
 }

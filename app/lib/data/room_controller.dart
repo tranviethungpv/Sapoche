@@ -815,8 +815,11 @@ class RoomController extends ChangeNotifier {
 
   // ------------------------------------------------------------------ search and settings
 
-  Future<List<Track>> search(String query, {bool songsOnly = false}) =>
-      _backend.search(query, songsOnly: songsOnly);
+  Future<List<Track>> search(
+    String query, {
+    bool songsOnly = false,
+    int? limit,
+  }) => _backend.search(query, songsOnly: songsOnly, limit: limit);
   Future<LinkResult?> lookup(String text) => _backend.lookup(text);
 
   /// Whether the music carries on with similar songs when the queue runs out.

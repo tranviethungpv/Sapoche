@@ -416,7 +416,7 @@ final class Bridge {
         case "searchPlaylists":
             return try await searchPlaylists(string("query"))
         case "search":
-            return try await search(string("query"), songsOnly: bool("songsOnly"))
+            return try await search(string("query"), songsOnly: bool("songsOnly"), limit: int("limit"))
         case "lookup":
             return try await lookup(string("text"))
         case "roomInfo":
@@ -685,9 +685,9 @@ final class Bridge {
 
     // ------------------------------------------------------------------ search
 
-    private func search(_ query: String, songsOnly: Bool) async throws -> [[String: Any]] {
+    private func search(_ query: String, songsOnly: Bool, limit: Int) async throws -> [[String: Any]] {
         if query.trimmingCharacters(in: .whitespaces).isEmpty { return [] }
-        return try await resolver.search(query.trimmingCharacters(in: .whitespaces), limit: Self.searchLimit, songsOnly: songsOnly).map { $0.toMap() }
+        return try await resolver.search(query.trimmingCharacters(in: .whitespaces), limit: limit > 0 ? limit : Self.searchLimit, songsOnly: songsOnly).map { $0.toMap() }
     }
 
     /// Completions of a half-typed search; empty when YouTube cannot be reached, since they are only a help.

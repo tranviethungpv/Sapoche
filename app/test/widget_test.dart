@@ -1420,6 +1420,51 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the search of YouTube itself asks for a larger number as the end comes near',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      Track video(int i) => Track(
+        videoId: 'v${i.toString().padLeft(2, '0')}aaaaaaaa',
+        title: 'Video number $i',
+        artist: 'y$i',
+        durMs: 1000,
+      );
+      backend.searchPageResult = const SearchResults(
+        chips: [SearchChip(label: 'Songs', params: 'SONGS')],
+        items: [SearchItem(kind: 'artist', id: 'UCx', title: 'Some Artist')],
+      );
+      backend.searchResults = [for (var i = 0; i < 20; i++) video(i)];
+      await tester.tap(find.byTooltip('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'many');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('YouTube'));
+      await tester.pumpAndSettle();
+      expect(backend.calls.last, 'search many');
+
+      // A full page means there may be more; the next number brings the rest, and the first ones keep their places
+      backend.searchResults = [for (var i = 0; i < 25; i++) video(i)];
+      await tester.drag(find.byType(ListView).last, const Offset(0, -6000));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('search many limit=40'));
+      expect(
+        find.text('Video number 24', skipOffstage: false),
+        findsOneWidget,
+      );
+
+      // Fewer than asked for is the end
+      backend.calls.clear();
+      await tester.drag(find.byType(ListView).last, const Offset(0, -6000));
+      await tester.pumpAndSettle();
+      expect(backend.calls.where((c) => c.startsWith('search ')), isEmpty);
+    },
+  );
+
   testWidgets('a song that is queued already cannot be added from search', (
     tester,
   ) async {

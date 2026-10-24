@@ -180,8 +180,13 @@ abstract class Backend {
   Future<void> move(String itemId, int toIndex);
   Future<void> clear();
 
-  /// Videos matching [query]; with [songsOnly] just what YouTube Music lists as songs.
-  Future<List<Track>> search(String query, {bool songsOnly = false});
+  /// Videos matching [query]; with [songsOnly] just what YouTube Music lists as songs. Up to [limit] of them, over as
+  /// many pages of the search as it takes (a page when null).
+  Future<List<Track>> search(
+    String query, {
+    bool songsOnly = false,
+    int? limit,
+  });
 
   /// Mixes up the songs still to come; with the queue finished, mixes them all and plays from the top.
   Future<void> shuffle();
@@ -617,10 +622,15 @@ class NativeBackend implements Backend {
   Future<void> enterPictureInPicture() => _call('pipEnter');
 
   @override
-  Future<List<Track>> search(String query, {bool songsOnly = false}) async {
+  Future<List<Track>> search(
+    String query, {
+    bool songsOnly = false,
+    int? limit,
+  }) async {
     final raw = await _call<List<Object?>>('search', {
       'query': query,
       'songsOnly': songsOnly,
+      'limit': ?limit,
     });
     return [
       for (final e in raw ?? const [])

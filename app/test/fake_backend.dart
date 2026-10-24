@@ -164,8 +164,14 @@ class FakeBackend implements Backend {
   Future<void> enterPictureInPicture() => _record('pipEnter');
 
   @override
-  Future<List<Track>> search(String query, {bool songsOnly = false}) async {
-    await _record(songsOnly ? 'search $query songs' : 'search $query');
+  Future<List<Track>> search(
+    String query, {
+    bool songsOnly = false,
+    int? limit,
+  }) async {
+    await _record(
+      '${songsOnly ? 'search $query songs' : 'search $query'}${limit == null ? '' : ' limit=$limit'}',
+    );
     await searchGate?.future;
     return searchResults;
   }

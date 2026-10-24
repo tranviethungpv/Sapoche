@@ -454,7 +454,7 @@ class SapocheBridge(
             )
             "suggest" -> return suggest(call.argument<String>("query").orEmpty())
             "searchPlaylists" -> return searchPlaylists(call.argument<String>("query").orEmpty())
-            "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true)
+            "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true, call.argument<Number>("limit")?.toInt() ?: SEARCH_LIMIT)
             "lookup" -> return lookup(call.argument<String>("text").orEmpty())
             "roomInfo" -> return roomInfo(call.argument<String>("code").orEmpty())
             "libraryLiked" -> return SapocheApp.library.liked().map { it.toMap() }
@@ -763,9 +763,9 @@ class SapocheBridge(
         }
     }
 
-    private suspend fun search(query: String, songsOnly: Boolean): List<Map<String, Any?>> {
+    private suspend fun search(query: String, songsOnly: Boolean, limit: Int): List<Map<String, Any?>> {
         if (query.isBlank()) return emptyList()
-        return SapocheApp.resolver.search(query.trim(), SEARCH_LIMIT, songsOnly).map { it.toMap() }
+        return SapocheApp.resolver.search(query.trim(), limit, songsOnly).map { it.toMap() }
     }
 
     /** Completions of a half-typed search; empty when YouTube cannot be reached, since they are only a help. */

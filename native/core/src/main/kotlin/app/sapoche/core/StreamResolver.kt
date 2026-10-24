@@ -56,7 +56,7 @@ data class Resolved(
  * The rest of the app only knows this interface.
  */
 interface StreamResolver {
-    /** Videos matching [query]; with [songsOnly] only what YouTube Music lists as songs. */
+    /** Up to [limit] videos matching [query], over as many pages as it takes; with [songsOnly] only what YouTube Music lists as songs. */
     suspend fun search(query: String, limit: Int = 10, songsOnly: Boolean = false): List<TrackInfo>
     suspend fun resolve(videoId: String): Resolved
 

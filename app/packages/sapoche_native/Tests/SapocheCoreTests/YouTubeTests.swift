@@ -162,6 +162,27 @@ final class YouTubeTests: XCTestCase {
         XCTAssertTrue(YouTubeResolver.videos(live).isEmpty, "a live stream has no length")
     }
 
+    func testASearchReadsPagesUntilThereAreAsManyVideosAsAskedFor() async throws {
+        func video(_ id: String) -> String {
+            #"{"videoRenderer":{"videoId":"\#(id)","title":{"runs":[{"text":"T \#(id)"}]},"lengthText":{"simpleText":"3:00"},"ownerText":{"runs":[{"text":"A"}]}}}"#
+        }
+        func page(_ ids: [String], next: String?) -> String {
+            let token = next.map { #",{"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"\#($0)"}}}}"# } ?? ""
+            return "{\"items\":[\(ids.map(video).joined(separator: ","))\(token)]}"
+        }
+        let http = FakeHTTP()
+        // The same address answers every page, so the answers are told apart by what the request holds
+        let pager = PagedHTTP(base: http, pages: ["first": page(["a", "b"], next: "T1"), "T1": page(["c", "d"], next: "T2"), "T2": page(["e"], next: nil)])
+        let youtube = YouTubeResolver(http: pager, music: MusicClient(http: pager), region: "VN")
+        let two = try await youtube.search("q", limit: 2, songsOnly: false)
+        XCTAssertEqual(two.map(\.videoId), ["a", "b"])
+        XCTAssertEqual(pager.asked, ["first"], "the first page was enough")
+        pager.asked = []
+        let five = try await youtube.search("q", limit: 20, songsOnly: false)
+        XCTAssertEqual(five.map(\.videoId), ["a", "b", "c", "d", "e"], "it ends where the pages end")
+        XCTAssertEqual(pager.asked, ["first", "T1", "T2"])
+    }
+
     func testAPlaylistSearchGivesPlaylistsWithTheirSizes() throws {
         let answer = try XCTUnwrap(JSON.parse(data: fixture("web_search_playlists")))
         let found = YouTubeResolver.playlists(answer)
@@ -224,5 +245,25 @@ final class FlakyHTTP: HTTPClient, @unchecked Sendable {
         playerNames.append(((body["context"] as? [String: Any])?["client"] as? [String: Any])?["clientName"] as? String ?? "")
         let text = answers.isEmpty ? "{}" : answers.removeFirst()
         return HTTPReply(status: 200, data: Data(text.utf8), headers: [:])
+    }
+}
+
+/// Answers a search by what its body holds: the continuation token, or "first" for the first page.
+final class PagedHTTP: HTTPClient, @unchecked Sendable {
+    let base: FakeHTTP
+    let pages: [String: String]
+    var asked: [String] = []
+
+    init(base: FakeHTTP, pages: [String: String]) {
+        self.base = base
+        self.pages = pages
+    }
+
+    func send(_ request: URLRequest) async throws -> HTTPReply {
+        guard request.url?.absoluteString.contains("/search") == true else { return try await base.send(request) }
+        let body = (request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+        let key = body["continuation"] as? String ?? "first"
+        asked.append(key)
+        return HTTPReply(status: 200, data: Data((pages[key] ?? "{}").utf8), headers: [:])
     }
 }
