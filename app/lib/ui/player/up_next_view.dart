@@ -10,6 +10,7 @@ import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
 import '../widgets/delete_background.dart';
+import '../widgets/queued_autoplay.dart';
 import '../widgets/track_tile.dart';
 import 'player_message.dart';
 import 'track_section.dart';
@@ -64,7 +65,7 @@ class UpNextView extends StatelessWidget {
       ),
       slivers: [
         SliverToBoxAdapter(child: SectionHeading(S.upNext)),
-        if (upNext.isEmpty)
+        if (upNext.isEmpty && snapshot.autoUpNext.isEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
@@ -318,6 +319,17 @@ class _SuggestionsState extends State<_Suggestions> {
     final p = context.palette;
     final alone = !snapshot.inRoom;
     final roomAutoplay = snapshot.roomAutoplay;
+    final lined = snapshot.autoUpNext;
+    // Songs the room already lined up are what plays next once the queue ends: they stand where the suggestions would
+    if (lined.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeading(S.autoplay),
+          QueuedAutoplay(controller: c, entries: lined),
+        ],
+      );
+    }
     return FutureBuilder<SongRadio>(
       key: ValueKey(_for),
       future: _radio,

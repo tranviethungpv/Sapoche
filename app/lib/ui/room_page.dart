@@ -15,6 +15,7 @@ import 'widgets/avatars.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/equalizer.dart';
 import 'widgets/link_banner.dart';
+import 'widgets/queued_autoplay.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/track_tile.dart';
 
@@ -187,6 +188,15 @@ class _RoomPageState extends State<RoomPage> {
           },
         ),
       ],
+      if (snapshot.autoUpNext.isNotEmpty) ...[
+        _SectionTitle(S.autoplay),
+        SliverToBoxAdapter(
+          child: QueuedAutoplay(
+            controller: controller,
+            entries: snapshot.autoUpNext,
+          ),
+        ),
+      ],
       if (played.isNotEmpty) ...[
         _SectionTitle(S.played),
         SliverList.builder(
@@ -227,6 +237,8 @@ class _RoomPageState extends State<RoomPage> {
   );
 
   String _byline(RoomSnapshot snapshot, QueueEntry entry) {
+    // Lined up by autoplay: no member picked it, whoever's device fetched it
+    if (entry.auto) return '${entry.artist} · ${S.autoplay}';
     final who = entry.addedBy == snapshot.you
         ? S.you
         : snapshot.nameOf(entry.addedBy);

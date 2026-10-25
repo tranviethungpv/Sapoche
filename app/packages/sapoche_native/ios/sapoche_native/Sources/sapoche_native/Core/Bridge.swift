@@ -620,7 +620,13 @@ final class Bridge {
             controller.requestRoomAutoplay(bool("on"))
         case "sendChat":
             try requireRoom()
-            return controller.sendChat(string("text"), cid: string("cid"))
+            return controller.sendChat(string("text"), cid: string("cid"), reply: args["reply"] == nil ? nil : int64("reply"))
+        case "reactChat":
+            try requireRoom()
+            controller.reactToChat(int64("id"), args["e"] as? String)
+        case "readChat":
+            try requireRoom()
+            controller.readChat(upTo: int64("upTo"))
         case "react":
             try requireRoom()
             controller.react(string("e"), n: args["n"] == nil ? 1 : int("n"))

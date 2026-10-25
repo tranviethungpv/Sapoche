@@ -12,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.ChatMessage
+import app.sapoche.sync.ChatReceipt
 import app.sapoche.sync.ClockSync
 import app.sapoche.sync.Connection
 import app.sapoche.sync.GroupSession
@@ -129,8 +130,11 @@ class GroupController(
 
     fun picturesSeen(): List<Avatar> = pictures.map { Avatar(it.key, it.value) }
 
-    /** Chat messages of room [room]: all it keeps when [replace], else new ones to add. */
-    data class Chat(val room: String, val messages: List<ChatMessage>, val replace: Boolean)
+    /**
+     * Chat messages of room [room]: all it keeps when [replace], else new ones to add or ones that changed. [receipts] is
+     * what each member has got of the chat when that changed (or came with everything), else null.
+     */
+    data class Chat(val room: String, val messages: List<ChatMessage>, val replace: Boolean, val receipts: Map<String, ChatReceipt>? = null)
 
     private val _chat = MutableSharedFlow<Chat>(extraBufferCapacity = 64)
     val chat: SharedFlow<Chat> = _chat.asSharedFlow()
@@ -139,10 +143,18 @@ class GroupController(
     @Volatile
     private var chatLog: List<ChatMessage>? = null
 
+    /** What each member has got of the chat, as the room last said. */
+    @Volatile
+    private var receiptsLog: Map<String, ChatReceipt> = emptyMap()
+
+    /** The last message this device told the room it has, so that it says so once for each. */
+    @Volatile
+    private var deliveredUpTo = 0L
+
     /** The whole chat, for a screen that comes back after messages arrived. */
     fun chatSeen(): Chat? {
         val code = roomCode ?: return null
-        return chatLog?.let { Chat(code, it, replace = true) }
+        return chatLog?.let { Chat(code, it, replace = true, receipts = receiptsLog) }
     }
 
     /** Member [by] reacted with [e], [n] taps of it. */
@@ -151,8 +163,18 @@ class GroupController(
     private val _reactions = MutableSharedFlow<Reaction>(extraBufferCapacity = 16)
     val reactions: SharedFlow<Reaction> = _reactions.asSharedFlow()
 
-    /** Sends a chat message; false when there is no connection to send it on. */
-    fun sendChat(text: String, cid: String): Boolean = client?.send(Protocol.chat(text, cid)) ?: false
+    /** Sends a chat message, as an answer to message number [reply] when it has one; false when there is no connection to send it on. */
+    fun sendChat(text: String, cid: String, reply: Long? = null): Boolean = client?.send(Protocol.chat(text, cid, reply)) ?: false
+
+    /** Gives chat message [id] this device's reaction [e] (a name of the room's reactions or an emoji); null takes it away. */
+    fun reactToChat(id: Long, e: String?) {
+        client?.send(Protocol.chatReact(id, e))
+    }
+
+    /** The chat is on a screen, and its messages up to number [upTo] have been looked at. */
+    fun readChat(upTo: Long) {
+        client?.send(Protocol.chatReceipt(read = upTo))
+    }
 
     fun react(e: String, n: Int) {
         client?.send(Protocol.react(e, n))
@@ -237,7 +259,8 @@ class GroupController(
                 val more = moreLike(ask.videoId, queue().map { it.videoId }.toSet(), AUTOPLAY_COUNT)
                 if (more.isEmpty() || session?.snapshot?.value?.state?.epoch != ask.epoch) return@launch
                 EventLog.d("sync", "autoplay adds ${more.size} songs like '${ask.title}' to the room")
-                send(Protocol.queueAddMany(more))
+                // Marked as autoplay's, so the room keeps them apart from the songs its members chose
+                send(Protocol.queueAddMany(more, auto = true))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -475,6 +498,8 @@ class GroupController(
         pending.clear()
         pictures.clear()
         chatLog = null
+        receiptsLog = emptyMap()
+        deliveredUpTo = 0
         scope.cancel()
         scope = newScope()
         local.attach() // the personal queue gets the player back, paused where it was
@@ -485,15 +510,38 @@ class GroupController(
         when (message) {
             is ServerMessage.ChatHistory -> {
                 chatLog = message.msgs.takeLast(CHAT_KEPT)
-                _chat.tryEmit(Chat(room, chatLog.orEmpty(), replace = true))
+                receiptsLog = message.receipts
+                _chat.tryEmit(Chat(room, chatLog.orEmpty(), replace = true, receipts = receiptsLog))
+                chatLog?.lastOrNull()?.let(::acknowledge)
             }
             is ServerMessage.Chat -> {
                 chatLog = (chatLog.orEmpty() + message.msg).takeLast(CHAT_KEPT)
                 _chat.tryEmit(Chat(room, listOf(message.msg), replace = false))
+                acknowledge(message.msg)
+            }
+            is ServerMessage.ChatUpdate -> {
+                val log = chatLog ?: return
+                chatLog = log.map { if (it.id == message.msg.id) message.msg else it }
+                _chat.tryEmit(Chat(room, listOf(message.msg), replace = false))
+            }
+            is ServerMessage.ChatReceipts -> {
+                receiptsLog = message.receipts
+                _chat.tryEmit(Chat(room, emptyList(), replace = false, receipts = receiptsLog))
             }
             is ServerMessage.React -> _reactions.tryEmit(Reaction(message.by, message.e, message.n))
             else -> Unit
         }
+    }
+
+    /**
+     * Tells the room that the chat has reached this device up to [last], so that the others can see their message as
+     * delivered. The screen need not be on: this is the device having it, not the person having read it.
+     */
+    private fun acknowledge(last: ChatMessage) {
+        if (last.id <= deliveredUpTo) return
+        deliveredUpTo = last.id
+        // What this device wrote itself needs no word
+        if (last.by != session?.snapshot?.value?.you) client?.send(Protocol.chatReceipt(delivered = last.id))
     }
 
     private fun publish() {

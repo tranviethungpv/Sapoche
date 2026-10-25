@@ -23,6 +23,8 @@ data class QueueItem(
     val thumb: String? = null,
     val durMs: Long,
     val addedBy: String,
+    /** Put on the queue by autoplay, not by a member: it stays behind the songs they chose and goes once played. Protocol 12. */
+    val auto: Boolean = false,
 )
 
 /** A song to put on the queue; the server adds the item id and who added it. */
@@ -80,7 +82,19 @@ data class ChatMessage(
     /** Server time it was sent at. */
     val at: Long,
     val cid: String? = null,
+    /** The message this one answers, as it was when the answer was written. Protocol 12. */
+    val re: ChatQuote? = null,
+    /** Reactions to this message by the public id of each member who gave one; a name of the room's reactions or an emoji. Protocol 12. */
+    val rx: Map<String, String> = emptyMap(),
 )
+
+/** What a reply shows of the message it answers. */
+@Serializable
+data class ChatQuote(val id: Long, val by: String, val name: String, val text: String)
+
+/** What a member has got of the chat: [d] the last message that reached their device, [r] the last one they looked at. Protocol 12. */
+@Serializable
+data class ChatReceipt(val d: Long = 0, val r: Long = 0)
 
 sealed interface ServerMessage {
     @Serializable
@@ -128,7 +142,15 @@ sealed interface ServerMessage {
 
     /** The room's last chat messages, oldest first, sent right after the state on joining. Protocol 10. */
     @Serializable
-    data class ChatHistory(val msgs: List<ChatMessage>) : ServerMessage
+    data class ChatHistory(val msgs: List<ChatMessage>, val receipts: Map<String, ChatReceipt> = emptyMap()) : ServerMessage
+
+    /** A message changed, as somebody reacted to it: its new version. Protocol 12. */
+    @Serializable
+    data class ChatUpdate(val msg: ChatMessage) : ServerMessage
+
+    /** What each member has got of the chat, by public id. Protocol 12. */
+    @Serializable
+    data class ChatReceipts(val receipts: Map<String, ChatReceipt>) : ServerMessage
 
     /** Member [by] reacted with [e], [n] taps of it. Protocol 10. */
     @Serializable
@@ -157,6 +179,8 @@ object Protocol {
                 "avatar" -> json.decodeFromJsonElement<ServerMessage.Avatar>(obj)
                 "chat" -> json.decodeFromJsonElement<ServerMessage.Chat>(obj)
                 "chat.history" -> json.decodeFromJsonElement<ServerMessage.ChatHistory>(obj)
+                "chat.update" -> json.decodeFromJsonElement<ServerMessage.ChatUpdate>(obj)
+                "chat.receipts" -> json.decodeFromJsonElement<ServerMessage.ChatReceipts>(obj)
                 "react" -> json.decodeFromJsonElement<ServerMessage.React>(obj)
                 "error" -> json.decodeFromJsonElement<ServerMessage.Error>(obj)
                 else -> null
@@ -206,10 +230,26 @@ object Protocol {
     /** Asks for the picture of the member [id]. */
     fun avatarGet(id: String) = msg("avatar.get") { put("id", id) }
 
-    /** A chat message to the room; [cid] comes back with it, so this device knows it arrived. Protocol 10. */
-    fun chat(text: String, cid: String) = msg("chat") {
+    /**
+     * A chat message to the room; [cid] comes back with it, so this device knows it arrived. [reply] is the number of the
+     * message it answers (protocol 12). Protocol 10.
+     */
+    fun chat(text: String, cid: String, reply: Long? = null) = msg("chat") {
         put("text", text)
         put("cid", cid)
+        if (reply != null) put("reply", reply)
+    }
+
+    /** This member's reaction to the chat message [id]: a name of the room's reactions or an emoji; null takes it away. Protocol 12. */
+    fun chatReact(id: Long, e: String?) = msg("chat.react") {
+        put("id", id)
+        put("e", e)
+    }
+
+    /** How far this device has got in the chat: [delivered] the last message that reached it, [read] the last one it showed. Protocol 12. */
+    fun chatReceipt(delivered: Long? = null, read: Long? = null) = msg("chat.receipt") {
+        if (delivered != null) put("delivered", delivered)
+        if (read != null) put("read", read)
     }
 
     /** A reaction ([e] is its name, see `REACTIONS` in server/src/protocol.ts, or the emoji itself) standing for [n] taps. Protocol 10. */
@@ -229,8 +269,11 @@ object Protocol {
             if (playNext) put("next", true)
         }
 
-    /** A playlist in one message. With [playNext] the songs go right after the current one. */
-    fun queueAddMany(tracks: List<TrackRef>, playNext: Boolean = false) = msg("queue.addMany") {
+    /**
+     * A playlist in one message. With [playNext] the songs go right after the current one. With [auto] they are what
+     * autoplay found for a room that ran out, which the room keeps apart from the songs members chose (protocol 12).
+     */
+    fun queueAddMany(tracks: List<TrackRef>, playNext: Boolean = false, auto: Boolean = false) = msg("queue.addMany") {
         put("tracks", buildJsonArray {
             tracks.forEach { track ->
                 add(buildJsonObject {
@@ -243,6 +286,7 @@ object Protocol {
             }
         })
         if (playNext) put("next", true)
+        if (auto) put("auto", true)
     }
 
     fun repeat(mode: String) = msg("repeat") { put("mode", mode) }

@@ -694,7 +694,19 @@ class SapocheBridge(
                     }
                     "sendChat" -> {
                         requireRoom(group)
-                        return group.sendChat(call.argument<String>("text").orEmpty(), call.argument<String>("cid").orEmpty())
+                        return group.sendChat(
+                            call.argument<String>("text").orEmpty(),
+                            call.argument<String>("cid").orEmpty(),
+                            call.argument<Number>("reply")?.toLong(),
+                        )
+                    }
+                    "reactChat" -> {
+                        requireRoom(group)
+                        group.reactToChat((call.argument<Number>("id") ?: 0).toLong(), call.argument<String>("e"))
+                    }
+                    "readChat" -> {
+                        requireRoom(group)
+                        group.readChat((call.argument<Number>("upTo") ?: 0).toLong())
                     }
                     "react" -> {
                         requireRoom(group)

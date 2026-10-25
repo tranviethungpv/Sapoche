@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 export interface QueueItem {
   id: string;
@@ -11,6 +11,8 @@ export interface QueueItem {
   thumb?: string;
   durMs: number;
   addedBy: string;
+  /** Put on the queue by autoplay, not by a member: it stays after the songs members chose and is dropped once played. Protocol 12. */
+  auto?: true;
 }
 
 export type Phase = "idle" | "preparing" | "playing" | "paused";
@@ -76,6 +78,25 @@ export interface ChatMessage {
   at: number;
   /** The id the sending device gave it, so that device knows the message arrived; absent when it gave none. */
   cid?: string;
+  /** The message this one answers, as it was when the answer was written. Protocol 12. */
+  re?: ChatQuote;
+  /** Reactions to this message, by the public id of each member who gave one; the value is a name of [REACTIONS] or an emoji. Protocol 12. */
+  rx?: Record<string, string>;
+}
+
+/** What a reply shows of the message it answers, kept with it so it outlives that message in the room's last 100. */
+export interface ChatQuote {
+  id: number;
+  by: string;
+  name: string;
+  /** The start of the text, at most [QUOTE_CHARS] characters. */
+  text: string;
+}
+
+/** What a member has got of the chat: [d] the last message that reached their device, [r] the last one they looked at. Protocol 12. */
+export interface ChatReceipt {
+  d: number;
+  r: number;
 }
 
 /** The reactions that go by name, as they did before any emoji could be sent. Apps of that time know only these. */
@@ -140,8 +161,12 @@ export type ClientMessage =
   | { t: "avatar.get"; id: string }
   /** With [next] the item goes right after the current one instead of at the end of the queue. */
   | { t: "queue.add"; videoId: string; title: string; artist: string; thumb?: string; durMs: number; next?: boolean }
-  /** Adds several songs in one go (a playlist). With [next] they go right after the current item. */
-  | { t: "queue.addMany"; tracks: TrackInput[]; next?: boolean }
+  /**
+   * Adds several songs in one go (a playlist). With [next] they go right after the current item. With [auto] they are
+   * what autoplay found for a room that ran out: the room takes them only while it is idle, and keeps them apart from
+   * the songs members chose. Protocol 12.
+   */
+  | { t: "queue.addMany"; tracks: TrackInput[]; next?: boolean; auto?: boolean }
   | { t: "queue.remove"; id: string }
   /**
    * Replaces the queue item [id] by another release of the same song (its video for its audio, or back),
@@ -181,10 +206,14 @@ export type ClientMessage =
    */
   | { t: "advanced"; epoch: number; itemId: string; startedAt: number }
   | { t: "report"; epoch: number; posMs: number; bufferMs: number }
-  /** A chat message to everybody; [cid] is the device's own id for it, sent back with it. Protocol 10. */
-  | { t: "chat"; text: string; cid?: string }
+  /** A chat message to everybody; [cid] is the device's own id for it, sent back with it; [reply] the number of the message it answers (protocol 12). Protocol 10. */
+  | { t: "chat"; text: string; cid?: string; reply?: number }
   /** A reaction, [n] times in a row (1 when absent): one of the names in [REACTIONS], or an emoji. Not kept. Protocol 10. */
-  | { t: "react"; e: string; n?: number };
+  | { t: "react"; e: string; n?: number }
+  /** This member's reaction to the chat message [id]: a name of [REACTIONS] or an emoji, null takes it away. Protocol 12. */
+  | { t: "chat.react"; id: number; e: string | null }
+  /** What the device has got of the chat: [delivered] the last message that reached it, [read] the last one it showed. Protocol 12. */
+  | { t: "chat.receipt"; delivered?: number; read?: number };
 
 // ---- server -> client ----
 
@@ -208,8 +237,12 @@ export type ServerMessage =
   | { t: "avatar"; id: string; av?: string; data?: string }
   /** A new chat message, sent to everybody including its sender. Protocol 10. */
   | { t: "chat"; msg: ChatMessage }
-  /** The room's last chat messages, oldest first, sent to a device right after the state it gets on joining. Protocol 10. */
-  | { t: "chat.history"; msgs: ChatMessage[] }
+  /** The room's last chat messages, oldest first, sent to a device right after the state it gets on joining. Protocol 10. [receipts] since 12. */
+  | { t: "chat.history"; msgs: ChatMessage[]; receipts?: Record<string, ChatReceipt> }
+  /** A message changed (somebody reacted to it): the new version of it, to everybody. Protocol 12. */
+  | { t: "chat.update"; msg: ChatMessage }
+  /** What each member has got of the chat, by public id; sent to everybody when it changes. Protocol 12. */
+  | { t: "chat.receipts"; receipts: Record<string, ChatReceipt> }
   /** Somebody else reacted, [n] times in a row. Protocol 10. */
   | { t: "react"; by: string; e: string; n: number }
   | { t: "error"; code: string; message: string };

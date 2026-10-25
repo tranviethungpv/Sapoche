@@ -1,0 +1,8 @@
+A better chat in the room
+- Reply to a message: swipe it sideways, or press and hold it.
+- React to any message with an emoji. Press and hold to pick one and see who reacted.
+- Tap a message to see when it was sent.
+- Your last message now says Sent, Delivered or Seen, and small pictures show how far each person has read.
+- The keyboard no longer goes away every time you send a message.
+- Songs that autoplay lines up when the queue ends no longer mix into the room's queue: they wait in their own Autoplay list behind the songs you added, and songs you add always play first.
+- Needs everyone in the room to update to see replies, reactions and Seen.

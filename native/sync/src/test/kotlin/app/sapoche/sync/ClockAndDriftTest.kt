@@ -209,6 +209,45 @@ class ProtocolTest {
     }
 
     @Test
+    fun `parses the replies, the reactions to a message and the receipts of protocol 12`() {
+        val reply = Protocol.parse(
+            """{"t":"chat","msg":{"id":4,"by":"b2","name":"Ben","text":"yes","at":9,"re":{"id":3,"by":"a1","name":"Ann","text":"hi"},"rx":{"a1":"fire"}}}""",
+        ) as ServerMessage.Chat
+        assertEquals(ChatQuote(3, "a1", "Ann", "hi"), reply.msg.re)
+        assertEquals(mapOf("a1" to "fire"), reply.msg.rx)
+        // A message from before protocol 12 has neither
+        val old = (Protocol.parse("""{"t":"chat","msg":{"id":1,"by":"a1","name":"Ann","text":"hi","at":5}}""") as ServerMessage.Chat).msg
+        assertEquals(null, old.re)
+        assertEquals(emptyMap(), old.rx)
+
+        val update = Protocol.parse("""{"t":"chat.update","msg":{"id":3,"by":"a1","name":"Ann","text":"hi","at":5,"rx":{"b2":"\uD83C\uDF55"}}}""")
+        assertEquals(mapOf("b2" to "\uD83C\uDF55"), (update as ServerMessage.ChatUpdate).msg.rx)
+
+        val receipts = Protocol.parse("""{"t":"chat.receipts","receipts":{"a1":{"d":4,"r":4},"b2":{"d":4,"r":2}}}""") as ServerMessage.ChatReceipts
+        assertEquals(mapOf("a1" to ChatReceipt(4, 4), "b2" to ChatReceipt(4, 2)), receipts.receipts)
+        val history = Protocol.parse("""{"t":"chat.history","msgs":[],"receipts":{"a1":{"d":1,"r":0}}}""") as ServerMessage.ChatHistory
+        assertEquals(mapOf("a1" to ChatReceipt(1, 0)), history.receipts)
+    }
+
+    @Test
+    fun `builds the reply, the reaction to a message, the receipt and the autoplay messages`() {
+        assertEquals("""{"t":"chat","text":"yes","cid":"c","reply":3}""", Protocol.chat("yes", "c", reply = 3))
+        assertEquals("""{"t":"chat.react","id":3,"e":"fire"}""", Protocol.chatReact(3, "fire"))
+        assertEquals("""{"t":"chat.react","id":3,"e":null}""", Protocol.chatReact(3, null))
+        assertEquals("""{"t":"chat.receipt","delivered":5}""", Protocol.chatReceipt(delivered = 5))
+        assertEquals("""{"t":"chat.receipt","read":5}""", Protocol.chatReceipt(read = 5))
+        val track = TrackRef("aaaaaaaaaaa", "A", "x", null, 1000)
+        assertEquals(false, Protocol.queueAddMany(listOf(track)).contains("auto"))
+        assertEquals(true, Protocol.queueAddMany(listOf(track), auto = true).endsWith(""","auto":true}"""))
+    }
+
+    @Test
+    fun `an item of the queue knows whether autoplay added it`() {
+        val state = """{"t":"state","serverNow":1,"you":"a","state":{"queue":[{"id":"q1","videoId":"aaaaaaaaaaa","title":"A","artist":"x","durMs":1,"addedBy":"a"},{"id":"q2","videoId":"bbbbbbbbbbb","title":"B","artist":"x","durMs":1,"addedBy":"a","auto":true}],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":[]}"""
+        assertEquals(listOf(false, true), (Protocol.parse(state) as ServerMessage.State).state.queue.map { it.auto })
+    }
+
+    @Test
     fun `builds the owner and room messages`() {
         assertEquals("""{"t":"bye"}""", Protocol.bye())
         assertEquals("""{"t":"kick","id":"dev-b"}""", Protocol.kick("dev-b"))

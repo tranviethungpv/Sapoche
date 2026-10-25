@@ -148,7 +148,20 @@ object UiJson {
                     .put("text", it.text)
                     .put("at", it.at)
                     .put("cid", it.cid ?: JSONObject.NULL)
+                    .put(
+                        "re",
+                        it.re?.let { quote ->
+                            JSONObject().put("id", quote.id).put("by", quote.by).put("name", quote.name).put("text", quote.text)
+                        } ?: JSONObject.NULL,
+                    )
+                    .put("rx", JSONObject(it.rx))
             }),
+        )
+        .put(
+            "receipts",
+            chat.receipts?.let { all ->
+                JSONObject().also { json -> all.forEach { (id, receipt) -> json.put(id, JSONObject().put("d", receipt.d).put("r", receipt.r)) } }
+            } ?: JSONObject.NULL,
         )
         .toString()
 
@@ -190,6 +203,7 @@ object UiJson {
         .put("thumb", item.thumb ?: JSONObject.NULL)
         .put("durMs", item.durMs)
         .put("addedBy", item.addedBy)
+        .put("auto", item.auto)
 
     private fun connectionName(view: GroupController.View): String = when (view.connection) {
         null -> "none"

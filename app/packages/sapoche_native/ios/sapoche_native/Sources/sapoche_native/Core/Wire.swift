@@ -10,8 +10,10 @@ struct QueueItem: Equatable, Codable {
     var thumb: String?
     var durMs: Int64
     var addedBy: String
+    /// Put on the queue by autoplay, not by a member: it stays behind the songs they chose and goes once played. Protocol 12.
+    var auto: Bool
 
-    init(id: String, videoId: String, title: String, artist: String, thumb: String?, durMs: Int64, addedBy: String) {
+    init(id: String, videoId: String, title: String, artist: String, thumb: String?, durMs: Int64, addedBy: String, auto: Bool = false) {
         self.id = id
         self.videoId = videoId
         self.title = title
@@ -19,6 +21,7 @@ struct QueueItem: Equatable, Codable {
         self.thumb = thumb
         self.durMs = durMs
         self.addedBy = addedBy
+        self.auto = auto
     }
 
     init?(_ json: JSON) {
@@ -30,7 +33,8 @@ struct QueueItem: Equatable, Codable {
             artist: json["artist"].string ?? "",
             thumb: json["thumb"].string,
             durMs: json["durMs"].int64 ?? 0,
-            addedBy: json["addedBy"].string ?? ""
+            addedBy: json["addedBy"].string ?? "",
+            auto: json["auto"].bool ?? false
         )
     }
 }
@@ -174,20 +178,65 @@ struct ChatMessage: Equatable {
     /// Server time it was sent at.
     var at: Int64
     var cid: String?
+    /// The message this one answers, as it was when the answer was written. Protocol 12.
+    var re: ChatQuote?
+    /// Reactions to this message by the public id of each member who gave one; a name of the room's reactions or an emoji. Protocol 12.
+    var rx: [String: String]
 
-    init(id: Int64, by: String, name: String, text: String, at: Int64, cid: String? = nil) {
+    init(id: Int64, by: String, name: String, text: String, at: Int64, cid: String? = nil, re: ChatQuote? = nil, rx: [String: String] = [:]) {
         self.id = id
         self.by = by
         self.name = name
         self.text = text
         self.at = at
         self.cid = cid
+        self.re = re
+        self.rx = rx
     }
 
     init?(_ json: JSON) {
         guard let id = json["id"].int64, let by = json["by"].string, let name = json["name"].string,
               let text = json["text"].string, let at = json["at"].int64 else { return nil }
-        self.init(id: id, by: by, name: name, text: text, at: at, cid: json["cid"].string)
+        var rx: [String: String] = [:]
+        for (member, reaction) in json["rx"].object ?? [:] {
+            if let e = JSON(reaction).string { rx[member] = e }
+        }
+        self.init(id: id, by: by, name: name, text: text, at: at, cid: json["cid"].string, re: ChatQuote(json["re"]), rx: rx)
+    }
+}
+
+/// What a reply shows of the message it answers.
+struct ChatQuote: Equatable {
+    var id: Int64
+    var by: String
+    var name: String
+    var text: String
+
+    init(id: Int64, by: String, name: String, text: String) {
+        self.id = id
+        self.by = by
+        self.name = name
+        self.text = text
+    }
+
+    init?(_ json: JSON) {
+        guard let id = json["id"].int64, let by = json["by"].string, let name = json["name"].string, let text = json["text"].string else { return nil }
+        self.init(id: id, by: by, name: name, text: text)
+    }
+}
+
+/// What a member has got of the chat: [d] the last message that reached their device, [r] the last one they looked at. Protocol 12.
+struct ChatReceipt: Equatable {
+    var d: Int64 = 0
+    var r: Int64 = 0
+
+    static func table(_ json: JSON) -> [String: ChatReceipt] {
+        var out: [String: ChatReceipt] = [:]
+        for (member, value) in json.object ?? [:] {
+            let receipt = JSON(value)
+            out[member] = ChatReceipt(d: receipt["d"].int64 ?? 0, r: receipt["r"].int64 ?? 0)
+        }
+        return out
     }
 }
 
@@ -209,7 +258,11 @@ enum ServerMessage: Equatable {
     /// A new chat message, this device's own included. Protocol 10.
     case chat(ChatMessage)
     /// The room's last chat messages, oldest first, sent right after the state on joining. Protocol 10.
-    case chatHistory([ChatMessage])
+    case chatHistory([ChatMessage], receipts: [String: ChatReceipt])
+    /// A message changed, as somebody reacted to it: its new version. Protocol 12.
+    case chatUpdate(ChatMessage)
+    /// What each member has got of the chat, by public id. Protocol 12.
+    case chatReceipts([String: ChatReceipt])
     /// Member [by] reacted with [e], [n] taps of it. Protocol 10.
     case react(by: String, e: String, n: Int)
     case error(code: String, message: String)
@@ -257,7 +310,12 @@ enum Wire {
             guard let message = ChatMessage(json["msg"]) else { return nil }
             return .chat(message)
         case "chat.history":
-            return .chatHistory(json["msgs"].array.compactMap { ChatMessage($0) })
+            return .chatHistory(json["msgs"].array.compactMap { ChatMessage($0) }, receipts: ChatReceipt.table(json["receipts"]))
+        case "chat.update":
+            guard let message = ChatMessage(json["msg"]) else { return nil }
+            return .chatUpdate(message)
+        case "chat.receipts":
+            return .chatReceipts(ChatReceipt.table(json["receipts"]))
         case "react":
             guard let by = json["by"].string, let e = json["e"].string else { return nil }
             return .react(by: by, e: e, n: json["n"].int ?? 1)
@@ -298,8 +356,22 @@ enum Wire {
     /// Asks for the picture of the member [id].
     static func avatarGet(_ id: String) -> String { msg("avatar.get", ["id": id]) }
 
-    /// A chat message to the room; [cid] comes back with it, so this device knows it arrived. Protocol 10.
-    static func chat(_ text: String, cid: String) -> String { msg("chat", ["text": text, "cid": cid]) }
+    /// A chat message to the room; [cid] comes back with it, so this device knows it arrived. [reply] is the number of
+    /// the message it answers (protocol 12). Protocol 10.
+    static func chat(_ text: String, cid: String, reply: Int64? = nil) -> String {
+        msg("chat", ["text": text, "cid": cid], optional: reply.map { ["reply": $0] })
+    }
+
+    /// This member's reaction to the chat message [id]: a name of the room's reactions or an emoji; nil takes it away. Protocol 12.
+    static func chatReact(_ id: Int64, _ e: String?) -> String { msg("chat.react", ["id": id, "e": e ?? NSNull()]) }
+
+    /// How far this device has got in the chat: [delivered] the last message that reached it, [read] the last one it showed. Protocol 12.
+    static func chatReceipt(delivered: Int64? = nil, read: Int64? = nil) -> String {
+        var fields: [String: Any] = [:]
+        if let delivered { fields["delivered"] = delivered }
+        if let read { fields["read"] = read }
+        return msg("chat.receipt", fields)
+    }
 
     /// A reaction ([e] is its name, see `REACTIONS` in server/src/protocol.ts, or the emoji itself) standing for [n] taps. Protocol 10.
     static func react(_ e: String, n: Int) -> String { msg("react", ["e": e, "n": n]) }
@@ -311,10 +383,12 @@ enum Wire {
         return msg("queue.add", fields)
     }
 
-    /// A playlist in one message. With [playNext] the songs go right after the current one.
-    static func queueAddMany(_ tracks: [TrackRef], playNext: Bool = false) -> String {
+    /// A playlist in one message. With [playNext] the songs go right after the current one. With [auto] they are what
+    /// autoplay found for a room that ran out, which the room keeps apart from the songs members chose (protocol 12).
+    static func queueAddMany(_ tracks: [TrackRef], playNext: Bool = false, auto: Bool = false) -> String {
         var fields: [String: Any] = ["tracks": tracks.map { trackFields($0) }]
         if playNext { fields["next"] = true }
+        if auto { fields["auto"] = true }
         return msg("queue.addMany", fields)
     }
 

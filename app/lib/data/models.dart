@@ -179,10 +179,14 @@ class QueueEntry extends Track {
     required super.durMs,
     required this.addedBy,
     super.thumb,
+    this.auto = false,
   });
 
   final String id;
   final String addedBy;
+
+  /// Put on the queue by autoplay, not by a member: it waits behind the songs they chose and goes once played.
+  final bool auto;
 
   factory QueueEntry.fromJson(Map<String, dynamic> json) => QueueEntry(
     id: json['id'] as String,
@@ -192,6 +196,7 @@ class QueueEntry extends Track {
     thumb: json['thumb'] as String?,
     durMs: (json['durMs'] as num?)?.toInt() ?? 0,
     addedBy: json['addedBy'] as String? ?? '',
+    auto: json['auto'] == true,
   );
 }
 
@@ -403,7 +408,20 @@ class RoomSnapshot {
 
   QueueEntry? get current =>
       myIndex >= 0 && myIndex < queue.length ? queue[myIndex] : null;
-  List<QueueEntry> get upNext =>
+
+  /// The songs members chose that come after the one playing: the queue as they made it.
+  List<QueueEntry> get upNext => [
+    for (final e in _after)
+      if (!e.auto) e,
+  ];
+
+  /// The songs autoplay lined up behind them. Only a room has any: it keeps them apart from the members' songs.
+  List<QueueEntry> get autoUpNext => [
+    for (final e in _after)
+      if (e.auto) e,
+  ];
+
+  List<QueueEntry> get _after =>
       myIndex + 1 < queue.length ? queue.sublist(myIndex + 1) : const [];
 
   /// The song is waiting in the queue: playing now or still to come. One that was played already is not. Its
@@ -411,7 +429,17 @@ class RoomSnapshot {
   bool isQueued(Track track) {
     // Outside a room an idle queue has played through
     if (!inRoom && phase == 'idle') return false;
-    return queue.skip(index).any((e) => sameSong(e, track));
+    return _waiting.any((e) => sameSong(e, track));
+  }
+
+  /// The songs waiting in the queue: the one playing and those still to come. What autoplay lined up does not count,
+  /// since a member may pick it themselves, and the room then takes it off.
+  Iterable<QueueEntry> get _waiting sync* {
+    var first = true;
+    for (final e in queue.skip(index)) {
+      if (first || !e.auto) yield e;
+      first = false;
+    }
   }
 
   /// [tracks] without those that are waiting in the queue already, and without repeats. The same as asking [isQueued] of
@@ -421,7 +449,7 @@ class RoomSnapshot {
     if (!inRoom && phase == 'idle') return uniqueSongs(tracks);
     final ids = <String>{};
     final byKey = <String, List<QueueEntry>>{};
-    for (final e in queue.skip(index)) {
+    for (final e in _waiting) {
       ids.add(e.videoId);
       byKey.putIfAbsent(songKey(e.title, e.artist), () => []).add(e);
     }
@@ -508,6 +536,8 @@ class ChatMessage {
     required this.at,
     this.cid,
     this.delivery = ChatDelivery.sent,
+    this.reply,
+    this.reactions = const {},
   });
 
   /// The room's number for it, one more with every message.
@@ -527,6 +557,12 @@ class ChatMessage {
   final String? cid;
   final ChatDelivery delivery;
 
+  /// The message this one answers, as it was when the answer was written.
+  final ChatQuote? reply;
+
+  /// What members reacted with, by the id of each. A member has one reaction to a message.
+  final Map<String, Reaction> reactions;
+
   ChatMessage withDelivery(ChatDelivery delivery) => ChatMessage(
     id: id,
     by: by,
@@ -535,6 +571,25 @@ class ChatMessage {
     at: at,
     cid: cid,
     delivery: delivery,
+    reply: reply,
+    reactions: reactions,
+  );
+
+  /// The same message with [member]'s reaction to it set, or ([reaction] null) taken away.
+  ChatMessage withReaction(String member, Reaction? reaction) => ChatMessage(
+    id: id,
+    by: by,
+    name: name,
+    text: text,
+    at: at,
+    cid: cid,
+    delivery: delivery,
+    reply: reply,
+    reactions: {
+      for (final e in reactions.entries)
+        if (e.key != member) e.key: e.value,
+      member: ?reaction,
+    },
   );
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -544,7 +599,65 @@ class ChatMessage {
     text: json['text'] as String,
     at: (json['at'] as num).toInt(),
     cid: json['cid'] as String?,
+    reply: json['re'] == null
+        ? null
+        : ChatQuote.fromJson(json['re'] as Map<String, dynamic>),
+    reactions: {
+      for (final e in (json['rx'] as Map<String, dynamic>? ?? const {}).entries)
+        e.key: ?Reaction.parse(e.value as String?),
+    },
   );
+}
+
+/// What a reply shows of the message it answers.
+class ChatQuote {
+  const ChatQuote({
+    required this.id,
+    required this.by,
+    required this.name,
+    required this.text,
+  });
+
+  final int id;
+  final String by;
+  final String name;
+  final String text;
+
+  factory ChatQuote.fromJson(Map<String, dynamic> json) => ChatQuote(
+    id: (json['id'] as num).toInt(),
+    by: json['by'] as String,
+    name: json['name'] as String? ?? '',
+    text: json['text'] as String? ?? '',
+  );
+}
+
+/// What a member has got of the chat: the last message that reached their device, and the last one they looked at.
+class ChatReceipt {
+  const ChatReceipt({this.delivered = 0, this.read = 0});
+
+  final int delivered;
+  final int read;
+
+  factory ChatReceipt.fromJson(Map<String, dynamic> json) => ChatReceipt(
+    delivered: (json['d'] as num?)?.toInt() ?? 0,
+    read: (json['r'] as num?)?.toInt() ?? 0,
+  );
+}
+
+enum ChatStage { sending, failed, sent, delivered, seen }
+
+/// How far a message of this device has come: on its way, lost, in the room, in other devices, or looked at.
+class ChatProgress {
+  const ChatProgress.sending() : stage = ChatStage.sending, seenBy = const [];
+  const ChatProgress.failed() : stage = ChatStage.failed, seenBy = const [];
+  const ChatProgress.sent() : stage = ChatStage.sent, seenBy = const [];
+  const ChatProgress.delivered() : stage = ChatStage.delivered, seenBy = const [];
+  const ChatProgress.seen(this.seenBy) : stage = ChatStage.seen;
+
+  final ChatStage stage;
+
+  /// The names of those who looked at it, when [stage] is [ChatStage.seen].
+  final List<String> seenBy;
 }
 
 /// What a member can send the room: one emoji. The first ones this app had go on the wire by [name], so that apps

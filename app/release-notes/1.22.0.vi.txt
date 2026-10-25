@@ -1,0 +1,8 @@
+Trò chuyện trong phòng tiện hơn
+- Trả lời một tin nhắn: vuốt ngang tin đó, hoặc nhấn giữ.
+- Thả cảm xúc lên bất kỳ tin nào. Nhấn giữ để chọn emoji và xem ai đã thả.
+- Chạm vào tin nhắn để xem giờ gửi.
+- Tin cuối của bạn hiện Đã gửi, Đã nhận hoặc Đã xem, kèm ảnh nhỏ cho biết mỗi người đọc tới đâu.
+- Bàn phím không còn tự ẩn mỗi lần bạn gửi tin.
+- Bài mà tự phát xếp sẵn khi hết hàng đợi không còn lẫn vào hàng đợi của phòng: chúng nằm riêng trong mục Tự động phát, sau các bài bạn thêm, và bài bạn thêm luôn được phát trước.
+- Cần cả phòng cập nhật để thấy trả lời, cảm xúc và Đã xem.

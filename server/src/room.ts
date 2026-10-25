@@ -3,6 +3,8 @@ import { PROTOCOL_VERSION, REACTIONS, isEmoji } from "./protocol";
 import type {
   AlarmKind,
   ChatMessage,
+  ChatQuote,
+  ChatReceipt,
   ClientMessage,
   GuestControl,
   Member,
@@ -65,6 +67,11 @@ const MAX_CHAT_CHARS = 500;
 /** How many of the last chat messages the room keeps for whoever joins later. */
 const CHAT_KEPT = 100;
 const CHAT_KEY = "chat";
+const RECEIPTS_KEY = "chatReceipts";
+/** A reply shows this many characters of the message it answers. */
+const QUOTE_CHARS = 100;
+/** Members that can have a reaction on one message; a room never has so many at once, so this only bounds a message. */
+const MAX_REACTORS = 32;
 const KNOWN_REACTIONS = new Set<string>(REACTIONS);
 /** Taps on a reaction that one message may carry. */
 const MAX_REACTION_COUNT = 10;
@@ -151,11 +158,14 @@ export class Room extends DurableObject<Env> {
   private created = false;
   /** The last chat messages, oldest first. Kept apart from the state, so that saving the state does not write them again. */
   private chat: ChatMessage[] = [];
+  /** What each member has got of the chat, by public id. Kept apart from the messages for the same reason. */
+  private receipts: Record<string, ChatReceipt> = {};
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       this.chat = (await ctx.storage.get<ChatMessage[]>(CHAT_KEY)) ?? [];
+      this.receipts = (await ctx.storage.get<Record<string, ChatReceipt>>(RECEIPTS_KEY)) ?? {};
       const saved = await ctx.storage.get<RoomState & { alarm?: string }>("state");
       if (!saved) return;
       // Fields added after a room was saved get their defaults
@@ -245,7 +255,9 @@ export class Room extends DurableObject<Env> {
       case "resolveFailed": return this.onResolveFailed(me.id, msg.epoch);
       case "ended": return this.onEnded(msg.epoch);
       case "advanced": return this.onAdvanced(msg.epoch, msg.itemId, msg.startedAt);
-      case "chat": return this.onChat(me, msg.text, msg.cid);
+      case "chat": return this.onChat(me, msg.text, msg.cid, msg.reply);
+      case "chat.react": return this.onChatReact(me, msg.id, msg.e);
+      case "chat.receipt": return this.onChatReceipt(me, msg.delivered, msg.read);
       case "react": return this.onReact(me, msg.e, msg.n);
       case "report": return; // diagnostics only for now
       default: return this.fail(ws, "unknown_type", `Unknown message type`);
@@ -309,7 +321,7 @@ export class Room extends DurableObject<Env> {
 
     if (adopted) this.broadcastState();
     else this.send(ws, this.stateMessage(id));
-    this.send(ws, { t: "chat.history", msgs: this.chat });
+    this.send(ws, { t: "chat.history", msgs: this.chat, receipts: this.receipts });
     // A device joining mid-preparation must take part in the barrier
     if (this.s.phase === "preparing") this.send(ws, this.prepareMessage());
     this.broadcastMembers();
@@ -354,12 +366,16 @@ export class Room extends DurableObject<Env> {
     if (gone.length) await this.ctx.storage.delete(gone);
   }
 
-  /** Keeps a chat message and hands it to everybody, its sender too. A message with no text is ignored. */
-  private async onChat(me: Attachment, text: unknown, cid: unknown): Promise<void> {
+  /**
+   * Keeps a chat message and hands it to everybody, its sender too. A message with no text is ignored. [reply] is the
+   * number of the message it answers; one the room no longer has is left out and the text goes on its own.
+   */
+  private async onChat(me: Attachment, text: unknown, cid: unknown, reply: unknown): Promise<void> {
     if (typeof text !== "string") return;
     // Cut by characters, not UTF-16 units, so an emoji at the end is not split in half
     const clean = Array.from(text.trim()).slice(0, MAX_CHAT_CHARS).join("").trimEnd();
     if (!clean) return;
+    const quoted = typeof reply === "number" ? this.chat.find((m) => m.id === reply) : undefined;
     const msg: ChatMessage = {
       id: (this.chat.at(-1)?.id ?? 0) + 1,
       by: me.id,
@@ -367,11 +383,54 @@ export class Room extends DurableObject<Env> {
       text: clean,
       at: Date.now(),
       ...(typeof cid === "string" && cid ? { cid: cid.slice(0, 40) } : {}),
+      ...(quoted ? { re: quote(quoted) } : {}),
     };
     this.chat.push(msg);
     if (this.chat.length > CHAT_KEPT) this.chat.splice(0, this.chat.length - CHAT_KEPT);
-    await this.ctx.storage.put(CHAT_KEY, this.chat);
+    // Writing a message is looking at the chat up to it: the others learn it with their next receipt
+    this.receipts[me.id] = { d: msg.id, r: msg.id };
+    this.pruneReceipts();
+    await this.ctx.storage.put({ [CHAT_KEY]: this.chat, [RECEIPTS_KEY]: this.receipts });
     this.broadcast({ t: "chat", msg });
+  }
+
+  /** Sets, or with null takes away, this member's reaction to a chat message, and sends the message again. */
+  private async onChatReact(me: Attachment, id: unknown, e: unknown): Promise<void> {
+    const msg = typeof id === "number" ? this.chat.find((m) => m.id === id) : undefined;
+    if (!msg) return;
+    const rx = { ...msg.rx };
+    if (e === null || e === undefined) {
+      if (!(me.id in rx)) return;
+      delete rx[me.id];
+    } else {
+      if (typeof e !== "string" || !(KNOWN_REACTIONS.has(e) || isEmoji(e))) return;
+      if (rx[me.id] === e || (!(me.id in rx) && Object.keys(rx).length >= MAX_REACTORS)) return;
+      rx[me.id] = e;
+    }
+    if (Object.keys(rx).length > 0) msg.rx = rx;
+    else delete msg.rx;
+    await this.ctx.storage.put(CHAT_KEY, this.chat);
+    this.broadcast({ t: "chat.update", msg });
+  }
+
+  /** Notes how far this member has got in the chat and tells everybody, when it is further than before. */
+  private async onChatReceipt(me: Attachment, delivered: unknown, read: unknown): Promise<void> {
+    const last = this.chat.at(-1)?.id ?? 0;
+    const upTo = (value: unknown) => (Number.isInteger(value) ? clamp(value as number, 0, last) : 0);
+    const before = this.receipts[me.id] ?? { d: 0, r: 0 };
+    const r = Math.max(before.r, upTo(read));
+    const d = Math.max(before.d, upTo(delivered), r);
+    if (d === before.d && r === before.r) return;
+    this.receipts[me.id] = { d, r };
+    this.pruneReceipts();
+    await this.ctx.storage.put(RECEIPTS_KEY, this.receipts);
+    this.broadcast({ t: "chat.receipts", receipts: this.receipts });
+  }
+
+  /** Receipts are kept for those who are here or wrote a message that is still kept, so they cannot pile up over the days. */
+  private pruneReceipts(): void {
+    const known = new Set([...this.members().map((m) => m.id), ...this.chat.map((m) => m.by)]);
+    for (const id of Object.keys(this.receipts)) if (!known.has(id)) delete this.receipts[id];
   }
 
   /** Passes a reaction on to everybody else; it is not kept. What is neither a known name nor an emoji is ignored. */
@@ -525,16 +584,25 @@ export class Room extends DurableObject<Env> {
   // ------------------------------------------------------------------ queue
 
   private async onQueueAdd(me: Attachment, msg: Extract<ClientMessage, { t: "queue.add" }>): Promise<void> {
-    return this.addTracks(me, [msg], msg.next === true);
+    return this.addTracks(me, [msg], msg.next === true, false);
   }
 
   private async onQueueAddMany(me: Attachment, msg: Extract<ClientMessage, { t: "queue.addMany" }>): Promise<void> {
     if (!Array.isArray(msg.tracks)) return this.failAll(me, "bad_message", "queue.addMany needs tracks");
-    return this.addTracks(me, msg.tracks.slice(0, MAX_ADD_MANY), msg.next === true);
+    return this.addTracks(me, msg.tracks.slice(0, MAX_ADD_MANY), msg.next === true, msg.auto === true);
   }
 
-  /** Puts valid tracks on the queue in the given order, at the end or right after the current item. */
-  private async addTracks(me: Attachment, tracks: TrackInput[], playNext: boolean): Promise<void> {
+  /**
+   * Puts valid tracks on the queue in the given order, at the end or right after the current item. A member's songs go
+   * before what autoplay put at the end; [auto] songs are those autoplay found, taken only while the room is idle
+   * (it asks only then, so anything else is an answer to a question the room has moved past).
+   */
+  private async addTracks(me: Attachment, tracks: TrackInput[], playNext: boolean, auto: boolean): Promise<void> {
+    if (auto) {
+      if (this.s.phase !== "idle" || !this.s.autoplay) return;
+      this.dropAutoplayed();
+      playNext = false;
+    }
     const items: QueueItem[] = [];
     for (const track of tracks) {
       if (!VIDEO_ID.test(track?.videoId ?? "")) {
@@ -545,18 +613,26 @@ export class Room extends DurableObject<Env> {
         this.failAll(me, "queue_full", "Queue is full");
         break;
       }
-      items.push({ id: crypto.randomUUID(), ...cleanTrack(track), addedBy: me.id });
+      items.push({ id: crypto.randomUUID(), ...cleanTrack(track), addedBy: me.id, ...(auto ? { auto: true as const } : {}) });
     }
     if (items.length === 0) return;
 
-    // "Play next" only makes sense while something is playing; otherwise the new items simply go last
-    const at = playNext && this.s.phase !== "idle" ? this.s.index + 1 : this.s.queue.length;
+    // "Play next" only makes sense while something is playing; otherwise the new items simply go last, but
+    // not behind what autoplay added
+    const playing = this.s.phase !== "idle";
+    const at = playNext && playing ? this.s.index + 1 : auto || !playing ? this.s.queue.length : this.autoplayedFrom();
     this.s.queue.splice(at, 0, ...items);
+    // A song a member picks that autoplay had lined up is the member's now, and is not played twice
+    if (!auto && playing && this.s.queue.some((q) => q.auto)) {
+      const picked = new Set(items.map((item) => item.videoId));
+      const current = this.s.queue[this.s.index];
+      this.s.queue = this.s.queue.filter((q) => !(q.auto && q !== current && picked.has(q.videoId)));
+    }
     // With shuffle on, songs added at the end are mixed in among those to come instead of waiting behind them
-    if (this.s.shuffle && this.s.phase !== "idle" && !playNext) {
+    if (this.s.shuffle && playing && !playNext && !auto) {
       const first = this.s.index + 1;
       this.s.queue.splice(at, items.length);
-      for (const item of items) this.s.queue.splice(randomBelow(this.s.queue.length - first + 1) + first, 0, item);
+      items.forEach((item, i) => this.s.queue.splice(randomBelow(at - first + i + 1) + first, 0, item));
     }
 
     if (this.s.phase === "idle") {
@@ -565,6 +641,24 @@ export class Room extends DurableObject<Env> {
       await this.save();
       this.broadcastState();
     }
+  }
+
+  /** Where what autoplay added begins among the songs still to come; the length of the queue when there is none. */
+  private autoplayedFrom(): number {
+    const at = this.s.queue.findIndex((q, i) => i > this.s.index && q.auto);
+    return at < 0 ? this.s.queue.length : at;
+  }
+
+  /**
+   * Takes what autoplay added out of the queue, so that it does not stay in a list the members made: the room is done
+   * with it. The index follows the queue; with nothing playing it points at the last song, as it does after the end.
+   */
+  private dropAutoplayed(): void {
+    if (!this.s.queue.some((q) => q.auto)) return;
+    const currentId = this.s.queue[this.s.index]?.id;
+    this.s.queue = this.s.queue.filter((q) => !q.auto);
+    const kept = this.s.queue.findIndex((q) => q.id === currentId);
+    this.s.index = kept >= 0 ? kept : Math.max(0, this.s.queue.length - 1);
   }
 
   private async onQueueRemove(id: string): Promise<void> {
@@ -615,7 +709,7 @@ export class Room extends DurableObject<Env> {
       shuffleInPlace(this.s.queue, 0);
       return this.begin(0, 0, by);
     }
-    shuffleInPlace(this.s.queue, this.s.index + 1);
+    shuffleInPlace(this.s.queue, this.s.index + 1, this.autoplayedFrom());
     await this.save();
     this.broadcastState();
   }
@@ -630,15 +724,18 @@ export class Room extends DurableObject<Env> {
     this.s.shuffle = on;
     if (on) {
       this.s.shuffleOrder = this.s.queue.map((q) => q.id);
-      if (this.s.phase !== "idle") shuffleInPlace(this.s.queue, this.s.index + 1);
+      if (this.s.phase !== "idle") shuffleInPlace(this.s.queue, this.s.index + 1, this.autoplayedFrom());
     } else {
       const order = new Map((this.s.shuffleOrder ?? []).map((id, i) => [id, i]));
       delete this.s.shuffleOrder;
       const first = this.s.phase === "idle" ? 0 : this.s.index + 1;
-      const rest = this.s.queue.slice(first);
       const rank = (q: QueueItem) => order.get(q.id) ?? Number.MAX_SAFE_INTEGER;
-      // The sort is stable, so songs that were not there when shuffle went on keep their order, at the end
-      rest.sort((a, b) => rank(a) - rank(b));
+      // The sort is stable, so songs that were not there when shuffle went on keep their order, at the end; what
+      // autoplay added stays behind them all
+      const rest = [
+        ...this.s.queue.slice(first).filter((q) => !q.auto).sort((a, b) => rank(a) - rank(b)),
+        ...this.s.queue.slice(first).filter((q) => q.auto),
+      ];
       this.s.queue.splice(first, rest.length, ...rest);
     }
     await this.save();
@@ -656,6 +753,8 @@ export class Room extends DurableObject<Env> {
     const to = clamp(toIndex, 0, this.s.queue.length - 1);
     const currentId = this.s.queue[this.s.index]?.id;
     const [item] = this.s.queue.splice(from, 1);
+    // A song a member puts in its place is theirs now, not autoplay's
+    delete item.auto;
     this.s.queue.splice(to, 0, item);
     if (currentId) this.s.index = Math.max(0, this.s.queue.findIndex((q) => q.id === currentId));
     await this.save();
@@ -781,9 +880,12 @@ export class Room extends DurableObject<Env> {
   private async onNext(by?: string, askForMore = true): Promise<void> {
     if (this.s.phase === "idle") return;
     if (this.s.index + 1 < this.s.queue.length) return this.begin(this.s.index + 1, 0, by);
-    if (this.s.repeat === "all") return this.begin(0, 0, by);
+    // The room has played everything: what autoplay added has served, and the list is the members' again
+    const last = this.s.queue[this.s.index];
+    this.dropAutoplayed();
+    if (this.s.repeat === "all" && this.s.queue.length > 0) return this.begin(0, 0, by);
     await this.goIdle();
-    if (askForMore) this.askForMoreSongs();
+    if (askForMore && last) this.askForMoreSongs(last);
   }
 
   /** The current item played to its end: repeat it, or move on like the next button does. */
@@ -795,6 +897,8 @@ export class Room extends DurableObject<Env> {
   private async onAutoplay(on: unknown): Promise<void> {
     if (typeof on !== "boolean" || on === this.s.autoplay) return;
     this.s.autoplay = on;
+    // Turned off, what it already added and the room has not got to is no longer wanted
+    if (!on) this.s.queue = this.s.queue.filter((q, i) => !q.auto || i <= this.s.index);
     await this.save();
     this.broadcastState();
   }
@@ -803,9 +907,8 @@ export class Room extends DurableObject<Env> {
    * The queue ran out. The server cannot fetch songs itself (YouTube blocks it), so one device that is here is asked to:
    * the owner's if it is a device following the room, else whoever has been here longest.
    */
-  private askForMoreSongs(): void {
-    const last = this.s.queue[this.s.index];
-    if (!this.s.autoplay || !last) return;
+  private askForMoreSongs(last: QueueItem): void {
+    if (!this.s.autoplay) return;
     const limit = Number(this.env.STALE_MS) || AWAY_AFTER_MS;
     const now = Date.now();
     const rank = (att: Attachment) => (att.solo ? 2 : 0) + (att.id === this.s.ownerId ? 0 : 1);
@@ -896,6 +999,7 @@ export class Room extends DurableObject<Env> {
     if (due.includes("gc") && this.members().length === 0) {
       this.s = defaultState();
       this.chat = [];
+      this.receipts = {};
       this.created = false;
       await this.ctx.storage.deleteAll();
       return;
@@ -1120,14 +1224,21 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** What a reply carries of the message it answers. */
+function quote(m: ChatMessage): ChatQuote {
+  const chars = Array.from(m.text);
+  const text = chars.length > QUOTE_CHARS ? `${chars.slice(0, QUOTE_CHARS).join("").trimEnd()}…` : m.text;
+  return { id: m.id, by: m.by, name: m.name, text };
+}
+
 /** A whole number from 0 up to, not including, [n]. */
 function randomBelow(n: number): number {
   return Math.floor((crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * n);
 }
 
-/** Fisher-Yates over the items from [from] to the end, with an unbiased random source. */
-function shuffleInPlace<T>(items: T[], from: number): void {
-  for (let i = items.length - 1; i > from; i--) {
+/** Fisher-Yates over the items from [from] up to, not including, [to] (the end by default), with an unbiased random source. */
+function shuffleInPlace<T>(items: T[], from: number, to = items.length): void {
+  for (let i = to - 1; i > from; i--) {
     const range = i - from + 1;
     const j = from + Math.floor((crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * range);
     [items[i], items[j]] = [items[j], items[i]];

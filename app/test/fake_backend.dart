@@ -752,11 +752,18 @@ class FakeBackend implements Backend {
   bool chatConnected = true;
 
   @override
-  Future<bool> sendChat(String text, String cid) async {
-    await _record('sendChat $text');
+  Future<bool> sendChat(String text, String cid, {int? reply}) async {
+    await _record(reply == null ? 'sendChat $text' : 'sendChat $text reply $reply');
     lastChatCid = cid;
     return chatConnected;
   }
+
+  @override
+  Future<void> reactChat(int id, Reaction? reaction) =>
+      _record('reactChat $id ${reaction?.wire}');
+
+  @override
+  Future<void> readChat(int upTo) => _record('readChat $upTo');
 
   /// The id the last message sent was given, so a test can confirm it as the room would.
   String? lastChatCid;

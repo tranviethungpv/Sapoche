@@ -722,6 +722,61 @@ final class BridgeTests: XCTestCase {
         } catch {}
     }
 
+    func testRepliesReactionsToAMessageAndWhoHasGotItGoBothWays() async throws {
+        _ = try await call("configure", ["server": "https://sapoche.example.dev"])
+        _ = try await call("join", ["code": "abc234", "name": "Me"])
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        socket.receive(#"{"t":"state","serverNow":1,"you":"me","protocol":12,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":1},"members":[]}"#)
+        socket.sent.removeAll()
+        // The history reaches the device: the room is told so, without the screen, once for the last message
+        socket.receive(#"{"t":"chat.history","msgs":[{"id":1,"by":"u2","name":"Ann","text":"hello","at":5},{"id":2,"by":"u2","name":"Ann","text":"you there","at":6,"re":{"id":1,"by":"u2","name":"Ann","text":"hello"},"rx":{"me":"fire"}}],"receipts":{"u2":{"d":2,"r":2}}}"#)
+        await time.advance(10)
+        var out = socket.sent.compactMap { JSON.parse($0)?.object }.filter { $0["t"] as? String != "ping" }
+        XCTAssertEqual(out.map { $0["t"] as? String }, ["chat.receipt"])
+        XCTAssertEqual(out[0]["delivered"] as? Int, 2)
+        XCTAssertNil(out[0]["read"])
+        let history = try XCTUnwrap(events.last { $0["type"] as? String == "chat" })
+        let second = try XCTUnwrap((history["messages"] as? [[String: Any]])?.last)
+        XCTAssertEqual((second["re"] as? [String: Any])?["text"] as? String, "hello")
+        XCTAssertEqual(second["rx"] as? [String: String], ["me": "fire"])
+        let told = try XCTUnwrap(history["receipts"] as? [String: [String: Any]])
+        XCTAssertEqual(told["u2"]?["r"] as? Int, 2)
+
+        // What the device wrote itself needs no word, and one that did not change needs no second one
+        socket.sent.removeAll()
+        socket.receive(#"{"t":"chat","msg":{"id":3,"by":"me","name":"Me","text":"yes","at":7,"cid":"c-1"}}"#)
+        socket.receive(#"{"t":"chat","msg":{"id":4,"by":"u2","name":"Ann","text":"ok","at":8}}"#)
+        await time.advance(10)
+        out = socket.sent.compactMap { JSON.parse($0)?.object }.filter { $0["t"] as? String != "ping" }
+        XCTAssertEqual(out.compactMap { $0["delivered"] as? Int }, [4])
+
+        // A reaction changes a message; receipts arrive on their own
+        events.removeAll()
+        socket.receive(#"{"t":"chat.update","msg":{"id":4,"by":"u2","name":"Ann","text":"ok","at":8,"rx":{"u2":"clap"}}}"#)
+        socket.receive(#"{"t":"chat.receipts","receipts":{"u2":{"d":4,"r":3}}}"#)
+        await time.advance(10)
+        let chats = events.filter { $0["type"] as? String == "chat" }
+        XCTAssertEqual(chats.count, 2)
+        XCTAssertEqual(((chats[0]["messages"] as? [[String: Any]])?.first?["rx"]) as? [String: String], ["u2": "clap"])
+        XCTAssertEqual((chats[1]["messages"] as? [[String: Any]])?.count, 0)
+        XCTAssertEqual((chats[1]["receipts"] as? [String: [String: Any]])?["u2"]?["r"] as? Int, 3)
+
+        // Commands from the screen
+        socket.sent.removeAll()
+        _ = try await call("sendChat", ["text": "re", "cid": "c-2", "reply": 4])
+        _ = try await call("reactChat", ["id": 4, "e": "fire"])
+        _ = try await call("reactChat", ["id": 4])
+        _ = try await call("readChat", ["upTo": 4])
+        out = socket.sent.compactMap { JSON.parse($0)?.object }.filter { $0["t"] as? String != "ping" }
+        XCTAssertEqual(out.map { $0["t"] as? String }, ["chat", "chat.react", "chat.react", "chat.receipt"])
+        XCTAssertEqual(out[0]["reply"] as? Int, 4)
+        XCTAssertEqual(out[1]["e"] as? String, "fire")
+        XCTAssertTrue(out[2]["e"] is NSNull)
+        XCTAssertEqual(out[3]["read"] as? Int, 4)
+    }
+
     func testAnInvitationLinkReachesTheScreen() async throws {
         _ = try await call("configure", ["server": "https://sapoche.example.dev"])
         bridge.onLink(URL(string: "sapoche://join/abc234")!)

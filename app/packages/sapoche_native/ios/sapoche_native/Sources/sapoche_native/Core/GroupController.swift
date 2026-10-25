@@ -151,11 +151,13 @@ final class GroupController {
         pictures.map { Avatar(id: $0.key, data: $0.value) }
     }
 
-    /// Chat messages of room [room]: all it keeps when [replace], else new ones to add.
+    /// Chat messages of room [room]: all it keeps when [replace], else new ones to add or ones that changed. [receipts] is
+    /// what each member has got of the chat when that changed (or came with everything), else nil.
     struct Chat: Equatable {
         let room: String
         let messages: [ChatMessage]
         let replace: Bool
+        var receipts: [String: ChatReceipt]?
     }
 
     let chat = SharedFlow<Chat>()
@@ -163,10 +165,16 @@ final class GroupController {
     /// The room's chat as last heard; nil until the room sent its history (a server older than protocol 10 never does).
     private var chatLog: [ChatMessage]?
 
+    /// What each member has got of the chat, as the room last said.
+    private var receiptsLog: [String: ChatReceipt] = [:]
+
+    /// The last message this device told the room it has, so that it says so once for each.
+    private var deliveredUpTo: Int64 = 0
+
     /// The whole chat, for a screen that comes back after messages arrived.
     func chatSeen() -> Chat? {
         guard let roomCode, let chatLog else { return nil }
-        return Chat(room: roomCode, messages: chatLog, replace: true)
+        return Chat(room: roomCode, messages: chatLog, replace: true, receipts: receiptsLog)
     }
 
     /// Member [by] reacted with [e], [n] taps of it.
@@ -178,8 +186,14 @@ final class GroupController {
 
     let reactions = SharedFlow<Reaction>()
 
-    /// Sends a chat message; false when there is no connection to send it on.
-    func sendChat(_ text: String, cid: String) -> Bool { client?.send(Wire.chat(text, cid: cid)) ?? false }
+    /// Sends a chat message, as an answer to message number [reply] when it has one; false when there is no connection to send it on.
+    func sendChat(_ text: String, cid: String, reply: Int64? = nil) -> Bool { client?.send(Wire.chat(text, cid: cid, reply: reply)) ?? false }
+
+    /// Gives chat message [id] this device's reaction [e] (a name of the room's reactions or an emoji); nil takes it away.
+    func reactToChat(_ id: Int64, _ e: String?) { client?.send(Wire.chatReact(id, e)) }
+
+    /// The chat is on a screen, and its messages up to number [upTo] have been looked at.
+    func readChat(upTo: Int64) { client?.send(Wire.chatReceipt(read: upTo)) }
 
     func react(_ e: String, n: Int) { client?.send(Wire.react(e, n: n)) }
 
@@ -334,7 +348,8 @@ final class GroupController {
                 let more = try await self.moreLike(videoId, Set(self.queue().map(\.videoId)), Self.autoplayCount)
                 if more.isEmpty || self.session?.snapshot.value.state?.epoch != epoch { return }
                 EventLog.d("sync", "autoplay adds \(more.count) songs like '\(title)' to the room")
-                self.send(Wire.queueAddMany(more))
+                // Marked as autoplay's, so the room keeps them apart from the songs its members chose
+                self.send(Wire.queueAddMany(more, auto: true))
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -555,6 +570,8 @@ final class GroupController {
         pending.removeAll()
         pictures.removeAll()
         chatLog = nil
+        receiptsLog = [:]
+        deliveredUpTo = 0
         scope.cancel()
         scope = Scope()
         local.attach() // the personal queue gets the player back, paused where it was
@@ -562,15 +579,34 @@ final class GroupController {
         updateIdle()
     }
 
+    /// Tells the room that the chat has reached this device up to [last], so that the others can see their message as
+    /// delivered. The screen need not be on: this is the device having it, not the person having read it.
+    private func acknowledge(_ last: ChatMessage) {
+        if last.id <= deliveredUpTo { return }
+        deliveredUpTo = last.id
+        // What this device wrote itself needs no word
+        if last.by != session?.snapshot.value.you { client?.send(Wire.chatReceipt(delivered: last.id)) }
+    }
+
     private func onChat(room: String, _ message: ServerMessage) {
         switch message {
-        case let .chatHistory(messages):
+        case let .chatHistory(messages, receipts):
             let kept = Array(messages.suffix(Self.chatKept))
             chatLog = kept
-            chat.emit(Chat(room: room, messages: kept, replace: true))
+            receiptsLog = receipts
+            chat.emit(Chat(room: room, messages: kept, replace: true, receipts: receipts))
+            if let last = kept.last { acknowledge(last) }
         case let .chat(message):
             chatLog = Array(((chatLog ?? []) + [message]).suffix(Self.chatKept))
             chat.emit(Chat(room: room, messages: [message], replace: false))
+            acknowledge(message)
+        case let .chatUpdate(message):
+            guard let log = chatLog else { return }
+            chatLog = log.map { $0.id == message.id ? message : $0 }
+            chat.emit(Chat(room: room, messages: [message], replace: false))
+        case let .chatReceipts(receipts):
+            receiptsLog = receipts
+            chat.emit(Chat(room: room, messages: [], replace: false, receipts: receipts))
         case let .react(by, e, n):
             reactions.emit(Reaction(by: by, e: e, n: n))
         default:

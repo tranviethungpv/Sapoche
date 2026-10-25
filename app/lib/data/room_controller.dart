@@ -207,8 +207,8 @@ class RoomController extends ChangeNotifier {
       case SleepEvent(:final sleep):
         _sleep = sleep;
         notifyListeners();
-      case ChatEvent(:final room, :final messages, :final replace):
-        _onChat(room, messages, replace);
+      case ChatEvent(:final room, :final messages, :final replace, :final receipts):
+        _onChat(room, messages, replace, receipts);
       case ReactionEvent(
         :final by,
         reaction: final reaction?,
@@ -265,11 +265,19 @@ class RoomController extends ChangeNotifier {
   /// Messages of the others that came while the chat was not open.
   final ValueNotifier<int> unreadChat = ValueNotifier(0);
 
+  /// What each member has got of the chat, by their id: how far a message of this device has come.
+  final ValueNotifier<Map<String, ChatReceipt>> receipts = ValueNotifier(
+    const {},
+  );
+
   /// The room whose chat [chat] holds: null outside a room, or in one whose server is too old to keep a chat.
   String? _chatRoom;
 
   /// The last message the person has seen, by the room's number for it.
   int _readUpTo = 0;
+
+  /// The last message the room was told has been looked at.
+  int _readTold = 0;
   bool _chatOpen = false;
   int _chatSequence = 0;
 
@@ -370,7 +378,12 @@ class RoomController extends ChangeNotifier {
   /// The longest message the room keeps, in characters.
   static const maxChatChars = 500;
 
-  void _onChat(String room, List<ChatMessage> messages, bool replace) {
+  void _onChat(
+    String room,
+    List<ChatMessage> messages,
+    bool replace,
+    Map<String, ChatReceipt>? told,
+  ) {
     final had = hasChat;
     var list = chat.value;
     if (replace) {
@@ -394,10 +407,14 @@ class RoomController extends ChangeNotifier {
       if (room != _chatRoom) return;
       list = [...list];
       for (final message in messages) {
-        final known = list.any(
+        final known = list.indexWhere(
           (m) => m.delivery == ChatDelivery.sent && m.id == message.id,
         );
-        if (known) continue;
+        if (known >= 0) {
+          // Somebody reacted to it
+          list[known] = message;
+          continue;
+        }
         final cid = message.cid;
         if (cid != null) {
           _chatDeadlines.remove(cid)?.cancel();
@@ -416,6 +433,7 @@ class RoomController extends ChangeNotifier {
       }
     }
     chat.value = list;
+    if (told != null && room == _chatRoom) receipts.value = told;
     _countUnread();
     if (hasChat != had) notifyListeners();
   }
@@ -426,6 +444,11 @@ class RoomController extends ChangeNotifier {
     unreadChat.value = sent
         .where((m) => m.id > _readUpTo && m.by != _snapshot.you)
         .length;
+    // The others are told what the person has looked at, which only the open chat shows them
+    if (_chatOpen && hasChat && sent.isNotEmpty && sent.last.id > _readTold) {
+      _readTold = sent.last.id;
+      _run(() => _backend.readChat(_readTold));
+    }
   }
 
   void _forgetChat() {
@@ -435,7 +458,9 @@ class RoomController extends ChangeNotifier {
     _chatDeadlines.clear();
     _chatRoom = null;
     _readUpTo = 0;
+    _readTold = 0;
     chat.value = const [];
+    receipts.value = const {};
     unreadChat.value = 0;
   }
 
@@ -446,8 +471,9 @@ class RoomController extends ChangeNotifier {
     if (open) _countUnread();
   }
 
-  /// Writes [text] to the room's chat. It shows at once, and as not sent if the room does not confirm it.
-  Future<void> sendChat(String text) async {
+  /// Writes [text] to the room's chat, as an answer to [reply] when given. It shows at once, and as not sent if the room
+  /// does not confirm it.
+  Future<void> sendChat(String text, {ChatQuote? reply}) async {
     final clean = text.trim();
     if (clean.isEmpty || !hasChat) return;
     final cid = '${DateTime.now().microsecondsSinceEpoch}-${_chatSequence++}';
@@ -461,11 +487,12 @@ class RoomController extends ChangeNotifier {
         at: DateTime.now().millisecondsSinceEpoch,
         cid: cid,
         delivery: ChatDelivery.sending,
+        reply: reply,
       ),
     ];
     var sent = false;
     try {
-      sent = await _backend.sendChat(clean, cid);
+      sent = await _backend.sendChat(clean, cid, reply: reply?.id);
     } on Object {
       // Shown as not sent, with the way to try again
     }
@@ -484,7 +511,63 @@ class RoomController extends ChangeNotifier {
       for (final m in chat.value)
         if (m.cid != message.cid) m,
     ];
-    return sendChat(message.text);
+    return sendChat(message.text, reply: message.reply);
+  }
+
+  /// Gives [message] this device's [reaction], or ([reaction] null) takes the one it gave away. It shows at once.
+  void reactToMessage(ChatMessage message, Reaction? reaction) {
+    final you = _snapshot.you;
+    if (!hasChat || you == null || message.delivery != ChatDelivery.sent) return;
+    chat.value = [
+      for (final m in chat.value)
+        if (m.delivery == ChatDelivery.sent && m.id == message.id)
+          m.withReaction(you, reaction)
+        else
+          m,
+    ];
+    _run(() => _backend.reactChat(message.id, reaction));
+  }
+
+  /// How far the others have got with [message], a message of this device's own: nothing for one that is not.
+  ChatProgress progressOf(ChatMessage message) {
+    if (message.delivery == ChatDelivery.failed) return const ChatProgress.failed();
+    if (message.delivery == ChatDelivery.sending) return const ChatProgress.sending();
+    final you = _snapshot.you;
+    final seenBy = <String>[];
+    var delivered = false;
+    for (final MapEntry(key: id, value: receipt) in receipts.value.entries) {
+      if (id == you) continue;
+      if (receipt.read >= message.id) seenBy.add(id);
+      if (receipt.delivered >= message.id) delivered = true;
+    }
+    if (seenBy.isNotEmpty) {
+      return ChatProgress.seen([for (final id in seenBy) chatterName(id)]);
+    }
+    return delivered ? const ChatProgress.delivered() : const ChatProgress.sent();
+  }
+
+  /// A member's name: as the room lists them, or as they signed what they wrote if they have left.
+  String chatterName(String id) {
+    final listed = _snapshot.nameOf(id);
+    if (listed.isNotEmpty) return listed;
+    for (final m in chat.value.reversed) {
+      if (m.by == id && m.name.isNotEmpty) return m.name;
+    }
+    return S.someone;
+  }
+
+  /// For each message, the members whose last look at the chat ended there, so their pictures can mark the place.
+  Map<int, List<String>> readMarkers(List<ChatMessage> messages) {
+    final markers = <int, List<String>>{};
+    final sent = [for (final m in messages) if (m.delivery == ChatDelivery.sent) m];
+    for (final MapEntry(key: id, value: receipt) in receipts.value.entries) {
+      if (id == _snapshot.you || receipt.read <= 0) continue;
+      final at = sent.lastIndexWhere((m) => m.id <= receipt.read);
+      // Their own message is where they have always got to; a mark there says nothing
+      if (at < 0 || sent[at].by == id) continue;
+      markers.putIfAbsent(sent[at].id, () => []).add(id);
+    }
+    return markers;
   }
 
   void _chatFailed(String cid) {

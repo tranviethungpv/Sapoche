@@ -67,9 +67,14 @@ enum UiJson {
             "room": chat.room,
             "replace": chat.replace,
             "messages": chat.messages.map { message -> [String: Any] in
-                ["id": message.id, "by": message.by, "name": message.name, "text": message.text, "at": message.at,
-                 "cid": message.cid ?? NSNull()]
+                var quote: Any = NSNull()
+                if let re = message.re { quote = ["id": re.id, "by": re.by, "name": re.name, "text": re.text] as [String: Any] }
+                return ["id": message.id, "by": message.by, "name": message.name, "text": message.text, "at": message.at,
+                        "cid": message.cid ?? NSNull(), "re": quote, "rx": message.rx]
             },
+            "receipts": chat.receipts.map { table in
+                table.mapValues { ["d": $0.d, "r": $0.r] as [String: Any] } as [String: Any]
+            } ?? NSNull(),
         ] as [String: Any])
     }
 
@@ -130,7 +135,7 @@ enum UiJson {
     static func item(_ item: QueueItem) -> [String: Any] {
         [
             "id": item.id, "videoId": item.videoId, "title": item.title, "artist": item.artist,
-            "thumb": item.thumb ?? NSNull(), "durMs": item.durMs, "addedBy": item.addedBy,
+            "thumb": item.thumb ?? NSNull(), "durMs": item.durMs, "addedBy": item.addedBy, "auto": item.auto,
         ]
     }
 

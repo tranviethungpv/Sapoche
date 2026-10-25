@@ -11,6 +11,14 @@ class QueuesTest {
 
     private fun ids(list: List<TrackRef>) = list.map { it.videoId }
 
+    private fun auto(id: String) = item(id).copy(auto = true)
+
+    @Test
+    fun `a song autoplay lined up may be added by a member, but not the one autoplay is playing`() {
+        val queue = listOf(auto("a"), auto("b"), auto("c"))
+        assertEquals(listOf("b", "d"), ids(Queues.fresh(listOf(song("a"), song("b"), song("d")), queue, index = 0)))
+    }
+
     @Test
     fun `a song playing now or still to come is not added again`() {
         val queue = listOf(item("a"), item("b"), item("c"))

@@ -113,42 +113,74 @@ class _ReactionPicker extends StatelessWidget {
               ),
             ),
           ),
-          EmojiPicker(
-            onEmojiSelected: (_, emoji) {
+          _EmojiGrid(
+            onPick: (reaction) {
               HapticFeedback.selectionClick();
-              controller.react(Reaction.of(emoji.emoji));
+              controller.react(reaction);
             },
-            config: Config(
-              height: MediaQuery.sizeOf(context).height * 0.42,
-              emojiViewConfig: EmojiViewConfig(
-                backgroundColor: Colors.transparent,
-                emojiSizeMax: 30,
-                noRecents: Text(
-                  S.reactNoRecents,
-                  style: TextStyle(color: p.textSecondary),
-                ),
-              ),
-              categoryViewConfig: CategoryViewConfig(
-                initCategory: Category.SMILEYS,
-                backgroundColor: Colors.transparent,
-                indicatorColor: p.primary,
-                iconColor: p.textTertiary,
-                iconColorSelected: p.primary,
-              ),
-              bottomActionBarConfig: BottomActionBarConfig(
-                showBackspaceButton: false,
-                backgroundColor: Colors.transparent,
-                buttonColor: p.primary.withValues(alpha: 0.12),
-                buttonIconColor: p.primary,
-              ),
-              searchViewConfig: SearchViewConfig(
-                backgroundColor: p.surface,
-                buttonIconColor: p.textSecondary,
-                hintText: S.reactSearch,
-              ),
-            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Every emoji, to pick one for a chat message. Picking it puts the sheet away and gives the emoji back.
+Future<Reaction?> pickReaction(BuildContext context) =>
+    showModalBottomSheet<Reaction>(
+      useRootNavigator: true,
+      useSafeArea: true,
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: _EmojiGrid(
+          onPick: (reaction) {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).pop(reaction);
+          },
+        ),
+      ),
+    );
+
+class _EmojiGrid extends StatelessWidget {
+  const _EmojiGrid({required this.onPick});
+
+  final ValueChanged<Reaction> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return EmojiPicker(
+      onEmojiSelected: (_, emoji) => onPick(Reaction.of(emoji.emoji)),
+      config: Config(
+        height: MediaQuery.sizeOf(context).height * 0.42,
+        emojiViewConfig: EmojiViewConfig(
+          backgroundColor: Colors.transparent,
+          emojiSizeMax: 30,
+          noRecents: Text(
+            S.reactNoRecents,
+            style: TextStyle(color: p.textSecondary),
+          ),
+        ),
+        categoryViewConfig: CategoryViewConfig(
+          initCategory: Category.SMILEYS,
+          backgroundColor: Colors.transparent,
+          indicatorColor: p.primary,
+          iconColor: p.textTertiary,
+          iconColorSelected: p.primary,
+        ),
+        bottomActionBarConfig: BottomActionBarConfig(
+          showBackspaceButton: false,
+          backgroundColor: Colors.transparent,
+          buttonColor: p.primary.withValues(alpha: 0.12),
+          buttonIconColor: p.primary,
+        ),
+        searchViewConfig: SearchViewConfig(
+          backgroundColor: p.surface,
+          buttonIconColor: p.textSecondary,
+          hintText: S.reactSearch,
+        ),
       ),
     );
   }

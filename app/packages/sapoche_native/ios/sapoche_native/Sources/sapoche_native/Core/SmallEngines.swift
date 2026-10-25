@@ -3,9 +3,9 @@ import Foundation
 enum Queues {
     /// The songs of [tracks] worth adding to [queue], whose song at [index] is the one playing: those not already
     /// waiting in it (playing now or still to come) and not repeated within [tracks]. A song that was played already
-    /// may be added again.
+    /// may be added again, and so may one that autoplay lined up: the room takes that one off.
     static func fresh(_ tracks: [TrackRef], queue: [QueueItem], index: Int) -> [TrackRef] {
-        var seen = Set(queue.dropFirst(max(index, 0)).map(\.videoId))
+        var seen = Set(queue.dropFirst(max(index, 0)).enumerated().filter { $0.offset == 0 || !$0.element.auto }.map(\.element.videoId))
         return tracks.filter { seen.insert($0.videoId).inserted }
     }
 }

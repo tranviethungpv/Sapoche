@@ -119,6 +119,12 @@ async function main() {
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);
   }
+  if (process.env.SIM_ONLY === "threads") {
+    await chatThreadsSection();
+    await autoplayLaneSection();
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+  }
   if (process.env.SIM_ONLY === "crossfire") {
     await crossfireSection();
     console.log(`\n${passed} passed, ${failed} failed`);
@@ -273,6 +279,8 @@ async function main() {
   await inviteSection();
   await avatarSection();
   await chatSection();
+  await chatThreadsSection();
+  await autoplayLaneSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
@@ -1002,7 +1010,6 @@ async function shuffleModeSection() {
   const original = titlesOff.slice(1).filter((t) => t.startsWith("Song "));
   check("and puts the songs back in the order they had", original.join() === titles.slice(1).join());
   check("songs added while it was on follow them", titlesOff.slice(-2).sort().join() === ["Added", "Next up"].join(), titlesOff.join("|"));
-  [a, b].forEach((x) => (x.inbox.length = 0));
 
   // Off with nothing remembered is harmless, and the old one-shot message still works
   await a.waitFor((m) => m.t === "state" && m.state.shuffle === false);
@@ -1217,6 +1224,185 @@ async function autoplaySection() {
   b.send({ t: "autoplay", on: false });
   const refused = await b.waitFor((m) => m.t === "error");
   check("guests that may only add songs cannot change it", refused.code === "forbidden");
+  [a, b].forEach((x) => x.close());
+}
+
+/** Answers, reactions to a message and who has got it (protocol 12). */
+async function chatThreadsSection() {
+  console.log("Chat: replies, reactions to messages, receipts");
+  const code = await newCode();
+  const ann = new Client(code, "thr-an", "Ann");
+  await ann.join(true);
+  const bob = new Client(code, "thr-bo", "Bob");
+  await bob.join(false);
+  const hist = await bob.waitFor((m) => m.t === "chat.history");
+  check("the history says what each member has got, nothing yet", typeof hist.receipts === "object" && Object.keys(hist.receipts).length === 0);
+
+  ann.send({ t: "chat", text: "first" });
+  const first = await bob.waitFor((m) => m.t === "chat");
+  bob.send({ t: "chat", text: "second", reply: first.msg.id });
+  const second = await ann.waitFor((m) => m.t === "chat" && m.msg.text === "second");
+  check(
+    "a reply carries the message it answers, as it was",
+    second.msg.re?.id === first.msg.id && second.msg.re.by === pid("thr-an") && second.msg.re.name === "Ann" && second.msg.re.text === "first",
+    JSON.stringify(second.msg),
+  );
+  bob.send({ t: "chat", text: "third", reply: 99 });
+  check("a reply to a message the room does not have goes on its own", (await ann.waitFor((m) => m.t === "chat" && m.msg.text === "third")).msg.re === undefined);
+  bob.send({ t: "chat", text: "fourth", reply: "1" });
+  check("and so does one that names it badly", (await ann.waitFor((m) => m.t === "chat" && m.msg.text === "fourth")).msg.re === undefined);
+  ann.send({ t: "chat", text: "y".repeat(300) });
+  const longOne = await bob.waitFor((m) => m.t === "chat" && m.msg.text.startsWith("yyy"));
+  bob.send({ t: "chat", text: "short", reply: longOne.msg.id });
+  const quoted = await ann.waitFor((m) => m.t === "chat" && m.msg.text === "short");
+  check("the quote is cut to 100 characters", Array.from(quoted.msg.re.text).length === 101 && quoted.msg.re.text.endsWith("…"));
+  ann.send({ t: "chat", text: "nested", reply: second.msg.id });
+  const nested = await bob.waitFor((m) => m.t === "chat" && m.msg.text === "nested");
+  check("an answer to an answer quotes the answer's own text, not its quote", nested.msg.re.text === "second" && nested.msg.re.re === undefined);
+
+  // Reactions to a message
+  bob.send({ t: "chat.react", id: first.msg.id, e: "fire" });
+  const [ua, ub] = await all([ann, bob], (x) => x.waitFor((m) => m.t === "chat.update"));
+  check("a reaction to a message goes to everybody with the message", ua.msg.id === first.msg.id && ua.msg.rx[pid("thr-bo")] === "fire" && ub.msg.rx[pid("thr-bo")] === "fire", JSON.stringify(ua));
+  bob.send({ t: "chat.react", id: first.msg.id, e: "fire" });
+  check("giving the same one again changes nothing", await ann.stays((m) => m.t === "chat.update", 300));
+  ann.send({ t: "chat.react", id: first.msg.id, e: "\u{1F355}" });
+  const both = await bob.waitFor((m) => m.t === "chat.update");
+  await ann.waitFor((m) => m.t === "chat.update");
+  check("every member has one reaction of their own, any emoji", both.msg.rx[pid("thr-an")] === "\u{1F355}" && both.msg.rx[pid("thr-bo")] === "fire");
+  bob.send({ t: "chat.react", id: first.msg.id, e: "heart" });
+  const swapped = await all([ann, bob], (x) => x.waitFor((m) => m.t === "chat.update"));
+  check("a new one takes the place of the old", swapped[0].msg.rx[pid("thr-bo")] === "heart");
+  bob.send({ t: "chat.react", id: first.msg.id, e: null });
+  const gone = (await all([ann, bob], (x) => x.waitFor((m) => m.t === "chat.update")))[0];
+  check("null takes a reaction away", gone.msg.rx[pid("thr-bo")] === undefined && gone.msg.rx[pid("thr-an")] === "\u{1F355}");
+  [ann, bob].forEach((x) => (x.inbox.length = 0));
+  for (const bad of [{ id: 12345, e: "fire" }, { id: first.msg.id, e: "poop" }, { id: first.msg.id, e: 7 }, { id: "1", e: "fire" }, { id: first.msg.id, e: "a\u{1F355}" }]) {
+    bob.send({ t: "chat.react", ...bad });
+  }
+  check("an unknown message, a bad reaction or a bad number is ignored", await ann.stays((m) => m.t === "chat.update", 400));
+  ann.send({ t: "chat.react", id: first.msg.id, e: null });
+  const none = (await all([ann, bob], (x) => x.waitFor((m) => m.t === "chat.update")))[0];
+  check("after both took theirs away the message has no reactions at all", none.msg.rx === undefined);
+  bob.send({ t: "chat.react", id: first.msg.id, e: "clap" });
+  await all([ann, bob], (x) => x.waitFor((m) => m.t === "chat.update"));
+
+  const cara = new Client(code, "thr-ca", "Cara");
+  await cara.join(false);
+  const seen = await cara.waitFor((m) => m.t === "chat.history");
+  check("the history has the reactions", seen.msgs.find((m) => m.id === first.msg.id)?.rx?.[pid("thr-bo")] === "clap");
+  check("and that an author has read up to their own message", seen.receipts[pid("thr-an")]?.r === nested.msg.id && seen.receipts[pid("thr-an")]?.d === nested.msg.id, JSON.stringify(seen.receipts));
+
+  // Receipts
+  const last = nested.msg.id;
+  [ann, bob, cara].forEach((x) => (x.inbox.length = 0));
+  cara.send({ t: "chat.receipt", delivered: last });
+  const delivered = await ann.waitFor((m) => m.t === "chat.receipts" && m.receipts[pid("thr-ca")]);
+  check("a device that got the messages says so", delivered.receipts[pid("thr-ca")].d === last && delivered.receipts[pid("thr-ca")].r === 0, JSON.stringify(delivered));
+  ann.inbox.length = 0;
+  cara.send({ t: "chat.receipt", delivered: last });
+  check("saying it again is not news", await ann.stays((m) => m.t === "chat.receipts", 300));
+  cara.send({ t: "chat.receipt", read: 3 });
+  const [read] = await all([bob, ann], (x) => x.waitFor((m) => m.t === "chat.receipts" && m.receipts[pid("thr-ca")]?.r === 3));
+  check("reading up to a message is told to everybody, and keeps what was delivered", read.receipts[pid("thr-ca")].d === last);
+  ann.inbox.length = 0;
+  cara.send({ t: "chat.receipt", read: 1 });
+  check("it never goes back", await ann.stays((m) => m.t === "chat.receipts", 300));
+  cara.send({ t: "chat.receipt", read: 9999 });
+  const clamped = await ann.waitFor((m) => m.t === "chat.receipts" && m.receipts[pid("thr-ca")]?.r === last);
+  check("nor beyond the last message", clamped.receipts[pid("thr-ca")].d === last);
+  ann.inbox.length = 0;
+  for (const bad of [{ read: "5" }, { read: -2 }, { delivered: 1.5 }, {}]) cara.send({ t: "chat.receipt", ...bad });
+  check("a bad number says nothing", await ann.stays((m) => m.t === "chat.receipts", 300));
+  [ann, bob, cara].forEach((x) => x.close());
+}
+
+/** What autoplay adds stays apart from the songs members chose (protocol 12). */
+async function autoplayLaneSection() {
+  console.log("Autoplay songs stay apart from the list");
+  const [a, b] = await freshRoom(["La", "Lb"]);
+  const track = (videoId, title) => ({ videoId, title, artist: "x", durMs: 200000 });
+  const ids = ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd", "eeeeeeeeeee", "fffffffffff", "ggggggggggg", "hhhhhhhhhhh"];
+  const song = (i) => track(ids[i], `S${i}`);
+  const titles = (state) => state.queue.map((q) => (q.auto ? `${q.title}*` : q.title)).join(" ");
+  const quiet = () => [a, b].forEach((x) => (x.inbox.length = 0));
+  const playing = async () => {
+    const p = await all([a, b], (x) => x.waitFor((m) => m.t === "prepare"));
+    await all([a, b], (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    await all([a, b], (x) => x.waitFor((m) => m.t === "start"));
+    return p[0];
+  };
+  const stateWith = async (x, test) => (await x.waitFor((m) => m.t === "state" && test(m.state))).state;
+
+  a.send({ t: "queue.addMany", tracks: [song(0), song(1)] });
+  await playing();
+  a.send({ t: "next" });
+  await playing();
+  quiet();
+  a.send({ t: "next" });
+  const idle = await stateWith(a, (s) => s.phase === "idle");
+  const ask = await a.waitFor((m) => m.t === "autoplay.fill");
+  check("the queue runs out and autoplay asks for songs like the last", ask.videoId === ids[1]);
+  b.send({ t: "queue.addMany", tracks: [song(2), song(3), song(4)], auto: true });
+  const filled = await stateWith(a, (s) => s.phase === "preparing");
+  check("the songs autoplay sends are marked and follow the others", titles(filled) === "S0 S1 S2* S3* S4*" && filled.index === 2, titles(filled));
+  await playing();
+
+  quiet();
+  a.send({ t: "queue.addMany", tracks: [song(5)], auto: true });
+  check("autoplay songs are taken only when the room is idle", await a.stays((m) => m.t === "state", 400));
+
+  b.send({ t: "queue.add", ...song(5) });
+  const added = await stateWith(a, (s) => s.queue.length === 6);
+  check("a member's song goes ahead of what autoplay added", titles(added) === "S0 S1 S2* S5 S3* S4*", titles(added));
+  a.send({ t: "queue.add", ...song(6), next: true });
+  const next = await stateWith(a, (s) => s.queue.length === 7);
+  check("play next still goes right after the playing song", titles(next) === "S0 S1 S2* S6 S5 S3* S4*", titles(next));
+  a.send({ t: "queue.addMany", tracks: [song(7)] });
+  check("and so does a list added at the end", titles(await stateWith(a, (s) => s.queue.length === 8)) === "S0 S1 S2* S6 S5 S7 S3* S4*");
+
+  // Shuffle mixes the songs members chose and leaves autoplay's at the end
+  for (let i = 0; i < 4; i++) {
+    a.send({ t: "queue.shuffle" });
+    const mixed = await stateWith(a, (s) => s.queue.length === 8);
+    check(`shuffle keeps autoplay's songs at the end (${i + 1})`, titles(mixed).endsWith("S3* S4*") && mixed.queue[mixed.index].title === "S2");
+  }
+  a.send({ t: "shuffle", on: true });
+  await stateWith(a, (s) => s.shuffle === true);
+  b.send({ t: "queue.add", ...track("iiiiiiiiiii", "S8") });
+  const mixedIn = await stateWith(a, (s) => s.queue.length === 9);
+  check("with shuffle on a new song is mixed in before the autoplay ones", mixedIn.queue.slice(-2).every((q) => q.auto) && mixedIn.queue.filter((q) => q.auto).length === 3, titles(mixedIn));
+  a.send({ t: "shuffle", on: false });
+  const unmixed = await stateWith(a, (s) => s.shuffle === false);
+  check("and turning shuffle off keeps them at the end too", unmixed.queue.slice(-2).every((q) => q.auto), titles(unmixed));
+
+  // Moving one into the list makes it a member's
+  const moveId = unmixed.queue.find((q) => q.title === "S3").id;
+  a.send({ t: "queue.move", id: moveId, toIndex: unmixed.index + 1 });
+  const moved = await stateWith(a, (s) => s.queue.find((q) => q.title === "S3") && !s.queue.find((q) => q.title === "S3").auto);
+  check("a song moved by a member is theirs, no longer autoplay's", moved.queue.filter((q) => q.auto).map((q) => q.title).join() === "S2,S4", titles(moved));
+
+  // Autoplay turned off takes away what is still to come, not what plays
+  a.send({ t: "autoplay", on: false });
+  const off = await stateWith(a, (s) => s.autoplay === false);
+  check("turning autoplay off drops its songs still to come, not the one playing", off.queue.filter((q) => q.auto).map((q) => q.title).join() === "S2", titles(off));
+  a.send({ t: "autoplay", on: true });
+  await stateWith(a, (s) => s.autoplay === true);
+
+  // The end: the list is the members' again
+  quiet();
+  for (let i = off.index; i < off.queue.length - 1; i++) {
+    a.send({ t: "next" });
+    await playing();
+    await sleep(150); // under the limit of 20 messages a second
+  }
+  quiet();
+  a.send({ t: "next" });
+  const done = await stateWith(a, (s) => s.phase === "idle");
+  check("when the room finishes, autoplay's song is gone from the queue", done.queue.length === off.queue.length - 1 && done.queue.every((q) => !q.auto), titles(done));
+  check("and the room is at the end of the members' list", done.index === done.queue.length - 1, `${done.index}/${done.queue.length}`);
+  const refill = await a.waitFor((m) => m.t === "autoplay.fill");
+  check("autoplay asks again from the last song that played", refill.epoch === done.epoch);
   [a, b].forEach((x) => x.close());
 }
 

@@ -552,7 +552,7 @@ final class WireTests: XCTestCase {
         )
         XCTAssertEqual(
             Wire.parse(#"{"t":"chat.history","msgs":[{"id":1,"by":"b2","name":"Ben","text":"yo","at":5},{"id":2}]}"#),
-            .chatHistory([ChatMessage(id: 1, by: "b2", name: "Ben", text: "yo", at: 5)])
+            .chatHistory([ChatMessage(id: 1, by: "b2", name: "Ben", text: "yo", at: 5)], receipts: [:])
         )
         XCTAssertNil(Wire.parse(#"{"t":"chat","msg":{"id":3}}"#))
         XCTAssertEqual(Wire.parse(#"{"t":"react","by":"a1","e":"heart","n":3}"#), .react(by: "a1", e: "heart", n: 3))
@@ -564,6 +564,57 @@ final class WireTests: XCTestCase {
         let react = JSON.parse(Wire.react("clap", n: 4))
         XCTAssertEqual(react?["e"].string, "clap")
         XCTAssertEqual(react?["n"].int, 4)
+    }
+
+    func testRepliesReactionsToAMessageAndReceiptsAreRead() {
+        guard case let .chat(reply)? = Wire.parse(
+            #"{"t":"chat","msg":{"id":4,"by":"b2","name":"Ben","text":"yes","at":9,"re":{"id":3,"by":"a1","name":"Ann","text":"hi"},"rx":{"a1":"fire"}}}"#
+        ) else { return XCTFail("not a message") }
+        XCTAssertEqual(reply.re, ChatQuote(id: 3, by: "a1", name: "Ann", text: "hi"))
+        XCTAssertEqual(reply.rx, ["a1": "fire"])
+        // A message from before protocol 12 has neither
+        guard case let .chat(old)? = Wire.parse(#"{"t":"chat","msg":{"id":1,"by":"a1","name":"Ann","text":"hi","at":5}}"#) else { return XCTFail("not a message") }
+        XCTAssertNil(old.re)
+        XCTAssertEqual(old.rx, [:])
+
+        guard case let .chatUpdate(update)? = Wire.parse(#"{"t":"chat.update","msg":{"id":3,"by":"a1","name":"Ann","text":"hi","at":5,"rx":{"b2":"🍕"}}}"#)
+        else { return XCTFail("not an update") }
+        XCTAssertEqual(update.rx, ["b2": "🍕"])
+        XCTAssertEqual(
+            Wire.parse(#"{"t":"chat.receipts","receipts":{"a1":{"d":4,"r":4},"b2":{"d":4,"r":2}}}"#),
+            .chatReceipts(["a1": ChatReceipt(d: 4, r: 4), "b2": ChatReceipt(d: 4, r: 2)])
+        )
+        XCTAssertEqual(
+            Wire.parse(#"{"t":"chat.history","msgs":[],"receipts":{"a1":{"d":1,"r":0}}}"#),
+            .chatHistory([], receipts: ["a1": ChatReceipt(d: 1, r: 0)])
+        )
+
+        let answer = JSON.parse(Wire.chat("yes", cid: "c", reply: 3))
+        XCTAssertEqual(answer?["reply"].int64, 3)
+        XCTAssertNil(JSON.parse(Wire.chat("yes", cid: "c"))?["reply"].int64)
+        let react = JSON.parse(Wire.chatReact(3, "fire"))
+        XCTAssertEqual(react?["t"].string, "chat.react")
+        XCTAssertEqual(react?["id"].int64, 3)
+        XCTAssertEqual(react?["e"].string, "fire")
+        XCTAssertTrue(JSON.parse(Wire.chatReact(3, nil))?["e"].isNull ?? false)
+        let delivered = JSON.parse(Wire.chatReceipt(delivered: 5))
+        XCTAssertEqual(delivered?["delivered"].int64, 5)
+        XCTAssertNil(delivered?["read"].int64)
+        XCTAssertEqual(JSON.parse(Wire.chatReceipt(read: 5))?["read"].int64, 5)
+    }
+
+    func testWhatAutoplayAddedIsMarkedAndMayStillBeAddedByAMember() {
+        guard case let .state(_, _, state, _, _)? = Wire.parse(
+            #"{"t":"state","serverNow":1,"you":"a","state":{"queue":[{"id":"q1","videoId":"aaaaaaaaaaa","title":"A","artist":"x","durMs":1,"addedBy":"a"},{"id":"q2","videoId":"bbbbbbbbbbb","title":"B","artist":"x","durMs":1,"addedBy":"a","auto":true}],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":[]}"#
+        ) else { return XCTFail("not a state") }
+        XCTAssertEqual(state.queue.map(\.auto), [false, true])
+        let track = TrackRef(videoId: "bbbbbbbbbbb", title: "B", artist: "x", thumb: nil, durMs: 1)
+        let queue = [QueueItem(id: "a", videoId: "aaaaaaaaaaa", title: "A", artist: "x", thumb: nil, durMs: 1, addedBy: "", auto: true),
+                     QueueItem(id: "b", videoId: "bbbbbbbbbbb", title: "B", artist: "x", thumb: nil, durMs: 1, addedBy: "", auto: true)]
+        XCTAssertEqual(Queues.fresh([track], queue: queue, index: 0), [track])
+        XCTAssertEqual(Queues.fresh([TrackRef(videoId: "aaaaaaaaaaa", title: "A", artist: "x", thumb: nil, durMs: 1)], queue: queue, index: 0), [])
+        XCTAssertTrue(Wire.queueAddMany([track], auto: true).contains("\"auto\":true"))
+        XCTAssertFalse(Wire.queueAddMany([track]).contains("auto"))
     }
 
     func testTheServersMessagesAreRead() throws {

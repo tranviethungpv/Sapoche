@@ -61,16 +61,19 @@ class AvatarEvent extends BackendEvent {
   final Uint8List? bytes;
 }
 
-/// Chat messages of room [room]: everything it keeps when [replace], else new ones.
+/// Chat messages of room [room]: everything it keeps when [replace], else new ones or ones that changed (somebody
+/// reacted to them). [receipts], by member, is what each has got of the chat when that changed, else null.
 class ChatEvent extends BackendEvent {
   const ChatEvent({
     required this.room,
     required this.messages,
     required this.replace,
+    this.receipts,
   });
   final String room;
   final List<ChatMessage> messages;
   final bool replace;
+  final Map<String, ChatReceipt>? receipts;
 }
 
 /// Member [by] sent a reaction, [count] taps of it; [reaction] is null for one this app does not know. [late] when it
@@ -159,9 +162,15 @@ abstract class Backend {
   /// The picture the room sees of this device, as base64 of a small JPEG; null for none.
   Future<void> setAvatar(String? base64);
 
-  /// Writes [text] to the room's chat; [cid] comes back with it once the room has it. False when there is no
-  /// connection to send it on.
-  Future<bool> sendChat(String text, String cid);
+  /// Writes [text] to the room's chat, as an answer to message number [reply] when it has one; [cid] comes back with
+  /// it once the room has it. False when there is no connection to send it on.
+  Future<bool> sendChat(String text, String cid, {int? reply});
+
+  /// Gives the chat message [id] this device's [reaction], or ([reaction] null) takes it away.
+  Future<void> reactChat(int id, Reaction? reaction);
+
+  /// The chat is on screen and its messages up to number [upTo] have been looked at.
+  Future<void> readChat(int upTo);
 
   /// Sends the room [reaction], standing for [count] taps.
   Future<void> react(Reaction reaction, int count);
@@ -457,6 +466,12 @@ class NativeBackend implements Backend {
           for (final e in json['messages'] as List<dynamic>)
             ChatMessage.fromJson(e as Map<String, dynamic>),
         ],
+        receipts: json['receipts'] == null
+            ? null
+            : {
+                for (final e in (json['receipts'] as Map<String, dynamic>).entries)
+                  e.key: ChatReceipt.fromJson(e.value as Map<String, dynamic>),
+              },
       ),
       'reaction' => ReactionEvent(
         json['by'] as String,
@@ -544,8 +559,20 @@ class NativeBackend implements Backend {
       _call<void>('setAvatar', {'data': base64});
 
   @override
-  Future<bool> sendChat(String text, String cid) async =>
-      await _call<bool>('sendChat', {'text': text, 'cid': cid}) ?? false;
+  Future<bool> sendChat(String text, String cid, {int? reply}) async =>
+      await _call<bool>('sendChat', {
+        'text': text,
+        'cid': cid,
+        'reply': ?reply,
+      }) ??
+      false;
+
+  @override
+  Future<void> reactChat(int id, Reaction? reaction) =>
+      _call('reactChat', {'id': id, 'e': reaction?.wire});
+
+  @override
+  Future<void> readChat(int upTo) => _call('readChat', {'upTo': upTo});
 
   @override
   Future<void> react(Reaction reaction, int count) =>

@@ -594,6 +594,34 @@ abstract final class S {
   );
   static String get chatNotSent =>
       _t('Not sent · tap to try again', 'Chưa gửi được · chạm để thử lại');
+  static String get chatReply => _t('Reply', 'Trả lời');
+  static String chatReplyingTo(String name) => _t(
+    'Replying to ${name.isEmpty ? someone : name}',
+    'Đang trả lời ${name.isEmpty ? someone : name}',
+  );
+  static String get chatReplyingToYourself =>
+      _t('Replying to yourself', 'Đang trả lời chính mình');
+  static String get chatCancelReply => _t('Cancel reply', 'Huỷ trả lời');
+  static String get chatCopy => _t('Copy', 'Sao chép');
+  static String get chatCopied => _t('Message copied', 'Đã sao chép tin nhắn');
+  static String get chatReactions => _t('Reactions', 'Cảm xúc');
+  static String get chatSending => _t('Sending…', 'Đang gửi…');
+  static String get chatSent => _t('Sent', 'Đã gửi');
+  static String get chatDelivered => _t('Delivered', 'Đã nhận');
+  static String get chatSeen => _t('Seen', 'Đã xem');
+  static String chatSeenBy(List<String> names, int others) {
+    if (names.length >= others && others > 1) {
+      return _t('Seen by everyone', 'Mọi người đã xem');
+    }
+    if (others <= 1) return chatSeen;
+    final shown = names.take(2).join(', ');
+    final more = names.length - 2;
+    return _t(
+      more > 0 ? 'Seen by $shown and $more more' : 'Seen by $shown',
+      more > 0 ? '$shown và $more người khác đã xem' : '$shown đã xem',
+    );
+  }
+
   static String get react => _t('React', 'Thả cảm xúc');
   static String get reactMore => _t('More reactions', 'Thêm cảm xúc');
   static String get reactNoRecents =>
@@ -763,6 +791,10 @@ abstract final class S {
   static String get roomAutoplayNote => _t(
     'The room keeps playing similar songs when the queue runs out.',
     'Phòng sẽ tiếp tục phát những bài tương tự khi hàng đợi hết.',
+  );
+  static String get roomAutoplayQueued => _t(
+    'Lined up by autoplay. They play after your queue and are not part of it: songs you add go first.',
+    'Do tự phát xếp sẵn. Chúng phát sau hàng đợi của bạn và không thuộc hàng đợi: bài bạn thêm sẽ được phát trước.',
   );
   static String get nothingAfter =>
       _t('Nothing is queued after this song.', 'Không có bài nào sau bài này.');
