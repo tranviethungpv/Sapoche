@@ -911,6 +911,10 @@ abstract final class S {
     'Enter the room key to start',
     'Nhập khoá phòng để bắt đầu',
   );
+  static String get webKeyHint => _t(
+    'Room key, or the link copied from the Android app',
+    'Khoá phòng, hoặc liên kết chép từ app Android',
+  );
   static String get keyRefused => _t(
     'The room key was not accepted. Check it in Settings > Server.',
     'Khoá phòng không được chấp nhận. Hãy kiểm tra ở Cài đặt > Máy chủ.',

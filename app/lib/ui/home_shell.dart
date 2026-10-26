@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../data/page_reload.dart';
 import '../data/room_controller.dart';
+import '../data/setup_link.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'chat_sheet.dart';
@@ -273,15 +274,18 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     final room = _watched;
     if (!kIsWeb || _askedForKey || room == null || room.profile.hasKey || !mounted) return;
     _askedForKey = true;
-    final key = await showTextDialog(
+    final typed = await showTextDialog(
       context,
       title: S.webKeyTitle,
-      hint: S.serverKey,
-      maxLength: 200,
+      hint: S.webKeyHint,
+      maxLength: 400,
       capitalization: TextCapitalization.none,
     );
-    if (key == null || key.trim().isEmpty) return;
-    await room.configure(key: key.trim());
+    if (typed == null || typed.trim().isEmpty) return;
+    // The link an Android phone copies from its settings works too, so that nobody has to pick the key out of it
+    final key = SetupLink.parse(typed)?.key ?? typed.trim();
+    if (key.isEmpty) return;
+    await room.configure(key: key);
     reloadPage();
   }
 
