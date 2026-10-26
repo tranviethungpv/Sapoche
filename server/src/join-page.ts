@@ -6,6 +6,7 @@ const TEXTS = {
     title: "Join on Sapoche",
     heading: "You are invited to listen together",
     open: "Open in Sapoche",
+    web: "Continue in the browser",
     copy: "Copy code",
     copied: "Copied",
     help: "Not opening? Install Sapoche, then choose Room and enter this code.",
@@ -14,6 +15,7 @@ const TEXTS = {
     title: "Vào phòng trên Sapoche",
     heading: "Bạn được mời cùng nghe nhạc",
     open: "Mở trong Sapoche",
+    web: "Tiếp tục trên trình duyệt",
     copy: "Sao chép mã",
     copied: "Đã sao chép",
     help: "Không mở được? Hãy cài Sapoche, rồi chọn Phòng và nhập mã này.",
@@ -50,8 +52,9 @@ export function joinPage(code: string, language: keyof typeof TEXTS = "en"): str
   main { max-width: 22rem; padding: 2rem 1.5rem; text-align: center; }
   h1 { font-size: 1.25rem; margin: 0 0 1rem; }
   .code { font-size: 2.5rem; letter-spacing: .4rem; font-weight: 700; margin: 1rem 0 1.5rem; }
-  a.open, button { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; padding: .9rem; border: 0; border-radius: 1rem; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+  a.open, a.web, button { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; padding: .9rem; border: 0; border-radius: 1rem; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
   a.open { background: var(--pink); color: #fff; }
+  a.web { background: transparent; color: var(--pink); box-shadow: inset 0 0 0 2px var(--pink); }
   button { background: transparent; color: var(--pink); box-shadow: inset 0 0 0 2px var(--pink); }
   p { opacity: .7; font-size: .9rem; }
 </style>
@@ -61,6 +64,7 @@ export function joinPage(code: string, language: keyof typeof TEXTS = "en"): str
   <h1>${t.heading}</h1>
   <div class="code">${code}</div>
   <a class="open" href="${intent}">${t.open}</a>
+  <a class="web" href="/?join=${code}">${t.web}</a>
   <button id="copy">${t.copy}</button>
   <p>${t.help}</p>
 </main>

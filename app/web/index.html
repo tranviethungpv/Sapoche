@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Listen to YouTube music together, in the same beat.">
+  <meta name="theme-color" content="#C4456B" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0A0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Sapoche">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="manifest" href="manifest.json">
+  <title>Sapoche</title>
+
+  <style>
+    :root { --base: #ffffff; --wash: #ffe3ec; --primary: #c4456b; }
+    @media (prefers-color-scheme: dark) { :root { --base: #0e0a0c; --wash: #3b1826; --primary: #f291ac; } }
+    html, body { margin: 0; height: 100%; background: linear-gradient(var(--wash), var(--base) 60%); overflow: hidden; overscroll-behavior: none; }
+    /* Shown while the app downloads; the app draws over it */
+    #boot { position: fixed; inset: 0; display: grid; place-items: center; }
+    #boot i { width: 28px; height: 28px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--primary); animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* The frame of the YouTube player: the app places it (see video_frame.dart) and the player puts its frame inside.
+       It takes no touches, the app is below it. A small round place fills with the middle of the picture. */
+    .sapoche-frame { width: 100%; height: 100%; overflow: hidden; background: #000; pointer-events: none; }
+    .sapoche-frame iframe { width: 100%; height: 100%; border: 0; }
+    .sapoche-frame.crop iframe { transform: scale(1.78); }
+    .sapoche-frame.hidden, .sapoche-frame.empty { visibility: hidden; }
+  </style>
+</head>
+<body>
+  <div id="boot"><i></i></div>
+  <script>
+    // A link like https://host/#key=SECRET hands the room key to the app and is taken out of the address before the app
+    // starts, so that the key stays out of the history and out of what is sent to other sites
+    (function () {
+      var found = /[#&]key=([^&]+)/.exec(location.hash);
+      if (!found) return;
+      try { sessionStorage.setItem('sapoche.setupKey', decodeURIComponent(found[1])); } catch (e) {}
+      history.replaceState(null, '', location.pathname + location.search);
+    })();
+  </script>
+  <script>
+    // The app has drawn: the spinner is no longer needed
+    window.addEventListener('flutter-first-frame', function () { var b = document.getElementById('boot'); if (b) b.remove(); });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

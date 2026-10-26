@@ -2,6 +2,7 @@ import { ASSET_LINKS, joinPage, pageLanguage } from "./join-page";
 import { PROTOCOL_VERSION } from "./protocol";
 import { Room } from "./room";
 import { serveUpdate, UPDATE_ROUTE } from "./update";
+import { serveYoutube, YOUTUBE_ROUTE } from "./youtube";
 
 export { Room };
 
@@ -66,12 +67,14 @@ export default {
     }
 
     const update = url.pathname.match(UPDATE_ROUTE);
+    const youtube = url.pathname.match(YOUTUBE_ROUTE);
     const isRoomRoute = url.pathname === "/rooms" || ROOM_ROUTE.test(url.pathname);
-    if ((isRoomRoute || update) && !(await authorized(request, url, env))) {
+    if ((isRoomRoute || update || youtube) && !(await authorized(request, url, env))) {
       return new Response("Unauthorized", { status: 401 });
     }
 
     if (update) return serveUpdate(request, env, update[1]);
+    if (youtube) return serveYoutube(request, youtube[1]);
 
     // Room codes are only a namespace: the Durable Object is created lazily on first connection
     if (request.method === "POST" && url.pathname === "/rooms") {

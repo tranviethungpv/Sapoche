@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -29,6 +30,7 @@ import 'widgets/download_actions.dart';
 import 'widgets/playlist_picker.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
+import 'widgets/video_frame.dart';
 import 'widgets/video_view.dart';
 import 'widgets/volume_bar.dart';
 import 'widgets/player_backdrop.dart';
@@ -557,6 +559,26 @@ class _CoverArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sheet = PlayerSheetScope.of(context);
+    // A browser always shows the picture, as YouTube asks of its player; the frame floats over this place
+    if (kIsWeb) {
+      return Center(
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: VideoFrameSlot(
+            key: sheet.pageCover,
+            radius: 16,
+            child: LayoutBuilder(
+              builder: (context, box) => Artwork(
+                url: current.thumb,
+                size: box.maxWidth,
+                radius: 16,
+                sharp: true,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     if (controller.snapshot.video) {
       return VideoView(
         key: const ValueKey('video'),
@@ -630,7 +652,13 @@ class _PanelStage extends StatelessWidget {
             children: [
               GestureDetector(
                 onTap: onCover,
-                child: Artwork(url: current.thumb, size: 56, radius: 10),
+                child: kIsWeb
+                    ? VideoFrameSlot(
+                        radius: 10,
+                        crop: true,
+                        child: Artwork(url: current.thumb, size: 56, radius: 10),
+                      )
+                    : Artwork(url: current.thumb, size: 56, radius: 10),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -958,8 +986,8 @@ class _ModePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A file on this phone has no video
-    if (controller.snapshot.current?.isLocal ?? false) {
+    // A file on this phone has no video, and a browser has only the picture
+    if (kIsWeb || (controller.snapshot.current?.isLocal ?? false)) {
       return const SizedBox.shrink();
     }
     final p = context.palette;

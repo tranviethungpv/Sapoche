@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,7 +14,7 @@ Future<void> showSetupLinkDialog(BuildContext context, RoomController room) {
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text(S.setupAnother),
+      title: Text(kIsWeb ? S.setupAnotherWeb : S.setupAnother),
       content: FutureBuilder<String?>(
         future: room.setupLink(),
         builder: (context, snapshot) {
@@ -32,7 +33,7 @@ Future<void> showSetupLinkDialog(BuildContext context, RoomController room) {
                 QrCodeView(data: link, size: 220),
                 const SizedBox(height: 14),
                 Text(
-                  S.setupAnotherHelp,
+                  kIsWeb ? S.setupAnotherWebHelp : S.setupAnotherHelp,
                   style: Theme.of(context).textTheme.bodySmall
                       ?.copyWith(color: context.palette.textSecondary),
                 ),

@@ -20,7 +20,15 @@ class CachedCover extends ImageProvider<CachedCover> {
 
   @override
   ImageStreamCompleter loadImage(CachedCover key, ImageDecoderCallback decode) {
-    // Where fetching is made up (the tests), the picture is fetched as it always was, and no file is kept
+    // In a browser the browser keeps pictures itself; where fetching is made up (the tests), the picture is fetched
+    // as it always was, and no file is kept. Without CORS headers the browser still shows a picture, just not as pixels.
+    if (kIsWeb) {
+      final image = NetworkImage(
+        url,
+        webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+      );
+      return image.loadImage(image, decode);
+    }
     if (HttpOverrides.current != null) {
       return NetworkImage(url).loadImage(NetworkImage(url), decode);
     }
@@ -164,7 +172,8 @@ abstract final class CoverFiles {
   static String fileName(String url) => _name(url);
 
   static String _name(String url) {
-    var hash = -3750763034362895579; // 0xcbf29ce484222325
+    // Parsed, as dart2js refuses a literal this large; only the apps keep cover files
+    var hash = int.parse('-3750763034362895579'); // 0xcbf29ce484222325
     for (final unit in url.codeUnits) {
       hash = (hash ^ unit) * 0x100000001b3;
     }

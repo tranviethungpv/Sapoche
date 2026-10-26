@@ -119,6 +119,7 @@ abstract final class S {
       'Không có phòng nào với mã này',
     ),
     'room_full' => _t('The room is full', 'Phòng đã đầy'),
+    'key_refused' => keyRefused,
     'queue_full' => _t('The queue is full', 'Hàng đợi đã đầy'),
     'rate_limited' => _t(
       'Too many messages, slow down',
@@ -906,6 +907,14 @@ abstract final class S {
   static String get serverSection => _t('Server', 'Máy chủ');
   static String get serverAddress => _t('Address', 'Địa chỉ');
   static String get serverKey => _t('Room key', 'Khoá phòng');
+  static String get webKeyTitle => _t(
+    'Enter the room key to start',
+    'Nhập khoá phòng để bắt đầu',
+  );
+  static String get keyRefused => _t(
+    'The room key was not accepted. Check it in Settings > Server.',
+    'Khoá phòng không được chấp nhận. Hãy kiểm tra ở Cài đặt > Máy chủ.',
+  );
   static String get serverKeySet => _t('Set', 'Đã đặt');
   static String get serverKeyNotSet => _t('Not set', 'Chưa đặt');
   static String get serverHelp => _t(
@@ -917,6 +926,11 @@ abstract final class S {
   static String get setupAnotherHelp => _t(
     'Open the camera on the other phone and point it at this code, or copy the link and send it to yourself. It holds the server address and the room key: show it to nobody else.',
     'Mở camera trên máy kia và đưa vào mã này, hoặc sao chép liên kết rồi gửi cho chính bạn. Mã chứa địa chỉ máy chủ và khoá phòng: đừng cho ai khác xem.',
+  );
+  static String get setupAnotherWeb => _t('Invite to the web app', 'Mời bạn dùng bản web');
+  static String get setupAnotherWebHelp => _t(
+    'Whoever opens this link, or points a phone camera at this code, is in at once with no key to type. It holds the room key: send it only to people in your group.',
+    'Ai mở liên kết này, hoặc đưa camera điện thoại vào mã này, là vào thẳng và không phải gõ khoá. Liên kết chứa khoá phòng: chỉ gửi cho người trong nhóm của bạn.',
   );
   static String get setupCopy => _t('Copy link', 'Sao chép liên kết');
   static String get setupCopied => _t('Link copied', 'Đã sao chép liên kết');

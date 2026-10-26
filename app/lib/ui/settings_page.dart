@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -174,8 +175,8 @@ class _SettingsPageState extends State<SettingsPage> {
             label: S.backup,
             onTap: () => _open(context, () => S.backup, _backup),
           ),
-          // The server is set by the person on iOS; on Android it is built into the app
-          if (Platform.isIOS)
+          // The server is set by the person on iOS and in a browser; on Android it is built into the app
+          if (kIsWeb || Platform.isIOS)
             _NavRow(
               selected: _shows(_server),
               key: const ValueKey('settings-server'),
@@ -183,16 +184,16 @@ class _SettingsPageState extends State<SettingsPage> {
               label: S.serverSection,
               onTap: () => _open(context, () => S.serverSection, _server),
             ),
-          // The phone that has the server built in can set another one up
-          if (Platform.isAndroid)
+          // The phone that has the server built in can set another one up; a browser shares a link to itself
+          if (kIsWeb || Platform.isAndroid)
             _NavRow(
               key: const ValueKey('settings-setup-another'),
               icon: Icons.qr_code_2_rounded,
-              label: S.setupAnother,
+              label: kIsWeb ? S.setupAnotherWeb : S.setupAnother,
               onTap: () => showSetupLinkDialog(context, model.room),
             ),
-          // iOS installs updates by itself: they come from SideStore, not from the app
-          if (!Platform.isIOS)
+          // iOS installs updates by itself: they come from SideStore, not from the app; a web page is always the newest
+          if (!kIsWeb && !Platform.isIOS)
             ListenableBuilder(
               listenable: model.update,
               builder: (context, _) {

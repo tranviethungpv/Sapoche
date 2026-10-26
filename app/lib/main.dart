@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'data/app_settings.dart';
 import 'data/backend.dart';
+import 'data/backend_factory.dart';
 import 'data/library_controller.dart';
 import 'data/music_controller.dart';
 import 'data/recent_rooms.dart';
@@ -18,7 +19,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Flutter keeps up to 100 MB of decoded pictures; covers are small and a phone has better uses for the memory
   PaintingBinding.instance.imageCache.maximumSizeBytes = 48 << 20;
-  final Backend backend = NativeBackend();
+  final Backend backend = await createBackend();
   // Before the first cover is asked for; without the folder the covers are only fetched
   CoverFiles.useFolder(
     await backend.cacheFolder().catchError((Object _) => null),

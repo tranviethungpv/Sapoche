@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/page_reload.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
@@ -23,6 +25,8 @@ import 'widgets/glass.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/page_width.dart';
 import 'widgets/playlist_cover.dart';
+import 'widgets/text_dialog.dart';
+import 'widgets/video_frame.dart';
 import 'widgets/player_bar.dart';
 
 /// How the home screen is laid out for the size of its window, after Material's window size classes: by the width
@@ -217,7 +221,9 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     room.invite.addListener(_onInvite);
     room.setup.addListener(_onSetup);
     room.addListener(_precacheCover);
+    room.addListener(_askForKey);
     WidgetsBinding.instance.addPostFrameCallback((_) => _precacheCover());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askForKey());
     WidgetsBinding.instance.addPostFrameCallback((_) => _onInvite());
     WidgetsBinding.instance.addPostFrameCallback((_) => _onSetup());
   }
@@ -231,6 +237,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     _watched?.invite.removeListener(_onInvite);
     _watched?.setup.removeListener(_onSetup);
     _watched?.removeListener(_precacheCover);
+    _watched?.removeListener(_askForKey);
     _messages?.cancel();
     _libraryMessages?.cancel();
     _notices?.cancel();
@@ -256,6 +263,26 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
       onError: (_, _) =>
           precacheImage(CachedCover(url), context, onError: (_, _) {}),
     );
+  }
+
+  var _askedForKey = false;
+
+  /// A browser that was never given the room key can do nothing: search, Home and rooms all need it. The person is asked
+  /// for it once, the first time, and the page loads again with it. (Phones have it built in or are set up by a link.)
+  Future<void> _askForKey() async {
+    final room = _watched;
+    if (!kIsWeb || _askedForKey || room == null || room.profile.hasKey || !mounted) return;
+    _askedForKey = true;
+    final key = await showTextDialog(
+      context,
+      title: S.webKeyTitle,
+      hint: S.serverKey,
+      maxLength: 200,
+      capitalization: TextCapitalization.none,
+    );
+    if (key == null || key.trim().isEmpty) return;
+    await room.configure(key: key.trim());
+    reloadPage();
   }
 
   /// A setup link arrived, from the camera of this phone or from a message: the server and key of another phone.
@@ -506,6 +533,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                 ),
               ),
               PlayerSheetLayer(controller: _sheet, folded: _drop),
+              if (kIsWeb) VideoFrameHost(sheet: _sheet),
             ],
           ),
         ),

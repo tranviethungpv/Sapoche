@@ -6,6 +6,9 @@ build/
 node_modules/
 .wrangler/
 dist/
+# The web app, copied here by app/tool/web.sh to be served by the Worker
+server/web-dist/*
+!server/web-dist/.gitkeep
 
 # IDE
 .idea/

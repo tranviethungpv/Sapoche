@@ -4,11 +4,11 @@ import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../player_sheet.dart';
-import 'artwork.dart';
 import 'glass.dart';
 import 'marquee_text.dart';
 import 'playback_bar.dart';
 import 'transport.dart';
+import 'video_frame.dart';
 
 /// The player along the bottom of a wide screen, in the manner of Apple Music on an iPad or a Mac: the song on the
 /// left, the controls over the seek bar in the middle, the lyrics and the queue on the right. Tap it, or drag it up,
@@ -101,12 +101,7 @@ class PlayerBarBody extends StatelessWidget {
                   if (ghost)
                     const SizedBox.square(dimension: _cover)
                   else
-                    Artwork(
-                      key: sheet.miniCover,
-                      url: current.thumb,
-                      size: _cover,
-                      radius: _cover / 2,
-                    ),
+                    MiniCover(sheet: sheet, url: current.thumb, size: _cover),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

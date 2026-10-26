@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --port 8787",
+    "predeploy": "test -f web-dist/index.html || test -n \"$WEB_SKIP\" || { echo 'web-dist is empty: a deploy would take the web app down. Run app/tool/web.sh, or set WEB_SKIP=1 to deploy without it.' >&2; exit 1; }",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "sim": "node scripts/sim.mjs",
