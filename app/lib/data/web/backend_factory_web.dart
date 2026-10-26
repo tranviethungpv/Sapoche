@@ -17,21 +17,28 @@ Future<Backend> createBackend() async {
   // A link to a room opens the app on it once, and is not asked again when the page is loaded again
   final prefs = await SharedPreferences.getInstance();
   // The key of a link (see index.html), kept for the next visits
-  final sent = web.window.sessionStorage.getItem('sapoche.setupKey');
-  if (sent != null && sent.trim().isNotEmpty) await prefs.setString('web.key', sent.trim());
-  web.window.sessionStorage.removeItem('sapoche.setupKey');
+  try {
+    final sent = web.window.sessionStorage.getItem('sapoche.setupKey');
+    if (sent != null && sent.trim().isNotEmpty) await prefs.setString('web.key', sent.trim());
+    web.window.sessionStorage.removeItem('sapoche.setupKey');
+  } on Object {
+    // A browser that keeps nothing for a page (it may refuse even to say so) still opens the app
+  }
   final invite = Uri.base.queryParameters['join']?.toUpperCase();
   if (invite != null) web.window.history.replaceState(null, '', web.window.location.pathname);
   final disk = IndexedDbDisk();
   String? stored;
+  var keeping = true;
   try {
-    stored = await disk.read();
+    // A browser that never answers (IndexedDB can hang, in a private window or in Safari) must not keep the app waiting
+    stored = await disk.read().timeout(const Duration(seconds: 4));
   } on Object catch (e) {
-    // A browser that will not keep data (a private window) still plays, with a library that lasts until the page closes
+    // The library then lasts until the page closes: it is not written over what the browser may still hold
+    keeping = false;
     web.console.log('library: could not read the stored library: $e'.toJS);
   }
   final backend = WebBackend(
-  library: LibraryStore(disk: disk, stored: stored),
+  library: LibraryStore(disk: keeping ? disk : null, stored: stored),
   player: YoutubePlayer()..log = (line) => web.console.log('player: $line'.toJS),
   prefs: prefs,
   // The room server serves this app, so its address is where the page came from
