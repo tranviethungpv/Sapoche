@@ -1,0 +1,5 @@
+Giao diện cho màn hình lớn
+- Trên tablet hoặc TV khi nằm ngang, trình phát để bài hát và hình ở bên trái, hàng chờ hoặc lời bài ở bên phải, còn các nút điều khiển nằm gọn trong một dải dọc theo đáy.
+- Album, playlist, bài đã thích, nghe gần đây và thư mục hiện ảnh bìa cùng các nút ở bên trái, danh sách bài ở bên phải, nên màn hình rộng không còn là một cột hẹp với hai bên trống.
+- Thanh phát nhạc trên màn hình rộng gọn lại thành một viên thuốc ở giữa thay vì chạy hết chiều ngang.
+- Điện thoại không thay đổi.

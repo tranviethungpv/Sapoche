@@ -1,0 +1,5 @@
+Made for big screens
+- On a tablet or a TV held wide, the player puts the song and its picture on the left and the queue or the lyrics on the right, with the controls in one strip along the bottom.
+- Albums, playlists, liked songs, recent songs and folders show the cover and the buttons on the left and the songs on the right, so a wide screen is no longer a narrow column with empty sides.
+- The player bar on a wide screen is a compact capsule in the middle instead of running across the whole window.
+- Phones are unchanged.
