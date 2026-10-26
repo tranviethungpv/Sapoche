@@ -1,0 +1,3 @@
+Artist pages on big screens
+- On a tablet or a TV held wide, an artist's page shows the picture, the buttons and what they say about themselves on the left, and the songs, albums and other artists on the right.
+- Phones are unchanged.

@@ -240,7 +240,8 @@ class _BodyState extends State<_Body> {
               const SizedBox(height: 14),
               _TransportRow(controller: _c),
               const SizedBox(height: 6),
-              VolumeBar(controller: _c),
+              // A browser has no volume of its own to set: the tab follows the computer's
+              if (!kIsWeb) VolumeBar(controller: _c),
               const SizedBox(height: 4),
               _Toolbar(controller: _c, panel: _panel, onPanel: _show),
               if (_c.snapshot.inRoom) ...[
@@ -360,7 +361,7 @@ class _BodyState extends State<_Body> {
               ),
             ),
             // The controls, in one strip: the panels and more on the left, the buttons over the seek bar in the middle,
-            // the volume on the right. The seek bar is as wide as the buttons need it, not as the window
+            // the volume on the right (not in a browser). The seek bar is as wide as the buttons need it, not as the window
             Padding(
               padding: const EdgeInsets.fromLTRB(margin, 0, margin, 20),
               child: Row(
@@ -391,13 +392,15 @@ class _BodyState extends State<_Body> {
                     ),
                   ),
                   Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: SizedBox(
-                        width: 240,
-                        child: VolumeBar(controller: _c),
-                      ),
-                    ),
+                    child: kIsWeb
+                        ? const SizedBox.shrink()
+                        : Align(
+                            alignment: Alignment.centerRight,
+                            child: SizedBox(
+                              width: 240,
+                              child: VolumeBar(controller: _c),
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -624,7 +627,7 @@ class _WideControls extends StatelessWidget {
     children: [
       PlaybackBar(controller: controller),
       _TransportRow(controller: controller, playSize: 64),
-      VolumeBar(controller: controller),
+      if (!kIsWeb) VolumeBar(controller: controller),
     ],
   );
 }
@@ -1028,7 +1031,8 @@ class _Toolbar extends StatelessWidget {
         button(Icons.lyrics_outlined, S.lyrics, _Panel.lyrics),
         button(Icons.queue_music_rounded, S.upNext, _Panel.upNext),
         Flexible(child: _SleepButton(controller: controller)),
-        _OutputButton(controller: controller),
+        // A browser plays through whatever the computer is set to: there is no list of outputs to open
+        if (!kIsWeb) _OutputButton(controller: controller),
       ],
     );
   }

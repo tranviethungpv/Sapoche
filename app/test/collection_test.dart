@@ -411,6 +411,43 @@ void main() {
       expect(find.text('Next Hit'), findsOneWidget);
     });
 
+    testWidgets(
+      'in a wide window the picture and what is said stay beside the songs',
+      (tester) async {
+        final (backend, context) = await start(tester);
+        tester.view.physicalSize = const Size(2560, 1600);
+        await tester.pump();
+        backend.artistResult = page;
+        openArtist(context, 'UCzen');
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final play = tester.getRect(find.text('Play'));
+        final hit = tester.getRect(find.text('Hit'));
+        // Beside each other, not one under the other: the buttons end where the songs have not begun
+        expect(play.right, lessThan(hit.left));
+        expect(
+          tester.getRect(find.text('1.2M subscribers')).right,
+          lessThan(hit.left),
+        );
+        // The artist's own words are on the left too, without scrolling to them
+        expect(find.text('About the artist'), findsOneWidget);
+        expect(
+          tester.getRect(find.text('About the artist')).right,
+          lessThan(hit.left),
+        );
+        // The releases are on the right, under the songs
+        await tester.scrollUntilVisible(
+          find.text('Debut'),
+          300,
+          scrollable: find.byType(Scrollable).last,
+        );
+        expect(
+          tester.getRect(find.text('Debut')).left,
+          greaterThan(play.right),
+        );
+      },
+    );
+
     testWidgets('a profile has no play and shuffle without songs', (
       tester,
     ) async {

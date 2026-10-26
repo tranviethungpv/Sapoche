@@ -132,14 +132,58 @@ class _ContentState extends State<_Content> {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, box) => _content(context, box.maxWidth),
+      builder: (context, box) => box.maxWidth >= splitWidth
+          ? _split(context)
+          : _column(context, box.maxWidth),
     );
   }
 
-  Widget _content(BuildContext context, double available) {
-    final page = _page;
-    final p = context.palette;
-    final theme = Theme.of(context).textTheme;
+  /// A browser, a tablet on its side, a television: the picture, the buttons and what the artist says of themselves stay
+  /// on the left, and the songs, the releases and the other artists take the rest, as the page of a playlist does.
+  Widget _split(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: splitMax),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: splitCover,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _Hero(page: _page, available: splitCover, inset: 0),
+                      _playRow(inline: true),
+                      ..._about(context, inset: 0),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: splitGap),
+              Expanded(
+                child: ListView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  padding: EdgeInsets.only(
+                    top: 8,
+                    bottom: HomeShell.bottomInsetOf(context),
+                  ),
+                  children: _shelves(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _column(BuildContext context, double available) {
     // In a big window the page keeps to a readable width, in the middle
     final gutter = ((available - 1100) / 2).clamp(0.0, double.infinity);
     return ListView(
@@ -153,70 +197,93 @@ class _ContentState extends State<_Content> {
         HomeShell.bottomInsetOf(context),
       ),
       children: [
-        _Hero(page: page, available: math.min(available, 1100.0)),
-        if (page.topSongs.isNotEmpty || page.topSongsId != null)
-          PlayRow(
-            working: _working,
-            onPlay: () => _play(shuffle: false),
-            onShuffle: () => _play(shuffle: true),
-          ),
-        TrackSection(
-          title: S.topSongs,
-          tracks: page.topSongs,
-          headerAction: page.topSongsId == null
-              ? null
-              : TextButton(
-                  onPressed: () => openCollection(
-                    context,
-                    id: page.topSongsId!,
-                    title: S.topSongs,
-                  ),
-                  child: Text(S.seeAll),
-                ),
-        ),
-        _releases(S.albums, page.albums),
-        _releases(S.singlesAndEps, page.singles),
-        for (final shelf in page.shelves) MusicShelfView(shelf: shelf),
-        if (page.similar.isNotEmpty) ...[
-          SectionHeading(S.fansAlsoLike),
-          ArtistRow(
-            artists: page.similar,
-            onOpen: (id) => openArtist(context, id),
-          ),
-        ],
-        if (page.description != null) ...[
-          SectionHeading(S.aboutArtist),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: GestureDetector(
-              onTap: () => setState(() => _open = !_open),
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 220),
-                alignment: Alignment.topCenter,
-                child: Text(
-                  page.description!,
-                  maxLines: _open ? null : 5,
-                  overflow: _open
-                      ? TextOverflow.visible
-                      : TextOverflow.ellipsis,
-                  style: theme.bodyMedium?.copyWith(color: p.textSecondary),
-                ),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: TextButton(
-                onPressed: () => setState(() => _open = !_open),
-                child: Text(_open ? S.showLess : S.showMore),
-              ),
-            ),
-          ),
-        ],
+        _Hero(page: _page, available: math.min(available, 1100.0)),
+        _playRow(),
+        ..._shelves(context),
+        ..._about(context),
       ],
     );
+  }
+
+  Widget _playRow({bool inline = false}) =>
+      _page.topSongs.isNotEmpty || _page.topSongsId != null
+      ? PlayRow(
+          inline: inline,
+          working: _working,
+          onPlay: () => _play(shuffle: false),
+          onShuffle: () => _play(shuffle: true),
+        )
+      : const SizedBox.shrink();
+
+  /// What the artist has: the best known songs, the releases, the shelves YouTube Music adds, and who else to hear.
+  List<Widget> _shelves(BuildContext context) {
+    final page = _page;
+    return [
+      TrackSection(
+        title: S.topSongs,
+        tracks: page.topSongs,
+        headerAction: page.topSongsId == null
+            ? null
+            : TextButton(
+                onPressed: () => openCollection(
+                  context,
+                  id: page.topSongsId!,
+                  title: S.topSongs,
+                ),
+                child: Text(S.seeAll),
+              ),
+      ),
+      _releases(S.albums, page.albums),
+      _releases(S.singlesAndEps, page.singles),
+      for (final shelf in page.shelves) MusicShelfView(shelf: shelf),
+      if (page.similar.isNotEmpty) ...[
+        SectionHeading(S.fansAlsoLike),
+        ArtistRow(
+          artists: page.similar,
+          onOpen: (id) => openArtist(context, id),
+        ),
+      ],
+    ];
+  }
+
+  /// What they say of themselves, shortened until it is touched; [inset] is how far from the edge the text begins.
+  List<Widget> _about(BuildContext context, {double inset = 20}) {
+    final page = _page;
+    if (page.description == null) return const [];
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return [
+      Padding(
+        padding: EdgeInsets.fromLTRB(inset, 18, inset, 6),
+        child: Text(S.aboutArtist, style: theme.titleMedium),
+      ),
+      Padding(
+        padding: EdgeInsets.symmetric(horizontal: inset),
+        child: GestureDetector(
+          onTap: () => setState(() => _open = !_open),
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            alignment: Alignment.topCenter,
+            child: Text(
+              page.description!,
+              maxLines: _open ? null : 5,
+              overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis,
+              style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+            ),
+          ),
+        ),
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: EdgeInsets.only(left: math.max(inset - 12, 0)),
+          child: TextButton(
+            onPressed: () => setState(() => _open = !_open),
+            child: Text(_open ? S.showLess : S.showMore),
+          ),
+        ),
+      ),
+    ];
   }
 
   /// A row of albums or singles to open.
@@ -227,23 +294,26 @@ class _ContentState extends State<_Content> {
 
 /// The picture of the artist across the page, with the name and what is known of their reach on it.
 class _Hero extends StatelessWidget {
-  const _Hero({required this.page, required this.available});
+  const _Hero({required this.page, required this.available, this.inset = 20});
 
   final ArtistPage page;
 
   /// The width the page has.
   final double available;
 
+  /// The space kept clear on each side of the picture.
+  final double inset;
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     // A square on a phone; a wide banner on a big screen, where a square would be taller than the window
-    final width = available - 40;
+    final width = available - 2 * inset;
     final size = width;
     final height = width > 640 ? width * 0.36 : width;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      padding: EdgeInsets.fromLTRB(inset, 4, inset, 0),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: SizedBox(

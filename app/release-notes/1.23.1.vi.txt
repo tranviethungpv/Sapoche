@@ -1,0 +1,3 @@
+Trang nghệ sĩ cho màn hình lớn
+- Trên tablet hoặc TV khi nằm ngang, trang nghệ sĩ hiện hình, các nút và phần giới thiệu ở bên trái, bài hát, album và nghệ sĩ khác ở bên phải.
+- Điện thoại không thay đổi.
