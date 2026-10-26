@@ -36,9 +36,6 @@ abstract class BackendDefaults implements Backend {
   Future<void> setPlaybackSpeed(double speed) async {}
 
   @override
-  Future<void> setVideoMode(bool on) async {}
-
-  @override
   Future<void> setVideoVisible(bool visible) async {}
 
   @override

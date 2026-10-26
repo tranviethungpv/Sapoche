@@ -132,18 +132,27 @@ class _VideoFrameHostState extends State<VideoFrameHost> {
   );
 }
 
-/// The round cover of the mini player and of the player bar. In a browser the picture of the song plays in it while the
-/// full player is closed.
+/// The round cover of the mini player and of the player bar. In a browser that shows video the picture of the song
+/// plays in it while the full player is closed.
 class MiniCover extends StatelessWidget {
-  const MiniCover({super.key, required this.sheet, required this.url, required this.size});
+  const MiniCover({
+    super.key,
+    required this.sheet,
+    required this.url,
+    required this.size,
+    required this.video,
+  });
 
   final PlayerSheetController sheet;
   final String? url;
   final double size;
 
+  /// Whether the song is shown as video.
+  final bool video;
+
   @override
   Widget build(BuildContext context) {
     final cover = Artwork(key: sheet.miniCover, url: url, size: size, radius: size / 2);
-    return kIsWeb ? VideoFrameSlot(mini: true, radius: size / 2, crop: true, child: cover) : cover;
+    return kIsWeb && video ? VideoFrameSlot(mini: true, radius: size / 2, crop: true, child: cover) : cover;
   }
 }

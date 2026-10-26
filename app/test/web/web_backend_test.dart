@@ -248,4 +248,18 @@ void main() {
     await backend.setLiked(song, false);
     expect(await backend.liked(), isEmpty);
   });
+
+  test('a browser starts with the cover, and the frame of YouTube is shown when it is asked for', () async {
+    final (backend, _) = await backendWith((_) => http.Response('{}', 200));
+    final events = <BackendEvent>[];
+    backend.events.listen(events.add);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.whereType<StateEvent>().last.snapshot.video, isFalse);
+    await backend.setVideoMode(true);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.whereType<StateEvent>().last.snapshot.video, isTrue);
+    await backend.setVideoMode(false);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.whereType<StateEvent>().last.snapshot.video, isFalse);
+  });
 }

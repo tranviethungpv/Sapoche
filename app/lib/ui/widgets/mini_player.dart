@@ -110,7 +110,12 @@ class MiniPlayerCapsule extends StatelessWidget {
               if (ghost)
                 SizedBox.square(dimension: cover)
               else
-                MiniCover(sheet: sheet, url: current.thumb, size: cover),
+                MiniCover(
+                  sheet: sheet,
+                  url: current.thumb,
+                  size: cover,
+                  video: controller.snapshot.video,
+                ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

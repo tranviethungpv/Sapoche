@@ -36,3 +36,13 @@ class PageWidth extends StatelessWidget {
     ),
   );
 }
+
+/// A page this wide (a browser, a tablet on its side, a television) shows the cover and what is said of a list of songs beside the list, as Apple Music's web page
+/// does, instead of a column in the middle with the sides empty. The two halves stay together in the middle of a window
+/// wider than [splitMax].
+const splitWidth = 880.0;
+const splitMax = 1500.0;
+
+/// The side of the cover, and the space between it and the list, in that layout.
+const splitCover = 320.0;
+const splitGap = 40.0;

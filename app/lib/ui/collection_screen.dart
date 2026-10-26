@@ -399,6 +399,94 @@ class _ContentState extends State<_Content> {
             if (_page.description != null) _description(context, wide: wide),
           ],
         );
+        // What comes after the songs: more loading, the facts and the shelves below
+        final tail = SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_loadingMore)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                    child: SizedBox.square(
+                      dimension: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+              if (_moreFailed)
+                Center(
+                  child: TextButton(
+                    onPressed: _loadMore,
+                    child: Text(S.tryAgain),
+                  ),
+                ),
+              if (_page.stats.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+                  child: Text(
+                    _page.stats.join(' · '),
+                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  ),
+                ),
+              for (final shelf in _page.shelves) MusicShelfView(shelf: shelf),
+              SizedBox(height: HomeShell.bottomInsetOf(context) + 8),
+            ],
+          ),
+        );
+        // A browser with room beside a list of songs: the cover and what is said of it stay on the left, and the songs
+        // take the rest of the width, as on Apple Music's web page, instead of a column in the middle with the sides empty
+        if (box.maxWidth >= splitWidth) {
+          return Scaffold(
+            appBar: AppBar(leading: const RoundBackButton()),
+            body: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: splitMax),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: splitCover,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CollectionCover(
+                                url: _page.thumb,
+                                side: splitCover,
+                              ),
+                              const SizedBox(height: 20),
+                              info,
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: splitGap),
+                      Expanded(
+                        child: CustomScrollView(
+                          controller: _scroll,
+                          slivers: [
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: 8),
+                            ),
+                            SliverList.builder(
+                              itemCount: _tracks.length,
+                              itemBuilder: (context, i) => _row(context, i),
+                            ),
+                            tail,
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
         return Scaffold(
           appBar: AppBar(leading: const RoundBackButton()),
           body: CustomScrollView(
@@ -434,51 +522,13 @@ class _ContentState extends State<_Content> {
                               ],
                             ),
                     ),
+                    // The first song is not set hard against what is said above it
+                    const SliverToBoxAdapter(child: SizedBox(height: 14)),
                     SliverList.builder(
                       itemCount: _tracks.length,
                       itemBuilder: (context, i) => _row(context, i),
                     ),
-                    SliverToBoxAdapter(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (_loadingMore)
-                            const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Center(
-                                child: SizedBox.square(
-                                  dimension: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          if (_moreFailed)
-                            Center(
-                              child: TextButton(
-                                onPressed: _loadMore,
-                                child: Text(S.tryAgain),
-                              ),
-                            ),
-                          if (_page.stats.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-                              child: Text(
-                                _page.stats.join(' · '),
-                                style: theme.bodySmall?.copyWith(
-                                  color: p.textSecondary,
-                                ),
-                              ),
-                            ),
-                          for (final shelf in _page.shelves)
-                            MusicShelfView(shelf: shelf),
-                          SizedBox(
-                            height: HomeShell.bottomInsetOf(context) + 8,
-                          ),
-                        ],
-                      ),
-                    ),
+                    tail,
                   ],
                 ),
               ),

@@ -707,6 +707,158 @@ class _FolderPage extends StatelessWidget {
                   0.0,
                   double.infinity,
                 );
+                final header = Column(
+                  children: [
+                    Center(
+                      child: CollectionCover(
+                        picture: (side) => FolderCover(
+                          thumbs: thumbs,
+                          size: side,
+                          radius: 16,
+                          sharp: true,
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
+                      child: Text(
+                        folder?.name ?? '',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: theme.headlineSmall,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        _folderSummary(playlists),
+                        style: theme.bodySmall?.copyWith(
+                          color: p.textSecondary,
+                        ),
+                      ),
+                    ),
+                    if (playlists.isNotEmpty)
+                      PlayRow(
+                        onPlay: () =>
+                            playPlaylists(context, playlists, shuffle: false),
+                        onShuffle: () =>
+                            playPlaylists(context, playlists, shuffle: true),
+                        more: _MoreButton(menu),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(top: 18),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (folder != null)
+                              FilledButton.icon(
+                                onPressed: () =>
+                                    showAddPlaylists(context, folder),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: p.text,
+                                  foregroundColor: p.base,
+                                  shape: const StadiumBorder(),
+                                ),
+                                icon: const Icon(Icons.add_rounded),
+                                label: Text(S.addPlaylists),
+                              ),
+                            const SizedBox(width: 12),
+                            _MoreButton(menu),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 6),
+                  ],
+                );
+                final listSlivers = <Widget>[
+                  if (playlists.isEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(36, 36, 36, 0),
+                        child: Column(
+                          children: [
+                            Text(S.emptyFolderTitle, style: theme.titleMedium),
+                            const SizedBox(height: 6),
+                            Text(
+                              S.emptyFolderBody,
+                              textAlign: TextAlign.center,
+                              style: theme.bodyMedium?.copyWith(
+                                color: p.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    SliverList.builder(
+                      itemCount: playlists.length,
+                      itemBuilder: (context, i) {
+                        final playlist = playlists[i];
+                        return _CollectionRow(
+                          leading: PlaylistCover(
+                            thumbs: playlist.thumbs,
+                            size: 54,
+                          ),
+                          title: playlist.name,
+                          subtitle: S.songCount(playlist.count),
+                          onTap: () =>
+                              _openScreen(context, _Playlist(playlist.id)),
+                          trailing: _MoreButton([
+                            _MenuAction(
+                              S.moveToFolder,
+                              () => showMoveToFolder(context, playlist),
+                            ),
+                            _MenuAction(
+                              S.removeFromFolder,
+                              () => library.moveToFolder(playlist.id, null),
+                            ),
+                          ], round: false),
+                        );
+                      },
+                    ),
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: HomeShell.bottomInsetOf(context) + 8,
+                    ),
+                  ),
+                ];
+                // A browser with room: the folder on the left, its playlists on the right
+                if (box.maxWidth >= splitWidth) {
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: splitMax),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: splitCover,
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.only(bottom: 24),
+                                child: header,
+                              ),
+                            ),
+                            const SizedBox(width: splitGap),
+                            Expanded(
+                              child: CustomScrollView(
+                                slivers: [
+                                  const SliverToBoxAdapter(
+                                    child: SizedBox(height: 8),
+                                  ),
+                                  ...listSlivers,
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
                 return CustomScrollView(
                   physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
@@ -716,151 +868,8 @@ class _FolderPage extends StatelessWidget {
                       padding: EdgeInsets.symmetric(horizontal: gutter),
                       sliver: SliverMainAxisGroup(
                         slivers: [
-                          SliverToBoxAdapter(
-                            child: Column(
-                              children: [
-                                Center(
-                                  child: CollectionCover(
-                                    picture: (side) => FolderCover(
-                                      thumbs: thumbs,
-                                      size: side,
-                                      radius: 16,
-                                      sharp: true,
-                                    ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    24,
-                                    18,
-                                    24,
-                                    0,
-                                  ),
-                                  child: Text(
-                                    folder?.name ?? '',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: theme.headlineSmall,
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Text(
-                                    _folderSummary(playlists),
-                                    style: theme.bodySmall?.copyWith(
-                                      color: p.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                                if (playlists.isNotEmpty)
-                                  PlayRow(
-                                    onPlay: () => playPlaylists(
-                                      context,
-                                      playlists,
-                                      shuffle: false,
-                                    ),
-                                    onShuffle: () => playPlaylists(
-                                      context,
-                                      playlists,
-                                      shuffle: true,
-                                    ),
-                                    more: _MoreButton(menu),
-                                  )
-                                else
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 18),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        if (folder != null)
-                                          FilledButton.icon(
-                                            onPressed: () => showAddPlaylists(
-                                              context,
-                                              folder,
-                                            ),
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor: p.text,
-                                              foregroundColor: p.base,
-                                              shape: const StadiumBorder(),
-                                            ),
-                                            icon: const Icon(Icons.add_rounded),
-                                            label: Text(S.addPlaylists),
-                                          ),
-                                        const SizedBox(width: 12),
-                                        _MoreButton(menu),
-                                      ],
-                                    ),
-                                  ),
-                                const SizedBox(height: 6),
-                              ],
-                            ),
-                          ),
-                          if (playlists.isEmpty)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  36,
-                                  36,
-                                  36,
-                                  0,
-                                ),
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      S.emptyFolderTitle,
-                                      style: theme.titleMedium,
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      S.emptyFolderBody,
-                                      textAlign: TextAlign.center,
-                                      style: theme.bodyMedium?.copyWith(
-                                        color: p.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )
-                          else
-                            SliverList.builder(
-                              itemCount: playlists.length,
-                              itemBuilder: (context, i) {
-                                final playlist = playlists[i];
-                                return _CollectionRow(
-                                  leading: PlaylistCover(
-                                    thumbs: playlist.thumbs,
-                                    size: 54,
-                                  ),
-                                  title: playlist.name,
-                                  subtitle: S.songCount(playlist.count),
-                                  onTap: () => _openScreen(
-                                    context,
-                                    _Playlist(playlist.id),
-                                  ),
-                                  trailing: _MoreButton([
-                                    _MenuAction(
-                                      S.moveToFolder,
-                                      () => showMoveToFolder(context, playlist),
-                                    ),
-                                    _MenuAction(
-                                      S.removeFromFolder,
-                                      () => library.moveToFolder(
-                                        playlist.id,
-                                        null,
-                                      ),
-                                    ),
-                                  ], round: false),
-                                );
-                              },
-                            ),
-                          SliverToBoxAdapter(
-                            child: SizedBox(
-                              height: HomeShell.bottomInsetOf(context) + 8,
-                            ),
-                          ),
+                          SliverToBoxAdapter(child: header),
+                          ...listSlivers,
                         ],
                       ),
                     ),
@@ -1101,9 +1110,8 @@ class _LocalFilter extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 S.localUnsupported(unsupported),
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: p.textSecondary),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: p.textSecondary),
               ),
             ),
         ],
@@ -1344,7 +1352,98 @@ class _TrackList extends StatelessWidget {
                     // push the one thing to do under the bars, and a page this short never scrolls to fold them
                     // (Not while a box to search them is above: a search that finds nothing keeps the page as it was)
                     final bare =
-                        tracks.isEmpty && emptyView != null && filterBar == null;
+                        tracks.isEmpty &&
+                        emptyView != null &&
+                        filterBar == null;
+                    final listSlivers = <Widget>[
+                      if (filterBar != null)
+                        SliverToBoxAdapter(child: filterBar),
+                      if (tracks.isEmpty &&
+                          (emptyTitle != null || emptyView != null))
+                        SliverToBoxAdapter(child: emptyView ?? _empty(context))
+                      else if (onMove != null)
+                        SliverReorderableList(
+                          itemCount: tracks.length,
+                          onReorderItem: (from, to) =>
+                              onMove!(tracks[from], to),
+                          proxyDecorator: (child, _, animation) => Material(
+                            color: Colors.transparent,
+                            elevation: 0,
+                            child: ScaleTransition(
+                              scale: Tween(
+                                begin: 1.0,
+                                end: 1.02,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          ),
+                          itemBuilder: (context, i) =>
+                              ReorderableDelayedDragStartListener(
+                                key: ValueKey('row ${tracks[i].videoId}'),
+                                index: i,
+                                child: row(i),
+                              ),
+                        )
+                      else
+                        SliverList.builder(
+                          itemCount: tracks.length,
+                          itemBuilder: (context, i) => row(i),
+                        ),
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          // With the mini player open, and not as the bars are once a long page has folded
+                          // them: this one has nothing to scroll
+                          height: bare
+                              ? HomeShell.openBottomInsetOf(context)
+                              : HomeShell.bottomInsetOf(context) + 8,
+                        ),
+                      ),
+                    ];
+                    // A browser with room: the cover and what is said of the songs on the left, the songs on the right
+                    if (!bare && box.maxWidth >= splitWidth) {
+                      return Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: splitMax),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: splitCover,
+                                  child: SingleChildScrollView(
+                                    padding: const EdgeInsets.only(bottom: 24),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        CollectionCover(
+                                          side: splitCover,
+                                          picture: cover,
+                                        ),
+                                        const SizedBox(height: 20),
+                                        info,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: splitGap),
+                                Expanded(
+                                  child: CustomScrollView(
+                                    slivers: [
+                                      const SliverToBoxAdapter(
+                                        child: SizedBox(height: 8),
+                                      ),
+                                      ...listSlivers,
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }
                     return CustomScrollView(
                       physics: const BouncingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics(),
@@ -1404,53 +1503,12 @@ class _TrackList extends StatelessWidget {
                                         ],
                                       ),
                               ),
-                              if (filterBar != null)
-                                SliverToBoxAdapter(child: filterBar),
-                              if (tracks.isEmpty &&
-                                  (emptyTitle != null || emptyView != null))
-                                SliverToBoxAdapter(
-                                  child: emptyView ?? _empty(context),
-                                )
-                              else if (onMove != null)
-                                SliverReorderableList(
-                                  itemCount: tracks.length,
-                                  onReorderItem: (from, to) =>
-                                      onMove!(tracks[from], to),
-                                  proxyDecorator: (child, _, animation) =>
-                                      Material(
-                                        color: Colors.transparent,
-                                        elevation: 0,
-                                        child: ScaleTransition(
-                                          scale: Tween(
-                                            begin: 1.0,
-                                            end: 1.02,
-                                          ).animate(animation),
-                                          child: child,
-                                        ),
-                                      ),
-                                  itemBuilder: (context, i) =>
-                                      ReorderableDelayedDragStartListener(
-                                        key: ValueKey(
-                                          'row ${tracks[i].videoId}',
-                                        ),
-                                        index: i,
-                                        child: row(i),
-                                      ),
-                                )
-                              else
-                                SliverList.builder(
-                                  itemCount: tracks.length,
-                                  itemBuilder: (context, i) => row(i),
+                              // The first song is not set hard against what is said above it
+                              if (!bare)
+                                const SliverToBoxAdapter(
+                                  child: SizedBox(height: 14),
                                 ),
-                              SliverToBoxAdapter(
-                                child: SizedBox(
-                                  // With the mini player open, and not as the bars are once a long page has folded
-                                  // them: this one has nothing to scroll
-                                  height: bare
-                                      ? HomeShell.openBottomInsetOf(context)
-                                      : HomeShell.bottomInsetOf(context) + 8,
-                                ),
-                              ),
+                              ...listSlivers,
                             ],
                           ),
                         ),

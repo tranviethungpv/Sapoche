@@ -152,6 +152,7 @@ class _BodyState extends State<_Body> {
     // A phone turned on its side while the picture plays shows it across the whole screen, as video apps do. A tablet
     // has room for the picture beside the controls.
     if (turned &&
+        !kIsWeb &&
         _c.snapshot.video &&
         media.size.shortestSide < 600 &&
         PlayerSheetScope.of(context).position.value == 1 &&
@@ -254,9 +255,165 @@ class _BodyState extends State<_Body> {
     );
   }
 
+  /// A window with room in it (a browser), laid out as YouTube Music and Apple Music do on a computer: the picture, as
+  /// large as the place allows, with the song under it on the left, the queue or the lyrics beside it over the whole
+  /// height on the right, and the controls in one strip along the bottom, as wide as the window. Both halves are always
+  /// there, so nothing is left hanging at the sides, and the picture of any shape has the song under it to fill the
+  /// place above and below.
+  Widget _roomy(BoxConstraints box) {
+    final video = _c.snapshot.video;
+    // The queue is what shows beside the picture until the lyrics are asked for
+    final panel = _panel == _Panel.lyrics ? _Panel.lyrics : _Panel.upNext;
+    const margin = 32.0;
+    const gap = 32.0;
+    // The song under the picture: its title and the strip of the room
+    final caption = 16.0 + 64.0 + (_c.snapshot.inRoom ? 44.0 : 0.0);
+    // The picture's half, as the layout below measures it, so that Audio or Video can stand over the picture
+    final content = min(box.maxWidth, _roomyWidthMax);
+    final left = (content - 2 * margin - gap) * (video ? 0.58 : 0.5);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _roomyWidthMax),
+        child: Column(
+          children: [
+            // The way out on the edge, and Audio or Video over the picture it is about
+            SizedBox(
+              height: 48,
+              child: Stack(
+                children: [
+                  const Positioned(left: 16, top: 0, child: _CloseButton()),
+                  Positioned(
+                    left: margin,
+                    width: left,
+                    top: 8,
+                    child: Center(child: _ModePill(controller: _c)),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(margin, 8, margin, 8),
+                child: LayoutBuilder(
+                  builder: (context, area) {
+                    // A picture that is wide gets the larger half; a square one needs less than the height gives it
+                    final left = (area.maxWidth - gap) * (video ? 0.58 : 0.5);
+                    final room = max(120.0, area.maxHeight - caption);
+                    final picture = video
+                        ? min(left, room * 16 / 9)
+                        : min(left, room);
+                    return Row(
+                      children: [
+                        SizedBox(
+                          width: left,
+                          child: Center(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // A picture taller than wide (a phone's video) shrinks to the height there is
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth: picture,
+                                      maxHeight: room,
+                                    ),
+                                    child: _CoverArt(
+                                      controller: _c,
+                                      current: widget.current,
+                                      size: picture,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  SizedBox(
+                                    width: picture,
+                                    child: _TitleRow(
+                                      controller: _c,
+                                      current: widget.current,
+                                    ),
+                                  ),
+                                  if (_c.snapshot.inRoom) ...[
+                                    const SizedBox(height: 4),
+                                    SizedBox(
+                                      width: picture,
+                                      child: _RoomStrip(controller: _c),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: gap),
+                        Expanded(
+                          child: switch (panel) {
+                            _Panel.lyrics => LyricsView(
+                              controller: _c,
+                              track: widget.current,
+                            ),
+                            _ => UpNextView(controller: _c),
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            // The controls, in one strip: the panels and more on the left, the buttons over the seek bar in the middle,
+            // the volume on the right. The seek bar is as wide as the buttons need it, not as the window
+            Padding(
+              padding: const EdgeInsets.fromLTRB(margin, 0, margin, 20),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: 280,
+                        child: _Toolbar(
+                          controller: _c,
+                          panel: panel,
+                          onPanel: _show,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 520,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _TransportRow(controller: _c, playSize: 56),
+                        const SizedBox(height: 6),
+                        PlaybackBar(controller: _c, compact: true),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: SizedBox(
+                        width: 240,
+                        child: VolumeBar(controller: _c),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// The cover on the left, as tall as the screen allows; the controls, or a panel in their place, on the right. The
   /// title and the row of icons stay where they are when a panel opens: only what is between them changes.
   Widget _wide(BoxConstraints box) {
+    if (box.maxHeight >= _roomyHeight && box.maxWidth >= _roomyWidth) {
+      return _roomy(box);
+    }
     const margin = 16.0;
     // As tall as the screen allows, but not the size of a wall on a big one
     final side = (box.maxHeight - 2 * margin).clamp(
@@ -298,6 +455,14 @@ class _BodyState extends State<_Body> {
     );
   }
 }
+
+/// A wide window at least this tall and this wide has room for the picture, the queue and the controls at once: a
+/// browser, a tablet on its side, a television (a 1080p one is about 960 by 540 dp), not a phone on its side.
+const _roomyHeight = 500.0;
+const _roomyWidth = 800.0;
+
+/// The roomy layout does not stretch further than this: on a very wide window it stays in the middle.
+const _roomyWidthMax = 1600.0;
 
 /// Previous, play and next: the pink disc between two plain glyphs, which is how Sapoche's player has always looked.
 /// Shuffle and repeat live in Up Next, as in Apple Music.
@@ -559,8 +724,8 @@ class _CoverArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sheet = PlayerSheetScope.of(context);
-    // A browser always shows the picture, as YouTube asks of its player; the frame floats over this place
-    if (kIsWeb) {
+    // In a browser the picture is the frame of YouTube, which floats over this place
+    if (kIsWeb && controller.snapshot.video) {
       return Center(
         child: AspectRatio(
           aspectRatio: 16 / 9,
@@ -652,11 +817,15 @@ class _PanelStage extends StatelessWidget {
             children: [
               GestureDetector(
                 onTap: onCover,
-                child: kIsWeb
+                child: kIsWeb && controller.snapshot.video
                     ? VideoFrameSlot(
                         radius: 10,
                         crop: true,
-                        child: Artwork(url: current.thumb, size: 56, radius: 10),
+                        child: Artwork(
+                          url: current.thumb,
+                          size: 56,
+                          radius: 10,
+                        ),
                       )
                     : Artwork(url: current.thumb, size: 56, radius: 10),
               ),
@@ -801,19 +970,20 @@ class _MoreButton extends StatelessWidget {
         if (!current.isLocal)
           PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
         PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
-        if (!current.isLocal) ...switch (library.downloadState(current.videoId)) {
-          DownloadState.done => [
-            PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
-          ],
-          DownloadState.queued || DownloadState.waiting => [
-            PopupMenuItem(
-              enabled: false,
-              value: 'none',
-              child: Text(S.downloading),
-            ),
-          ],
-          _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
-        },
+        if (!current.isLocal)
+          ...switch (library.downloadState(current.videoId)) {
+            DownloadState.done => [
+              PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
+            ],
+            DownloadState.queued || DownloadState.waiting => [
+              PopupMenuItem(
+                enabled: false,
+                value: 'none',
+                child: Text(S.downloading),
+              ),
+            ],
+            _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
+          },
         if (!current.isLocal)
           PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
       ],
@@ -986,8 +1156,8 @@ class _ModePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A file on this phone has no video, and a browser has only the picture
-    if (kIsWeb || (controller.snapshot.current?.isLocal ?? false)) {
+    // A file on this phone has no video
+    if (controller.snapshot.current?.isLocal ?? false) {
       return const SizedBox.shrink();
     }
     final p = context.palette;

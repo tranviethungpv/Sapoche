@@ -101,7 +101,12 @@ class PlayerBarBody extends StatelessWidget {
                   if (ghost)
                     const SizedBox.square(dimension: _cover)
                   else
-                    MiniCover(sheet: sheet, url: current.thumb, size: _cover),
+                    MiniCover(
+                      sheet: sheet,
+                      url: current.thumb,
+                      size: _cover,
+                      video: controller.snapshot.video,
+                    ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

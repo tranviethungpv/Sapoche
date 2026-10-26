@@ -78,11 +78,12 @@ class HomeShell extends StatefulWidget {
 
   /// Like [bottomInsetOf], but with the mini player open above the tabs: the room a page needs under its last line when
   /// that line must be seen with the bars as they are, because the page is too short to scroll and so never folds them.
-  static double openBottomInsetOf(BuildContext context) =>
-      switch (layoutOf(context)) {
-        ShellLayout.bars => bottomInsetOf(context) + MiniPlayer.heightOf(context),
-        _ => bottomInsetOf(context),
-      };
+  static double openBottomInsetOf(BuildContext context) => switch (layoutOf(
+    context,
+  )) {
+    ShellLayout.bars => bottomInsetOf(context) + MiniPlayer.heightOf(context),
+    _ => bottomInsetOf(context),
+  };
 
   /// The system's own bar under the pages (the home indicator, the navigation bar). Read from the view: the bars are
   /// drawn by the scaffold around the pages, which takes that room off the media a page sees, so a page would find none.
@@ -272,7 +273,13 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   /// for it once, the first time, and the page loads again with it. (Phones have it built in or are set up by a link.)
   Future<void> _askForKey() async {
     final room = _watched;
-    if (!kIsWeb || _askedForKey || room == null || room.profile.hasKey || !mounted) return;
+    if (!kIsWeb ||
+        _askedForKey ||
+        room == null ||
+        room.profile.hasKey ||
+        !mounted) {
+      return;
+    }
     _askedForKey = true;
     final typed = await showTextDialog(
       context,
@@ -614,7 +621,15 @@ class _Side extends StatelessWidget {
               bottom: bottom,
               child: rail
                   ? MiniPlayer(controller: controller)
-                  : PlayerBar(controller: controller),
+                  // A wide window can be wider than the song and its buttons need: the bar stays a capsule in the
+                  // middle of the pages instead of running across all of them
+                  : Align(
+                      heightFactor: 1,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 820),
+                        child: PlayerBar(controller: controller),
+                      ),
+                    ),
             ),
           ],
         );

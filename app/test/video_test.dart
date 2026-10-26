@@ -253,7 +253,7 @@ void main() {
     });
 
     videoTest(
-      'the player on its side on a tablet keeps the picture beside the controls',
+      'the player on its side on a tablet keeps the picture in the left half, over the controls',
       (tester) async {
         await openVideo(
           tester,
@@ -271,7 +271,10 @@ void main() {
           ),
         );
         final bar = tester.getRect(find.byType(PlaybackBar));
-        expect(video.right, lessThan(bar.left));
+        // The picture is in the left half, over the strip of the controls, which is as wide as the window and along the
+        // bottom; the queue is in the right half
+        expect(video.center.dx, lessThan(640));
+        expect(video.bottom, lessThanOrEqualTo(bar.top));
         expect(video.width / video.height, closeTo(9 / 16, 0.01));
         expect(video.bottom, lessThanOrEqualTo(800.5));
       },

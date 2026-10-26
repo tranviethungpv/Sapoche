@@ -148,6 +148,7 @@ class WebBackend extends BackendDefaults {
   static const _keyTrim = 'web.trim';
   static const _keyLocalQueue = 'web.localQueue';
   static const _keyAutoplay = 'web.autoplay';
+  static const _keyVideo = 'web.video';
   static const _chatKept = 200;
 
   @override
@@ -779,6 +780,15 @@ class WebBackend extends BackendDefaults {
   @override
   Future<void> setLanguage(String code) async => _language = code;
 
+  bool get _video => prefs.getBool(_keyVideo) ?? false;
+
+  /// Shows the frame of YouTube (video) or the cover (audio), on this browser; the sound is the same.
+  @override
+  Future<void> setVideoMode(bool on) async {
+    await prefs.setBool(_keyVideo, on);
+    _emitState();
+  }
+
   /// Writes down what is still waiting for its moment (the queue, the library), for a page that is going away.
   Future<void> flush() async {
     _flushQueue();
@@ -964,8 +974,8 @@ class WebBackend extends BackendDefaults {
       soloItemId: group?.soloItemId,
       // A song is on its way to play on this device: outside a room, or while listening alone in one
       loading: inRoom ? group?.loading ?? false : local.loading,
-      // The frame of YouTube has to be seen while it plays, so a browser always shows the picture
-      video: true,
+      // Audio is the way of every other device: the cover. Video shows the frame of YouTube in its place
+      video: _video,
       playbackSpeed: inRoom ? 1 : _speed,
       name: state?.name,
       ownerId: state?.ownerId,
@@ -998,6 +1008,7 @@ class WebBackend extends BackendDefaults {
       snapshot.shuffle,
       snapshot.trimMs,
       snapshot.playbackSpeed,
+      snapshot.video,
     ].join('|');
     if (key == _lastKey) return;
     _lastKey = key;
