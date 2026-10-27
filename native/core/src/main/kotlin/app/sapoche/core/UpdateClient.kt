@@ -7,6 +7,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -28,8 +30,35 @@ data class Release(
     val file: String = "app-$versionCode.apk",
     /** The notes in Vietnamese, when there are any. */
     val notesVi: String = "",
+    /** The notes of the last few versions, newest first: what a phone several versions behind has missed. */
+    val history: List<ReleaseNote> = emptyList(),
 ) {
     fun isNewerThan(installedCode: Long) = versionCode > installedCode
+
+    /**
+     * What there is to read of the versions newer than [installed] (`1.27.0`, no build number), newest first. A server
+     * that sends no history still has the notes of this release.
+     */
+    fun notesAfter(installed: String): List<ReleaseNote> =
+        (history.ifEmpty { listOf(ReleaseNote(versionName, notes, notesVi)) })
+            .filter { ReleaseNote.compare(it.version, installed) > 0 }
+            .sortedWith { a, b -> ReleaseNote.compare(b.version, a.version) }
+}
+
+/** What changed in one version, in English and, when there are any, in Vietnamese. */
+data class ReleaseNote(val version: String, val notes: String, val notesVi: String = "") {
+    companion object {
+        /** Orders `1.9.0` before `1.10.0`: part by part, as numbers; a part that is not a number counts as 0. */
+        fun compare(a: String, b: String): Int {
+            val x = a.split('.').map { it.toIntOrNull() ?: 0 }
+            val y = b.split('.').map { it.toIntOrNull() ?: 0 }
+            for (i in 0 until maxOf(x.size, y.size)) {
+                val c = x.getOrElse(i) { 0 }.compareTo(y.getOrElse(i) { 0 })
+                if (c != 0) return c
+            }
+            return 0
+        }
+    }
 }
 
 /**
@@ -116,6 +145,15 @@ class UpdateClient(
                 size = json["size"]?.jsonPrimitive?.long ?: throw IOException("update info has no size"),
                 notes = json["notes"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 notesVi = json["notesVi"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                history = (json["history"] as? JsonArray).orEmpty().mapNotNull { item ->
+                    val entry = item as? JsonObject ?: return@mapNotNull null
+                    val version = entry["version"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    ReleaseNote(
+                        version,
+                        entry["notes"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                        entry["notesVi"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    )
+                },
                 file = json["file"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: "app-${json["versionCode"]?.jsonPrimitive?.long}.apk",
             )
         }

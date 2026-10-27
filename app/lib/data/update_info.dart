@@ -1,3 +1,5 @@
+import 'release_history.dart';
+
 enum UpdatePhase {
   idle,
   checking,
@@ -27,6 +29,7 @@ class UpdateInfo {
     this.installed = '',
     this.version,
     this.notes,
+    this.upcoming = const [],
     this.size = 0,
     this.done = 0,
     this.error,
@@ -39,6 +42,14 @@ class UpdateInfo {
     notes: (json['notes'] as String?)?.trim().isEmpty ?? true
         ? null
         : json['notes'] as String,
+    upcoming: [
+      for (final item in json['upcoming'] as List<dynamic>? ?? const [])
+        if (item is Map<String, dynamic> && item['version'] is String)
+          ReleaseEntry(
+            item['version'] as String,
+            item['notes'] as String? ?? '',
+          ),
+    ],
     size: (json['size'] as num?)?.toInt() ?? 0,
     done: (json['done'] as num?)?.toInt() ?? 0,
     error: json['error'] as String?,
@@ -52,6 +63,10 @@ class UpdateInfo {
   /// The newer version on offer, if there is one.
   final String? version;
   final String? notes;
+
+  /// What each version newer than this one changed, newest first, in the language of the app: the notes of this
+  /// phone's own versions are in the app, these are the ones it cannot have.
+  final List<ReleaseEntry> upcoming;
   final int size;
   final int done;
 

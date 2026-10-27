@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/release_history.dart';
+import 'package:sapoche/data/update_info.dart';
 import 'package:sapoche/strings.dart';
 
 import 'pump_app.dart';
@@ -81,7 +82,10 @@ void main() {
     final versions = await ReleaseHistory.versions(rootBundle);
     final all = await ReleaseHistory.load(rootBundle);
     expect(versions, [for (final e in all) e.version]);
-    final some = await ReleaseHistory.read(rootBundle, versions.skip(2).take(3));
+    final some = await ReleaseHistory.read(
+      rootBundle,
+      versions.skip(2).take(3),
+    );
     expect(some.map((e) => e.version), versions.skip(2).take(3));
     expect(some.first.notes, all[2].notes);
   });
@@ -154,4 +158,114 @@ void main() {
       expect(find.text(oldHeading), findsOneWidget);
     },
   );
+
+  test(
+    'the notes of the versions to come are read from what the update says',
+    () {
+      final info = UpdateInfo.fromJson({
+        'phase': 'available',
+        'installed': '1.27.0',
+        'version': '1.28.0',
+        'upcoming': [
+          {'version': '1.28.0', 'notes': 'Newer\n- a'},
+          {'version': '1.27.5', 'notes': 'In between'},
+          {'notes': 'no version'},
+        ],
+      });
+      expect(info.upcoming.map((e) => e.version), ['1.28.0', '1.27.5']);
+      expect(info.upcoming.first.notes, 'Newer\n- a');
+      expect(UpdateInfo.fromJson({'phase': 'upToDate'}).upcoming, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'the page lists the versions the phone has not got, open and marked new, above the ones it has',
+    (tester) async {
+      PackageInfo.setMockInitialValues(
+        appName: 'Sapoche',
+        packageName: 'app.sapoche',
+        version: '1.26.0',
+        buildNumber: '58',
+        buildSignature: '',
+      );
+      final all = (await tester.runAsync(
+        () => ReleaseHistory.load(rootBundle),
+      ))!;
+      final (backend, _) = await pumpApp(tester, listen: false);
+      backend.emit(const StateEvent(RoomSnapshot()));
+      backend.emit(
+        UpdateEvent(
+          UpdateInfo(
+            phase: UpdatePhase.available,
+            installed: all.first.version,
+            version: '99.1.0',
+            upcoming: [
+              const ReleaseEntry(
+                '99.1.0',
+                'Heading of the next\n- Something new',
+              ),
+              const ReleaseEntry('99.0.5', 'Heading in between\n- Another'),
+              // One the app has in it is shown from there, once
+              ReleaseEntry(all.first.version, 'From the server'),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await openSettingsList(tester);
+      await tester.tap(find.byKey(const ValueKey('settings-release-notes')));
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 500)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('release-history-hint')),
+        findsOneWidget,
+      );
+      expect(find.text('99.1.0'), findsOneWidget);
+      expect(find.text('99.0.5'), findsOneWidget);
+      expect(find.text(S.releaseNotesNew), findsNWidgets(2));
+      // They are open: their words are there
+      expect(find.text('Heading of the next'), findsOneWidget);
+      expect(find.text('Heading in between'), findsOneWidget);
+      expect(find.text('From the server'), findsNothing);
+      expect(find.text(all.first.version), findsOneWidget);
+      // Newest first, and above the versions in the app
+      expect(
+        tester.getTopLeft(find.text('99.1.0')).dy,
+        lessThan(tester.getTopLeft(find.text('99.0.5')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('99.0.5')).dy,
+        lessThan(tester.getTopLeft(find.text(all.first.version)).dy),
+      );
+    },
+  );
+
+  testWidgets('with nothing to come, the page has no hint and no new mark', (
+    tester,
+  ) async {
+    PackageInfo.setMockInitialValues(
+      appName: 'Sapoche',
+      packageName: 'app.sapoche',
+      version: '1.26.0',
+      buildNumber: '58',
+      buildSignature: '',
+    );
+    final (backend, _) = await pumpApp(tester, listen: false);
+    backend.emit(const StateEvent(RoomSnapshot()));
+    await tester.pumpAndSettle();
+    await openSettingsList(tester);
+    await tester.tap(find.byKey(const ValueKey('settings-release-notes')));
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('release-history')), findsOneWidget);
+    expect(find.byKey(const ValueKey('release-history-hint')), findsNothing);
+    expect(find.text(S.releaseNotesNew), findsNothing);
+  });
 }

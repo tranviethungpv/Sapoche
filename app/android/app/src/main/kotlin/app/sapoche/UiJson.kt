@@ -102,6 +102,17 @@ object UiJson {
             .put("version", release?.versionName ?: JSONObject.NULL)
             // In the language the app speaks, when the release has its notes in it
             .put("notes", release?.let { if (SapocheApp.language.value == "vi" && it.notesVi.isNotBlank()) it.notesVi else it.notes } ?: JSONObject.NULL)
+            // What the versions newer than this one changed, newest first, to read before installing them
+            .put(
+                "upcoming",
+                JSONArray(
+                    release?.notesAfter(state.installed).orEmpty().map {
+                        JSONObject()
+                            .put("version", it.version)
+                            .put("notes", if (SapocheApp.language.value == "vi" && it.notesVi.isNotBlank()) it.notesVi else it.notes)
+                    },
+                ),
+            )
             .put("size", release?.size ?: 0L)
             .put("done", state.doneBytes)
             .put("error", state.error ?: JSONObject.NULL)

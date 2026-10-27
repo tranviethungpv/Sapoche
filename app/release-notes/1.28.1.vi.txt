@@ -1,0 +1,4 @@
+Lịch sử bản phát hành nay cho xem trước các bản sắp tới, trước khi cập nhật
+- Cài đặt > Lịch sử bản phát hành nay hiện ở đầu trang những bản điện thoại chưa có, kèm nhãn "Mới", để bạn đọc xem có gì thay đổi rồi mới cài. Nếu lỡ nhiều bản, bạn sẽ thấy hết các bản đó.
+- Danh sách hiện sau khi app đã kiểm tra cập nhật: lúc mở app (cách nhau tối thiểu 12 giờ) hoặc khi bấm Kiểm tra ở mục Cập nhật.
+- Tính năng này có trên Android. Trên iPhone và web, danh sách vẫn chỉ hiện các bản app đang có.

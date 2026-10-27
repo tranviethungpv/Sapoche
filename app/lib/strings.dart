@@ -1076,6 +1076,11 @@ abstract final class S {
   static String get updates => _t('Updates', 'Cập nhật');
   static String get releaseNotes =>
       _t('Release notes', 'Lịch sử bản phát hành');
+  static String get releaseNotesNew => _t('New', 'Mới');
+  static String get releaseNotesUpdateHint => _t(
+    'These are in a newer version than the one on this phone: install it under Updates.',
+    'Những điều này nằm ở bản mới hơn bản trên máy: cài ở mục Cập nhật.',
+  );
   static String get releaseNotesInstalled => _t('Installed', 'Đang dùng');
   static String get releaseNotesOlder =>
       _t('Show older versions', 'Xem bản cũ hơn');

@@ -9,6 +9,7 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.provider.Settings
 import app.sapoche.core.Release
+import app.sapoche.core.ReleaseNote
 import app.sapoche.core.UpdateClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -18,6 +19,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 
@@ -249,6 +252,14 @@ class Updater(
             .putLong("update_size", release.size)
             .putString("update_notes", release.notes)
             .putString("update_notes_vi", release.notesVi)
+            .putString(
+                "update_history",
+                JSONArray(
+                    release.history.map {
+                        JSONObject().put("version", it.version).put("notes", it.notes).put("notesVi", it.notesVi)
+                    },
+                ).toString(),
+            )
             .putString("update_file", release.file)
             .apply()
     }
@@ -264,6 +275,13 @@ class Updater(
             prefs.getString("update_notes", "").orEmpty(),
             prefs.getString("update_file", null) ?: "app-$code.apk",
             prefs.getString("update_notes_vi", "").orEmpty(),
+            runCatching {
+                val array = JSONArray(prefs.getString("update_history", "[]"))
+                List(array.length()) {
+                    val entry = array.getJSONObject(it)
+                    ReleaseNote(entry.getString("version"), entry.optString("notes"), entry.optString("notesVi"))
+                }
+            }.getOrDefault(emptyList()),
         )
     }
 

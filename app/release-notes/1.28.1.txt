@@ -1,0 +1,4 @@
+Release notes now show what is coming, before you update
+- Settings > Release notes now lists the versions your phone does not have yet at the top, marked "New", so you can read what changed before installing. If you missed several versions, you will see all of them.
+- It appears once the app has checked for updates, which it does when you open it (at most every 12 hours) or when you press Check under Updates.
+- This works on Android. On iPhone and the web, the list still shows the versions your app already has.

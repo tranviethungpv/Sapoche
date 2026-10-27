@@ -542,7 +542,12 @@ class _SettingsPageState extends State<SettingsPage> {
   ];
 
   static List<Widget> _releaseNotes(BuildContext context, AppModel model) => [
-    const ReleaseHistoryList(),
+    // The versions this phone has not got are only known from the server, so what the update says of them goes on top
+    ListenableBuilder(
+      listenable: model.update,
+      builder: (context, _) =>
+          ReleaseHistoryList(upcoming: model.update.info.upcoming),
+    ),
   ];
 
   static List<Widget> _room(BuildContext context, AppModel model) => [

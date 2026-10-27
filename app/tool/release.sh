@@ -60,6 +60,26 @@ notes_vi = read(f"{name}.vi.txt")
 latest = {"versionCode": int(code), "versionName": name, "sha256": sha, "size": int(size), "file": f"sapoche-{name}.apk", "notes": notes}
 if notes_vi:
     latest["notesVi"] = notes_vi
+# The notes of the last few versions too, so that a phone that is several versions behind can read all it has missed
+# (the notes inside the app stop at the version it was built as)
+def number(version):
+    return [int(part) for part in version.split(".")]
+
+versions = sorted(
+    (f[:-4] for f in os.listdir(folder) if f.endswith(".txt") and not f.endswith(".vi.txt") and f[:-4].replace(".", "").isdigit()),
+    key=number,
+    reverse=True,
+)
+history = []
+for version in versions:
+    if number(version) > number(name):
+        continue
+    entry = {"version": version, "notes": notes if version == name else read(f"{version}.txt")}
+    vi = notes_vi if version == name else read(f"{version}.vi.txt")
+    if vi:
+        entry["notesVi"] = vi
+    history.append(entry)
+latest["history"] = history[:10]
 if not notes:
     print(f"warning: no release notes for {name} (app/release-notes/{name}.txt)", file=sys.stderr)
 json.dump(latest, open(path, "w"), ensure_ascii=False)

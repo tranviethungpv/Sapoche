@@ -97,6 +97,27 @@ class UpdateClientTest {
     }
 
     @Test
+    fun `the notes of the versions a phone has missed are read, newest first, and only the newer ones are kept`() = runTest {
+        latestBody = """{"versionCode":9,"versionName":"1.10.0","sha256":"abc","size":12,"notes":"c","notesVi":"cv","history":[
+            {"version":"1.10.0","notes":"c","notesVi":"cv"},{"version":"1.9.0","notes":"b"},{"version":"1.8.0","notes":"a"},{"notes":"no version"}]}"""
+        val release = client().latest()!!
+        assertEquals(listOf("1.10.0", "1.9.0", "1.8.0"), release.history.map { it.version })
+        assertEquals("cv", release.history.first().notesVi)
+        // 1.9.0 is before 1.10.0 as numbers, though not as words
+        assertEquals(listOf("1.10.0", "1.9.0"), release.notesAfter("1.8.0").map { it.version })
+        assertEquals(emptyList(), release.notesAfter("1.10.0"))
+    }
+
+    @Test
+    fun `a server that sends no history still gives the notes of the release`() = runTest {
+        latestBody = """{"versionCode":7,"versionName":"1.3.0","sha256":"abc","size":12,"notes":"faster","notesVi":"nhanh hơn"}"""
+        val release = client().latest()!!
+        assertEquals(emptyList(), release.history)
+        assertEquals(listOf(ReleaseNote("1.3.0", "faster", "nhanh hơn")), release.notesAfter("1.2.0"))
+        assertEquals(emptyList(), release.notesAfter("1.3.0"))
+    }
+
+    @Test
     fun `the file is fetched under the name the release gives`() = runTest {
         client().download(release(), File(dir, "a.part"))
         assertEquals("/update/sapoche-1.3.0.apk", seen.last().url.encodedPath)
