@@ -1,0 +1,4 @@
+Vầng màu đầu trang dịu hơn, không còn mặt người bị kéo giãn
+- Vầng màu ở đầu Trang chủ, Tìm kiếm, Thư viện và Cài đặt trước đây là ảnh bìa bài hát bị kéo rộng ra, nên mặt người có thể thành những vệt kỳ lạ. Nay nó chỉ lấy màu của bìa rồi hoà mượt vào nhau như Apple Music, nên không bao giờ hiện hình.
+- Màu bám sát bìa hơn: đỏ cạnh xanh lá không còn thành nâu đục, và ở giao diện sáng vầng màu tươi hơn một chút thay vì xám.
+- Khi đổi bài, vầng màu mờ dần sang bài mới thay vì đổi ngay.

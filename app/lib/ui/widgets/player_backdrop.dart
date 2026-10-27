@@ -77,12 +77,6 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
   /// The drift put together in one small picture, see [_DriftFrames].
   final _frames = _DriftFrames();
 
-  /// The picture as the glow along the top ([PlayerBackdrop.glowHeight]), and the picture it was made from: its
-  /// colours and its fade are in it, so that it is drawn as it is. Brought up by a colour filter and faded by a mask
-  /// as it was drawn, it took two layers of its own in every frame, under every main page.
-  ui.Image? _lit;
-  ui.Image? _litOf;
-
   @override
   void initState() {
     super.initState();
@@ -98,76 +92,7 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
     _phase.dispose();
     _soft?.dispose();
     _frames.dispose();
-    _lit?.dispose();
     super.dispose();
-  }
-
-  /// Makes the glow along the top once the picture is there, and again for the next picture.
-  Future<void> _ensureLit() async {
-    final glow = _glow;
-    if (widget.glowHeight == null || glow == null || _litOf == glow) return;
-    _litOf = glow;
-    final lit = await _litGlow(glow, light: _light!);
-    if (!mounted || _glow != glow) {
-      lit.dispose();
-      return;
-    }
-    final old = _lit;
-    setState(() => _lit = lit);
-    old?.dispose();
-  }
-
-  /// [glow] as the glow along the top: its colours brought up a little, and faded from top to bottom. Soft even at
-  /// its strongest, so that the titles over it stay easy to read.
-  static Future<ui.Image> _litGlow(ui.Image glow, {required bool light}) async {
-    final area = Rect.fromLTWH(
-      0,
-      0,
-      glow.width.toDouble(),
-      glow.height.toDouble(),
-    );
-    final recorder = ui.PictureRecorder();
-    Canvas(recorder)
-      ..saveLayer(area, Paint())
-      ..drawImage(
-        glow,
-        Offset.zero,
-        // The dark theme's picture is deep so that white text reads on all of the full player; as a glow it is only
-        // brought up a little
-        Paint()
-          ..colorFilter = ColorFilter.matrix(
-            light ? _bright(1, 1.15) : _bright(1.15, 1.0),
-          ),
-      )
-      ..drawRect(
-        area,
-        Paint()
-          ..blendMode = BlendMode.dstIn
-          ..shader = ui.Gradient.linear(
-            area.topCenter,
-            area.bottomCenter,
-            const [Color(0x99FFFFFF), Color(0x52FFFFFF), Color(0x00FFFFFF)],
-            const [0, 0.5, 1],
-          ),
-      )
-      ..restore();
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(glow.width, glow.height);
-    picture.dispose();
-    return image;
-  }
-
-  /// A colour matrix that multiplies the colours by [gain] and makes them [vivid] times as vivid.
-  static List<double> _bright(double gain, double vivid) {
-    const r = 0.2126, g = 0.7152, b = 0.0722;
-    final s = vivid;
-    double k(double v) => v * gain;
-    return [
-      k(r * (1 - s) + s), k(g * (1 - s)), k(b * (1 - s)), 0, 0, //
-      k(r * (1 - s)), k(g * (1 - s) + s), k(b * (1 - s)), 0, 0, //
-      k(r * (1 - s)), k(g * (1 - s)), k(b * (1 - s) + s), 0, 0, //
-      0, 0, 0, 1, 0,
-    ];
   }
 
   /// Makes the faded picture once the picture is there, and again for the next picture: playing or paused, the full
@@ -242,14 +167,17 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
       return;
     }
     final light = _light!;
-    CoverGlow.of(url, light: light).then((image) {
+    // Along the top it is the glow of the page, made of the colours of the cover and not of its shape
+    final made = widget.glowHeight == null
+        ? CoverGlow.of(url, light: light)
+        : CoverGlow.top(url, light: light);
+    made.then((image) {
       if (!mounted || widget.coverUrl != url || _light != light) return;
       setState(() {
         _glow = image;
         _shownFor = url;
       });
       _ensureSoft();
-      _ensureLit();
     });
   }
 
@@ -317,9 +245,9 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
 
 extension on _PlayerBackdropState {
   /// The colours as a glow along the top, over whatever the page has behind: richer than the full player's, since only
-  /// a thin part of the screen has them, and gone by [fraction] of the height.
+  /// a thin part of the screen has them, and gone by [fraction] of the height. It changes from song to song by
+  /// fading from one picture to the next, as the full player does.
   Widget _topGlow(ui.Image? glow, double fraction) {
-    final lit = _lit;
     return Align(
       alignment: Alignment.topCenter,
       child: LayoutBuilder(
@@ -331,12 +259,21 @@ extension on _PlayerBackdropState {
           return SizedBox(
             width: double.infinity,
             height: height,
-            child: glow == null || lit == null
-                ? null
-                : RepaintBoundary(
-                    key: ValueKey(_shownFor),
-                    child: CustomPaint(painter: _GlowPainter(lit)),
-                  ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 900),
+              switchInCurve: Curves.easeInOut,
+              switchOutCurve: Curves.easeInOut,
+              layoutBuilder: (current, previous) => Stack(
+                fit: StackFit.expand,
+                children: [...previous, ?current],
+              ),
+              child: glow == null
+                  ? null
+                  : RepaintBoundary(
+                      key: ValueKey(_shownFor),
+                      child: CustomPaint(painter: _GlowPainter(glow)),
+                    ),
+            ),
           );
         },
       ),

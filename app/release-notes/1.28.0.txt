@@ -1,0 +1,4 @@
+A softer glow of colour at the top of every page, with no more stretched faces
+- The soft colour at the top of Home, Search, Library and Settings used to be the song's cover stretched wide, so faces could turn into odd smears. It is now made only from the colours of the cover, blended smoothly like Apple Music, so it never shows a shape.
+- The colours stay closer to the cover: red next to green no longer turns muddy brown, and the glow on the light theme is a little livelier instead of grey.
+- When the song changes, the glow now fades into the next one instead of switching at once.
