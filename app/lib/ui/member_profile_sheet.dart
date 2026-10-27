@@ -157,6 +157,18 @@ class _Body extends StatelessWidget {
             ),
           ),
         ],
+        // Someone on an older app is told apart from someone whose version is not known yet (this one, on an old server)
+        if (member.app != null || !isYou) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              S.profileApp(member.app),
+              key: const ValueKey('profile-view-app'),
+              style: text.bodyMedium?.copyWith(color: p.textSecondary),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         if (isYou)
           SizedBox(

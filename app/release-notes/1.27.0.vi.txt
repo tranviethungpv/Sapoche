@@ -1,0 +1,4 @@
+Xem mọi người dùng bản nào, lịch sử phát hành mở nhanh hơn và ảnh bìa video trên web nét hơn
+- Chạm vào một người trong phòng để xem họ đang dùng phiên bản Sapoche nào, tiện để biết ai cần cập nhật. Người dùng bản cũ sẽ hiện "chưa rõ" cho đến khi cập nhật.
+- Cài đặt > Lịch sử bản phát hành mở nhanh hơn: chỉ hiện 5 bản mới nhất, nút "Xem bản cũ hơn" thêm 10 bản mỗi lần bấm.
+- Trên web, ảnh bìa của video không còn bị mờ: khi video không có ảnh lớn, trang dùng ảnh riêng của video thay vì một ảnh nhỏ bị phóng to. Ảnh bìa nhỏ trong danh sách cũng nét hơn, cả trên điện thoại.

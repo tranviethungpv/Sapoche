@@ -18,23 +18,23 @@ class ReleaseHistory {
 
   static const _folder = 'release-notes/';
 
-  /// The versions, newest first, with their notes in [language] or, where there are none, in English.
-  static Future<List<ReleaseEntry>> load(
-    AssetBundle bundle, {
+  /// The versions there are, newest first. Only the names: reading the notes of all of them is what [read] is for, a
+  /// few at a time.
+  static Future<List<String>> versions(AssetBundle bundle) async => [
+    for (final asset in await _assets(bundle))
+      if (RegExp(r'^\d+(\.\d+)*\.txt$').hasMatch(asset.substring(_folder.length)))
+        asset.substring(_folder.length, asset.length - '.txt'.length),
+  ]..sort((a, b) => compare(b, a));
+
+  /// The notes of [versions], in order, in [language] or, where there are none, in English.
+  static Future<List<ReleaseEntry>> read(
+    AssetBundle bundle,
+    Iterable<String> versions, {
     String language = 'en',
   }) async {
-    final assets = (await AssetManifest.loadFromAssetBundle(bundle))
-        .listAssets()
-        .where((a) => a.startsWith(_folder))
-        .toSet();
-    final versions = [
-      for (final asset in assets)
-        if (RegExp(r'^\d+(\.\d+)*\.txt$')
-            .hasMatch(asset.substring(_folder.length)))
-          asset.substring(_folder.length, asset.length - '.txt'.length),
-    ]..sort(compare);
+    final assets = await _assets(bundle);
     return [
-      for (final version in versions.reversed)
+      for (final version in versions)
         ReleaseEntry(
           version,
           await bundle.loadString(
@@ -45,6 +45,18 @@ class ReleaseHistory {
         ),
     ];
   }
+
+  /// Every version, newest first, with its notes.
+  static Future<List<ReleaseEntry>> load(
+    AssetBundle bundle, {
+    String language = 'en',
+  }) async => read(bundle, await versions(bundle), language: language);
+
+  static Future<Set<String>> _assets(AssetBundle bundle) async =>
+      (await AssetManifest.loadFromAssetBundle(bundle))
+          .listAssets()
+          .where((a) => a.startsWith(_folder))
+          .toSet();
 
   /// Orders `1.9.0` before `1.10.0`: part by part, as numbers.
   static int compare(String a, String b) {

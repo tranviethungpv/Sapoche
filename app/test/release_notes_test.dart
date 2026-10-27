@@ -77,14 +77,23 @@ void main() {
     }
   });
 
+  test('the versions can be listed without reading their notes, and read a few at a time', () async {
+    final versions = await ReleaseHistory.versions(rootBundle);
+    final all = await ReleaseHistory.load(rootBundle);
+    expect(versions, [for (final e in all) e.version]);
+    final some = await ReleaseHistory.read(rootBundle, versions.skip(2).take(3));
+    expect(some.map((e) => e.version), versions.skip(2).take(3));
+    expect(some.first.notes, all[2].notes);
+  });
+
   testWidgets(
-    'settings has a page of the notes of every version, with this one marked',
+    'settings has a page of the notes, five versions at first and ten more each time asked, with this one marked',
     (tester) async {
       PackageInfo.setMockInitialValues(
         appName: 'Sapoche',
         packageName: 'app.sapoche',
-        version: '1.24.0',
-        buildNumber: '56',
+        version: '1.26.0',
+        buildNumber: '58',
         buildSignature: '',
       );
       final all = (await tester.runAsync(
@@ -107,15 +116,37 @@ void main() {
 
       expect(find.byKey(const ValueKey('release-history')), findsOneWidget);
       expect(find.text(newest.version), findsOneWidget);
-      expect(find.text('1.24.0'), findsOneWidget);
       expect(find.text(S.releaseNotesInstalled), findsOneWidget);
       // The newest is open: its notes are there to read
       expect(find.text(heading), findsOneWidget);
+      // Only the newest five are listed, and the older ones can be asked for
+      expect(find.text(all[4].version), findsOneWidget);
+      expect(find.text(all[5].version), findsNothing);
+      final older = find.byKey(const ValueKey('release-history-older'));
+      expect(older, findsOneWidget);
+
+      Future<void> askForOlder() async {
+        await tester.ensureVisible(older);
+        // Clear of the bars that float over the foot of the page
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -300));
+        await tester.pumpAndSettle();
+        await tester.tap(older);
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 300)),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await askForOlder();
+      expect(find.text(all[14].version, skipOffstage: false), findsOneWidget);
+      expect(find.text(all[15].version, skipOffstage: false), findsNothing);
+      while (older.evaluate().isNotEmpty) {
+        await askForOlder();
+      }
       // An old one is shut until it is touched: its words are not there, its version is
       expect(find.text(all.last.version), findsOneWidget);
       expect(find.text(oldHeading), findsNothing);
       await tester.ensureVisible(find.text(all.last.version));
-      // Clear of the bars that float over the foot of the page
       await tester.drag(find.byType(Scrollable).first, const Offset(0, -300));
       await tester.pumpAndSettle();
       await tester.tap(find.text(all.last.version));

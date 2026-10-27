@@ -861,6 +861,10 @@ abstract final class S {
     n == 1 ? '1 song in the queue is theirs' : '$n songs in the queue are theirs',
     '$n bài trong hàng đợi do họ thêm',
   );
+  static String profileApp(String? version) => _t(
+    version == null ? 'App version: unknown (an older app)' : 'App version: $version',
+    version == null ? 'Phiên bản app: chưa rõ (bản cũ hơn)' : 'Phiên bản app: $version',
+  );
   static String get profileEdit => _t('Edit my profile', 'Sửa hồ sơ của tôi');
   static String get profileGone =>
       _t('They have left the room', 'Họ đã rời khỏi phòng');
@@ -1073,6 +1077,8 @@ abstract final class S {
   static String get releaseNotes =>
       _t('Release notes', 'Lịch sử bản phát hành');
   static String get releaseNotesInstalled => _t('Installed', 'Đang dùng');
+  static String get releaseNotesOlder =>
+      _t('Show older versions', 'Xem bản cũ hơn');
   static String get releaseNotesNone =>
       _t('The notes could not be read', 'Không đọc được ghi chú');
   static String get serverSection => _t('Server', 'Máy chủ');

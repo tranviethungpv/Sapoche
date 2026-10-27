@@ -47,6 +47,8 @@ class RoomClient(
     /** How often to ping once connected, and how long silence may last before the connection is dropped. Shortened by tests. */
     private val pingEveryMs: Long = REFRESH_MS,
     private val pongDeadlineMs: Long = PONG_DEADLINE_MS,
+    /** The version of this app, told to the room so that the other members can see it. */
+    private val appVersion: String? = null,
 ) {
     var onMessage: (ServerMessage) -> Unit = {}
 
@@ -112,7 +114,7 @@ class RoomClient(
     /** Changes the display name without dropping the connection: the server accepts a second join. */
     fun rename(newName: String) {
         name = newName
-        send(Protocol.join(clientId, newName))
+        send(Protocol.join(clientId, newName, app = appVersion))
     }
 
     /**
@@ -155,7 +157,7 @@ class RoomClient(
                     log("connected to $url")
                     lastPongMs = nowMs()
                     avatarSent = false
-                    webSocket.send(Protocol.join(clientId, name, createOnJoin))
+                    webSocket.send(Protocol.join(clientId, name, createOnJoin, appVersion))
                     pinger = scope.launch { pingLoop(webSocket) }
                     onConnected()
                 }

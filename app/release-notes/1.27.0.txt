@@ -1,0 +1,4 @@
+See which version of the app everyone uses, a lighter release history, and sharper video covers on the web
+- Touch someone in the room to see which version of Sapoche they use, handy for spotting who needs to update. People on an older version show as "unknown" until they update.
+- Settings > Release notes opens faster: it shows the latest five versions, and "Show older versions" brings ten more each time.
+- On the web, covers of videos are no longer blurry: when a video has no large picture, the page now uses its own sharper one instead of a tiny stretched image. Small covers in lists are sharper too, on the phone as well.

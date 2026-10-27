@@ -433,7 +433,7 @@ class GroupController(
         newSession.trimMs = trimMs
         newSession.startBiasMs = prefs.getLong(KEY_START_BIAS_MS, 0L)
         newSession.onStartBiasLearned = { prefs.edit().putLong(KEY_START_BIAS_MS, it).apply() }
-        val newClient = RoomClient(baseUrl, code, id, name, scope, clock, now, log, Config.authHeaders, create)
+        val newClient = RoomClient(baseUrl, code, id, name, scope, clock, now, log, Config.authHeaders, create, appVersion = BuildConfig.VERSION_NAME)
         newClient.onMessage = {
             if (it is ServerMessage.Error) _errors.tryEmit(it)
             if (it is ServerMessage.AutoplayFill) fillRoom(it)

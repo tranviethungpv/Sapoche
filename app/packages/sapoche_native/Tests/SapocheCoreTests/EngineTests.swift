@@ -693,6 +693,11 @@ final class WireTests: XCTestCase {
         XCTAssertEqual(join["clientId"] as? String, "me")
         XCTAssertEqual(join["create"] as? Bool, true)
         XCTAssertNil(object(Wire.join(clientId: "me", name: "Me"))["create"])
+        XCTAssertNil(object(Wire.join(clientId: "me", name: "Me"))["app"])
+        XCTAssertEqual(object(Wire.join(clientId: "me", name: "Me", app: "1.26.0"))["app"] as? String, "1.26.0")
+        let members = Wire.parse(#"{"t":"members","members":[{"id":"a","name":"A","ready":true,"app":"1.25.0"},{"id":"b","name":"B","ready":true}]}"#)
+        guard case let .members(listed)? = members else { return XCTFail("not a member list") }
+        XCTAssertEqual(listed.map(\.app), ["1.25.0", nil])
 
         let add = object(Wire.queueAdd(TrackRef(videoId: "v", title: "T", artist: "A", thumb: nil, durMs: 5), playNext: true))
         XCTAssertEqual(add["t"] as? String, "queue.add")

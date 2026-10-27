@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/web/clocks.dart';
@@ -52,7 +53,7 @@ String _state(int protocol, String members, {String you = 'me'}) =>
     '{"t":"state","serverNow":0,"you":"$you","protocol":$protocol,'
     '"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":$members}';
 
-RoomClient _client(_Room room) => RoomClient(
+RoomClient _client(_Room room, {String? appVersion}) => RoomClient(
   baseUrl: Uri.parse('https://sapoche.example'),
   roomCode: 'ABC234',
   clientId: 'device-secret',
@@ -62,11 +63,30 @@ RoomClient _client(_Room room) => RoomClient(
   probeAuth: () async => null,
   opener: room.opener,
   create: false,
+  appVersion: appVersion,
 );
 
 Future<void> _settle() => Future<void>.delayed(const Duration(milliseconds: 50));
 
 void main() {
+  test('the version of the app goes in every join, and is left out when it is not known', () async {
+    final room = _Room(state: () => _state(17, '[]'));
+    final client = _client(room, appVersion: '1.26.0')..start();
+    await _settle();
+    client.rename('Anna');
+    await _settle();
+    final joins = room.received.where((t) => t.contains('"join"')).map((t) => jsonDecode(t) as Map<String, dynamic>).toList();
+    expect(joins, hasLength(2));
+    expect(joins.map((j) => j['app']), ['1.26.0', '1.26.0']);
+    client.close();
+
+    final bare = _Room(state: () => _state(17, '[]'));
+    final older = _client(bare)..start();
+    await _settle();
+    expect(jsonDecode(bare.received.firstWhere((t) => t.contains('"join"'))), isNot(contains('app')));
+    older.close();
+  });
+
   test('pictures are shared and fetched once the server speaks protocol 8', () async {
     const members = '[{"id":"me","name":"Me","ready":false},{"id":"you","name":"You","ready":false,"av":"abcd1234"}]';
     final room = _Room(

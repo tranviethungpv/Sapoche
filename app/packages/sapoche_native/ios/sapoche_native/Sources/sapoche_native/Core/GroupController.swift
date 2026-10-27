@@ -517,7 +517,8 @@ final class GroupController {
         newSession.startBiasMs = prefs.int64(Self.keyStartBiasMs) ?? 0
         newSession.onStartBiasLearned = { [weak self] in self?.prefs.set($0, for: Self.keyStartBiasMs) }
         let newClient = RoomClient(baseUrl: settings.server, roomCode: code, clientId: id, name: name, scope: scope, clock: clock,
-                                   time: time, log: log, headers: settings.authHeaders, create: create, sockets: sockets)
+                                   time: time, log: log, headers: settings.authHeaders, create: create, sockets: sockets,
+                                   appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
         newClient.onMessage = { [weak self] message in
             if case let .error(code, text) = message { self?.errors.emit(ControllerError(code: code, message: text)) }
             if case let .autoplayFill(epoch, videoId, title) = message { self?.fillRoom(epoch: epoch, videoId: videoId, title: title) }

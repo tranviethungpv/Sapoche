@@ -65,6 +65,7 @@ class WebBackend extends BackendDefaults {
     this.onShare,
     this.media,
     this.push,
+    this.appVersion,
     this.sink = _ignore,
   }) : _http = client ?? http.Client(),
        _library = library ?? LibraryStore(),
@@ -160,6 +161,9 @@ class WebBackend extends BackendDefaults {
 
   /// The browser's notices of the chat while the page is away; null where there is no such thing (the tests).
   final PushPort? push;
+
+  /// The version of this app, like `1.26.0`, which the room shows to the other members; null when the page cannot say.
+  final String? appVersion;
   final http.Client _http;
   final LibraryStore _library;
   late final _listens = ListenTracker(skipped: (id, durationMs) => _skipped(id, durationMs), heard: (id, durationMs) => _heard(id, durationMs));
@@ -361,6 +365,7 @@ class WebBackend extends BackendDefaults {
       nowMs: _now,
       key: _key,
       create: create,
+      appVersion: appVersion,
       probeAuth: _probeAuth(code),
       opener: _opener,
       log: (m) => _note('room: $m'),

@@ -43,7 +43,8 @@ enum UiJson {
             "loading": inRoom ? snap.loading : local.loading,
             "queue": queue.map(item),
             "members": snap.members.map {
-                ["id": $0.id, "name": $0.name, "ready": $0.ready, "solo": $0.solo, "away": $0.away, "owner": $0.owner] as [String: Any]
+                ["id": $0.id, "name": $0.name, "ready": $0.ready, "solo": $0.solo, "away": $0.away, "owner": $0.owner,
+                 "app": $0.app ?? NSNull()] as [String: Any]
             },
         ]
         return JSONText.encode(object)

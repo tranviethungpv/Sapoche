@@ -106,6 +106,9 @@ final class RoomClient: SocketEvents {
     /// Shown to the others; sent again on every reconnect.
     private(set) var name: String
 
+    /// The version of this app, told to the room so that the other members can see it.
+    private let appVersion: String?
+
     /// This device's own picture, as base64; shared with the room once the server says it can keep pictures.
     private var avatar: String?
 
@@ -125,7 +128,7 @@ final class RoomClient: SocketEvents {
     init(baseUrl: String, roomCode: String, clientId: String, name: String, scope: Scope, clock: ClockSync,
          time: TimeSource? = nil, log: @escaping (String) -> Void = { _ in }, headers: [String: String] = [:],
          create: Bool? = nil, sockets: SocketFactory? = nil, pingEveryMs: Int64 = RoomClient.refreshMs,
-         pongDeadlineMs: Int64 = RoomClient.pongDeadlineMs) {
+         pongDeadlineMs: Int64 = RoomClient.pongDeadlineMs, appVersion: String? = nil) {
         var base = baseUrl
         while base.hasSuffix("/") { base.removeLast() }
         if base.hasPrefix("http") { base = "ws" + base.dropFirst(4) }
@@ -143,6 +146,7 @@ final class RoomClient: SocketEvents {
         createOnJoin = create
         self.pingEveryMs = pingEveryMs
         self.pongDeadlineMs = pongDeadlineMs
+        self.appVersion = appVersion
     }
 
     func start() {
@@ -164,7 +168,7 @@ final class RoomClient: SocketEvents {
     /// Changes the display name without dropping the connection: the server accepts a second join.
     func rename(_ newName: String) {
         name = newName
-        send(Wire.join(clientId: clientId, name: newName))
+        send(Wire.join(clientId: clientId, name: newName, app: appVersion))
     }
 
     /// The device's network changed or came back: do not wait out the backoff, and replace a connection that may be
@@ -254,7 +258,7 @@ final class RoomClient: SocketEvents {
         log("connected to \(url)")
         lastPongMs = time.nowMs()
         avatarSent = false
-        socket?.send(Wire.join(clientId: clientId, name: name, create: createOnJoin))
+        socket?.send(Wire.join(clientId: clientId, name: name, create: createOnJoin, app: appVersion))
         pinger?.cancel()
         if let socket {
             pinger = scope.launch { [weak self] in await self?.pingLoop(socket) }

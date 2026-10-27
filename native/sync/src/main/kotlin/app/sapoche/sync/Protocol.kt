@@ -76,6 +76,8 @@ data class Member(
     val owner: Boolean = false,
     /** Fingerprint of the member's picture; null when they have none. The picture itself comes with [ServerMessage.Avatar]. */
     val av: String? = null,
+    /** The version of the app the member uses, like `1.26.0`; null from an app or a server older than protocol 17. */
+    val app: String? = null,
 )
 
 /** A chat message as the room keeps it. [name] is the sender's name when it was sent; [cid] is the id the sending device gave it. */
@@ -222,12 +224,14 @@ object Protocol {
      * [create] says what the device expects: true for a code it just made, false for one it was given, so
      * that a mistyped code is refused instead of opening an empty room. Null leaves it out, as older apps do.
      */
-    fun join(clientId: String, name: String, create: Boolean? = null) = msg("join") {
+    fun join(clientId: String, name: String, create: Boolean? = null, app: String? = null) = msg("join") {
         put("clientId", clientId)
         put("name", name)
         if (create != null) put("create", create)
         // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15
         put("caps", buildJsonArray { add("e2ee") })
+        // Shown to the other members in this person's profile. Protocol 17
+        if (app != null) put("app", app)
     }
 
     /** Owner only: turns on end-to-end encryption of the chat, for good; the chat so far is deleted. Protocol 15. */

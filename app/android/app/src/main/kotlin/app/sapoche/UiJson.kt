@@ -59,7 +59,8 @@ object UiJson {
                                 .put("ready", it.ready)
                                 .put("solo", it.solo)
                                 .put("away", it.away)
-                                .put("owner", it.owner),
+                                .put("owner", it.owner)
+                                .put("app", it.app ?: JSONObject.NULL),
                         )
                     }
                 },

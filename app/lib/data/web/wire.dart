@@ -371,9 +371,10 @@ abstract final class Wire {
 
   /// [create] says what the device expects: true for a code it just made, false for one it was given, so that a
   /// mistyped code is refused instead of opening an empty room. Null leaves it out.
-  static String join(String clientId, String name, {bool? create}) =>
-      // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15
-      _msg('join', {'clientId': clientId, 'name': name, 'create': ?create, 'caps': ['e2ee']});
+  static String join(String clientId, String name, {bool? create, String? app}) =>
+      // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15.
+      // The version is shown to the other members in this person's profile. Protocol 17
+      _msg('join', {'clientId': clientId, 'name': name, 'create': ?create, 'caps': ['e2ee'], 'app': ?app});
 
   /// Owner only: turns on end-to-end encryption of the chat, for good; the chat so far is deleted. Protocol 15.
   static String roomEncrypt() => _msg('room.encrypt');

@@ -23,10 +23,7 @@ class CachedCover extends ImageProvider<CachedCover> {
     // In a browser the browser keeps pictures itself; where fetching is made up (the tests), the picture is fetched
     // as it always was, and no file is kept. Without CORS headers the browser still shows a picture, just not as pixels.
     if (kIsWeb) {
-      final image = NetworkImage(
-        url,
-        webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
-      );
+      final image = NetworkImage(url, webHtmlElementStrategy: strategyFor(url));
       return image.loadImage(image, decode);
     }
     if (HttpOverrides.current != null) {
@@ -37,6 +34,19 @@ class CachedCover extends ImageProvider<CachedCover> {
       scale: 1,
       debugLabel: url,
     );
+  }
+
+  /// How a browser may show [url]. A failed fetch makes the browser retry in an `<img>` element, which draws the body
+  /// of an error page as if it were the picture. YouTube's thumbnail host allows CORS yet answers a size a video does
+  /// not have (`maxresdefault`) with a 404 whose body is a 120x90 grey picture: through `<img>` that is a blur
+  /// stretched over the cover, and the fall back to the video's own picture never happens. For that host a failure
+  /// has to stay a failure.
+  @visibleForTesting
+  static WebHtmlElementStrategy strategyFor(String url) {
+    final host = Uri.tryParse(url)?.host ?? '';
+    return host == 'ytimg.com' || host.endsWith('.ytimg.com')
+        ? WebHtmlElementStrategy.never
+        : WebHtmlElementStrategy.fallback;
   }
 
   Future<ui.Codec> _codec(ImageDecoderCallback decode) async {

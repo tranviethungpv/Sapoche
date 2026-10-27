@@ -193,6 +193,15 @@ class ProtocolTest {
     }
 
     @Test
+    fun `tells the room the version of the app, and reads the version of the others`() {
+        assertEquals("""{"t":"join","clientId":"c","name":"N","caps":["e2ee"],"app":"1.26.0"}""", Protocol.join("c", "N", app = "1.26.0"))
+        val msg = Protocol.parse("""{"t":"members","members":[{"id":"a","name":"A","ready":true,"app":"1.25.0"},{"id":"b","name":"B","ready":true}]}""")
+        val members = (msg as ServerMessage.Members).members
+        assertEquals("1.25.0", members[0].app)
+        assertEquals(null, members[1].app)
+    }
+
+    @Test
     fun `parses chat messages, the chat history and reactions`() {
         val chat = Protocol.parse("""{"t":"chat","msg":{"id":3,"by":"a1","name":"Ann","text":"hi","at":1790660600123,"cid":"c-1"}}""")
         assertEquals(ServerMessage.Chat(ChatMessage(3, "a1", "Ann", "hi", 1790660600123, "c-1")), chat)

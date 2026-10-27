@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 16;
+export const PROTOCOL_VERSION = 17;
 
 export interface QueueItem {
   id: string;
@@ -149,6 +149,8 @@ export interface Member {
   owner: boolean;
   /** Short fingerprint of the member's picture; absent when they have none. The picture itself comes with avatar.get. */
   av?: string;
+  /** The version of the app the member is using, like `1.26.0`; absent from apps older than protocol 17. */
+  app?: string;
 }
 
 // ---- client -> server ----
@@ -158,7 +160,7 @@ export type ClientMessage =
    * [create] says what the device expects: true when it just made the code up, false when it was
    * given one (a typo must not open an empty room). Absent means an older app, which gets the old behavior.
    */
-  | { t: "join"; clientId: string; name: string; create?: boolean; caps?: string[] }
+  | { t: "join"; clientId: string; name: string; create?: boolean; caps?: string[]; app?: string }
   /** Owner only: turns on end-to-end encryption of the chat, for good. The chat so far is deleted. Protocol 15. */
   | { t: "room.encrypt" }
   /** Leaving on purpose, as opposed to a connection that dropped. An owner who says this hands the room over. */

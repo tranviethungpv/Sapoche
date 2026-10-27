@@ -158,8 +158,11 @@ struct Member: Equatable {
     var owner: Bool = false
     /// Fingerprint of the member's picture; nil when they have none. The picture itself comes with [ServerMessage.avatar].
     var av: String?
+    /// The version of the app the member uses, like `1.26.0`; nil from an app or a server older than protocol 17.
+    var app: String?
 
-    init(id: String, name: String, ready: Bool, solo: Bool = false, away: Bool = false, owner: Bool = false, av: String? = nil) {
+    init(id: String, name: String, ready: Bool, solo: Bool = false, away: Bool = false, owner: Bool = false, av: String? = nil,
+         app: String? = nil) {
         self.id = id
         self.name = name
         self.ready = ready
@@ -167,6 +170,7 @@ struct Member: Equatable {
         self.away = away
         self.owner = owner
         self.av = av
+        self.app = app
     }
 
     init?(_ json: JSON) {
@@ -178,7 +182,8 @@ struct Member: Equatable {
             solo: json["solo"].bool ?? false,
             away: json["away"].bool ?? false,
             owner: json["owner"].bool ?? false,
-            av: json["av"].string
+            av: json["av"].string,
+            app: json["app"].string
         )
     }
 }
@@ -359,9 +364,13 @@ enum Wire {
 
     /// [create] says what the device expects: true for a code it just made, false for one it was given, so
     /// that a mistyped code is refused instead of opening an empty room. nil leaves it out, as older apps do.
-    static func join(clientId: String, name: String, create: Bool? = nil) -> String {
+    static func join(clientId: String, name: String, create: Bool? = nil, app: String? = nil) -> String {
+        var optional: [String: Any] = [:]
+        if let create { optional["create"] = create }
+        // Shown to the other members in this person's profile. Protocol 17
+        if let app { optional["app"] = app }
         // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15
-        msg("join", ["clientId": clientId, "name": name, "caps": ["e2ee"]], optional: create.map { ["create": $0] })
+        return msg("join", ["clientId": clientId, "name": name, "caps": ["e2ee"]], optional: optional)
     }
 
     /// Owner only: turns on end-to-end encryption of the chat, for good; the chat so far is deleted. Protocol 15.

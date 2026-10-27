@@ -26,6 +26,7 @@ class RoomClient {
     SocketOpener? opener,
     this.pingEvery = const Duration(seconds: 30),
     this.pongDeadline = const Duration(seconds: 45),
+    this.appVersion,
   }) : _createOnJoin = create,
        _opener = opener ?? defaultSocketOpener,
        _url = baseUrl.replace(
@@ -37,6 +38,9 @@ class RoomClient {
 
   final String clientId;
   final ClockSync clock;
+
+  /// The version of this app, told to the room so that the other members can see it.
+  final String? appVersion;
 
   /// Monotonic local clock in ms; must be the clock the session uses.
   final NowMs nowMs;
@@ -136,7 +140,7 @@ class RoomClient {
   /// Changes the display name without dropping the connection: the server accepts a second join.
   void rename(String newName) {
     name = newName;
-    send(Wire.join(clientId, newName));
+    send(Wire.join(clientId, newName, app: appVersion));
   }
 
   /// The network changed or came back: do not wait out the backoff, and replace a connection that may be dead without
@@ -187,7 +191,7 @@ class RoomClient {
           _pushSent = false;
           _set(Connection.connected);
           log('connected to $_url');
-          ws.send(Wire.join(clientId, name, create: _createOnJoin));
+          ws.send(Wire.join(clientId, name, create: _createOnJoin, app: appVersion));
           pinger = Job.launch((p) => _pingLoop(p, ws));
           onConnected();
         },

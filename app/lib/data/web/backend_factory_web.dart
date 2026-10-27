@@ -2,6 +2,7 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:ui' show PlatformDispatcher;
 
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web/web.dart' as web;
 
@@ -42,6 +43,8 @@ Future<Backend> createBackend() async {
     keeping = false;
     web.console.log('library: could not read the stored library: $e'.toJS);
   }
+  // Read from the build the page came from; a page that cannot say still opens, it just does not tell its version
+  final appVersion = await PackageInfo.fromPlatform().then<String?>((info) => info.version, onError: (_) => null);
   final backend = WebBackend(
   library: LibraryStore(disk: keeping ? disk : null, stored: stored),
   player: YoutubePlayer()..log = (line) => web.console.log('player: $line'.toJS),
@@ -57,6 +60,7 @@ Future<Backend> createBackend() async {
   onShare: _share,
   media: BrowserMediaControls(),
   push: createPushPort(),
+  appVersion: appVersion,
   sink: (line) => web.console.log(line.toJS),
 );
   // A page that goes away does not wait for the pause before a write

@@ -147,6 +147,8 @@ interface Attachment {
   rtt?: number;
   /** The app can read and write sealed chat (it said "e2ee" when joining). */
   e2ee?: boolean;
+  /** The version of the app, as it said when joining. */
+  app?: string;
 }
 
 /** What only the owner may do once the owner has restricted guests to adding songs. */
@@ -383,8 +385,10 @@ export class Room extends DurableObject<Env> {
     // A device that comes back keeps the picture it had, so it does not vanish from the others' screens meanwhile
     const kept = await this.ctx.storage.get<string>(AVATAR_PREFIX + id);
     const av = kept === undefined ? undefined : await fingerprint(kept);
+    // Shown to the other members, so only something that looks like a version is kept
+    const app = typeof msg.app === "string" && /^\d{1,4}(\.\d{1,4}){0,3}$/.test(msg.app) ? msg.app : undefined;
     ws.serializeAttachment(
-      { clientId, id, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av, e2ee } satisfies Attachment,
+      { clientId, id, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av, e2ee, app } satisfies Attachment,
     );
 
     // The first to arrive owns a room that has no owner; the room now exists and someone is in it
@@ -910,7 +914,7 @@ export class Room extends DurableObject<Env> {
   /** Broadcasts the member list when who is here, away or solo changed since the last time. */
   private broadcastMembers(): void {
     const members = this.members();
-    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}:${m.owner}:${m.av ?? ""}`).join("|");
+    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}:${m.owner}:${m.av ?? ""}:${m.app ?? ""}`).join("|");
     if (key === this.membersKey) return;
     this.membersKey = key;
     this.broadcast({ t: "members", members });
@@ -1460,6 +1464,7 @@ export class Room extends DurableObject<Env> {
         away: now - att.lastSeen > limit,
         owner: att.id === this.s.ownerId,
         ...(att.av ? { av: att.av } : {}),
+        ...(att.app ? { app: att.app } : {}),
       });
     }
     return out;

@@ -51,7 +51,7 @@ class Artwork extends StatelessWidget {
   final bool sharp;
 
   /// The picture is wide and is cropped square: it is decoded by its height, as a decode by width would leave it
-  /// too few pixels tall. For small covers; [sharp] ones are decoded whole.
+  /// too few pixels tall. For small covers; [sharp] ones are decoded whole. A video's thumbnail is always wide.
   final bool wide;
 
   @override
@@ -89,29 +89,31 @@ class Artwork extends StatelessWidget {
     String address,
     Widget placeholder, {
     ImageErrorWidgetBuilder? onError,
-  }) => Image(
-    image: ResizeImage.resizeIfNeeded(
-      // A wide picture cropped square would come out short of pixels if it were decoded by width
-      sharp || wide
-          ? null
-          : (size * MediaQuery.devicePixelRatioOf(context)).round(),
-      wide ? (size * MediaQuery.devicePixelRatioOf(context)).round() : null,
-      CachedCover(address),
-    ),
-    fit: BoxFit.cover,
-    errorBuilder: onError ?? (_, _, _) => placeholder,
-    frameBuilder: (context, child, frame, sync) => sync
-        ? child
-        : Stack(
-            fit: StackFit.expand,
-            children: [
-              placeholder,
-              AnimatedOpacity(
-                opacity: frame == null ? 0 : 1,
-                duration: const Duration(milliseconds: 300),
-                child: child,
-              ),
-            ],
-          ),
-  );
+  }) {
+    final pixels = (size * MediaQuery.devicePixelRatioOf(context)).round();
+    // A wide picture cropped square would come out short of pixels if it were decoded by width
+    final byHeight = wide || _videoId(Uri.tryParse(address)) != null;
+    return Image(
+      image: ResizeImage.resizeIfNeeded(
+        sharp || byHeight ? null : pixels,
+        !sharp && byHeight ? pixels : null,
+        CachedCover(address),
+      ),
+      fit: BoxFit.cover,
+      errorBuilder: onError ?? (_, _, _) => placeholder,
+      frameBuilder: (context, child, frame, sync) => sync
+          ? child
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                placeholder,
+                AnimatedOpacity(
+                  opacity: frame == null ? 0 : 1,
+                  duration: const Duration(milliseconds: 300),
+                  child: child,
+                ),
+              ],
+            ),
+    );
+  }
 }

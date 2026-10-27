@@ -50,9 +50,9 @@ class Client {
   }
 
   /** [create] is what the device expects: true for a code it made up, false for one it was given; left out is an older app. */
-  async join(create) {
+  async join(create, app) {
     await this.opened;
-    this.send({ t: "join", clientId: this.clientId, name: this.name, ...(create === undefined ? {} : { create }) });
+    this.send({ t: "join", clientId: this.clientId, name: this.name, ...(create === undefined ? {} : { create }), ...(app === undefined ? {} : { app }) });
     return this.waitFor((m) => m.t === "state");
   }
 
@@ -286,6 +286,7 @@ async function main() {
   await ownerSection();
   await inviteSection();
   await avatarSection();
+  await appVersionSection();
   await chatSection();
   await chatThreadsSection();
   await chatArchiveSection();
@@ -833,6 +834,26 @@ async function avatarSection() {
   bob.send({ t: "avatar.get", id: pid("an-id") });
   check("a picture does not outlive its member", (await bob.waitFor((m) => m.t === "avatar")).data === undefined);
   [ann, bob].forEach((x) => x.close());
+}
+
+/** The version of the app a member uses (protocol 17): passed on to the others, and only if it looks like a version. */
+async function appVersionSection() {
+  console.log("App versions");
+  const code = await newCode();
+  const ann = new Client(code, "av-an", "Ann");
+  await ann.join(true, "1.26.0");
+  const bob = new Client(code, "av-bo", "Bob");
+  const state = await bob.join(false);
+  check("a member's app version is in the list the others are given", state.members.find((x) => x.id === pid("av-an")).app === "1.26.0");
+  check("a member of an older app has none", state.members.find((x) => x.id === pid("av-bo")).app === undefined);
+  const odd = new Client(code, "av-od", "Odd");
+  const oddState = await odd.join(false, "1.0 <script>");
+  check("something that is not a version is not kept", oddState.members.find((x) => x.id === pid("av-od")).app === undefined);
+  const again = new Client(code, "av-bo", "Bob");
+  await again.join(false, "1.25.0");
+  const updated = await ann.waitFor((m) => m.t === "members" && m.members.some((x) => x.id === pid("av-bo") && x.app === "1.25.0"));
+  check("a member who comes back with another version is announced", updated.members.some((x) => x.app === "1.25.0"));
+  [ann, bob, odd, again].forEach((x) => x.close());
 }
 
 /** Chat: kept for whoever joins later, sent to everybody; reactions: passed on to the others, never kept. */

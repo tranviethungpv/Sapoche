@@ -269,11 +269,15 @@ class Member {
     this.away = false,
     this.owner = false,
     this.av,
+    this.app,
   });
 
   final String id;
   final String name;
   final bool ready;
+
+  /// The version of the app they use, like `1.26.0`; null from an app or a server older than protocol 17.
+  final String? app;
 
   /// Fingerprint of the member's picture; null when they have none. The picture itself is asked for with `avatar.get`.
   final String? av;
@@ -295,6 +299,7 @@ class Member {
     away: json['away'] as bool? ?? false,
     owner: json['owner'] as bool? ?? false,
     av: json['av'] as String?,
+    app: json['app'] as String?,
   );
 }
 

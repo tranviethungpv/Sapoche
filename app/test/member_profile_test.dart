@@ -48,6 +48,32 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('the profile says which version of the app someone uses', (
+    tester,
+  ) async {
+    await openMembers(
+      tester,
+      members: const [
+        Member(id: 'me', name: 'Anna', ready: true, app: '1.26.0'),
+        Member(id: 'b', name: 'Binh', ready: true, app: '1.25.0'),
+        Member(id: 'c', name: 'Chi', ready: true),
+      ],
+    );
+    final line = find.byKey(const ValueKey('profile-view-app'));
+    await openProfile(tester, 'b');
+    expect(tester.widget<Text>(line).data, S.profileApp('1.25.0'));
+    expect(find.textContaining('1.25.0'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    // An older app is told apart from a version that is known
+    await openProfile(tester, 'c');
+    expect(tester.widget<Text>(line).data, S.profileApp(null));
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    await openProfile(tester, 'me');
+    expect(tester.widget<Text>(line).data, S.profileApp('1.26.0'));
+  });
+
   testWidgets(
     'touching someone in the room opens who they are and what the room plays',
     (tester) async {
