@@ -34,6 +34,10 @@ class MusicClient {
     }),
   );
 
+  /// The searches the website offers for a half-typed [input].
+  Future<List<String>> suggestions(String input) async =>
+      MusicParser.suggestions(await _ask('music/get_search_suggestions', {'input': input}));
+
   Future<Related> related(String relatedId) async => MusicParser.related(await _browse(relatedId));
 
   Future<String?> lyrics(String lyricsId) async => MusicParser.lyrics(await _browse(lyricsId));

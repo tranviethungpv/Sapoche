@@ -54,9 +54,6 @@ abstract class BackendDefaults implements Backend {
   Future<List<Track>> search(String query, {bool songsOnly = false, int? limit}) async => const [];
 
   @override
-  Future<LinkResult?> lookup(String text) async => null;
-
-  @override
   Future<void> share(String text) async {}
 
   @override
@@ -103,9 +100,6 @@ abstract class BackendDefaults implements Backend {
 
   @override
   Future<void> setAutoDownload(bool on) async {}
-
-  @override
-  Future<List<String>> suggest(String query) async => const [];
 
   @override
   Future<void> setAutoplay(bool on) async {}

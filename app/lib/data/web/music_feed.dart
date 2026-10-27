@@ -19,6 +19,7 @@ class MusicFeed {
   final _artists = _Recent<String, ArtistPage>();
   final _collections = _Recent<String, CollectionPage>();
   final _searches = _Recent<String, SearchResults>();
+  final _completions = _Recent<String, List<String>>(size: 48);
   final _homes = <String, (int, MusicHome)>{};
   (int, List<MusicShelf>)? _chartsKept;
 
@@ -64,6 +65,10 @@ class MusicFeed {
     _chartsKept = (_now(), shelves);
     return shelves;
   }
+
+  /// The searches offered for a half-typed [input]; typing a word again, or taking a letter back, asks nothing.
+  Future<List<String>> suggestions(String input) =>
+      _completions.getOrPut(input, () => _music.suggestions(input));
 
   /// Everything matching [query], or only what [params] (a filter of the page) keeps.
   Future<SearchResults> searchPage(String query, String? params) =>

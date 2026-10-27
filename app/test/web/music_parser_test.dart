@@ -391,4 +391,13 @@ void main() {
     }, region: () => '').searchVideos('x');
     expect(jsonDecode(body)['context']['client']['gl'], 'US');
   });
+
+  test('the completions of a search are the words that would be searched for', () async {
+    final (music, asked) = recording('suggestions');
+    final found = await music.suggestions('son tung');
+    expect(asked.single, contains('"input":"son tung"'));
+    expect(found.first, 'sơn tùng m-tp');
+    expect(found, contains('son tung mtp'));
+    expect(found.toSet().length, found.length);
+  });
 }

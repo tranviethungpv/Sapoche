@@ -2,12 +2,12 @@
  * YouTube Music for browsers. A page cannot ask `music.youtube.com` itself (no CORS), and the app on a phone does not
  * need this: it asks directly. So the web app asks here, and the Worker asks YouTube Music in its name.
  *
- * It is not an open proxy: it needs the room key like every other route, takes only the three endpoints the app reads,
+ * It is not an open proxy: it needs the room key like every other route, takes only the four endpoints the app reads,
  * only POST, only a small JSON body, and always asks the one host with a fixed address.
  */
 
 /** The endpoints of `youtubei/v1` that `MusicClient` uses. */
-export const YOUTUBE_ROUTE = /^\/yt\/(browse|search|next)$/;
+export const YOUTUBE_ROUTE = /^\/yt\/(browse|search|next|music\/get_search_suggestions)$/;
 
 const HOST = "https://music.youtube.com/youtubei/v1";
 

@@ -167,6 +167,60 @@ void main() {
     expect(radio.hasRelated, isTrue);
   });
 
+  group('what is typed and pasted into the search', () {
+    test('completions come from YouTube Music, a few of them, and a letter taken back asks nothing', () async {
+      final (backend, seen) = await backendWith((_) => ok(fixture('suggestions')), prefs: {'web.key': 'k'});
+      final found = await backend.suggest(' son tung ');
+      expect(seen.single.url.toString(), 'https://sapoche.example/yt/music/get_search_suggestions');
+      expect(jsonDecode(seen.single.body)['input'], 'son tung');
+      expect(found, isNotEmpty);
+      expect(found.length, lessThanOrEqualTo(8));
+      await backend.suggest('son tung');
+      expect(seen.length, 1);
+    });
+
+    test('completions are only a help: nothing typed, a refusal or no key give none', () async {
+      final (backend, seen) = await backendWith((_) => http.Response('', 502), prefs: {'web.key': 'k'});
+      expect(await backend.suggest('   '), isEmpty);
+      expect(seen, isEmpty);
+      expect(await backend.suggest('son'), isEmpty);
+      final (without, _) = await backendWith((_) => ok(fixture('suggestions')));
+      expect(await without.suggest('son'), isEmpty);
+    });
+
+    test('a link to a video gives that song, read off its own radio', () async {
+      final (backend, seen) = await backendWith((_) => ok(fixture('next_song')), prefs: {'web.key': 'k'});
+      final link = await backend.lookup('https://youtu.be/lYBUbBu4W08?si=x');
+      expect(link!.isPlaylist, isFalse);
+      expect(link.tracks.single.videoId, 'lYBUbBu4W08');
+      expect(jsonDecode(seen.single.body)['videoId'], 'lYBUbBu4W08');
+    });
+
+    test('a video that YouTube Music does not know is an error, not an empty answer', () async {
+      final (backend, _) = await backendWith((_) => ok(fixture('next_song')), prefs: {'web.key': 'k'});
+      expect(() => backend.lookup('dQw4w9WgXcQ'), throwsA(isA<BackendException>()));
+    });
+
+    test('a link to a playlist gives its title and its songs, read as far as the limit', () async {
+      final (backend, seen) = await backendWith(
+        (request) => ok(fixture(request.body.contains('continuation') ? 'playlist_more' : 'playlist')),
+        prefs: {'web.key': 'k'},
+      );
+      final link = await backend.lookup('https://music.youtube.com/playlist?list=PLrALqIYcGkySSOHxefqyordgqMgiQHW8P');
+      expect(link!.isPlaylist, isTrue);
+      expect(link.playlistTitle, isNotEmpty);
+      expect(link.tracks.length, greaterThan(5));
+      expect(link.tracks.length, lessThanOrEqualTo(50));
+      expect(seen.length, greaterThan(1), reason: 'the first page has too few songs');
+    });
+
+    test('words that are not a link give nothing and ask nothing', () async {
+      final (backend, seen) = await backendWith((_) => http.Response('{}', 200), prefs: {'web.key': 'k'});
+      expect(await backend.lookup('son tung mtp'), isNull);
+      expect(seen, isEmpty);
+    });
+  });
+
   group('lyrics', () {
     const track = Track(videoId: 'lYBUbBu4W08', title: 'Song', artist: 'Artist', durMs: 213000);
     const timed = '{"duration":213.0,"plainLyrics":"One","syncedLyrics":"[00:01.00] One\\n[00:02.00] Two"}';

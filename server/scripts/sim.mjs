@@ -381,6 +381,7 @@ async function authSection() {
   check("YouTube Music takes POST only", (await ask("search", { method: "GET", body: undefined })).status === 405);
   check("YouTube Music is asked only for the endpoints the app reads", (await ask("player")).status === 404);
   check("a body that is not JSON is refused", (await ask("search", { body: "not json" })).status === 400);
+  check("the completions of a search are an endpoint of it", (await ask("music/get_search_suggestions", { body: "not json" })).status === 400);
   check("a body that is too large is refused", (await ask("search", { body: JSON.stringify({ query: "x".repeat(9000) }) })).status === 413);
 }
 

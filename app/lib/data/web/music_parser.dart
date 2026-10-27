@@ -41,6 +41,16 @@ abstract final class MusicParser {
     return WatchNext(queue, lyricsId: pageOf('Lyrics'), relatedId: pageOf('Related'));
   }
 
+  /// What the search box of the website offers while a person types; the words that would be searched for.
+  static List<String> suggestions(Object? root) {
+    final found = <String>[];
+    for (final item in _findAll(root, 'searchSuggestionRenderer')) {
+      final words = _string(_at(item, ['navigationEndpoint', 'searchEndpoint', 'query'])) ?? _text(_at(item, ['suggestion']));
+      if (words != null && words.isNotEmpty && !found.contains(words)) found.add(words);
+    }
+    return found;
+  }
+
   static Related related(Object? root) {
     var more = <MusicTrack>[];
     var other = <MusicTrack>[];

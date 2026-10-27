@@ -24,6 +24,7 @@ import 'sleep_timer.dart';
 import 'suggestion_feed.dart';
 import 'taste.dart';
 import 'wire.dart';
+import 'youtube_links.dart';
 
 /// What the browser shows outside the page about what plays (media keys, the lock screen, the notification of a phone)
 /// and what it can ask of the app from there.
@@ -996,6 +997,49 @@ class WebBackend extends BackendDefaults {
   }
 
   static const _searchLimit = 20;
+
+  /// Completions of a half-typed search; empty when YouTube Music cannot be reached, since they are only a help.
+  @override
+  Future<List<String>> suggest(String query) async {
+    final text = query.trim();
+    if (text.isEmpty) return const [];
+    try {
+      return (await _feed.suggestions(text)).take(_suggestionLimit).toList();
+    } on BackendException {
+      return const [];
+    }
+  }
+
+  static const _suggestionLimit = 8;
+
+  /// Turns pasted text into tracks: a playlist link gives its songs, a video link (or a bare video id) gives one
+  /// song, anything else gives null. A song is read off its own radio, where it comes first.
+  @override
+  Future<LinkResult?> lookup(String text) async {
+    final trimmed = text.trim();
+    final list = YoutubeLinks.playlistId(trimmed);
+    if (list != null) {
+      final page = await _feed.collection(list);
+      final tracks = [...page.tracks];
+      var more = page.more;
+      while (more != null && tracks.length < _playlistLimit) {
+        final next = await _feed.more(more);
+        tracks.addAll(next.tracks);
+        more = next.more;
+      }
+      return LinkResult(
+        tracks: tracks.length > _playlistLimit ? tracks.sublist(0, _playlistLimit) : tracks,
+        playlistTitle: page.title,
+      );
+    }
+    final id = YoutubeLinks.videoId(trimmed);
+    if (id == null) return null;
+    final song = (await _feed.watchNext(id)).tracks.where((t) => t.videoId == id).firstOrNull;
+    if (song == null) throw BackendException('failed', 'YouTube Music has nothing for this video');
+    return LinkResult(tracks: [song]);
+  }
+
+  static const _playlistLimit = 50;
 
   @override
   Future<List<MusicTrack>> musicSearch(String query, {required bool songs}) =>
