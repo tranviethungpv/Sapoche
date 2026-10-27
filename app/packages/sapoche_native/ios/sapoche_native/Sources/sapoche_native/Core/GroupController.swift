@@ -91,6 +91,8 @@ final class GroupController {
         var connection: Connection?
         var snapshot = GroupSession.Snapshot()
         var local = LocalSession.Snapshot()
+        /// This device has the secret of the room's end-to-end encrypted chat.
+        var sealedKey = false
     }
 
     /// Something another member did that moved this device, with their name already looked up.
@@ -109,6 +111,8 @@ final class GroupController {
     private let config: () -> ServerConfig
     /// Up to [Int] songs to carry on with after [String] (a video id), leaving out the ids given.
     private let moreLike: (String, Set<String>, Int) async throws -> [TrackRef]
+    /// The secrets of the rooms with end-to-end encrypted chat.
+    let secrets: RoomSecretStore
     private let sockets: SocketFactory?
     private let clock = ClockSync()
     private let writer = DispatchQueue(label: "sapoche.queue-writer")
@@ -152,12 +156,16 @@ final class GroupController {
     }
 
     /// Chat messages of room [room]: all it keeps when [replace], else new ones to add or ones that changed. [receipts] is
-    /// what each member has got of the chat when that changed (or came with everything), else nil.
+    /// what each member has got of the chat when that changed (or came with everything), else nil. [older]: a page of
+    /// messages from before the ones shown, asked for with `loadOlderChat`. [more]: the room keeps messages from before
+    /// the oldest shown (nil when this says nothing about it).
     struct Chat: Equatable {
         let room: String
         let messages: [ChatMessage]
         let replace: Bool
         var receipts: [String: ChatReceipt]?
+        var older = false
+        var more: Bool?
     }
 
     let chat = SharedFlow<Chat>()
@@ -174,10 +182,54 @@ final class GroupController {
     /// The last message this device told the room it has, so that it says so once for each.
     private var deliveredUpTo: Int64 = 0
 
+    /// Whether the room kept messages from before `chatLog`, as it said last.
+    private var chatMore = false
+
+    /// Asks the room for the messages older than number [before]; false when there is no connection to ask on.
+    func loadOlderChat(before: Int64) -> Bool { client?.send(Wire.chatBefore(before)) ?? false }
+
     /// The whole chat, for a screen that comes back after messages arrived.
     func chatSeen() -> Chat? {
         guard let roomCode, let chatLog else { return nil }
-        return Chat(room: roomCode, messages: chatLog, replace: true, receipts: receiptsLog)
+        return Chat(room: roomCode, messages: open(roomCode, chatLog), replace: true, receipts: receiptsLog, more: chatMore)
+    }
+
+    /// [messages] as the room sent them, with the words of sealed ones read when this device has the room's secret.
+    private func open(_ room: String, _ messages: [ChatMessage]) -> [ChatMessage] { messages.map { open(room, $0) } }
+
+    private func open(_ room: String, _ message: ChatMessage) -> ChatMessage {
+        guard message.ct != nil else { return message }
+        if let secret = secrets.secret(for: room), let opened = ChatCipher.openMessage(secret: secret, room: room, message: message) { return opened }
+        var locked = message
+        locked.text = ""
+        locked.re = nil
+        locked.locked = true
+        return locked
+    }
+
+    /// A secret for room [code] came (from an invitation link, or this device made it): the chat is shown again, now that
+    /// it can be read.
+    func roomSecretChanged(_ code: String) {
+        guard code.uppercased() == roomCode else { return }
+        publish()
+        if let seen = chatSeen() { chat.emit(seen) }
+    }
+
+    /// Turns on end-to-end encryption in the room this device owns: a new secret is made and kept here, and the room is
+    /// told, which deletes the chat so far. The secret is then to be given to the others, with `roomSecret`. False when
+    /// this device is not in a room it owns, or the room is sealed already.
+    func enableEncryption() -> Bool {
+        guard let code = roomCode, let snapshot = session?.snapshot.value else { return false }
+        if snapshot.state?.enc == true || snapshot.state?.ownerId != snapshot.you { return false }
+        secrets.save(ChatCipher.newSecret(), for: code)
+        publish()
+        return send(Wire.roomEncrypt())
+    }
+
+    /// The secret of the room this device is in, as written in an invitation link; nil when it has none.
+    func roomSecret() -> String? {
+        guard let roomCode, let secret = secrets.secret(for: roomCode) else { return nil }
+        return ChatCipher.encodeSecret(secret)
     }
 
     /// Member [by] reacted with [e], [n] taps of it.
@@ -190,7 +242,15 @@ final class GroupController {
     let reactions = SharedFlow<Reaction>()
 
     /// Sends a chat message, as an answer to message number [reply] when it has one; false when there is no connection to send it on.
-    func sendChat(_ text: String, cid: String, reply: Int64? = nil) -> Bool { client?.send(Wire.chat(text, cid: cid, reply: reply)) ?? false }
+    func sendChat(_ text: String, cid: String, reply: Int64? = nil, quote: ChatQuote? = nil) -> Bool {
+        guard let client, let code = roomCode else { return false }
+        let snapshot = session?.snapshot.value
+        if snapshot?.state?.enc != true { return client.send(Wire.chat(text, cid: cid, reply: reply)) }
+        // A sealed room: the words go sealed, with what they answer inside; without the secret there is nothing to send
+        guard let secret = secrets.secret(for: code), let you = snapshot?.you,
+              let sealed = ChatCipher.sealMessage(secret: secret, room: code, by: you, text: text, quote: quote) else { return false }
+        return client.send(Wire.chatSealed(ct: sealed.ct, pv: sealed.pv, cid: cid, reply: reply))
+    }
 
     /// Gives chat message [id] this device's reaction [e] (a name of the room's reactions or an emoji); nil takes it away.
     func reactToChat(_ id: Int64, _ e: String?) { client?.send(Wire.chatReact(id, e)) }
@@ -231,8 +291,10 @@ final class GroupController {
     init(engine: PlayerEngine, prefs: KeyValueStore, queueFile: QueueFile, config: @escaping () -> ServerConfig,
          recordListen: @escaping (TrackRef) -> Void = { _ in }, recordSkip: @escaping (TrackRef) -> Void = { _ in },
          time: TimeSource? = nil, sockets: SocketFactory? = nil,
-         moreLike: @escaping (String, Set<String>, Int) async throws -> [TrackRef] = { _, _, _ in [] }) {
+         moreLike: @escaping (String, Set<String>, Int) async throws -> [TrackRef] = { _, _, _ in [] },
+         secrets: RoomSecretStore = MemorySecrets()) {
         self.engine = engine
+        self.secrets = secrets
         self.prefs = prefs
         self.queueFile = queueFile
         self.config = config
@@ -573,6 +635,7 @@ final class GroupController {
         pending.removeAll()
         pictures.removeAll()
         chatLog = nil
+        chatMore = false
         receiptsLog = [:]
         deliveredUpTo = 0
         scope.cancel()
@@ -593,26 +656,35 @@ final class GroupController {
 
     private func onChat(room: String, _ message: ServerMessage) {
         switch message {
-        case let .chatHistory(messages, receipts):
+        case let .chatHistory(messages, receipts, more):
             let kept = Array(messages.suffix(Self.chatKept))
             chatLog = kept
+            chatMore = more
             receiptsLog = receipts
-            chat.emit(Chat(room: room, messages: kept, replace: true, receipts: receipts))
+            chat.emit(Chat(room: room, messages: open(room, kept), replace: true, receipts: receipts, more: more))
             if let last = kept.last { acknowledge(last) }
+        case let .chatPage(_, messages, more):
+            // Not kept here: the screen holds the pages it asked for, and the log is only what a returning screen is given
+            chat.emit(Chat(room: room, messages: open(room, messages), replace: false, older: true, more: more))
         case let .chat(message):
-            if let notice = ChatNotices.forMessage(message, room: room, you: session?.snapshot.value.you) { chatNotices.emit(notice) }
+            let opened = open(room, message)
+            // What cannot be read has no words to tell
+            if !opened.locked, let notice = ChatNotices.forMessage(opened, room: room, you: session?.snapshot.value.you) { chatNotices.emit(notice) }
             chatLog = Array(((chatLog ?? []) + [message]).suffix(Self.chatKept))
-            chat.emit(Chat(room: room, messages: [message], replace: false))
+            chat.emit(Chat(room: room, messages: [opened], replace: false))
             acknowledge(message)
         case let .chatUpdate(message):
             guard let log = chatLog else { return }
             let snapshot = session?.snapshot.value
-            if let notice = ChatNotices.forUpdate(before: log.first { $0.id == message.id }, after: message, room: room, you: snapshot?.you,
+            // A message from further back than the log has no earlier version here to tell what is new in it
+            let opened = open(room, message)
+            if !opened.locked, let before = log.first(where: { $0.id == message.id }),
+               let notice = ChatNotices.forUpdate(before: before, after: opened, room: room, you: snapshot?.you,
                                                   nameOf: { who in snapshot?.members.first { $0.id == who }?.name }) {
                 chatNotices.emit(notice)
             }
             chatLog = log.map { $0.id == message.id ? message : $0 }
-            chat.emit(Chat(room: room, messages: [message], replace: false))
+            chat.emit(Chat(room: room, messages: [opened], replace: false))
         case let .chatReceipts(receipts):
             receiptsLog = receipts
             chat.emit(Chat(room: room, messages: [], replace: false, receipts: receipts))
@@ -625,7 +697,8 @@ final class GroupController {
 
     private func publish() {
         view.set(View(roomCode: roomCode, connection: client?.connection.value,
-                      snapshot: session?.snapshot.value ?? GroupSession.Snapshot(), local: local.snapshot.value))
+                      snapshot: session?.snapshot.value ?? GroupSession.Snapshot(), local: local.snapshot.value,
+                      sealedKey: roomCode.map { secrets.secret(for: $0) != nil } ?? false))
     }
 
     /// Sends a command to the room. If the connection was let go of, it is brought back and the command goes when it is up.

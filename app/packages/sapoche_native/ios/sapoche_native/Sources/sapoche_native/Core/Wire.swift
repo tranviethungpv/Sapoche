@@ -94,11 +94,14 @@ struct RoomState: Equatable {
     var autoplay: Bool?
     /// Whether what is still to come is mixed and stays mixed as songs are added; nil when the server is older than protocol 11.
     var shuffle: Bool?
+    /// The chat is end-to-end encrypted: the room passes on sealed messages only (see `ChatCipher`). Protocol 15.
+    var enc: Bool = false
 
     var current: QueueItem? { queue.indices.contains(index) ? queue[index] : nil }
 
     init(queue: [QueueItem], index: Int, phase: String, startedAt: Int64, positionMs: Int64, epoch: Int64,
-         repeatMode: String = "off", name: String? = nil, ownerId: String? = nil, guestControl: String = "all", autoplay: Bool? = nil, shuffle: Bool? = nil) {
+         repeatMode: String = "off", name: String? = nil, ownerId: String? = nil, guestControl: String = "all", autoplay: Bool? = nil, shuffle: Bool? = nil,
+         enc: Bool = false) {
         self.queue = queue
         self.index = index
         self.phase = phase
@@ -111,6 +114,7 @@ struct RoomState: Equatable {
         self.guestControl = guestControl
         self.autoplay = autoplay
         self.shuffle = shuffle
+        self.enc = enc
     }
 
     init?(_ json: JSON) {
@@ -127,7 +131,8 @@ struct RoomState: Equatable {
             ownerId: json["ownerId"].string,
             guestControl: json["guestControl"].string ?? "all",
             autoplay: json["autoplay"].bool,
-            shuffle: json["shuffle"].bool
+            shuffle: json["shuffle"].bool,
+            enc: json["enc"].bool ?? false
         )
     }
 }
@@ -182,8 +187,15 @@ struct ChatMessage: Equatable {
     var re: ChatQuote?
     /// Reactions to this message by the public id of each member who gave one; a name of the room's reactions or an emoji. Protocol 12.
     var rx: [String: String]
+    /// In a sealed room: the words sealed with the room's secret (`text` is empty until `ChatCipher.openMessage` reads them). Protocol 15.
+    var ct: String?
+    /// The start of the words sealed apart, for a notice. Protocol 15.
+    var pv: String?
+    /// Set by the app, not the room: a sealed message that this device has no secret to read, or one that does not open with it.
+    var locked = false
 
-    init(id: Int64, by: String, name: String, text: String, at: Int64, cid: String? = nil, re: ChatQuote? = nil, rx: [String: String] = [:]) {
+    init(id: Int64, by: String, name: String, text: String, at: Int64, cid: String? = nil, re: ChatQuote? = nil, rx: [String: String] = [:],
+         ct: String? = nil, pv: String? = nil) {
         self.id = id
         self.by = by
         self.name = name
@@ -192,6 +204,8 @@ struct ChatMessage: Equatable {
         self.cid = cid
         self.re = re
         self.rx = rx
+        self.ct = ct
+        self.pv = pv
     }
 
     init?(_ json: JSON) {
@@ -201,7 +215,8 @@ struct ChatMessage: Equatable {
         for (member, reaction) in json["rx"].object ?? [:] {
             if let e = JSON(reaction).string { rx[member] = e }
         }
-        self.init(id: id, by: by, name: name, text: text, at: at, cid: json["cid"].string, re: ChatQuote(json["re"]), rx: rx)
+        self.init(id: id, by: by, name: name, text: text, at: at, cid: json["cid"].string, re: ChatQuote(json["re"]), rx: rx,
+                  ct: json["ct"].string, pv: json["pv"].string)
     }
 }
 
@@ -257,8 +272,10 @@ enum ServerMessage: Equatable {
     case avatar(id: String, av: String?, data: String?)
     /// A new chat message, this device's own included. Protocol 10.
     case chat(ChatMessage)
-    /// The room's last chat messages, oldest first, sent right after the state on joining. Protocol 10.
-    case chatHistory([ChatMessage], receipts: [String: ChatReceipt])
+    /// The room's last chat messages, oldest first, sent right after the state on joining. [more]: it keeps older ones. Protocol 10.
+    case chatHistory([ChatMessage], receipts: [String: ChatReceipt], more: Bool)
+    /// Older messages this device asked for with `Wire.chatBefore`, oldest first; [more]: the room keeps ones from before them. Protocol 14.
+    case chatPage(before: Int64, [ChatMessage], more: Bool)
     /// A message changed, as somebody reacted to it: its new version. Protocol 12.
     case chatUpdate(ChatMessage)
     /// What each member has got of the chat, by public id. Protocol 12.
@@ -310,7 +327,9 @@ enum Wire {
             guard let message = ChatMessage(json["msg"]) else { return nil }
             return .chat(message)
         case "chat.history":
-            return .chatHistory(json["msgs"].array.compactMap { ChatMessage($0) }, receipts: ChatReceipt.table(json["receipts"]))
+            return .chatHistory(json["msgs"].array.compactMap { ChatMessage($0) }, receipts: ChatReceipt.table(json["receipts"]), more: json["more"].bool ?? false)
+        case "chat.page":
+            return .chatPage(before: json["before"].int64 ?? 0, json["msgs"].array.compactMap { ChatMessage($0) }, more: json["more"].bool ?? false)
         case "chat.update":
             guard let message = ChatMessage(json["msg"]) else { return nil }
             return .chatUpdate(message)
@@ -332,7 +351,16 @@ enum Wire {
     /// [create] says what the device expects: true for a code it just made, false for one it was given, so
     /// that a mistyped code is refused instead of opening an empty room. nil leaves it out, as older apps do.
     static func join(clientId: String, name: String, create: Bool? = nil) -> String {
-        msg("join", ["clientId": clientId, "name": name], optional: create.map { ["create": $0] })
+        // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15
+        msg("join", ["clientId": clientId, "name": name, "caps": ["e2ee"]], optional: create.map { ["create": $0] })
+    }
+
+    /// Owner only: turns on end-to-end encryption of the chat, for good; the chat so far is deleted. Protocol 15.
+    static func roomEncrypt() -> String { msg("room.encrypt") }
+
+    /// A sealed chat message (see `ChatCipher.sealMessage`); [reply] is the number of the message it answers, which the room may see. Protocol 15.
+    static func chatSealed(ct: String, pv: String, cid: String, reply: Int64? = nil) -> String {
+        msg("chat", ["ct": ct, "pv": pv, "cid": cid], optional: reply.map { ["reply": $0] })
     }
 
     /// Leaving on purpose, as opposed to a connection that dropped.
@@ -364,6 +392,11 @@ enum Wire {
 
     /// This member's reaction to the chat message [id]: a name of the room's reactions or an emoji; nil takes it away. Protocol 12.
     static func chatReact(_ id: Int64, _ e: String?) -> String { msg("chat.react", ["id": id, "e": e ?? NSNull()]) }
+
+    /// Asks for up to [n] (the room's 50 when absent) of the chat messages older than number [id]. Protocol 14.
+    static func chatBefore(_ id: Int64, n: Int? = nil) -> String {
+        msg("chat.before", ["id": id], optional: n.map { ["n": $0] })
+    }
 
     /// How far this device has got in the chat: [delivered] the last message that reached it, [read] the last one it showed. Protocol 12.
     static func chatReceipt(delivered: Int64? = nil, read: Int64? = nil) -> String {

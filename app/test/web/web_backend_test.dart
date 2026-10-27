@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
+import 'package:sapoche/data/web/chat_cipher.dart';
 import 'package:sapoche/data/web/library_store.dart';
 import 'package:sapoche/data/web/push_port.dart';
 import 'package:sapoche/data/web/room_socket.dart';
@@ -32,6 +33,7 @@ Future<(WebBackend, List<http.Request>)> backendWith(
   LibraryStore? library,
   PushPort? push,
   bool openChat = false,
+  String? inviteSecret,
   SocketOpener? opener,
 }) async {
   SharedPreferences.setMockInitialValues(prefs);
@@ -42,6 +44,7 @@ Future<(WebBackend, List<http.Request>)> backendWith(
     defaultServer: 'https://sapoche.example',
     invite: invite,
     openChat: openChat,
+    inviteSecret: inviteSecret,
     opener: opener,
     media: media,
     nowMs: nowMs,
@@ -577,6 +580,185 @@ void main() {
         opener: room([]),
       );
       expect((await started(backend)).whereType<InviteEvent>(), hasLength(1));
+    });
+  });
+
+  test('older messages of the chat are asked for and given to the screen as a page', () async {
+    final sent = <String>[];
+    RoomSocket older(Uri url, {required void Function() onOpen, required void Function(String text) onMessage, required void Function(int code, bool wasOpen) onClose}) {
+      final socket = _Socket((text) {
+        sent.add(text);
+        if (text.contains('"join"')) {
+          scheduleMicrotask(() => onMessage(
+            '{"t":"state","serverNow":0,"you":"me","protocol":14,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":[]}',
+          ));
+          scheduleMicrotask(() => onMessage(
+            '{"t":"chat.history","msgs":[{"id":21,"by":"b","name":"Bo","text":"hi","at":5}],"more":true}',
+          ));
+        } else if (text.contains('"chat.before"')) {
+          scheduleMicrotask(() => onMessage(
+            '{"t":"chat.page","before":21,"msgs":[{"id":20,"by":"b","name":"Bo","text":"older","at":4}],"more":false}',
+          ));
+        }
+      });
+      scheduleMicrotask(onOpen);
+      return socket;
+    }
+    final (backend, _) = await backendWith(
+      (_) => http.Response('', 404),
+      prefs: {'web.key': 'k', 'web.name': 'Me'},
+      invite: 'ABC234',
+      openChat: true,
+      opener: older,
+    );
+    final events = <BackendEvent>[];
+    backend.events.listen(events.add);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(events.whereType<ChatEvent>().first.more, isTrue);
+
+    expect(await backend.loadOlderChat(21), isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(sent.any((t) => t.contains('"chat.before"') && t.contains('"id":21')), isTrue);
+    final page = events.whereType<ChatEvent>().last;
+    expect((page.older, page.replace, page.more), (true, false, false));
+    expect(page.messages.single.text, 'older');
+  });
+
+  group('a room with end-to-end encrypted chat', () {
+    final secret = ChatCipher.encodeSecret(ChatCipher.newSecret());
+
+    /// A room that is sealed, whose owner is [owner] (the id `me` is this device's); [onSent] sees what is sent.
+    SocketOpener room(List<String> sent, {required List<String> after, String owner = 'me', bool sealed = true}) =>
+        (url, {required onOpen, required onMessage, required onClose}) {
+          final socket = _Socket((text) {
+            sent.add(text);
+            if (!text.contains('"join"')) return;
+            scheduleMicrotask(() => onMessage(
+              '{"t":"state","serverNow":0,"you":"me","protocol":15,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0,"ownerId":"$owner"${sealed ? ',"enc":true' : ''}},"members":[]}',
+            ));
+            for (final line in after) {
+              scheduleMicrotask(() => onMessage(line));
+            }
+          });
+          scheduleMicrotask(onOpen);
+          return socket;
+        };
+
+    Future<String> sealedLine(String room, String by, String text, {ChatQuote? quote, int id = 1}) async {
+      final sealed = await ChatCipher.sealMessage(ChatCipher.decodeSecret(secret)!, room, by, text, quote);
+      return '{"t":"chat","msg":{"id":$id,"by":"$by","name":"Bo","text":"","at":5,"ct":"${sealed.ct}","pv":"${sealed.pv}"}}';
+    }
+
+    Future<List<BackendEvent>> started(WebBackend backend) async {
+      final events = <BackendEvent>[];
+      backend.events.listen(events.add);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      return events;
+    }
+
+    test('has the secret that came with the link, to read the chat from the start and to hand on', () async {
+      final sent = <String>[];
+      final (backend, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        inviteSecret: secret,
+        opener: room(sent, after: ['{"t":"chat.history","msgs":[],"more":false}']),
+      );
+      final events = await started(backend);
+      final state = events.whereType<StateEvent>().last.snapshot;
+      expect((state.encrypted, state.encryptionKey), (true, true));
+      expect(await backend.roomSecret(), secret);
+      // A secret that is not one is not kept
+      final (other, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        inviteSecret: 'nope',
+        opener: room(<String>[], after: ['{"t":"chat.history","msgs":[]}']),
+      );
+      final seen = await started(other);
+      expect(seen.whereType<StateEvent>().last.snapshot.encryptionKey, isFalse);
+    });
+
+    test('shows what it cannot read as locked, and reads it again when the secret comes', () async {
+      final sent = <String>[];
+      final line = await sealedLine('ABC234', 'u2', 'sealed hello', quote: const ChatQuote(id: 1, by: 'me', name: 'Me', text: 'old'));
+      final (backend, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        opener: room(sent, after: [
+          '{"t":"chat.history","msgs":[${line.substring(line.indexOf('"msg":') + 6, line.length - 1)}],"more":false}',
+        ]),
+      );
+      final events = await started(backend);
+      expect(events.whereType<StateEvent>().last.snapshot.encryptionKey, isFalse);
+      var chat = events.whereType<ChatEvent>().last;
+      expect((chat.messages.single.locked, chat.messages.single.text), (true, ''));
+      // Nothing can be sent without the secret
+      expect(await backend.sendChat('hello', 'c-1'), isFalse);
+
+      expect(await backend.setRoomSecret('ABC234', 'short'), isFalse);
+      expect(await backend.setRoomSecret('ABC234', secret), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(events.whereType<StateEvent>().last.snapshot.encryptionKey, isTrue);
+      chat = events.whereType<ChatEvent>().last;
+      expect(chat.replace, isTrue);
+      expect(chat.messages.single.locked, isFalse);
+      expect(chat.messages.single.text, 'sealed hello');
+      expect(chat.messages.single.reply!.text, 'old');
+
+      // What this device writes goes out sealed, with the quote inside; the room only sees which message it answers
+      sent.clear();
+      expect(
+        await backend.sendChat('my answer', 'c-9', reply: 1, quote: const ChatQuote(id: 1, by: 'u2', name: 'Bo', text: 'sealed hello')),
+        isTrue,
+      );
+      final out = jsonDecode(sent.firstWhere((t) => t.contains('"chat"'))) as Map<String, dynamic>;
+      expect(out.containsKey('text'), isFalse);
+      expect(out['reply'], 1);
+      final opened = (await ChatCipher.openMessage(
+        ChatCipher.decodeSecret(secret)!,
+        'ABC234',
+        ChatMessage(id: 3, by: 'me', name: 'Me', text: '', at: 6, ct: out['ct'] as String),
+      ))!;
+      expect((opened.text, opened.reply!.text), ('my answer', 'sealed hello'));
+      expect(out['pv'], isA<String>());
+    });
+
+    test('is turned on by its owner, who is given a secret to hand out, and by nobody else', () async {
+      final sent = <String>[];
+      final (other, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        opener: room(sent, after: ['{"t":"chat.history","msgs":[]}'], owner: 'u2', sealed: false),
+      );
+      await started(other);
+      expect(await other.enableEncryption(), isFalse);
+      expect(sent.any((t) => t.contains('room.encrypt')), isFalse);
+
+      final mine = <String>[];
+      final (owner, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        opener: room(mine, after: ['{"t":"chat.history","msgs":[]}'], sealed: false),
+      );
+      final events = await started(owner);
+      expect(events.whereType<StateEvent>().last.snapshot.encrypted, isFalse);
+      expect(await owner.roomSecret(), isNull);
+      expect(await owner.enableEncryption(), isTrue);
+      expect(mine.any((t) => t.contains('room.encrypt')), isTrue);
+      final given = await owner.roomSecret();
+      expect(ChatCipher.decodeSecret(given!), isNotNull);
+      expect(events.whereType<StateEvent>().last.snapshot.encryptionKey, isTrue);
     });
   });
 

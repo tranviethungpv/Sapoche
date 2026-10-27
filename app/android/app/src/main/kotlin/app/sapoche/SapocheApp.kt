@@ -35,6 +35,7 @@ class SapocheApp : Application() {
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
         suggestions = SuggestionFeed(library, resolver, musicFeed) { EventLog.d("suggest", it) }
+        roomKeys = RoomKeys(this)
         chatNotifier = ChatNotifier(this)
         heat = Heat(this)
         updater = Updater(this, UpdateClient(Config.SERVER, Config.authHeaders))
@@ -78,6 +79,10 @@ class SapocheApp : Application() {
 
         /** Works through the songs waiting to be downloaded. */
         lateinit var downloader: Downloader
+            private set
+
+        /** The secrets of the rooms with end-to-end encrypted chat. */
+        lateinit var roomKeys: RoomKeys
             private set
 
         /** What the full player shows about a song: the radio, related songs, lyrics, the artist. */

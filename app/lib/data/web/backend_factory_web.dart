@@ -27,6 +27,9 @@ Future<Backend> createBackend() async {
   }
   final invite = Uri.base.queryParameters['join']?.toUpperCase();
   final fromNotice = Uri.base.queryParameters['chat'] == '1';
+  // The secret of a room whose chat is end-to-end encrypted is in the link after a #: it is taken out of the address
+  // at once, so that it stays out of the history
+  final inviteSecret = Uri.base.fragment.split('&').where((p) => p.startsWith('k=')).map((p) => p.substring(2)).firstOrNull;
   if (invite != null) web.window.history.replaceState(null, '', web.window.location.pathname);
   final disk = IndexedDbDisk();
   String? stored;
@@ -48,6 +51,9 @@ Future<Backend> createBackend() async {
   region: () => PlatformDispatcher.instance.locale.countryCode ?? 'US',
   invite: invite != null && RegExp(r'^[A-Z0-9]{6}$').hasMatch(invite) ? invite : null,
   openChat: fromNotice,
+  inviteSecret: inviteSecret,
+  // The service worker of the page opens the previews of notices with the secrets kept here
+  secretsDisk: IndexedDbDisk(name: 'sapoche-keys', key: 'secrets'),
   onShare: _share,
   media: BrowserMediaControls(),
   push: createPushPort(),

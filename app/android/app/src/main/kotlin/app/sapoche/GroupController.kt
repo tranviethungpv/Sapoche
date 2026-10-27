@@ -11,9 +11,11 @@ import android.view.Surface
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.sapoche.sync.LocalMusic
+import app.sapoche.sync.ChatCipher
 import app.sapoche.sync.ChatMessage
 import app.sapoche.sync.ChatNotice
 import app.sapoche.sync.ChatNotices
+import app.sapoche.sync.ChatQuote
 import app.sapoche.sync.ChatReceipt
 import app.sapoche.sync.ClockSync
 import app.sapoche.sync.Connection
@@ -106,6 +108,8 @@ class GroupController(
         val connection: Connection? = null,
         val snapshot: GroupSession.Snapshot = GroupSession.Snapshot(),
         val local: LocalSession.Snapshot = LocalSession.Snapshot(),
+        /** This device has the secret of the room's end-to-end encrypted chat. */
+        val sealedKey: Boolean = false,
     )
 
     private val _view = MutableStateFlow(View(local = local.snapshot.value))
@@ -134,9 +138,18 @@ class GroupController(
 
     /**
      * Chat messages of room [room]: all it keeps when [replace], else new ones to add or ones that changed. [receipts] is
-     * what each member has got of the chat when that changed (or came with everything), else null.
+     * what each member has got of the chat when that changed (or came with everything), else null. [older]: a page of
+     * messages from before the ones shown, asked for with [loadOlderChat]. [more]: the room keeps messages from before the
+     * oldest shown (null when this says nothing about it).
      */
-    data class Chat(val room: String, val messages: List<ChatMessage>, val replace: Boolean, val receipts: Map<String, ChatReceipt>? = null)
+    data class Chat(
+        val room: String,
+        val messages: List<ChatMessage>,
+        val replace: Boolean,
+        val receipts: Map<String, ChatReceipt>? = null,
+        val older: Boolean = false,
+        val more: Boolean? = null,
+    )
 
     private val _chat = MutableSharedFlow<Chat>(extraBufferCapacity = 64)
     val chat: SharedFlow<Chat> = _chat.asSharedFlow()
@@ -157,11 +170,57 @@ class GroupController(
     @Volatile
     private var deliveredUpTo = 0L
 
+    /** Whether the room kept messages from before [chatLog], as it said last. */
+    @Volatile
+    private var chatMore = false
+
     /** The whole chat, for a screen that comes back after messages arrived. */
     fun chatSeen(): Chat? {
         val code = roomCode ?: return null
-        return chatLog?.let { Chat(code, it, replace = true, receipts = receiptsLog) }
+        return chatLog?.let { Chat(code, open(code, it), replace = true, receipts = receiptsLog, more = chatMore) }
     }
+
+    /** [messages] as the room sent them, with the words of sealed ones read when this device has the room's secret. */
+    private fun open(room: String, messages: List<ChatMessage>): List<ChatMessage> = messages.map { open(room, it) }
+
+    private fun open(room: String, message: ChatMessage): ChatMessage {
+        if (message.ct == null) return message
+        val secret = SapocheApp.roomKeys.get(room)
+        return secret?.let { ChatCipher.openMessage(it, room, message) } ?: message.copy(text = "", re = null, locked = true)
+    }
+
+    /**
+     * Another device's secret for room [code] came (from an invitation link, or this device made it): kept, and the chat
+     * is shown again, now that it can be read.
+     */
+    fun roomSecretChanged(code: String) {
+        if (code.uppercase() != roomCode) return
+        publish()
+        chatSeen()?.let { _chat.tryEmit(it) }
+    }
+
+    /**
+     * Turns on end-to-end encryption in the room this device owns: a new secret is made and kept here, and the room is
+     * told, which deletes the chat so far. The secret is then to be given to the others, with [roomSecret]. False when
+     * this device is not in a room it owns, or the room is sealed already.
+     */
+    fun enableEncryption(): Boolean {
+        val code = roomCode ?: return false
+        val snapshot = session?.snapshot?.value ?: return false
+        if (snapshot.state?.enc == true || snapshot.state?.ownerId != snapshot.you) return false
+        SapocheApp.roomKeys.put(code, ChatCipher.newSecret())
+        publish()
+        return send(Protocol.roomEncrypt())
+    }
+
+    /** The secret of the room this device is in, as written in an invitation link; null when it has none. */
+    fun roomSecret(): String? {
+        val code = roomCode ?: return null
+        return SapocheApp.roomKeys.get(code)?.let(ChatCipher::encodeSecret)
+    }
+
+    /** Asks the room for the messages older than number [before]; false when there is no connection to ask on. */
+    fun loadOlderChat(before: Long): Boolean = client?.send(Protocol.chatBefore(before)) ?: false
 
     /** Member [by] reacted with [e], [n] taps of it. */
     data class Reaction(val by: String, val e: String, val n: Int)
@@ -170,7 +229,17 @@ class GroupController(
     val reactions: SharedFlow<Reaction> = _reactions.asSharedFlow()
 
     /** Sends a chat message, as an answer to message number [reply] when it has one; false when there is no connection to send it on. */
-    fun sendChat(text: String, cid: String, reply: Long? = null): Boolean = client?.send(Protocol.chat(text, cid, reply)) ?: false
+    fun sendChat(text: String, cid: String, reply: Long? = null, quote: ChatQuote? = null): Boolean {
+        val sender = client ?: return false
+        val code = roomCode ?: return false
+        val snapshot = session?.snapshot?.value
+        if (snapshot?.state?.enc != true) return sender.send(Protocol.chat(text, cid, reply))
+        // A sealed room: the words go sealed, with what they answer inside; without the secret there is nothing to send
+        val secret = SapocheApp.roomKeys.get(code) ?: return false
+        val you = snapshot.you ?: return false
+        val (ct, pv) = ChatCipher.sealMessage(secret, code, you, text, quote)
+        return sender.send(Protocol.chatSealed(ct, pv, cid, reply))
+    }
 
     /** Gives chat message [id] this device's reaction [e] (a name of the room's reactions or an emoji); null takes it away. */
     fun reactToChat(id: Long, e: String?) {
@@ -504,6 +573,7 @@ class GroupController(
         pending.clear()
         pictures.clear()
         chatLog = null
+        chatMore = false
         receiptsLog = emptyMap()
         deliveredUpTo = 0
         scope.cancel()
@@ -517,24 +587,34 @@ class GroupController(
             is ServerMessage.ChatHistory -> {
                 chatLog = message.msgs.takeLast(CHAT_KEPT)
                 receiptsLog = message.receipts
-                _chat.tryEmit(Chat(room, chatLog.orEmpty(), replace = true, receipts = receiptsLog))
+                chatMore = message.more
+                _chat.tryEmit(Chat(room, open(room, chatLog.orEmpty()), replace = true, receipts = receiptsLog, more = chatMore))
                 chatLog?.lastOrNull()?.let(::acknowledge)
             }
+            // Not kept here: the screen holds the pages it asked for, and the log is only what a returning screen is given
+            is ServerMessage.ChatPage -> _chat.tryEmit(Chat(room, open(room, message.msgs), replace = false, older = true, more = message.more))
             is ServerMessage.Chat -> {
-                ChatNotices.forMessage(message.msg, room, session?.snapshot?.value?.you)?.let { _chatNotices.tryEmit(it) }
+                val opened = open(room, message.msg)
+                // What cannot be read has no words to tell
+                if (!opened.locked) ChatNotices.forMessage(opened, room, session?.snapshot?.value?.you)?.let { _chatNotices.tryEmit(it) }
                 chatLog = (chatLog.orEmpty() + message.msg).takeLast(CHAT_KEPT)
-                _chat.tryEmit(Chat(room, listOf(message.msg), replace = false))
+                _chat.tryEmit(Chat(room, listOf(opened), replace = false))
                 acknowledge(message.msg)
             }
             is ServerMessage.ChatUpdate -> {
                 val log = chatLog ?: return
                 val snapshot = session?.snapshot?.value
-                val news = ChatNotices.forUpdate(log.firstOrNull { it.id == message.msg.id }, message.msg, room, snapshot?.you) { who ->
-                    snapshot?.members?.firstOrNull { it.id == who }?.name
+                // A message from further back than the log has no earlier version here to tell what is new in it
+                val before = log.firstOrNull { it.id == message.msg.id }
+                val opened = open(room, message.msg)
+                val news = before?.takeIf { !opened.locked }?.let {
+                    ChatNotices.forUpdate(it, opened, room, snapshot?.you) { who ->
+                        snapshot?.members?.firstOrNull { it.id == who }?.name
+                    }
                 }
                 news?.let { _chatNotices.tryEmit(it) }
                 chatLog = log.map { if (it.id == message.msg.id) message.msg else it }
-                _chat.tryEmit(Chat(room, listOf(message.msg), replace = false))
+                _chat.tryEmit(Chat(room, listOf(opened), replace = false))
             }
             is ServerMessage.ChatReceipts -> {
                 receiptsLog = message.receipts
@@ -557,7 +637,13 @@ class GroupController(
     }
 
     private fun publish() {
-        _view.value = View(roomCode, client?.connection?.value, session?.snapshot?.value ?: GroupSession.Snapshot(), local.snapshot.value)
+        _view.value = View(
+            roomCode,
+            client?.connection?.value,
+            session?.snapshot?.value ?: GroupSession.Snapshot(),
+            local.snapshot.value,
+            sealedKey = roomCode?.let { SapocheApp.roomKeys.has(it) } == true,
+        )
     }
 
     /** Sends a command to the room. If the connection was let go of, it is brought back and the command goes when it is up. */

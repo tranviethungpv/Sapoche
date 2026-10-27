@@ -33,6 +33,58 @@ const WORDS = {
   },
 };
 
+// The preview of a message of a room with end-to-end encrypted chat comes sealed (`pv`, and `by`, who wrote it); the page
+// keeps the secrets of its rooms in IndexedDB for this. It is the same as ChatCipher in Kotlin, Swift and Dart: a key from
+// the secret by HKDF-SHA256, the preview sealed with AES-256-GCM and the room and the writer as associated data.
+const bytesOf = (text) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+const utf8 = (text) => new TextEncoder().encode(text);
+
+async function secretOf(room) {
+  try {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('sapoche-keys', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('documents');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const saved = await new Promise((resolve) => {
+      const request = db.transaction('documents').objectStore('documents').get('secrets');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    });
+    db.close();
+    return JSON.parse(saved)[room.toUpperCase()] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function openPreview(notice) {
+  try {
+    const secret = await secretOf(notice.room);
+    if (!secret || !notice.pv || !notice.by) return '';
+    const room = notice.room.toUpperCase();
+    const sealed = bytesOf(notice.pv);
+    const epoch = sealed[1];
+    const ikm = await crypto.subtle.importKey('raw', bytesOf(secret), 'HKDF', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey(
+      { name: 'HKDF', hash: 'SHA-256', salt: utf8('sapoche-chat-v1'), info: utf8(`${room}|${epoch}`) },
+      ikm,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt'],
+    );
+    const plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: sealed.slice(2, 14), additionalData: utf8(`sapoche-chat-v1|${room}|${notice.by}|${epoch}|pv`) },
+      key,
+      sealed.slice(14),
+    );
+    return new TextDecoder().decode(plain);
+  } catch (_) {
+    return '';
+  }
+}
+
 async function appIsInFront() {
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   return windows.some((w) => w.visibilityState === 'visible' && w.focused);
@@ -46,7 +98,7 @@ async function show(notice) {
   const before = (await self.registration.getNotifications({ tag }))[0];
   const count = (before?.data?.n ?? 0) + 1;
   const emoji = notice.e ? REACTIONS[notice.e] || notice.e : '';
-  const text = notice.text || '';
+  const text = notice.text || (notice.pv ? await openPreview(notice) : '');
   let title;
   let body;
   if (count > 1) {

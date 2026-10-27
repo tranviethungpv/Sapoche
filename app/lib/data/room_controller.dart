@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../strings.dart';
 import 'backend.dart';
 import 'calm.dart';
+import 'invite_secret.dart';
 import 'models.dart';
 import 'recent_rooms.dart';
 import 'setup_link.dart';
@@ -195,6 +196,7 @@ class RoomController extends ChangeNotifier {
         final code = snapshot.room;
         if (code != null) _recents?.touch(code, name: snapshot.name);
         _snapshot = snapshot;
+        _syncSecret(snapshot);
         // The chat belongs to its room: out of it, or in another one, it is gone
         if (_chatRoom != null && code != _chatRoom) _forgetChat();
         // A picture is kept while its owner is in the room
@@ -234,8 +236,15 @@ class RoomController extends ChangeNotifier {
       case SleepEvent(:final sleep):
         _sleep = sleep;
         notifyListeners();
-      case ChatEvent(:final room, :final messages, :final replace, :final receipts):
-        _onChat(room, messages, replace, receipts);
+      case ChatEvent(
+        :final room,
+        :final messages,
+        :final replace,
+        :final receipts,
+        :final older,
+        :final more,
+      ):
+        _onChat(room, messages, replace, receipts, older: older, more: more);
       case ReactionEvent(
         :final by,
         reaction: final reaction?,
@@ -299,6 +308,12 @@ class RoomController extends ChangeNotifier {
 
   /// The room whose chat [chat] holds: null outside a room, or in one whose server is too old to keep a chat.
   String? _chatRoom;
+
+  /// Whether the room keeps messages from before the oldest of [chat], to be read by [loadOlderChat].
+  final ValueNotifier<bool> chatHasOlder = ValueNotifier(false);
+
+  /// When a page of older messages was asked for and has not come yet; null when none is on its way.
+  DateTime? _olderAskedAt;
 
   /// The last message the person has seen, by the room's number for it.
   int _readUpTo = 0;
@@ -409,11 +424,26 @@ class RoomController extends ChangeNotifier {
     String room,
     List<ChatMessage> messages,
     bool replace,
-    Map<String, ChatReceipt>? told,
-  ) {
+    Map<String, ChatReceipt>? told, {
+    bool older = false,
+    bool? more,
+  }) {
     final had = hasChat;
     var list = chat.value;
-    if (replace) {
+    if (older) {
+      if (room != _chatRoom) return;
+      _olderAskedAt = null;
+      // Above the first message of the room that is shown, whatever the page repeats of what is there already
+      final shown = {
+        for (final m in list)
+          if (m.delivery == ChatDelivery.sent) m.id,
+      };
+      list = [
+        for (final m in messages)
+          if (!shown.contains(m.id)) m,
+        ...list,
+      ];
+    } else if (replace) {
       if (room != _chatRoom) {
         // Arriving in a room: what was said before is there to read, not news
         _forgetChat();
@@ -442,6 +472,11 @@ class RoomController extends ChangeNotifier {
           list[known] = message;
           continue;
         }
+        // A reaction to a message from further back than the ones shown: it comes with the page that has the message
+        final oldest = _oldestShown(list);
+        if (message.cid == null && oldest != null && message.id < oldest) {
+          continue;
+        }
         final cid = message.cid;
         if (cid != null) {
           _chatDeadlines.remove(cid)?.cancel();
@@ -460,9 +495,34 @@ class RoomController extends ChangeNotifier {
       }
     }
     chat.value = list;
+    if (more != null && room == _chatRoom) chatHasOlder.value = more;
     if (told != null && room == _chatRoom) receipts.value = told;
     _countUnread();
     if (hasChat != had) notifyListeners();
+  }
+
+  /// The number of the oldest message the room has confirmed in [list]; null when there is none.
+  int? _oldestShown(List<ChatMessage> list) {
+    for (final m in list) {
+      if (m.delivery == ChatDelivery.sent) return m.id;
+    }
+    return null;
+  }
+
+  /// Asks the room for the messages before the oldest shown; they are put above it when they come. Nothing while one
+  /// page is on its way (for as long as a message is waited for), or when the room has no older ones.
+  Future<void> loadOlderChat() async {
+    if (!hasChat || !chatHasOlder.value) return;
+    final asked = _olderAskedAt;
+    if (asked != null && DateTime.now().difference(asked) < chatDeliveryTimeout) {
+      return;
+    }
+    final oldest = _oldestShown(chat.value);
+    if (oldest == null) return;
+    _olderAskedAt = DateTime.now();
+    final sent = await _backend.loadOlderChat(oldest).catchError((_) => false);
+    // With no connection the person can pull again at once
+    if (!sent) _olderAskedAt = null;
   }
 
   void _countUnread() {
@@ -484,6 +544,8 @@ class RoomController extends ChangeNotifier {
     }
     _chatDeadlines.clear();
     _chatRoom = null;
+    chatHasOlder.value = false;
+    _olderAskedAt = null;
     _readUpTo = 0;
     _readTold = 0;
     chat.value = const [];
@@ -519,7 +581,7 @@ class RoomController extends ChangeNotifier {
     ];
     var sent = false;
     try {
-      sent = await _backend.sendChat(clean, cid, reply: reply?.id);
+      sent = await _backend.sendChat(clean, cid, reply: reply?.id, quote: reply);
     } on Object {
       // Shown as not sent, with the way to try again
     }
@@ -731,10 +793,59 @@ class RoomController extends ChangeNotifier {
   Future<void> leave() => _run(_backend.leave);
 
   /// Address that opens the app on this room from a chat message, or the app's own link when the
-  /// server's address is not known.
-  String inviteLink(String code) => _profile.server.isEmpty
-      ? 'sapoche://join/$code'
-      : '${_profile.server}/join/$code';
+  /// server's address is not known. For a room whose chat is end-to-end encrypted it carries the secret that opens the
+  /// chat, after a `#` so that the server never sees it.
+  String inviteLink(String code) {
+    final base = _profile.server.isEmpty
+        ? 'sapoche://join/$code'
+        : '${_profile.server}/join/$code';
+    return _secretOf == code && _secret != null ? '$base#k=$_secret' : base;
+  }
+
+  /// The secret of the room this device is in, once it has it and the room's chat is end-to-end encrypted.
+  String? _secret;
+  String? _secretOf;
+
+  void _syncSecret(RoomSnapshot snapshot) {
+    final code = snapshot.room;
+    if (code == null || !snapshot.encryptionKey) {
+      if (_secret != null) {
+        _secret = null;
+        _secretOf = null;
+      }
+      return;
+    }
+    if (_secretOf == code && _secret != null) return;
+    _secretOf = code;
+    _backend
+        .roomSecret()
+        .then((secret) {
+          if (_secretOf != code || secret == null) return;
+          _secret = secret;
+          notifyListeners();
+        })
+        .catchError((Object _) {});
+  }
+
+  /// Owner only: turns on end-to-end encryption of this room's chat for good. The chat so far is deleted, and the others
+  /// need the new invitation link (see [inviteLink]) to read what comes. False when this device cannot.
+  Future<bool> enableEncryption() async {
+    try {
+      return await _backend.enableEncryption();
+    } on Object {
+      return false;
+    }
+  }
+
+  /// Takes the secret out of an invitation link the person pasted, and keeps it for its room. The room and whether the
+  /// link had a secret in it; null when [text] is no invitation.
+  Future<InviteSecret?> acceptInvite(String text) async {
+    final found = InviteSecret.parse(text);
+    final secret = found?.secret;
+    if (found == null || secret == null) return found;
+    final kept = await _backend.setRoomSecret(found.room, secret);
+    return kept ? found : InviteSecret(room: found.room);
+  }
 
   /// What the server says about a room, for the list of recent ones.
   Future<RoomInfo?> roomInfo(String code) => _backend.roomInfo(code);

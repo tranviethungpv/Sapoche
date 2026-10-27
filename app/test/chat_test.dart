@@ -162,6 +162,78 @@ void main() {
       expect(controller.chat.value.map((m) => m.text), ['hi']);
     });
 
+    test('older messages come above the ones shown, once, and stop when there are no more', () async {
+      backend.emit(
+        ChatEvent(
+          room: 'ABC234',
+          messages: [message(21, 'b', 'a'), message(22, 'b', 'b')],
+          replace: true,
+          more: true,
+        ),
+      );
+      await settle();
+      expect(controller.chatHasOlder.value, isTrue);
+
+      await controller.loadOlderChat();
+      expect(backend.calls, contains('loadOlderChat 21'));
+      // A page is on its way: asking again does not ask again
+      await controller.loadOlderChat();
+      expect(backend.calls.where((c) => c.startsWith('loadOlderChat')), hasLength(1));
+
+      backend.emit(
+        ChatEvent(
+          room: 'ABC234',
+          messages: [message(19, 'b', 'x'), message(20, 'me', 'y'), message(21, 'b', 'a')],
+          replace: false,
+          older: true,
+          more: false,
+        ),
+      );
+      await settle();
+      expect(controller.chat.value.map((m) => m.id), [19, 20, 21, 22]);
+      expect(controller.chatHasOlder.value, isFalse);
+      // Reading the past is not news
+      expect(controller.unreadChat.value, 0);
+      expect(notices, isEmpty);
+
+      await controller.loadOlderChat();
+      expect(backend.calls.where((c) => c.startsWith('loadOlderChat')), hasLength(1));
+    });
+
+    test('a reaction to a message from further back than the ones shown is left for its page', () async {
+      backend.emit(
+        ChatEvent(room: 'ABC234', messages: [message(21, 'b', 'a')], replace: true, more: true),
+      );
+      backend.emit(arrived(message(5, 'b', 'old one')));
+      await settle();
+      expect(controller.chat.value.map((m) => m.id), [21]);
+      backend.emit(arrived(message(22, 'b', 'new')));
+      await settle();
+      expect(controller.chat.value.map((m) => m.id), [21, 22]);
+    });
+
+    test('what an answer quotes goes to the backend with it, for a sealed room to seal inside', () async {
+      backend.emit(history([message(2, 'b', 'a question')]));
+      await settle();
+      const quote = ChatQuote(id: 2, by: 'b', name: 'Binh', text: 'a question');
+      await controller.sendChat('an answer', reply: quote);
+      expect(backend.calls, contains('sendChat an answer reply 2'));
+      expect(backend.lastQuote, same(quote));
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    });
+
+    test('with no connection the page can be asked for again at once', () async {
+      backend.emit(
+        ChatEvent(room: 'ABC234', messages: [message(21, 'b', 'a')], replace: true, more: true),
+      );
+      await settle();
+      backend.chatConnected = false;
+      await controller.loadOlderChat();
+      backend.chatConnected = true;
+      await controller.loadOlderChat();
+      expect(backend.calls.where((c) => c.startsWith('loadOlderChat')), hasLength(2));
+    });
+
     test('a reaction of somebody else comes with their name', () async {
       final shown = <RoomReaction>[];
       controller.reactions.listen(shown.add);
@@ -561,6 +633,152 @@ void main() {
       },
     );
 
+    testWidgets(
+      'a chat with older messages asks for them at its top and shows them when they come',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.emit(StateEvent(sampleRoom()));
+        backend.emit(
+          ChatEvent(
+            room: 'ABC234',
+            messages: [message(21, 'b', 'twenty-one'), message(22, 'me', 'twenty-two')],
+            replace: true,
+            more: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip(S.chat));
+        // The wheel at the top turns for as long as the page is awaited: no settling
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(backend.calls, contains('loadOlderChat 21'));
+        expect(find.byKey(const ValueKey('chat-older')), findsOneWidget);
+
+        backend.emit(
+          ChatEvent(
+            room: 'ABC234',
+            messages: [message(20, 'b', 'twenty')],
+            replace: false,
+            older: true,
+            more: false,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('twenty'), findsOneWidget);
+        expect(find.byKey(const ValueKey('chat-older')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a sealed chat without its key says how to get it, takes no words, and reads once the key is pasted',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.emit(StateEvent(sampleRoom(encrypted: true)));
+        backend.emit(
+          ChatEvent(
+            room: 'ABC234',
+            messages: [
+              ChatMessage(id: 1, by: 'b', name: 'Binh', text: '', at: 5, locked: true),
+            ],
+            replace: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip(S.chat));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('chat-needs-key')), findsOneWidget);
+        expect(find.byKey(const ValueKey('chat-field')), findsNothing);
+        expect(find.byKey(const ValueKey('chat-encrypted')), findsOneWidget);
+
+        // A link that is no link, one with no key in it, then the real one
+        await tester.tap(find.text(S.encryptionPaste));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'hello');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+        expect(find.text(S.encryptionNotALink), findsOneWidget);
+        expect(backend.calls.where((c) => c.startsWith('setRoomSecret')), isEmpty);
+
+        await tester.tap(find.text(S.encryptionPaste));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'https://x.example/join/ABC234#k=${'B' * 43}');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+        expect(backend.calls, contains('setRoomSecret ABC234 ${'B' * 43}'));
+
+        // The device now has the key: the chat opens, and a message that still cannot be read is marked
+        backend.emit(StateEvent(sampleRoom(encrypted: true, encryptionKey: true)));
+        backend.emit(
+          ChatEvent(
+            room: 'ABC234',
+            messages: [
+              ChatMessage(id: 1, by: 'b', name: 'Binh', text: '', at: 5, locked: true),
+              message(2, 'b', 'readable now'),
+            ],
+            replace: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('chat-needs-key')), findsNothing);
+        expect(find.byKey(const ValueKey('chat-field')), findsOneWidget);
+        expect(find.text('readable now'), findsOneWidget);
+        expect(find.text(S.chatLocked), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'the owner turns encryption on from the room sheet after being told what it does, and the link then carries the key',
+      (tester) async {
+        final (backend, room) = await pumpApp(tester);
+        backend.emit(
+          StateEvent(
+            sampleRoom(
+              ownerId: 'me',
+              members: const [
+                Member(id: 'me', name: 'Anna', ready: true, owner: true),
+                Member(id: 'b', name: 'Binh', ready: true),
+              ],
+            ),
+          ),
+        );
+        backend.emit(history([message(1, 'b', 'hi there')]));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Room'));
+        await tester.pumpAndSettle();
+        expect(room.inviteLink('ABC234'), isNot(contains('#k=')));
+
+        await tester.ensureVisible(find.byKey(const ValueKey('encryption-turn-on')));
+        await tester.tap(find.byKey(const ValueKey('encryption-turn-on')));
+        await tester.pumpAndSettle();
+        expect(find.text(S.encryptionConfirmBody), findsOneWidget);
+        expect(backend.calls, isNot(contains('enableEncryption')));
+        await tester.tap(find.byKey(const ValueKey('encryption-confirm')));
+        await tester.pumpAndSettle();
+        expect(backend.calls, contains('enableEncryption'));
+        expect(find.text(S.encryptionTurnedOn), findsOneWidget);
+
+        // The room says it is sealed, and this device has the key it made: the link it shares has it in
+        backend.emit(StateEvent(sampleRoom(ownerId: 'me', encrypted: true, encryptionKey: true)));
+        await tester.pumpAndSettle();
+        expect(room.inviteLink('ABC234'), endsWith('#k=${'S' * 43}'));
+      },
+    );
+
+    testWidgets('a guest is not offered encryption, and is told when it is on', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(ownerId: 'b')));
+      backend.emit(history([message(1, 'b', 'hi there')]));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Room'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('encryption-card')), findsNothing);
+
+      backend.emit(StateEvent(sampleRoom(ownerId: 'b', encrypted: true, encryptionKey: true)));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('encryption-card')), findsOneWidget);
+      expect(find.byKey(const ValueKey('encryption-turn-on')), findsNothing);
+    });
+
     testWidgets('an empty chat says so', (tester) async {
       final (backend, _) = await pumpApp(tester);
       backend.emit(StateEvent(sampleRoom()));
@@ -702,11 +920,52 @@ void main() {
         );
         expect(tester.testTextInput.isVisible, isTrue);
 
-        await tester.tap(find.text('hello'));
+        // The head of the sheet is outside the field and the messages: the keyboard goes
+        await tester.tap(find.text(S.chat).first);
         await tester.pumpAndSettle();
         expect(tester.testTextInput.isVisible, isFalse);
         addTearDown(tester.view.resetViewInsets);
         addTearDown(tester.view.resetPadding);
+      },
+    );
+
+    testWidgets(
+      'the keyboard stays up for a touch on a message, a drag of it sideways and a quick reaction, and goes for the space between messages',
+      (tester) async {
+        final (backend, _) = await roomWithChat(tester);
+        backend.emit(
+          history([message(1, 'b', 'hello'), message(2, 'me', 'hi')]),
+        );
+        await tester.pump();
+        await tester.tap(find.byTooltip(S.chat));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('chat-field')));
+        await tester.pumpAndSettle();
+        expect(tester.testTextInput.isVisible, isTrue);
+
+        // A touch on a message shows its time
+        await tester.tap(find.text('hello'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('chat-message-time')), findsOneWidget);
+        expect(tester.testTextInput.isVisible, isTrue);
+
+        // Dragging it sideways answers it, with the keyboard still up
+        await tester.drag(find.text('hello'), const Offset(120, 0));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('chat-reply-banner')), findsOneWidget);
+        expect(tester.testTextInput.isVisible, isTrue);
+
+        // A quick reaction goes while one writes
+        await tester.tap(find.byKey(const ValueKey('react-heart')));
+        await tester.pump();
+        expect(tester.testTextInput.isVisible, isTrue);
+        await tester.pump(const Duration(seconds: 1));
+
+        // The space beside a message is a touch on the list itself
+        final list = tester.getRect(find.byType(ListView));
+        await tester.tapAt(Offset(list.left + 2, list.top + 2));
+        await tester.pumpAndSettle();
+        expect(tester.testTextInput.isVisible, isFalse);
       },
     );
 

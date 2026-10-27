@@ -552,7 +552,7 @@ final class WireTests: XCTestCase {
         )
         XCTAssertEqual(
             Wire.parse(#"{"t":"chat.history","msgs":[{"id":1,"by":"b2","name":"Ben","text":"yo","at":5},{"id":2}]}"#),
-            .chatHistory([ChatMessage(id: 1, by: "b2", name: "Ben", text: "yo", at: 5)], receipts: [:])
+            .chatHistory([ChatMessage(id: 1, by: "b2", name: "Ben", text: "yo", at: 5)], receipts: [:], more: false)
         )
         XCTAssertNil(Wire.parse(#"{"t":"chat","msg":{"id":3}}"#))
         XCTAssertEqual(Wire.parse(#"{"t":"react","by":"a1","e":"heart","n":3}"#), .react(by: "a1", e: "heart", n: 3))
@@ -586,8 +586,15 @@ final class WireTests: XCTestCase {
         )
         XCTAssertEqual(
             Wire.parse(#"{"t":"chat.history","msgs":[],"receipts":{"a1":{"d":1,"r":0}}}"#),
-            .chatHistory([], receipts: ["a1": ChatReceipt(d: 1, r: 0)])
+            .chatHistory([], receipts: ["a1": ChatReceipt(d: 1, r: 0)], more: false)
         )
+        XCTAssertEqual(Wire.parse(#"{"t":"chat.history","msgs":[],"more":true}"#), .chatHistory([], receipts: [:], more: true))
+        XCTAssertEqual(
+            Wire.parse(#"{"t":"chat.page","before":21,"msgs":[{"id":20,"by":"a1","name":"Ann","text":"old","at":5}],"more":false}"#),
+            .chatPage(before: 21, [ChatMessage(id: 20, by: "a1", name: "Ann", text: "old", at: 5)], more: false)
+        )
+        XCTAssertEqual(Wire.chatBefore(21), #"{"id":21,"t":"chat.before"}"#)
+        XCTAssertEqual(JSON.parse(Wire.chatBefore(21, n: 20))?["n"].int64, 20)
 
         let answer = JSON.parse(Wire.chat("yes", cid: "c", reply: 3))
         XCTAssertEqual(answer?["reply"].int64, 3)

@@ -187,9 +187,9 @@ class ProtocolTest {
 
     @Test
     fun `builds the join with and without the create flag`() {
-        assertEquals("""{"t":"join","clientId":"c","name":"N"}""", Protocol.join("c", "N"))
-        assertEquals("""{"t":"join","clientId":"c","name":"N","create":true}""", Protocol.join("c", "N", create = true))
-        assertEquals("""{"t":"join","clientId":"c","name":"N","create":false}""", Protocol.join("c", "N", create = false))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","caps":["e2ee"]}""", Protocol.join("c", "N"))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","create":true,"caps":["e2ee"]}""", Protocol.join("c", "N", create = true))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","create":false,"caps":["e2ee"]}""", Protocol.join("c", "N", create = false))
     }
 
     @Test
@@ -227,6 +227,18 @@ class ProtocolTest {
         assertEquals(mapOf("a1" to ChatReceipt(4, 4), "b2" to ChatReceipt(4, 2)), receipts.receipts)
         val history = Protocol.parse("""{"t":"chat.history","msgs":[],"receipts":{"a1":{"d":1,"r":0}}}""") as ServerMessage.ChatHistory
         assertEquals(mapOf("a1" to ChatReceipt(1, 0)), history.receipts)
+    }
+
+    @Test
+    fun `parses the older chat pages and the more flag of protocol 14, and asks for a page`() {
+        val history = Protocol.parse("""{"t":"chat.history","msgs":[],"more":true}""") as ServerMessage.ChatHistory
+        assertEquals(true, history.more)
+        // A server older than protocol 14 says nothing of older messages
+        assertEquals(false, (Protocol.parse("""{"t":"chat.history","msgs":[]}""") as ServerMessage.ChatHistory).more)
+        val page = Protocol.parse("""{"t":"chat.page","before":21,"msgs":[{"id":20,"by":"a1","name":"Ann","text":"old","at":5}],"more":false}""")
+        assertEquals(ServerMessage.ChatPage(21, listOf(ChatMessage(20, "a1", "Ann", "old", 5, null)), false), page)
+        assertEquals("""{"t":"chat.before","id":21}""", Protocol.chatBefore(21))
+        assertEquals("""{"t":"chat.before","id":21,"n":20}""", Protocol.chatBefore(21, 20))
     }
 
     @Test

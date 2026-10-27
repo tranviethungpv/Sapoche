@@ -871,6 +871,22 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual((chats[1]["messages"] as? [[String: Any]])?.count, 0)
         XCTAssertEqual((chats[1]["receipts"] as? [String: [String: Any]])?["u2"]?["r"] as? Int, 3)
 
+        // A page of older messages is passed to the screen as it is, and not kept for a screen that comes back
+        events.removeAll()
+        socket.sent.removeAll()
+        let asked = try await call("loadOlderChat", ["before": 2]) as? Bool
+        XCTAssertEqual(asked, true)
+        socket.receive(#"{"t":"chat.page","before":2,"msgs":[{"id":1,"by":"u2","name":"Ann","text":"first","at":3}],"more":true}"#)
+        await time.advance(10)
+        let page = try XCTUnwrap(events.last { $0["type"] as? String == "chat" })
+        XCTAssertEqual(page["older"] as? Bool, true)
+        XCTAssertEqual(page["more"] as? Bool, true)
+        XCTAssertEqual(page["replace"] as? Bool, false)
+        XCTAssertEqual((page["messages"] as? [[String: Any]])?.first?["id"] as? Int, 1)
+        out = socket.sent.compactMap { JSON.parse($0)?.object }.filter { $0["t"] as? String != "ping" }
+        XCTAssertEqual(out.map { $0["t"] as? String }, ["chat.before"])
+        XCTAssertEqual(out[0]["id"] as? Int, 2)
+
         // Commands from the screen
         socket.sent.removeAll()
         _ = try await call("sendChat", ["text": "re", "cid": "c-2", "reply": 4])
@@ -883,6 +899,92 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(out[1]["e"] as? String, "fire")
         XCTAssertTrue(out[2]["e"] is NSNull)
         XCTAssertEqual(out[3]["read"] as? Int, 4)
+    }
+
+    func testASealedRoomsChatIsReadWithTheSecretSealedOnTheWayOutAndLockedWithout() async throws {
+        _ = try await call("configure", ["server": "https://sapoche.example.dev"])
+        _ = try await call("join", ["code": "abc234", "name": "Me"])
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        socket.receive(#"{"t":"state","serverNow":1,"you":"me","protocol":15,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":1,"ownerId":"me","enc":true},"members":[]}"#)
+        await time.advance(10)
+        let first = try XCTUnwrap(states().last)
+        XCTAssertEqual(first["encrypted"] as? Bool, true)
+        XCTAssertEqual(first["encryptionKey"] as? Bool, false, "this device has no secret yet")
+
+        // A message sealed by another member: nothing to read without the secret
+        let secret = ChatCipher.newSecret()
+        let quote = ChatQuote(id: 1, by: "me", name: "Me", text: "old")
+        let sealed = try XCTUnwrap(ChatCipher.sealMessage(secret: secret, room: "ABC234", by: "u2", text: "sealed hello", quote: quote))
+        socket.receive(#"{"t":"chat.history","msgs":[{"id":2,"by":"u2","name":"Ann","text":"","at":5,"ct":"\#(sealed.ct)","pv":"\#(sealed.pv)"}]}"#)
+        await time.advance(10)
+        var message = try XCTUnwrap((events.last { $0["type"] as? String == "chat" }?["messages"] as? [[String: Any]])?.first)
+        XCTAssertEqual(message["locked"] as? Bool, true)
+        XCTAssertEqual(message["text"] as? String, "")
+
+        // The secret comes (from an invitation link): the chat is shown again, readable, with the quote that was inside
+        let link = URL(string: "https://sapoche.example.dev/join/ABC234#k=\(ChatCipher.encodeSecret(secret))")!
+        bridge.onLink(link)
+        await time.advance(10)
+        XCTAssertEqual(states().last?["encryptionKey"] as? Bool, true)
+        message = try XCTUnwrap((events.last { $0["type"] as? String == "chat" }?["messages"] as? [[String: Any]])?.first)
+        XCTAssertEqual(message["locked"] as? Bool, false)
+        XCTAssertEqual(message["text"] as? String, "sealed hello")
+        XCTAssertEqual((message["re"] as? [String: Any])?["text"] as? String, "old")
+        let invite = try XCTUnwrap(events.last { $0["type"] as? String == "invite" })
+        XCTAssertEqual(invite["code"] as? String, "ABC234")
+
+        // What this device writes goes out sealed, with the quote inside, and the room sees only that it answers number 2
+        socket.sent.removeAll()
+        let sent = try await call("sendChat", ["text": "my answer", "cid": "c-9", "reply": 2,
+                                               "quote": ["id": 2, "by": "u2", "name": "Ann", "text": "sealed hello"]]) as? Bool
+        XCTAssertEqual(sent, true)
+        let out = try XCTUnwrap(socket.sent.compactMap { JSON.parse($0)?.object }.first { $0["t"] as? String == "chat" })
+        XCTAssertNil(out["text"])
+        XCTAssertEqual(out["reply"] as? Int, 2)
+        let ct = try XCTUnwrap(out["ct"] as? String)
+        let opened = try XCTUnwrap(ChatCipher.openMessage(secret: secret, room: "ABC234",
+                                                          message: ChatMessage(id: 3, by: "me", name: "Me", text: "", at: 6, ct: ct)))
+        XCTAssertEqual(opened.text, "my answer")
+        XCTAssertEqual(opened.re?.text, "sealed hello")
+        XCTAssertNotNil(out["pv"] as? String)
+
+        // The secret to give others is the one this device has
+        let given = try await call("roomSecret") as? String
+        XCTAssertEqual(given, ChatCipher.encodeSecret(secret))
+    }
+
+    func testTheOwnerTurnsEncryptionOnAndGetsASecretToGive() async throws {
+        _ = try await call("configure", ["server": "https://sapoche.example.dev"])
+        _ = try await call("join", ["code": "abc234", "name": "Me"])
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        socket.receive(#"{"t":"state","serverNow":1,"you":"me","protocol":15,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":1,"ownerId":"u2"},"members":[]}"#)
+        await time.advance(10)
+        socket.sent.removeAll()
+        let notOwner = try await call("enableEncryption") as? Bool
+        XCTAssertEqual(notOwner, false)
+        XCTAssertTrue(socket.sent.allSatisfy { !$0.contains("room.encrypt") })
+
+        socket.receive(#"{"t":"state","serverNow":2,"you":"me","protocol":15,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":1,"ownerId":"me"},"members":[]}"#)
+        await time.advance(10)
+        let before = try await call("roomSecret") as? String
+        XCTAssertNil(before)
+        let done = try await call("enableEncryption") as? Bool
+        XCTAssertEqual(done, true)
+        XCTAssertTrue(socket.sent.contains { $0.contains("room.encrypt") })
+        let made = try await call("roomSecret") as? String
+        let secret = try XCTUnwrap(made)
+        XCTAssertNotNil(ChatCipher.decodeSecret(secret))
+        XCTAssertEqual(states().last?["encryptionKey"] as? Bool, true)
+
+        // A secret in a link that is not one is refused
+        let refused = try await call("setRoomSecret", ["room": "ABC234", "secret": "nope"]) as? Bool
+        XCTAssertEqual(refused, false)
+        let accepted = try await call("setRoomSecret", ["room": "ABC234", "secret": secret]) as? Bool
+        XCTAssertEqual(accepted, true)
     }
 
     func testAnInvitationLinkReachesTheScreen() async throws {

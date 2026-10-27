@@ -399,6 +399,8 @@ class RoomSnapshot {
     this.guestControl = GuestControl.all,
     this.roomAutoplay,
     this.shuffle,
+    this.encrypted = false,
+    this.encryptionKey = false,
   });
 
   /// Room code, or null when this device is not in a room. Outside a room this describes the
@@ -448,6 +450,12 @@ class RoomSnapshot {
   /// What is still to come is mixed, and stays mixed as songs are added: this device's own outside a room, the room's
   /// in one. Null in a room whose server is too old to say, where shuffle is only a one-time mix.
   final bool? shuffle;
+
+  /// The room's chat is end-to-end encrypted: the server keeps and passes on sealed messages it cannot read.
+  final bool encrypted;
+
+  /// This device has the secret that opens the room's sealed chat.
+  final bool encryptionKey;
 
   bool get inRoom => room != null;
 
@@ -568,6 +576,8 @@ class RoomSnapshot {
     guestControl: GuestControl.parse(json['guestControl'] as String?),
     roomAutoplay: json['roomAutoplay'] as bool?,
     shuffle: json['shuffle'] as bool?,
+    encrypted: json['encrypted'] as bool? ?? false,
+    encryptionKey: json['encryptionKey'] as bool? ?? false,
     queue: [
       for (final e in json['queue'] as List<dynamic>? ?? const [])
         QueueEntry.fromJson(e as Map<String, dynamic>),
@@ -603,6 +613,9 @@ class ChatMessage {
     this.delivery = ChatDelivery.sent,
     this.reply,
     this.reactions = const {},
+    this.locked = false,
+    this.ct,
+    this.pv,
   });
 
   /// The room's number for it, one more with every message.
@@ -628,6 +641,40 @@ class ChatMessage {
   /// What members reacted with, by the id of each. A member has one reaction to a message.
   final Map<String, Reaction> reactions;
 
+  /// A sealed message that this device cannot read: it has no secret for the room, or not the one it was sealed with.
+  final bool locked;
+
+  /// In a room with end-to-end encrypted chat, as the room sends it: the words sealed, and the start of them sealed apart
+  /// for a notice. Only the web build gets them (the phones open them in their native side); [text] is then empty.
+  final String? ct;
+  final String? pv;
+
+  /// The same message with its sealed words read.
+  ChatMessage sealedAs({required String text, ChatQuote? reply}) => ChatMessage(
+    id: id,
+    by: by,
+    name: name,
+    text: text,
+    at: at,
+    cid: cid,
+    delivery: delivery,
+    reply: reply,
+    reactions: reactions,
+  );
+
+  /// The same message as one that cannot be read.
+  ChatMessage get asLocked => ChatMessage(
+    id: id,
+    by: by,
+    name: name,
+    text: '',
+    at: at,
+    cid: cid,
+    delivery: delivery,
+    reactions: reactions,
+    locked: true,
+  );
+
   ChatMessage withDelivery(ChatDelivery delivery) => ChatMessage(
     id: id,
     by: by,
@@ -638,6 +685,7 @@ class ChatMessage {
     delivery: delivery,
     reply: reply,
     reactions: reactions,
+    locked: locked,
   );
 
   /// The same message with [member]'s reaction to it set, or ([reaction] null) taken away.
@@ -655,6 +703,7 @@ class ChatMessage {
         if (e.key != member) e.key: e.value,
       member: ?reaction,
     },
+    locked: locked,
   );
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -671,6 +720,9 @@ class ChatMessage {
       for (final e in (json['rx'] as Map<String, dynamic>? ?? const {}).entries)
         e.key: ?Reaction.parse(e.value as String?),
     },
+    locked: json['locked'] as bool? ?? false,
+    ct: json['ct'] as String?,
+    pv: json['pv'] as String?,
   );
 }
 

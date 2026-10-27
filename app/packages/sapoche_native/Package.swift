@@ -6,11 +6,18 @@ import PackageDescription
 let package = Package(
   name: "SapocheCore",
   products: [.library(name: "SapocheCore", targets: ["SapocheCore"])],
+  dependencies: [
+    // CryptoKit is Apple's; on Linux the same calls come from swift-crypto. The app itself (CocoaPods) uses CryptoKit only.
+    .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0")
+  ],
   targets: [
     .systemLibrary(name: "CSQLite", path: "Sources/CSQLite"),
     .target(
       name: "SapocheCore",
-      dependencies: ["CSQLite"],
+      dependencies: [
+        "CSQLite",
+        .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux])),
+      ],
       path: "ios/sapoche_native/Sources/sapoche_native/Core"
     ),
     .testTarget(

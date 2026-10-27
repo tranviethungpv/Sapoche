@@ -388,6 +388,10 @@ class _InRoom extends StatelessWidget {
           const SizedBox(height: 16),
           _GuestControlCard(room: room),
         ],
+        if (room.hasChat && (snapshot.encrypted || snapshot.iOwn)) ...[
+          const SizedBox(height: 10),
+          EncryptionCard(room: room),
+        ],
         const SizedBox(height: 8),
         ListTile(
           contentPadding: EdgeInsets.zero,
@@ -494,5 +498,121 @@ class _GuestControlCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Whether the room's chat is end-to-end encrypted. The owner can turn it on, for good; once it is on, a device that has
+/// not the key (it joined without the link) is told how to get it.
+class EncryptionCard extends StatelessWidget {
+  const EncryptionCard({super.key, required this.room});
+
+  final RoomController room;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final snapshot = room.snapshot;
+    final on = snapshot.encrypted;
+    return Container(
+      key: const ValueKey('encryption-card'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: on ? p.primaryContainer : p.surfaceRaised,
+        borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
+        border: Border.all(color: p.outlineSoft),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline_rounded, color: p.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(S.encryptionTitle, style: theme.titleMedium),
+                const SizedBox(height: 2),
+                Text(
+                  on && !snapshot.encryptionKey
+                      ? S.encryptionNoKey
+                      : on
+                      ? S.encryptionOnHelp
+                      : S.encryptionOffHelp,
+                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          if (!on)
+            FilledButton.tonal(
+              key: const ValueKey('encryption-turn-on'),
+              onPressed: () => _confirm(context),
+              child: Text(S.encryptionTurnOn),
+            )
+          else if (!snapshot.encryptionKey)
+            FilledButton.tonal(
+              key: const ValueKey('encryption-paste'),
+              onPressed: () => pasteInviteSecret(context, room),
+              child: Text(S.encryptionPaste),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirm(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(S.encryptionTitle),
+        content: Text(S.encryptionConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(S.cancel),
+          ),
+          TextButton(
+            key: const ValueKey('encryption-confirm'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(S.encryptionTurnOn),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final done = await room.enableEncryption();
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(done ? S.encryptionTurnedOn : S.encryptionCannot),
+        ),
+      );
+  }
+}
+
+/// Asks for the invitation link of the room, with its key in it, and keeps the key: the way for a device that joined
+/// with the code alone to read a chat that is end-to-end encrypted.
+Future<void> pasteInviteSecret(BuildContext context, RoomController room) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final text = await showTextDialog(
+    context,
+    title: S.encryptionPaste,
+    hint: S.encryptionPasteHint,
+    maxLength: 400,
+    capitalization: TextCapitalization.none,
+  );
+  if (text == null) return;
+  final found = await room.acceptInvite(text);
+  final problem = found == null
+      ? S.encryptionNotALink
+      : found.secret == null
+      ? S.encryptionNoKeyInLink
+      : null;
+  if (problem != null) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(problem)));
   }
 }

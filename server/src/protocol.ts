@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 15;
 
 export interface QueueItem {
   id: string;
@@ -63,6 +63,8 @@ export interface RoomState {
   shuffle: boolean;
   /** The ids of the queue in the order it had when shuffle was turned on; turning it off puts the songs back in it. */
   shuffleOrder?: string[];
+  /** The chat is end-to-end encrypted: the room keeps and passes on sealed messages only. Never goes back. Protocol 15. */
+  enc?: true;
   /** When each pending job is due, in server time. */
   alarms: Partial<Record<AlarmKind, number>>;
 }
@@ -78,6 +80,13 @@ export interface ChatMessage {
   at: number;
   /** The id the sending device gave it, so that device knows the message arrived; absent when it gave none. */
   cid?: string;
+  /**
+   * In a room with end-to-end encryption [text] is empty and the words are here, sealed with the room's key, with the
+   * answered message's quote inside; the server cannot read them. Protocol 15.
+   */
+  ct?: string;
+  /** The start of the words, sealed apart, so that a notice can show them without the whole message. Protocol 15. */
+  pv?: string;
   /** The message this one answers, as it was when the answer was written. Protocol 12. */
   re?: ChatQuote;
   /** Reactions to this message, by the public id of each member who gave one; the value is a name of [REACTIONS] or an emoji. Protocol 12. */
@@ -145,7 +154,9 @@ export type ClientMessage =
    * [create] says what the device expects: true when it just made the code up, false when it was
    * given one (a typo must not open an empty room). Absent means an older app, which gets the old behavior.
    */
-  | { t: "join"; clientId: string; name: string; create?: boolean }
+  | { t: "join"; clientId: string; name: string; create?: boolean; caps?: string[] }
+  /** Owner only: turns on end-to-end encryption of the chat, for good. The chat so far is deleted. Protocol 15. */
+  | { t: "room.encrypt" }
   /** Leaving on purpose, as opposed to a connection that dropped. An owner who says this hands the room over. */
   | { t: "bye" }
   /** Owner only: remove a member. The device is disconnected and may join again. */
@@ -216,13 +227,15 @@ export type ClientMessage =
   | { t: "advanced"; epoch: number; itemId: string; startedAt: number }
   | { t: "report"; epoch: number; posMs: number; bufferMs: number }
   /** A chat message to everybody; [cid] is the device's own id for it, sent back with it; [reply] the number of the message it answers (protocol 12). Protocol 10. */
-  | { t: "chat"; text: string; cid?: string; reply?: number }
+  | { t: "chat"; text?: string; cid?: string; reply?: number; ct?: string; pv?: string }
   /** A reaction, [n] times in a row (1 when absent): one of the names in [REACTIONS], or an emoji. Not kept. Protocol 10. */
   | { t: "react"; e: string; n?: number }
   /** This member's reaction to the chat message [id]: a name of [REACTIONS] or an emoji, null takes it away. Protocol 12. */
   | { t: "chat.react"; id: number; e: string | null }
   /** What the device has got of the chat: [delivered] the last message that reached it, [read] the last one it showed. Protocol 12. */
-  | { t: "chat.receipt"; delivered?: number; read?: number };
+  | { t: "chat.receipt"; delivered?: number; read?: number }
+  /** Asks for up to [n] (50 when absent, at most 100) of the chat messages older than number [id]; answered with `chat.page` to this socket only. Protocol 14. */
+  | { t: "chat.before"; id: number; n?: number };
 
 // ---- server -> client ----
 
@@ -247,7 +260,9 @@ export type ServerMessage =
   /** A new chat message, sent to everybody including its sender. Protocol 10. */
   | { t: "chat"; msg: ChatMessage }
   /** The room's last chat messages, oldest first, sent to a device right after the state it gets on joining. Protocol 10. [receipts] since 12. */
-  | { t: "chat.history"; msgs: ChatMessage[]; receipts?: Record<string, ChatReceipt> }
+  | { t: "chat.history"; msgs: ChatMessage[]; receipts?: Record<string, ChatReceipt>; more?: boolean }
+  /** Older chat messages the device asked for with `chat.before`, oldest first; [more] says whether the room keeps messages from before them. Protocol 14. */
+  | { t: "chat.page"; before: number; msgs: ChatMessage[]; more: boolean }
   /** A message changed (somebody reacted to it): the new version of it, to everybody. Protocol 12. */
   | { t: "chat.update"; msg: ChatMessage }
   /** What each member has got of the chat, by public id; sent to everybody when it changes. Protocol 12. */

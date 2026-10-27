@@ -1,0 +1,5 @@
+Longer chat history, and encrypted chat
+- The room's chat now keeps messages for 180 days. Scroll up to the top to read older ones. A room with a chat stays open after the music stops, until its last message is 180 days old.
+- The room's owner can turn on end-to-end encryption in the room sheet. Only people with the new invitation link can read the chat, not even the server. It deletes the messages so far, cannot be turned off, and everyone needs the latest version of the app to stay in that room.
+- Notifications of an encrypted room still show the start of a message, opened on your own device.
+- The keyboard now stays up when you touch a message, drag it to reply, or tap a quick reaction while writing. Touching empty space still puts it away.

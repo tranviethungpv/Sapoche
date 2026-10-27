@@ -1,0 +1,5 @@
+Lịch sử chat lâu hơn và chat mã hoá
+- Chat của phòng giờ giữ tin nhắn 180 ngày. Cuộn lên đầu để đọc tin cũ hơn. Phòng có chat vẫn mở sau khi nhạc dừng, cho đến khi tin cuối cùng đủ 180 ngày.
+- Chủ phòng có thể bật mã hoá đầu cuối trong bảng phòng. Chỉ người có liên kết mời mới đọc được chat, kể cả máy chủ cũng không đọc được. Bật sẽ xoá các tin nhắn đến lúc đó, không thể tắt lại, và mọi người cần bản app mới nhất để ở lại phòng đó.
+- Thông báo của phòng mã hoá vẫn hiện phần đầu tin nhắn, được mở ngay trên máy của bạn.
+- Bàn phím không còn bị ẩn khi bạn chạm vào tin nhắn, vuốt để trả lời hoặc bấm cảm xúc nhanh lúc đang gõ. Chạm vào chỗ trống vẫn ẩn bàn phím.

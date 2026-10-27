@@ -9,6 +9,7 @@ import '../backend.dart';
 import '../models.dart';
 import '../music_models.dart';
 import 'backend_defaults.dart';
+import 'chat_cipher.dart';
 import 'clocks.dart';
 import 'group_session.dart';
 import 'library_store.dart';
@@ -59,6 +60,8 @@ class WebBackend extends BackendDefaults {
     this.region = _usa,
     this.invite,
     this.openChat = false,
+    this.inviteSecret,
+    this.secretsDisk,
     this.onShare,
     this.media,
     this.push,
@@ -116,6 +119,17 @@ class WebBackend extends BackendDefaults {
       seek: (ms) => seek(ms).ignore(),
     );
     push?.opened.listen((room) => _events.add(OpenChatEvent(room)));
+    try {
+      _secrets = {
+        for (final e in (jsonDecode(prefs.getString(_keyEnc) ?? '{}') as Map<String, dynamic>).entries) e.key: e.value as String,
+      };
+    } on Object {
+      // Secrets that cannot be read are none
+    }
+    // A link with a secret in it: the chat of that room can be read from the start
+    final joining = invite;
+    final given = inviteSecret;
+    if (joining != null && given != null && ChatCipher.decodeSecret(given) != null) _keepSecret(joining, given);
     _local.changes.listen((_) {
       _emitState();
       // The player starts right after the queue says it is loaded: tell the screen how it stands once it has
@@ -156,6 +170,26 @@ class WebBackend extends BackendDefaults {
   late final StreamController<BackendEvent> _events;
   late final LocalSession _local;
   var _invited = false;
+
+  /// The secret that came with the link, for the room [invite]; the page takes it out of the address.
+  final String? inviteSecret;
+
+  /// Where the secrets are also kept for the service worker of the page, which opens the previews of notices with them.
+  final LibraryDisk? secretsDisk;
+
+  /// The secrets of the rooms with end-to-end encrypted chat, by room code, as they are written in an invitation link.
+  var _secrets = <String, String>{};
+  static const _keyEnc = 'web.enc';
+
+  /// The chat is worked on in order, as it comes: opening a sealed message takes a moment of the browser's own.
+  Future<void> _chatWork = Future.value();
+
+  void _keepSecret(String room, String secret) {
+    _secrets = {..._secrets, room.toUpperCase(): secret};
+    final json = jsonEncode(_secrets);
+    prefs.setString(_keyEnc, json);
+    secretsDisk?.write(json).ignore();
+  }
 
   /// The link came from a touch on a notice of the chat: into the room, and its chat opens when it is there.
   final bool openChat;
@@ -711,15 +745,59 @@ class WebBackend extends BackendDefaults {
   // ------------------------------------------------------------------ chat and reactions
 
   @override
-  Future<bool> sendChat(String text, String cid, {int? reply}) async {
+  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote}) async {
     _inRoom();
-    return _send(Wire.chat(text, cid, reply: reply));
+    final group = _session?.snapshot;
+    if (group?.state?.enc != true) return _send(Wire.chat(text, cid, reply: reply));
+    // A sealed room: the words go sealed, with what they answer inside; without the secret there is nothing to send
+    final room = _roomCode;
+    final secret = room == null ? null : ChatCipher.decodeSecret(_secrets[room] ?? '');
+    final you = group?.you;
+    if (room == null || secret == null || you == null) return false;
+    final sealed = await ChatCipher.sealMessage(secret, room, you, text, quote);
+    return _send(Wire.chatSealed(sealed.ct, sealed.pv, cid, reply: reply));
+  }
+
+  @override
+  Future<bool> enableEncryption() async {
+    _inRoom();
+    final group = _session?.snapshot;
+    final room = _roomCode;
+    if (group == null || room == null || group.state?.enc == true || group.state?.ownerId != group.you) return false;
+    _keepSecret(room, ChatCipher.encodeSecret(ChatCipher.newSecret()));
+    _emitState();
+    return _send(Wire.roomEncrypt());
+  }
+
+  @override
+  Future<String?> roomSecret() async => _roomCode == null ? null : _secrets[_roomCode];
+
+  @override
+  Future<bool> setRoomSecret(String room, String secret) async {
+    if (ChatCipher.decodeSecret(secret) == null || !RegExp(r'^[A-Za-z0-9]{6}$').hasMatch(room)) return false;
+    _keepSecret(room, secret);
+    _emitState();
+    // The chat shown again, now that it can be read
+    if (room.toUpperCase() == _roomCode) {
+      _chatWork = _chatWork.then((_) async {
+        final log = _chatLog;
+        if (log == null || room.toUpperCase() != _roomCode) return;
+        _events.add(ChatEvent(room: room.toUpperCase(), messages: await _open(room.toUpperCase(), log), replace: true, more: null));
+      });
+    }
+    return true;
   }
 
   @override
   Future<void> reactChat(int id, Reaction? reaction) async {
     _inRoom();
     _send(Wire.chatReact(id, reaction?.wire));
+  }
+
+  @override
+  Future<bool> loadOlderChat(int before) async {
+    _inRoom();
+    return _send(Wire.chatBefore(before));
   }
 
   @override
@@ -734,29 +812,50 @@ class WebBackend extends BackendDefaults {
     _send(Wire.react(reaction.wire, count));
   }
 
+  /// [messages] as the room sent them, with the words of sealed ones read when this device has the room's secret.
+  Future<List<ChatMessage>> _open(String room, List<ChatMessage> messages) async {
+    if (messages.every((m) => m.ct == null)) return messages;
+    final secret = ChatCipher.decodeSecret(_secrets[room.toUpperCase()] ?? '');
+    return [
+      for (final m in messages)
+        if (m.ct == null)
+          m
+        else
+          (secret == null ? null : await ChatCipher.openMessage(secret, room, m)) ?? m.asLocked,
+    ];
+  }
+
   void _onChat(String room, ServerMessage message) {
+    _chatWork = _chatWork.then((_) => _handleChat(room, message)).catchError((Object e) => _note('chat: $e'));
+  }
+
+  Future<void> _handleChat(String room, ServerMessage message) async {
+    // Left, or in another room, while the message was being opened
     switch (message) {
       case ChatHistoryMessage():
         final kept = message.messages.length > _chatKept
             ? message.messages.sublist(message.messages.length - _chatKept)
             : message.messages;
         _chatLog = kept;
-        _events.add(ChatEvent(room: room, messages: kept, replace: true, receipts: message.receipts));
+        _events.add(ChatEvent(room: room, messages: await _open(room, kept), replace: true, receipts: message.receipts, more: message.more));
         if (kept.isNotEmpty) _acknowledge(kept.last);
         if (_chatWhenReady == room) {
           _chatWhenReady = null;
           _events.add(OpenChatEvent(room));
         }
+      case ChatPageMessage():
+        // Not kept here: the screen holds the pages it asked for, and the log is only what a returning screen is given
+        _events.add(ChatEvent(room: room, messages: await _open(room, message.messages), replace: false, older: true, more: message.more));
       case ChatMessageReceived():
         final log = [...?_chatLog, message.message];
         _chatLog = log.length > _chatKept ? log.sublist(log.length - _chatKept) : log;
-        _events.add(ChatEvent(room: room, messages: [message.message], replace: false));
+        _events.add(ChatEvent(room: room, messages: await _open(room, [message.message]), replace: false));
         _acknowledge(message.message);
       case ChatUpdateMessage():
         final log = _chatLog;
         if (log == null) return;
         _chatLog = [for (final m in log) m.id == message.message.id ? message.message : m];
-        _events.add(ChatEvent(room: room, messages: [message.message], replace: false));
+        _events.add(ChatEvent(room: room, messages: await _open(room, [message.message]), replace: false));
       case ChatReceiptsMessage():
         _events.add(ChatEvent(room: room, messages: const [], replace: false, receipts: message.receipts));
       case ReactMessage():
@@ -1296,6 +1395,8 @@ class WebBackend extends BackendDefaults {
       ownerId: state?.ownerId,
       guestControl: GuestControl.parse(state?.guestControl),
       roomAutoplay: state?.autoplay,
+      encrypted: inRoom && state?.enc == true,
+      encryptionKey: inRoom && _secrets.containsKey(_roomCode),
       // Outside a room this device's own; in one the room's, or null on a server too old to have it
       shuffle: inRoom ? state?.shuffle : local.shuffle,
     );
@@ -1321,6 +1422,8 @@ class WebBackend extends BackendDefaults {
       snapshot.guestControl,
       snapshot.roomAutoplay,
       snapshot.shuffle,
+      snapshot.encrypted,
+      snapshot.encryptionKey,
       snapshot.trimMs,
       snapshot.playbackSpeed,
       snapshot.video,

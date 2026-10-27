@@ -68,18 +68,24 @@ class AvatarEvent extends BackendEvent {
 }
 
 /// Chat messages of room [room]: everything it keeps when [replace], else new ones or ones that changed (somebody
-/// reacted to them). [receipts], by member, is what each has got of the chat when that changed, else null.
+/// reacted to them). [receipts], by member, is what each has got of the chat when that changed, else null. [older]: a
+/// page of messages from before the ones shown, asked for with [Backend.loadOlderChat]. [more]: the room keeps messages
+/// from before the oldest shown; null when the event says nothing about it.
 class ChatEvent extends BackendEvent {
   const ChatEvent({
     required this.room,
     required this.messages,
     required this.replace,
     this.receipts,
+    this.older = false,
+    this.more,
   });
   final String room;
   final List<ChatMessage> messages;
   final bool replace;
   final Map<String, ChatReceipt>? receipts;
+  final bool older;
+  final bool? more;
 }
 
 /// Member [by] sent a reaction, [count] taps of it; [reaction] is null for one this app does not know. [late] when it
@@ -170,10 +176,24 @@ abstract class Backend {
 
   /// Writes [text] to the room's chat, as an answer to message number [reply] when it has one; [cid] comes back with
   /// it once the room has it. False when there is no connection to send it on.
-  Future<bool> sendChat(String text, String cid, {int? reply});
+  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote});
+
+  /// Owner only: turns on end-to-end encryption of the room's chat for good. A secret is made on this device and the
+  /// chat so far is deleted. False when this device cannot (it does not own the room, or the room is sealed already).
+  Future<bool> enableEncryption();
+
+  /// The secret of the room, as it is written in an invitation link; null when this device has none.
+  Future<String?> roomSecret();
+
+  /// Keeps [secret] (as written in an invitation link) as the key to the chat of [room]; false when it is not one.
+  Future<bool> setRoomSecret(String room, String secret);
 
   /// Gives the chat message [id] this device's [reaction], or ([reaction] null) takes it away.
   Future<void> reactChat(int id, Reaction? reaction);
+
+  /// Asks the room for the chat messages older than number [before]; they come as a [ChatEvent] with `older`. False
+  /// when there is no connection to ask on.
+  Future<bool> loadOlderChat(int before);
 
   /// The chat is on screen and its messages up to number [upTo] have been looked at.
   Future<void> readChat(int upTo);
@@ -481,6 +501,8 @@ class NativeBackend implements Backend {
       'chat' => ChatEvent(
         room: json['room'] as String,
         replace: json['replace'] as bool? ?? false,
+        older: json['older'] as bool? ?? false,
+        more: json['more'] as bool?,
         messages: [
           for (final e in json['messages'] as List<dynamic>)
             ChatMessage.fromJson(e as Map<String, dynamic>),
@@ -579,17 +601,45 @@ class NativeBackend implements Backend {
       _call<void>('setAvatar', {'data': base64});
 
   @override
-  Future<bool> sendChat(String text, String cid, {int? reply}) async =>
+  Future<bool> sendChat(
+    String text,
+    String cid, {
+    int? reply,
+    ChatQuote? quote,
+  }) async =>
       await _call<bool>('sendChat', {
         'text': text,
         'cid': cid,
         'reply': ?reply,
+        if (quote != null)
+          'quote': {
+            'id': quote.id,
+            'by': quote.by,
+            'name': quote.name,
+            'text': quote.text,
+          },
       }) ??
+      false;
+
+  @override
+  Future<bool> enableEncryption() async =>
+      await _call<bool>('enableEncryption') ?? false;
+
+  @override
+  Future<String?> roomSecret() => _call<String?>('roomSecret');
+
+  @override
+  Future<bool> setRoomSecret(String room, String secret) async =>
+      await _call<bool>('setRoomSecret', {'room': room, 'secret': secret}) ??
       false;
 
   @override
   Future<void> reactChat(int id, Reaction? reaction) =>
       _call('reactChat', {'id': id, 'e': reaction?.wire});
+
+  @override
+  Future<bool> loadOlderChat(int before) async =>
+      await _call<bool>('loadOlderChat', {'before': before}) ?? false;
 
   @override
   Future<void> readChat(int upTo) => _call('readChat', {'upTo': upTo});

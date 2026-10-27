@@ -244,7 +244,23 @@ final class Bridge {
         guard own || web else { return }
         let code = url.lastPathComponent.trimmingCharacters(in: .whitespaces).uppercased()
         guard Self.inviteCode(code) else { return }
+        // The secret of a room with encrypted chat is in the link, after a # (the server never sees it) or in `k`
+        if let secret = Self.secretOf(url) { _ = acceptSecret(code, secret) }
         if sink != nil { emit(UiJson.invite(code)) } else { pendingInvite = code }
+    }
+
+    /// The secret written in an invitation link: `#k=...`, or `?k=...`.
+    private static func secretOf(_ url: URL) -> String? {
+        let fragment = (url.fragment ?? "").split(separator: "&").first { $0.hasPrefix("k=") }.map { String($0.dropFirst(2)) }
+        return fragment ?? URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "k" }?.value
+    }
+
+    /// Keeps the [secret] (as written in an invitation link) for room [room] and lets the chat be read; false when it is not one.
+    private func acceptSecret(_ room: String, _ secret: String) -> Bool {
+        guard let bytes = ChatCipher.decodeSecret(secret), Self.inviteCode(room.uppercased()) else { return false }
+        controller.secrets.save(bytes, for: room)
+        controller.roomSecretChanged(room)
+        return true
     }
 
     /// Brings the suggestions up to date when the person opens the app, at most twice an hour and not on a metered
@@ -685,10 +701,27 @@ final class Bridge {
             controller.requestRoomAutoplay(bool("on"))
         case "sendChat":
             try requireRoom()
-            return controller.sendChat(string("text"), cid: string("cid"), reply: args["reply"] == nil ? nil : int64("reply"))
+            // What the message answers, as the screen shows it: a sealed room seals it with the words
+            var quote: ChatQuote?
+            if let q = args["quote"] as? [String: Any], let id = (q["id"] as? NSNumber)?.int64Value, let by = q["by"] as? String,
+               let name = q["name"] as? String, let text = q["text"] as? String {
+                quote = ChatQuote(id: id, by: by, name: name, text: text)
+            }
+            return controller.sendChat(string("text"), cid: string("cid"), reply: args["reply"] == nil ? nil : int64("reply"), quote: quote)
+        case "enableEncryption":
+            try requireRoom()
+            return controller.enableEncryption()
+        case "roomSecret":
+            try requireRoom()
+            return controller.roomSecret()
+        case "setRoomSecret":
+            return acceptSecret(string("room"), string("secret"))
         case "reactChat":
             try requireRoom()
             controller.reactToChat(int64("id"), args["e"] as? String)
+        case "loadOlderChat":
+            try requireRoom()
+            return controller.loadOlderChat(before: int64("before"))
         case "readChat":
             try requireRoom()
             controller.readChat(upTo: int64("upTo"))

@@ -20,6 +20,7 @@ class RoomState {
     this.guestControl = 'all',
     this.autoplay,
     this.shuffle,
+    this.enc = false,
   });
 
   final List<QueueEntry> queue;
@@ -40,6 +41,9 @@ class RoomState {
   /// Null when the server is older than protocol 9 (autoplay) or 11 (shuffle).
   final bool? autoplay;
   final bool? shuffle;
+
+  /// The chat is end-to-end encrypted (protocol 15): the room passes on sealed messages only.
+  final bool enc;
 
   QueueEntry? get current =>
       index >= 0 && index < queue.length ? queue[index] : null;
@@ -63,6 +67,7 @@ class RoomState {
     guestControl: guestControl,
     autoplay: autoplay,
     shuffle: shuffle,
+    enc: enc,
   );
 
   factory RoomState.fromJson(Map<String, dynamic> json) => RoomState(
@@ -81,6 +86,7 @@ class RoomState {
     guestControl: json['guestControl'] as String? ?? 'all',
     autoplay: json['autoplay'] as bool?,
     shuffle: json['shuffle'] as bool?,
+    enc: json['enc'] as bool? ?? false,
   );
 }
 
@@ -191,9 +197,20 @@ class ChatMessageReceived extends ServerMessage {
 }
 
 class ChatHistoryMessage extends ServerMessage {
-  const ChatHistoryMessage(this.messages, this.receipts);
+  const ChatHistoryMessage(this.messages, this.receipts, {this.more = false});
   final List<ChatMessage> messages;
   final Map<String, ChatReceipt> receipts;
+
+  /// The room keeps messages from before these.
+  final bool more;
+}
+
+/// Older messages the device asked for with [Wire.chatBefore], oldest first. Protocol 14.
+class ChatPageMessage extends ServerMessage {
+  const ChatPageMessage(this.before, this.messages, this.more);
+  final int before;
+  final List<ChatMessage> messages;
+  final bool more;
 }
 
 /// A message changed, as somebody reacted to it: its new version.
@@ -283,7 +300,15 @@ ServerMessage? parseServerMessage(String text) {
       'chat.history' => ChatHistoryMessage([
         for (final e in obj['msgs'] as List<dynamic>)
           ChatMessage.fromJson(e as Map<String, dynamic>),
-      ], _receipts(obj['receipts'])),
+      ], _receipts(obj['receipts']), more: obj['more'] as bool? ?? false),
+      'chat.page' => ChatPageMessage(
+        (obj['before'] as num?)?.toInt() ?? 0,
+        [
+          for (final e in obj['msgs'] as List<dynamic>)
+            ChatMessage.fromJson(e as Map<String, dynamic>),
+        ],
+        obj['more'] as bool? ?? false,
+      ),
       'chat.update' => ChatUpdateMessage(
         ChatMessage.fromJson(obj['msg'] as Map<String, dynamic>),
       ),
@@ -334,7 +359,16 @@ abstract final class Wire {
   /// [create] says what the device expects: true for a code it just made, false for one it was given, so that a
   /// mistyped code is refused instead of opening an empty room. Null leaves it out.
   static String join(String clientId, String name, {bool? create}) =>
-      _msg('join', {'clientId': clientId, 'name': name, 'create': ?create});
+      // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15
+      _msg('join', {'clientId': clientId, 'name': name, 'create': ?create, 'caps': ['e2ee']});
+
+  /// Owner only: turns on end-to-end encryption of the chat, for good; the chat so far is deleted. Protocol 15.
+  static String roomEncrypt() => _msg('room.encrypt');
+
+  /// A sealed chat message (see ChatCipher.sealMessage); [reply] is the number of the message it answers, which the room
+  /// may see. Protocol 15.
+  static String chatSealed(String ct, String pv, String cid, {int? reply}) =>
+      _msg('chat', {'ct': ct, 'pv': pv, 'cid': cid, 'reply': ?reply});
 
   static String bye() => _msg('bye');
   static String kick(String id) => _msg('kick', {'id': id});
@@ -359,6 +393,8 @@ abstract final class Wire {
       _msg('chat', {'text': text, 'cid': cid, 'reply': ?reply});
   static String chatReact(int id, String? e) =>
       _msg('chat.react', {'id': id, 'e': e});
+  static String chatBefore(int id, {int? n}) =>
+      _msg('chat.before', {'id': id, 'n': ?n});
   static String chatReceipt({int? delivered, int? read}) =>
       _msg('chat.receipt', {'delivered': ?delivered, 'read': ?read});
   static String react(String e, int n) => _msg('react', {'e': e, 'n': n});

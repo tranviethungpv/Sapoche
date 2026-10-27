@@ -803,15 +803,50 @@ class FakeBackend implements Backend {
   bool chatConnected = true;
 
   @override
-  Future<bool> sendChat(String text, String cid, {int? reply}) async {
+  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote}) async {
     await _record(reply == null ? 'sendChat $text' : 'sendChat $text reply $reply');
     lastChatCid = cid;
+    lastQuote = quote;
     return chatConnected;
+  }
+
+  /// The quote that went with the last message sent, as a sealed room needs it.
+  ChatQuote? lastQuote;
+
+  /// What the room's secret is, as the invitation link writes it; null where this device has none.
+  String? secret;
+
+  /// Whether this device may turn encryption on (it owns the room).
+  bool mayEncrypt = true;
+
+  @override
+  Future<bool> enableEncryption() async {
+    await _record('enableEncryption');
+    if (!mayEncrypt) return false;
+    secret = 'S' * 43;
+    return true;
+  }
+
+  @override
+  Future<String?> roomSecret() async => secret;
+
+  @override
+  Future<bool> setRoomSecret(String room, String secret) async {
+    await _record('setRoomSecret $room $secret');
+    if (secret.length != 43) return false;
+    this.secret = secret;
+    return true;
   }
 
   @override
   Future<void> reactChat(int id, Reaction? reaction) =>
       _record('reactChat $id ${reaction?.wire}');
+
+  @override
+  Future<bool> loadOlderChat(int before) async {
+    await _record('loadOlderChat $before');
+    return chatConnected;
+  }
 
   @override
   Future<void> readChat(int upTo) => _record('readChat $upTo');
@@ -844,6 +879,8 @@ RoomSnapshot sampleRoom({
   GuestControl guestControl = GuestControl.all,
   bool? roomAutoplay,
   bool? shuffle,
+  bool encrypted = false,
+  bool encryptionKey = false,
 
   /// Outside a room: the personal queue.
   bool local = false,
@@ -864,6 +901,8 @@ RoomSnapshot sampleRoom({
   guestControl: guestControl,
   roomAutoplay: roomAutoplay,
   shuffle: shuffle,
+  encrypted: encrypted,
+  encryptionKey: encryptionKey,
   members:
       members ??
       const [

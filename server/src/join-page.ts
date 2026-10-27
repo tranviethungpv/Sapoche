@@ -73,7 +73,16 @@ export function joinPage(code: string, language: keyof typeof TEXTS = "en"): str
     if (navigator.clipboard) navigator.clipboard.writeText("${code}");
     this.textContent = ${JSON.stringify(t.copied)};
   };
-  if (/Android/i.test(navigator.userAgent)) setTimeout(function () { location.href = "${intent}"; }, 300);
+  // A room whose chat is end-to-end encrypted has its secret in the link after a #, which only this page can see: it is
+  // handed on to the app and to the web app the same way, and goes nowhere else
+  var secret = /[#&]k=([A-Za-z0-9_-]{43})(?:&|$)/.exec(location.hash);
+  var intent = "${intent}";
+  if (secret) {
+    intent = intent.replace("#Intent", "?k=" + secret[1] + "#Intent");
+    document.querySelector("a.open").href = intent;
+    document.querySelector("a.web").href = "/?join=${code}#k=" + secret[1];
+  }
+  if (/Android/i.test(navigator.userAgent)) setTimeout(function () { location.href = intent; }, 300);
 </script>
 </body>
 </html>

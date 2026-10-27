@@ -53,6 +53,8 @@ data class RoomState(
     val autoplay: Boolean? = null,
     /** Whether what is still to come is mixed and stays mixed as songs are added; null when the server is older than protocol 11. */
     val shuffle: Boolean? = null,
+    /** The chat is end-to-end encrypted: the room passes on sealed messages only (see [ChatCipher]). Protocol 15. */
+    val enc: Boolean = false,
 ) {
     val current: QueueItem? get() = queue.getOrNull(index)
 }
@@ -86,6 +88,12 @@ data class ChatMessage(
     val re: ChatQuote? = null,
     /** Reactions to this message by the public id of each member who gave one; a name of the room's reactions or an emoji. Protocol 12. */
     val rx: Map<String, String> = emptyMap(),
+    /** In a sealed room: the words sealed with the room's secret ([text] is empty until [ChatCipher.openMessage] reads them). Protocol 15. */
+    val ct: String? = null,
+    /** The start of the words sealed apart, for a notice. Protocol 15. */
+    val pv: String? = null,
+    /** Set by the app, not the room: a sealed message that this device has no secret to read, or one that does not open with it. */
+    val locked: Boolean = false,
 )
 
 /** What a reply shows of the message it answers. */
@@ -140,9 +148,17 @@ sealed interface ServerMessage {
     @Serializable
     data class Chat(val msg: ChatMessage) : ServerMessage
 
-    /** The room's last chat messages, oldest first, sent right after the state on joining. Protocol 10. */
+    /** The room's last chat messages, oldest first, sent right after the state on joining. [more]: it keeps older ones. Protocol 10. */
     @Serializable
-    data class ChatHistory(val msgs: List<ChatMessage>, val receipts: Map<String, ChatReceipt> = emptyMap()) : ServerMessage
+    data class ChatHistory(
+        val msgs: List<ChatMessage>,
+        val receipts: Map<String, ChatReceipt> = emptyMap(),
+        val more: Boolean = false,
+    ) : ServerMessage
+
+    /** Older messages this device asked for with [Protocol.chatBefore], oldest first; [more]: the room keeps ones from before them. Protocol 14. */
+    @Serializable
+    data class ChatPage(val before: Long, val msgs: List<ChatMessage>, val more: Boolean = false) : ServerMessage
 
     /** A message changed, as somebody reacted to it: its new version. Protocol 12. */
     @Serializable
@@ -179,6 +195,7 @@ object Protocol {
                 "avatar" -> json.decodeFromJsonElement<ServerMessage.Avatar>(obj)
                 "chat" -> json.decodeFromJsonElement<ServerMessage.Chat>(obj)
                 "chat.history" -> json.decodeFromJsonElement<ServerMessage.ChatHistory>(obj)
+                "chat.page" -> json.decodeFromJsonElement<ServerMessage.ChatPage>(obj)
                 "chat.update" -> json.decodeFromJsonElement<ServerMessage.ChatUpdate>(obj)
                 "chat.receipts" -> json.decodeFromJsonElement<ServerMessage.ChatReceipts>(obj)
                 "react" -> json.decodeFromJsonElement<ServerMessage.React>(obj)
@@ -202,6 +219,19 @@ object Protocol {
         put("clientId", clientId)
         put("name", name)
         if (create != null) put("create", create)
+        // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15
+        put("caps", buildJsonArray { add("e2ee") })
+    }
+
+    /** Owner only: turns on end-to-end encryption of the chat, for good; the chat so far is deleted. Protocol 15. */
+    fun roomEncrypt() = msg("room.encrypt")
+
+    /** A sealed chat message (see [ChatCipher.sealMessage]); [reply] is the number of the message it answers, which the room may see. Protocol 15. */
+    fun chatSealed(ct: String, pv: String, cid: String, reply: Long? = null) = msg("chat") {
+        put("ct", ct)
+        put("pv", pv)
+        put("cid", cid)
+        if (reply != null) put("reply", reply)
     }
 
     /** Leaving on purpose, as opposed to a connection that dropped. */
@@ -244,6 +274,12 @@ object Protocol {
     fun chatReact(id: Long, e: String?) = msg("chat.react") {
         put("id", id)
         put("e", e)
+    }
+
+    /** Asks for up to [n] (the room's 50 when absent) of the chat messages older than number [id]. Protocol 14. */
+    fun chatBefore(id: Long, n: Int? = null) = msg("chat.before") {
+        put("id", id)
+        if (n != null) put("n", n)
     }
 
     /** How far this device has got in the chat: [delivered] the last message that reached it, [read] the last one it showed. Protocol 12. */

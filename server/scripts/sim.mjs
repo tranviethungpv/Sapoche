@@ -122,6 +122,8 @@ async function main() {
   }
   if (process.env.SIM_ONLY === "threads") {
     await chatThreadsSection();
+    await chatArchiveSection();
+    await encryptionSection();
     await autoplayLaneSection();
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);
@@ -286,6 +288,8 @@ async function main() {
   await avatarSection();
   await chatSection();
   await chatThreadsSection();
+  await chatArchiveSection();
+  await encryptionSection();
   await autoplayLaneSection();
   if (process.env.SIM_VAPID_PUBLIC) await pushSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
@@ -889,17 +893,45 @@ async function lifetimeSection() {
   const bare = await newCode();
   const first = new Client(bare, "b-id", "Bee");
   await first.join(true);
-  first.send({ t: "chat", text: "anyone?" });
+  first.send({ t: "chat", text: "anyone?", cid: "c-b" });
   await first.waitFor((m) => m.t === "chat");
   first.close();
   await sleep(500);
   check("an empty room with nothing queued is kept for a moment", (await roomInfo(bare)).exists === true);
   await sleep(1800);
-  check("and is gone after its short lifetime", (await roomInfo(bare)).exists === false);
+  // The short life of a room without songs is over, but its chat is not: the room stays for as long as the chat does
+  check("a room with a chat outlives that short lifetime", (await roomInfo(bare)).exists === true);
+  const back = new Client(bare, "b-id", "Bee");
+  await back.join(false);
+  const remembered = await back.waitFor((m) => m.t === "chat.history");
+  check("and still has its chat when somebody comes back", remembered.msgs.map((m) => m.text).join() === "anyone?");
+  back.close();
+  // Four seconds after the last message (CHAT_KEEP_MS), once the room is empty and its short lifetime is over again
+  await sleep(5200);
+  check("and is gone when the chat is old", (await roomInfo(bare)).exists === false);
   const again = new Client(bare, "b-id", "Bee");
   await again.join(true);
   check("its chat went with it", (await again.waitFor((m) => m.t === "chat.history")).msgs.length === 0);
   again.close();
+
+  // At most CHAT_KEEP_MAX (20 here) messages are kept
+  const busy = await newCode();
+  const talker = new Client(busy, "t-id", "Tee");
+  await talker.join(true);
+  for (let half = 0; half < 2; half++) {
+    for (let i = 1; i <= 15; i++) talker.send({ t: "chat", text: `m${half * 15 + i}` });
+    for (let i = 0; i < 15; i++) await talker.waitFor((m) => m.t === "chat");
+    await sleep(800);
+  }
+  const late = new Client(busy, "l-id", "Elle");
+  await late.join(false);
+  const capped = await late.waitFor((m) => m.t === "chat.history");
+  check("a room keeps no more messages than it is set to", capped.msgs.length === 20 && capped.msgs[0].text === "m11", JSON.stringify(capped.msgs.map((m) => m.id)));
+  check("and says there are none before them", capped.more === false);
+  late.send({ t: "chat", text: "next" });
+  check("the numbers go on after the ones let go", (await late.waitFor((m) => m.t === "chat")).msg.id === 31);
+  talker.close();
+  late.close();
 
   const kept = await newCode();
   const second = new Client(kept, "k-id", "Kay");
@@ -1330,6 +1362,143 @@ async function chatThreadsSection() {
   ann.inbox.length = 0;
   for (const bad of [{ read: "5" }, { read: -2 }, { delivered: 1.5 }, {}]) cara.send({ t: "chat.receipt", ...bad });
   check("a bad number says nothing", await ann.stays((m) => m.t === "chat.receipts", 300));
+  [ann, bob, cara].forEach((x) => x.close());
+}
+
+/** Reading further back than the last messages (protocol 14). */
+async function chatArchiveSection() {
+  console.log("Chat further back");
+  const code = await newCode();
+  const ann = new Client(code, "arc-an", "Ann");
+  await ann.join(true);
+  await ann.waitFor((m) => m.t === "chat.history");
+  // Ten at a time, under the limit of twenty messages a second
+  for (let batch = 0; batch < 12; batch++) {
+    for (let i = 1; i <= 10; i++) ann.send({ t: "chat", text: `n${batch * 10 + i}` });
+    for (let i = 0; i < 10; i++) await ann.waitFor((m) => m.t === "chat");
+    await sleep(550);
+  }
+  const bob = new Client(code, "arc-bo", "Bob");
+  await bob.join(false);
+  const history = await bob.waitFor((m) => m.t === "chat.history");
+  check("a device joining is given the last hundred", history.msgs.length === 100 && history.msgs[0].id === 21 && history.msgs.at(-1).id === 120);
+  check("and told there are older ones", history.more === true);
+
+  bob.send({ t: "chat.before", id: 21 });
+  const page = await bob.waitFor((m) => m.t === "chat.page");
+  check("the older ones come by page, oldest first", page.before === 21 && page.msgs.length === 20 && page.msgs[0].id === 1 && page.msgs.at(-1).id === 20, JSON.stringify(page.msgs.map((m) => m.id)));
+  check("the last page says it is the last", page.more === false);
+  check("a page goes to the device that asked only", await ann.stays((m) => m.t === "chat.page", 300));
+
+  bob.send({ t: "chat.before", id: 121, n: 20 });
+  const small = await bob.waitFor((m) => m.t === "chat.page");
+  check("a page can be asked smaller", small.msgs.length === 20 && small.msgs[0].id === 101 && small.more === true);
+  bob.send({ t: "chat.before", id: 121, n: 100000 });
+  check("and not bigger than a hundred", (await bob.waitFor((m) => m.t === "chat.page")).msgs.length === 100);
+  bob.send({ t: "chat.before", id: "x" });
+  bob.send({ t: "chat.before", id: 1 });
+  check("nothing before the first message is an empty last page", (await bob.waitFor((m) => m.t === "chat.page")).msgs.length === 0);
+
+  // An answer to, and a reaction on, a message that is far back
+  bob.send({ t: "chat", text: "that was long ago", reply: 5 });
+  const answer = await ann.waitFor((m) => m.t === "chat" && m.msg.text === "that was long ago");
+  check("a message far back can be answered", answer.msg.re?.id === 5 && answer.msg.re.text === "n5", JSON.stringify(answer.msg.re));
+  bob.send({ t: "chat.react", id: 5, e: "heart" });
+  const update = await ann.waitFor((m) => m.t === "chat.update");
+  check("and reacted to", update.msg.id === 5 && update.msg.rx[pid("arc-bo")] === "heart");
+  bob.send({ t: "chat.before", id: 6, n: 1 });
+  const reread = await bob.waitFor((m) => m.t === "chat.page");
+  check("the reaction is kept with it", reread.msgs[0].id === 5 && reread.msgs[0].rx[pid("arc-bo")] === "heart");
+  [ann, bob].forEach((x) => x.close());
+}
+
+/** End-to-end encryption of a room's chat (protocol 15): the room only passes sealed messages on. */
+async function encryptionSection() {
+  console.log("Chat: end-to-end encryption");
+  const code = await newCode();
+  const e2ee = ["e2ee"];
+  const joinWith = async (client, create) => {
+    await client.opened;
+    client.send({ t: "join", clientId: client.clientId, name: client.name, create, caps: e2ee });
+    return client.waitFor((m) => m.t === "state");
+  };
+  const ann = new Client(code, "enc-an", "Ann");
+  await joinWith(ann, true);
+  await ann.waitFor((m) => m.t === "chat.history");
+  const bob = new Client(code, "enc-bo", "Bob");
+  await joinWith(bob, false);
+  await bob.waitFor((m) => m.t === "chat.history");
+  // An app from before sealed chat, in the same room
+  const old = new Client(code, "enc-ol", "Old");
+  await old.join(false);
+  await old.waitFor((m) => m.t === "chat.history");
+
+  ann.send({ t: "chat", text: "in the clear" });
+  await all([ann, bob], (x) => x.waitFor((m) => m.t === "chat"));
+  check("a room is not sealed unless its owner says so", (await roomInfo(code)).enc === undefined);
+
+  bob.send({ t: "room.encrypt" });
+  check("only the owner can turn encryption on", (await bob.waitFor((m) => m.t === "error")).code === "forbidden");
+
+  ann.send({ t: "room.encrypt" });
+  const state = await bob.waitFor((m) => m.t === "state" && m.state.enc === true);
+  check("the owner turns it on and everybody is told in the state", state.state.enc === true);
+  const wiped = await bob.waitFor((m) => m.t === "chat.history");
+  check("the chat written in the clear goes", wiped.msgs.length === 0 && wiped.more === false);
+  check("and an app that cannot read sealed chat is told to update and let go", (await old.waitFor((m) => m.t === "error" && m.code === "needs_update")).code === "needs_update" && (await old.closed) === 4005);
+  check("the room's info says it is sealed", (await roomInfo(code)).enc === true);
+
+  const sealed = "AQE" + "A".repeat(60);
+  const preview = "AQE" + "B".repeat(30);
+  bob.send({ t: "chat", ct: sealed, pv: preview, cid: "s-1" });
+  const got = await ann.waitFor((m) => m.t === "chat");
+  check("a sealed message is passed on as it is, with nothing to read", got.msg.ct === sealed && got.msg.pv === preview && got.msg.text === "" && got.msg.id === 1 && got.msg.by === pid("enc-bo") && got.msg.cid === "s-1", JSON.stringify(got));
+  bob.send({ t: "chat", text: "still in the clear" });
+  bob.send({ t: "chat", ct: "not base64url!" });
+  bob.send({ t: "chat", ct: "A".repeat(4097) });
+  bob.send({ t: "chat", ct: sealed, pv: "A".repeat(601) });
+  bob.send({ t: "chat", ct: 42 });
+  check("words in the clear, or sealed ones that are not, or too long, are ignored", await ann.stays((m) => m.t === "chat", 400));
+
+  ann.send({ t: "chat", ct: sealed, reply: 1 });
+  const answer = await bob.waitFor((m) => m.t === "chat" && m.msg.id === 2);
+  check("a sealed answer carries no quote: the quote is inside", answer.msg.re === undefined && answer.msg.ct === sealed);
+
+  bob.send({ t: "chat.react", id: 2, e: "heart" });
+  const update = await ann.waitFor((m) => m.t === "chat.update");
+  check("a reaction to a sealed message works and the message stays sealed", update.msg.rx[pid("enc-bo")] === "heart" && update.msg.ct === sealed);
+
+  const cara = new Client(code, "enc-ca", "Cara");
+  await joinWith(cara, false);
+  const history = await cara.waitFor((m) => m.t === "chat.history");
+  check("whoever joins later is given the sealed messages", history.msgs.map((m) => m.id).join() === "1,2" && history.msgs[0].ct === sealed && history.msgs[0].text === "");
+  cara.send({ t: "chat.before", id: 2 });
+  check("and can read further back as before", (await cara.waitFor((m) => m.t === "chat.page")).msgs[0].ct === sealed);
+
+  const late = new Client(code, "enc-la", "Late");
+  await late.opened;
+  late.send({ t: "join", clientId: "enc-la", name: "Late", create: false });
+  check("a device that cannot read sealed chat cannot join a sealed room", (await late.waitFor((m) => m.t === "error")).code === "needs_update" && (await late.closed) === 4005);
+
+  ann.send({ t: "room.encrypt" });
+  check("turning it on again changes nothing", await bob.stays((m) => m.t === "chat.history" || m.t === "state", 400));
+
+  if (process.env.SIM_VAPID_PUBLIC) {
+    const phone = pushDevice();
+    await phone.listening;
+    ann.send({ t: "push.set", sub: phone.subscription(), room: code });
+    await sleep(400);
+    bob.send({ t: "chat", ct: sealed, pv: preview });
+    await ann.waitFor((m) => m.t === "chat" && m.msg.id === 3);
+    await sleep(500);
+    const notice = phone.received.at(-1)?.message;
+    check("a notice of a sealed message carries the sealed preview, who wrote it, and no words", notice?.pv === preview && notice.by === pid("enc-bo") && notice.text === undefined && notice.name === "Bob", JSON.stringify(notice));
+    bob.send({ t: "chat", ct: sealed });
+    await ann.waitFor((m) => m.t === "chat" && m.msg.id === 4);
+    await sleep(400);
+    check("without a preview the notice has neither", phone.received.at(-1).message.pv === undefined && phone.received.at(-1).message.text === undefined);
+    phone.close();
+  }
   [ann, bob, cara].forEach((x) => x.close());
 }
 

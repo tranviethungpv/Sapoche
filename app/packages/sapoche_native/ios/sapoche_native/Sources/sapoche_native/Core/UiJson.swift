@@ -26,6 +26,9 @@ enum UiJson {
             "ownerId": (inRoom ? state?.ownerId : nil) ?? NSNull(),
             "guestControl": inRoom ? state?.guestControl ?? "all" : "all",
             "roomAutoplay": (inRoom ? state?.autoplay : nil) ?? NSNull(),
+            // The chat is end-to-end encrypted, and whether this device has the secret to read it
+            "encrypted": inRoom && state?.enc == true,
+            "encryptionKey": inRoom && view.sealedKey,
             // Outside a room this device's own; in one the room's, or null on a server too old to have it
             "shuffle": (inRoom ? state?.shuffle : Optional(local.shuffle)) ?? NSNull(),
             "trimMs": trimMs,
@@ -66,11 +69,13 @@ enum UiJson {
             "type": "chat",
             "room": chat.room,
             "replace": chat.replace,
+            "older": chat.older,
+            "more": chat.more as Any? ?? NSNull(),
             "messages": chat.messages.map { message -> [String: Any] in
                 var quote: Any = NSNull()
                 if let re = message.re { quote = ["id": re.id, "by": re.by, "name": re.name, "text": re.text] as [String: Any] }
                 return ["id": message.id, "by": message.by, "name": message.name, "text": message.text, "at": message.at,
-                        "cid": message.cid ?? NSNull(), "re": quote, "rx": message.rx]
+                        "cid": message.cid ?? NSNull(), "re": quote, "rx": message.rx, "locked": message.locked]
             },
             "receipts": chat.receipts.map { table in
                 table.mapValues { ["d": $0.d, "r": $0.r] as [String: Any] } as [String: Any]

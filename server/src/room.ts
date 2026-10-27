@@ -66,9 +66,19 @@ const MAX_ADD_MANY = 100;
 const MAX_MESSAGES_PER_SECOND = 20;
 /** A chat message is cut to this many characters. */
 const MAX_CHAT_CHARS = 500;
-/** How many of the last chat messages the room keeps for whoever joins later. */
+/** How many of the last chat messages a device is given on joining; older ones it asks for by page. */
 const CHAT_KEPT = 100;
+/** The key the chat was kept under before it had a table (an array of the last [CHAT_KEPT] messages). */
 const CHAT_KEY = "chat";
+/** A chat message is kept this long, and the room with it when nobody comes back: 180 days. */
+const CHAT_KEEP_MS = 180 * 24 * 60 * 60 * 1000;
+/** And no more than this many of them, whichever comes first. */
+const CHAT_KEEP_MAX = 5000;
+/** Most messages one page of older chat holds, and how many it holds when the device does not say. */
+const CHAT_PAGE_MAX = 100;
+const CHAT_PAGE = 50;
+/** Old messages are looked for at most this often while the room is busy. */
+const CHAT_PRUNE_EVERY_MS = 60 * 60 * 1000;
 const RECEIPTS_KEY = "chatReceipts";
 /** A reply shows this many characters of the message it answers. */
 const QUOTE_CHARS = 100;
@@ -83,6 +93,13 @@ const PUSH_PREFIX = "push:";
 const PUSH_FRESH_MS = 12 * 60 * 60 * 1000;
 /** A notice shows this many characters of the message it is about. */
 const PUSH_PREVIEW_CHARS = 120;
+/** The most a sealed message and a sealed preview take, in characters of base64: 500 characters of any script fit. */
+const MAX_SEALED_CHARS = 4096;
+const MAX_SEALED_PREVIEW_CHARS = 600;
+/** What a sealed message is made of: base64url. */
+const SEALED = /^[A-Za-z0-9_-]+$/;
+/** The close code of a device that must update the app to be in a room (end-to-end encryption). */
+const CLOSE_NEEDS_UPDATE = 4005;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 /** A browser that asked to be told of the chat while it is away. */
@@ -119,6 +136,8 @@ interface Attachment {
   av?: string;
   /** The best round trip the device measured, as it last said in a ping; absent from older apps. */
   rtt?: number;
+  /** The app can read and write sealed chat (it said "e2ee" when joining). */
+  e2ee?: boolean;
 }
 
 /** What only the owner may do once the owner has restricted guests to adding songs. */
@@ -182,15 +201,20 @@ export class Room extends DurableObject<Env> {
   private membersKey = "";
   /** The room was made on purpose (or by an older app) and has not expired; stops a mistyped code from opening an empty room. */
   private created = false;
-  /** The last chat messages, oldest first. Kept apart from the state, so that saving the state does not write them again. */
+  /**
+   * The last [CHAT_KEPT] chat messages, oldest first: what a device joining is given. The rest are in the `messages`
+   * table, apart from the state, so that saving the state does not write any of them again.
+   */
   private chat: ChatMessage[] = [];
+  /** When old chat messages were last looked for. */
+  private prunedAt = 0;
   /** What each member has got of the chat, by public id. Kept apart from the messages for the same reason. */
   private receipts: Record<string, ChatReceipt> = {};
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
-      this.chat = (await ctx.storage.get<ChatMessage[]>(CHAT_KEY)) ?? [];
+      await this.openChat();
       this.receipts = (await ctx.storage.get<Record<string, ChatReceipt>>(RECEIPTS_KEY)) ?? {};
       const saved = await ctx.storage.get<RoomState & { alarm?: string }>("state");
       if (!saved) return;
@@ -281,8 +305,10 @@ export class Room extends DurableObject<Env> {
       case "resolveFailed": return this.onResolveFailed(me.id, msg.epoch);
       case "ended": return this.onEnded(msg.epoch);
       case "advanced": return this.onAdvanced(msg.epoch, msg.itemId, msg.startedAt);
-      case "chat": return this.onChat(me, msg.text, msg.cid, msg.reply);
+      case "chat": return this.onChat(me, msg.text, msg.cid, msg.reply, msg.ct, msg.pv);
+      case "room.encrypt": return this.onRoomEncrypt(ws, me);
       case "chat.react": return this.onChatReact(me, msg.id, msg.e);
+      case "chat.before": return this.onChatBefore(ws, msg.id, msg.n);
       case "chat.receipt": return this.onChatReceipt(me, msg.delivered, msg.read);
       case "push.set": return this.onPushSet(ws, me, msg);
       case "push.clear": return this.ctx.storage.delete(PUSH_PREFIX + me.id).then(() => undefined);
@@ -330,6 +356,12 @@ export class Room extends DurableObject<Env> {
       ws.close(1008, "room is full");
       return;
     }
+    const e2ee = Array.isArray(msg.caps) && msg.caps.includes("e2ee");
+    if (this.s.enc && !e2ee) {
+      this.fail(ws, "needs_update", "This room is end-to-end encrypted: update the app to be in it");
+      ws.close(CLOSE_NEEDS_UPDATE, "needs update");
+      return;
+    }
 
     // A second join on the same socket is a rename: keep the listening mode and the place in line
     const before = ws.deserializeAttachment() as Attachment | null;
@@ -338,7 +370,7 @@ export class Room extends DurableObject<Env> {
     const kept = await this.ctx.storage.get<string>(AVATAR_PREFIX + id);
     const av = kept === undefined ? undefined : await fingerprint(kept);
     ws.serializeAttachment(
-      { clientId, id, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av } satisfies Attachment,
+      { clientId, id, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av, e2ee } satisfies Attachment,
     );
 
     // The first to arrive owns a room that has no owner; the room now exists and someone is in it
@@ -351,7 +383,7 @@ export class Room extends DurableObject<Env> {
 
     if (adopted) this.broadcastState();
     else this.send(ws, this.stateMessage(id));
-    this.send(ws, { t: "chat.history", msgs: this.chat, receipts: this.receipts });
+    this.send(ws, { t: "chat.history", msgs: this.chat, receipts: this.receipts, more: this.chatBefore(this.chat[0]?.id) });
     // A device joining mid-preparation must take part in the barrier
     if (this.s.phase === "preparing") this.send(ws, this.prepareMessage());
     this.broadcastMembers();
@@ -400,12 +432,20 @@ export class Room extends DurableObject<Env> {
    * Keeps a chat message and hands it to everybody, its sender too. A message with no text is ignored. [reply] is the
    * number of the message it answers; one the room no longer has is left out and the text goes on its own.
    */
-  private async onChat(me: Attachment, text: unknown, cid: unknown, reply: unknown): Promise<void> {
-    if (typeof text !== "string") return;
-    // Cut by characters, not UTF-16 units, so an emoji at the end is not split in half
-    const clean = Array.from(text.trim()).slice(0, MAX_CHAT_CHARS).join("").trimEnd();
-    if (!clean) return;
-    const quoted = typeof reply === "number" ? this.chat.find((m) => m.id === reply) : undefined;
+  private async onChat(me: Attachment, text: unknown, cid: unknown, reply: unknown, ct?: unknown, pv?: unknown): Promise<void> {
+    const sealed = this.s.enc === true;
+    let clean = "";
+    if (sealed) {
+      // The words are sealed: all the room can check is how much there is of them
+      if (typeof ct !== "string" || !ct || ct.length > MAX_SEALED_CHARS || !SEALED.test(ct)) return;
+      if (pv !== undefined && (typeof pv !== "string" || pv.length > MAX_SEALED_PREVIEW_CHARS || !SEALED.test(pv))) return;
+    } else {
+      if (typeof text !== "string") return;
+      // Cut by characters, not UTF-16 units, so an emoji at the end is not split in half
+      clean = Array.from(text.trim()).slice(0, MAX_CHAT_CHARS).join("").trimEnd();
+      if (!clean) return;
+    }
+    const quoted = typeof reply === "number" ? this.chatMessage(reply) : undefined;
     const msg: ChatMessage = {
       id: (this.chat.at(-1)?.id ?? 0) + 1,
       by: me.id,
@@ -413,21 +453,49 @@ export class Room extends DurableObject<Env> {
       text: clean,
       at: Date.now(),
       ...(typeof cid === "string" && cid ? { cid: cid.slice(0, 40) } : {}),
-      ...(quoted ? { re: quote(quoted) } : {}),
+      // A sealed message carries what it answers inside; the room has no words to quote
+      ...(quoted && !sealed ? { re: quote(quoted) } : {}),
+      ...(sealed ? { ct: ct as string, ...(typeof pv === "string" ? { pv } : {}) } : {}),
     };
     this.chat.push(msg);
     if (this.chat.length > CHAT_KEPT) this.chat.splice(0, this.chat.length - CHAT_KEPT);
+    this.saveChatMessage(msg);
+    this.pruneChat(false);
     // Writing a message is looking at the chat up to it: the others learn it with their next receipt
     this.receipts[me.id] = { d: msg.id, r: msg.id };
     this.pruneReceipts();
-    await this.ctx.storage.put({ [CHAT_KEY]: this.chat, [RECEIPTS_KEY]: this.receipts });
+    await this.ctx.storage.put(RECEIPTS_KEY, this.receipts);
     this.broadcast({ t: "chat", msg });
-    await this.pushNotice(me, clean, (id) => (quoted?.by === id ? "reply" : "chat"));
+    await this.pushNotice(me, sealed ? undefined : clean, (id) => (quoted?.by === id ? "reply" : "chat"), undefined, { pv: msg.pv, author: me.id });
+  }
+
+  /**
+   * Turns on end-to-end encryption for good. The messages so far were written in the clear, so they go now, and with
+   * them what each member had got of them; devices that cannot read sealed messages are let go.
+   */
+  private async onRoomEncrypt(ws: WebSocket, me: Attachment): Promise<void> {
+    if (me.id !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
+    if (this.s.enc) return;
+    this.s.enc = true;
+    this.ctx.storage.sql.exec("DELETE FROM messages");
+    this.chat = [];
+    this.receipts = {};
+    await this.ctx.storage.put(RECEIPTS_KEY, this.receipts);
+    await this.save();
+    for (const other of this.ctx.getWebSockets()) {
+      const att = other.deserializeAttachment() as Attachment | null;
+      if (att && !att.e2ee) {
+        this.fail(other, "needs_update", "This room is end-to-end encrypted: update the app to be in it");
+        other.close(CLOSE_NEEDS_UPDATE, "needs update");
+      }
+    }
+    this.broadcastState();
+    this.broadcast({ t: "chat.history", msgs: [], receipts: {}, more: false });
   }
 
   /** Sets, or with null takes away, this member's reaction to a chat message, and sends the message again. */
   private async onChatReact(me: Attachment, id: unknown, e: unknown): Promise<void> {
-    const msg = typeof id === "number" ? this.chat.find((m) => m.id === id) : undefined;
+    const msg = typeof id === "number" ? this.chatMessage(id) : undefined;
     if (!msg) return;
     const rx = { ...msg.rx };
     if (e === null || e === undefined) {
@@ -440,10 +508,102 @@ export class Room extends DurableObject<Env> {
     }
     if (Object.keys(rx).length > 0) msg.rx = rx;
     else delete msg.rx;
-    await this.ctx.storage.put(CHAT_KEY, this.chat);
+    this.saveChatMessage(msg);
     this.broadcast({ t: "chat.update", msg });
     // The author of the message is told of a reaction given to it; taking one away is no news
-    if (typeof e === "string" && msg.by !== me.id) await this.pushNotice(me, msg.text, (id) => (id === msg.by ? "react" : null), e);
+    if (typeof e === "string" && msg.by !== me.id) {
+      await this.pushNotice(me, msg.ct ? undefined : msg.text, (id) => (id === msg.by ? "react" : null), e, { pv: msg.pv, author: msg.by });
+    }
+  }
+
+  // ------------------------------------------------------------------ the chat's table
+
+  /** Makes the table of messages, and moves into it the chat of a room that predates it. Loads the last messages. */
+  private async openChat(): Promise<void> {
+    const sql = this.ctx.storage.sql;
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, author TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL, cid TEXT, re TEXT, rx TEXT, ct TEXT, pv TEXT)",
+    );
+    sql.exec("CREATE INDEX IF NOT EXISTS messages_at ON messages (at)");
+    const legacy = await this.ctx.storage.get<ChatMessage[]>(CHAT_KEY);
+    if (legacy) {
+      this.ctx.storage.transactionSync(() => {
+        for (const msg of legacy) this.saveChatMessage(msg);
+      });
+      await this.ctx.storage.delete(CHAT_KEY);
+    }
+    this.chat = this.readMessages("SELECT * FROM messages ORDER BY id DESC LIMIT ?", CHAT_KEPT).reverse();
+  }
+
+  private readMessages(query: string, ...bindings: (string | number)[]): ChatMessage[] {
+    return this.ctx.storage.sql.exec(query, ...bindings).toArray().map((row) => ({
+      id: row.id as number,
+      by: row.author as string,
+      name: row.name as string,
+      text: row.text as string,
+      at: row.at as number,
+      ...(row.cid ? { cid: row.cid as string } : {}),
+      ...(row.ct ? { ct: row.ct as string } : {}),
+      ...(row.pv ? { pv: row.pv as string } : {}),
+      ...(row.re ? { re: JSON.parse(row.re as string) as ChatQuote } : {}),
+      ...(row.rx ? { rx: JSON.parse(row.rx as string) as Record<string, string> } : {}),
+    }));
+  }
+
+  private saveChatMessage(msg: ChatMessage): void {
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO messages (id, at, author, name, text, cid, re, rx, ct, pv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      msg.id,
+      msg.at,
+      msg.by,
+      msg.name,
+      msg.text,
+      msg.cid ?? null,
+      msg.re ? JSON.stringify(msg.re) : null,
+      msg.rx ? JSON.stringify(msg.rx) : null,
+      msg.ct ?? null,
+      msg.pv ?? null,
+    );
+  }
+
+  /** A message of the room, among the last ones or from further back. */
+  private chatMessage(id: number): ChatMessage | undefined {
+    return this.chat.find((m) => m.id === id) ?? this.readMessages("SELECT * FROM messages WHERE id = ?", id)[0];
+  }
+
+  /** Whether the room keeps messages from before number [id]. */
+  private chatBefore(id: number | undefined): boolean {
+    return id !== undefined && this.ctx.storage.sql.exec("SELECT 1 FROM messages WHERE id < ? LIMIT 1", id).toArray().length > 0;
+  }
+
+  /** A page of messages older than number [before], to this device only: the way to read further back than the last ones. */
+  private onChatBefore(ws: WebSocket, before: unknown, n: unknown): void {
+    if (!Number.isInteger(before)) return;
+    const count = Number.isInteger(n) ? clamp(n as number, 1, CHAT_PAGE_MAX) : CHAT_PAGE;
+    const found = this.readMessages("SELECT * FROM messages WHERE id < ? ORDER BY id DESC LIMIT ?", before as number, count + 1);
+    this.send(ws, { t: "chat.page", before: before as number, msgs: found.slice(0, count).reverse(), more: found.length > count });
+  }
+
+  private chatKeepMs(): number {
+    return millis(this.env.CHAT_KEEP_MS, CHAT_KEEP_MS);
+  }
+
+  /**
+   * Lets go of the messages older than the room keeps, and of those beyond the most it keeps. The latest message always
+   * stays (the numbers go on from it) unless [all]: the room is being closed.
+   */
+  private pruneChat(all: boolean): void {
+    const now = Date.now();
+    if (!all && now - this.prunedAt < millis(this.env.CHAT_PRUNE_MS, CHAT_PRUNE_EVERY_MS)) return;
+    this.prunedAt = now;
+    const sql = this.ctx.storage.sql;
+    const newest = all ? Number.MAX_SAFE_INTEGER : (this.chat.at(-1)?.id ?? 0);
+    sql.exec("DELETE FROM messages WHERE at < ? AND id < ?", now - this.chatKeepMs(), newest);
+    const most = millis(this.env.CHAT_KEEP_MAX, CHAT_KEEP_MAX);
+    const last = this.chat.at(-1)?.id;
+    if (last !== undefined) sql.exec("DELETE FROM messages WHERE id <= ?", last - most);
+    const first = sql.exec("SELECT MIN(id) AS id FROM messages").one().id as number | null;
+    this.chat = this.chat.filter((m) => first !== null && m.id >= first);
   }
 
   // ------------------------------------------------------------------ notices to devices that are away
@@ -504,12 +664,18 @@ export class Room extends DurableObject<Env> {
    * Tells the devices that asked for notices what [by] did, each in the way [kindFor] says (null: not at all). A
    * device with the room open decides for itself whether to show it, so a device that is connected is told as well.
    */
-  private async pushNotice(by: { id: string; name: string }, text: string, kindFor: (id: string) => PushKind | null, e?: string): Promise<void> {
+  private async pushNotice(
+    by: { id: string; name: string },
+    text: string | undefined,
+    kindFor: (id: string) => PushKind | null,
+    e?: string,
+    sealed?: { pv?: string; author: string },
+  ): Promise<void> {
     const vapid = this.vapid();
     if (!vapid) return;
     const now = Date.now();
     const dead: string[] = [];
-    const preview = Array.from(text).slice(0, PUSH_PREVIEW_CHARS).join("");
+    const preview = text === undefined ? undefined : Array.from(text).slice(0, PUSH_PREVIEW_CHARS).join("");
     await Promise.all(
       [...(await this.pushDevices())].map(async ([id, device]) => {
         const k = id === by.id ? null : kindFor(id);
@@ -519,7 +685,9 @@ export class Room extends DurableObject<Env> {
           room: device.room,
           ...(this.s.name ? { rn: this.s.name } : {}),
           name: by.name,
-          ...(device.preview === false ? {} : { text: preview }),
+          // A sealed room has no words to show: the preview goes as it was sealed, for the browser to open
+          // [by] is who wrote the message the preview is of, which it was sealed for
+          ...(device.preview === false ? {} : preview !== undefined ? { text: preview } : sealed?.pv ? { pv: sealed.pv, by: sealed.author } : {}),
           ...(e ? { e } : {}),
           ...(device.lang ? { l: device.lang } : {}),
         };
@@ -663,6 +831,7 @@ export class Room extends DurableObject<Env> {
       members: this.members().filter((m) => !m.away).length,
       playing: this.s.phase === "playing",
       title: item?.title ?? null,
+      ...(this.s.enc ? { enc: true } : {}),
     };
   }
 
@@ -1116,11 +1285,25 @@ export class Room extends DurableObject<Env> {
     }
     if (due.includes("end") && this.s.phase === "playing") await this.onFinished();
     if (due.includes("gc") && this.members().length === 0) {
+      this.pruneChat(true);
+      const last = this.chat.at(-1);
+      if (last) {
+        // The songs and the settings are over, but the room itself stays for as long as its chat does
+        const { name, enc } = this.s;
+        this.s = defaultState();
+        if (name) this.s.name = name;
+        if (enc) this.s.enc = enc;
+        this.s.alarms.gc = last.at + this.chatKeepMs();
+        await this.armAlarm();
+        return;
+      }
       this.s = defaultState();
       this.chat = [];
       this.receipts = {};
       this.created = false;
       await this.ctx.storage.deleteAll();
+      // Whether the table went with everything else or not, the next room of this code starts with an empty one
+      await this.openChat();
       return;
     }
     // Keep looking for dead connections for as long as someone is here; another job firing does not push the next look back

@@ -647,6 +647,50 @@ abstract final class S {
     'Say hi, or react to what is playing.',
     'Chào mọi người, hoặc thả cảm xúc cho bài đang phát.',
   );
+  // End-to-end encrypted chat
+  static String get encryptionTitle =>
+      _t('End-to-end encrypted chat', 'Chat mã hoá đầu cuối');
+  static String get encryptionOffHelp => _t(
+    'Only people with the invitation link can read the chat. The server cannot.',
+    'Chỉ người có liên kết mời đọc được chat. Máy chủ cũng không đọc được.',
+  );
+  static String get encryptionOnHelp => _t(
+    'Only people with the invitation link can read the chat. The server cannot, and it cannot be turned off.',
+    'Chỉ người có liên kết mời đọc được chat. Máy chủ không đọc được, và không thể tắt.',
+  );
+  static String get encryptionTurnOn => _t('Turn on', 'Bật');
+  static String get encryptionConfirmBody => _t(
+    'The messages so far are deleted. Everyone needs the new invitation link to read the chat, and people who have not updated the app cannot stay in the room. This cannot be turned off.',
+    'Các tin nhắn đến giờ sẽ bị xoá. Mọi người cần liên kết mời mới để đọc chat, và ai chưa cập nhật app sẽ không ở lại phòng được. Không thể tắt lại.',
+  );
+  static String get encryptionTurnedOn => _t(
+    'On. Send the new invitation link to everyone.',
+    'Đã bật. Hãy gửi liên kết mời mới cho mọi người.',
+  );
+  static String get encryptionCannot => _t(
+    'Could not turn it on',
+    'Không bật được',
+  );
+  static String get encryptionNoKey => _t(
+    'This device has no key for the chat of this room.',
+    'Thiết bị này chưa có khoá của chat phòng này.',
+  );
+  static String get encryptionPaste =>
+      _t('Paste invitation link', 'Dán liên kết mời');
+  static String get encryptionPasteHint =>
+      _t('Link with the key', 'Liên kết có khoá');
+  static String get encryptionNotALink =>
+      _t('That is not an invitation link', 'Đây không phải liên kết mời');
+  static String get encryptionNoKeyInLink => _t(
+    'That link has no key in it',
+    'Liên kết này không có khoá',
+  );
+  static String get encryptionNeedsKey => _t(
+    'Open the invitation link of this room, with its key, to read and write here.',
+    'Hãy mở liên kết mời của phòng này, có kèm khoá, để đọc và nhắn ở đây.',
+  );
+  static String get chatLocked => _t('Cannot be read', 'Không đọc được');
+
   static String get chatNotSent =>
       _t('Not sent · tap to try again', 'Chưa gửi được · chạm để thử lại');
   static String get chatReply => _t('Reply', 'Trả lời');

@@ -12,6 +12,8 @@ import androidx.media3.session.SessionToken
 import app.sapoche.core.AudioQuality
 import app.sapoche.core.TrackInfo
 import app.sapoche.core.YoutubeLinks
+import app.sapoche.sync.ChatCipher
+import app.sapoche.sync.ChatQuote
 import app.sapoche.sync.MissedReactions
 import app.sapoche.sync.Taste
 import app.sapoche.sync.TrackRef
@@ -142,7 +144,19 @@ class SapocheBridge(
         val web = uri?.scheme == "https" && uri.host == Uri.parse(Config.SERVER).host && uri.pathSegments.firstOrNull() == "join"
         if (uri == null || !own && !web) return
         val code = uri.lastPathSegment?.trim()?.uppercase()?.takeIf { INVITE_CODE.matches(it) } ?: return
+        // The secret of a room with encrypted chat is in the link, after a # (the server never sees it) or in `k`
+        val secret = uri.fragment?.split('&')?.firstOrNull { it.startsWith("k=") }?.removePrefix("k=") ?: uri.getQueryParameter("k")
+        if (secret != null) acceptSecret(code, secret)
         if (sink != null) emit(UiJson.invite(code)) else pendingInvite = code
+    }
+
+    /** Keeps the [secret] (as written in an invitation link) for room [room] and lets the chat be read; false when it is not one. */
+    private fun acceptSecret(room: String, secret: String): Boolean {
+        val bytes = ChatCipher.decodeSecret(secret) ?: return false
+        if (!INVITE_CODE.matches(room.uppercase())) return false
+        SapocheApp.roomKeys.put(room, bytes)
+        SapocheApp.group.value?.roomSecretChanged(room)
+        return true
     }
 
     /** The person touched a notification of the chat of a room: its chat is what they want. */
@@ -741,15 +755,38 @@ class SapocheBridge(
                     }
                     "sendChat" -> {
                         requireRoom(group)
+                        // What the message answers, as the screen shows it: a sealed room seals it with the words
+                        val quote = call.argument<Map<String, Any?>>("quote")?.let {
+                            ChatQuote(
+                                (it["id"] as? Number)?.toLong() ?: return@let null,
+                                it["by"] as? String ?: return@let null,
+                                it["name"] as? String ?: return@let null,
+                                it["text"] as? String ?: return@let null,
+                            )
+                        }
                         return group.sendChat(
                             call.argument<String>("text").orEmpty(),
                             call.argument<String>("cid").orEmpty(),
                             call.argument<Number>("reply")?.toLong(),
+                            quote,
                         )
                     }
+                    "enableEncryption" -> {
+                        requireRoom(group)
+                        return group.enableEncryption()
+                    }
+                    "roomSecret" -> {
+                        requireRoom(group)
+                        return group.roomSecret()
+                    }
+                    "setRoomSecret" -> return acceptSecret(call.argument<String>("room").orEmpty(), call.argument<String>("secret").orEmpty())
                     "reactChat" -> {
                         requireRoom(group)
                         group.reactToChat((call.argument<Number>("id") ?: 0).toLong(), call.argument<String>("e"))
+                    }
+                    "loadOlderChat" -> {
+                        requireRoom(group)
+                        return group.loadOlderChat((call.argument<Number>("before") ?: 0).toLong())
                     }
                     "readChat" -> {
                         requireRoom(group)

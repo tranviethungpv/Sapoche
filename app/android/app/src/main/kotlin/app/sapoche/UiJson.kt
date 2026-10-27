@@ -32,6 +32,9 @@ object UiJson {
             .put("ownerId", state?.ownerId.takeIf { inRoom } ?: JSONObject.NULL)
             .put("guestControl", if (inRoom) state?.guestControl ?: "all" else "all")
             .put("roomAutoplay", state?.autoplay.takeIf { inRoom } ?: JSONObject.NULL)
+            // The chat is end-to-end encrypted, and whether this device has the secret to read it
+            .put("encrypted", inRoom && state?.enc == true)
+            .put("encryptionKey", inRoom && view.sealedKey)
             // Outside a room this device's own; in one the room's, or null on a server too old to have it
             .put("shuffle", if (inRoom) state?.shuffle ?: JSONObject.NULL else local.shuffle)
             .put("trimMs", trimMs)
@@ -138,6 +141,8 @@ object UiJson {
         .put("type", "chat")
         .put("room", chat.room)
         .put("replace", chat.replace)
+        .put("older", chat.older)
+        .put("more", chat.more ?: JSONObject.NULL)
         .put(
             "messages",
             JSONArray(chat.messages.map {
@@ -155,6 +160,7 @@ object UiJson {
                         } ?: JSONObject.NULL,
                     )
                     .put("rx", JSONObject(it.rx))
+                    .put("locked", it.locked)
             }),
         )
         .put(

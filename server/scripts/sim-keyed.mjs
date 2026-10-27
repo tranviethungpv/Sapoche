@@ -68,7 +68,7 @@ const release = seedRelease(".wrangler/state");
 const main = startServer(8798, { STALE_MS: 2000, VAPID_PRIVATE: vapid.d, VAPID_PUBLIC: vapidPublic, PUSH_LOCAL: 1, PUSH_FRESH_MS }, ".wrangler/state");
 const quick = startServer(
   8799,
-  { STALE_MS: 2000, DROP_MS: 2500, SWEEP_MS: 1000, EMPTY_MS: 6000, EMPTY_BARE_MS: 1500 },
+  { STALE_MS: 2000, DROP_MS: 2500, SWEEP_MS: 1000, EMPTY_MS: 6000, EMPTY_BARE_MS: 1500, CHAT_KEEP_MS: 4000, CHAT_KEEP_MAX: 20, CHAT_PRUNE_MS: 1 },
   ".wrangler/state-lifetime",
 );
 

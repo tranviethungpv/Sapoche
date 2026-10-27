@@ -28,4 +28,8 @@ interface Env {
   SWEEP_MS?: string;
   EMPTY_MS?: string;
   EMPTY_BARE_MS?: string;
+  /** How long the chat is kept, the most messages kept, and how often old ones are looked for (the tests shorten these). */
+  CHAT_KEEP_MS?: string;
+  CHAT_KEEP_MAX?: string;
+  CHAT_PRUNE_MS?: string;
 }

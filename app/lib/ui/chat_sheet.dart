@@ -8,6 +8,7 @@ import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/palette.dart';
 import '../theme/theme.dart';
+import 'rooms_sheet.dart' show pasteInviteSecret;
 import 'scope.dart';
 import 'widgets/avatars.dart';
 import 'widgets/reactions.dart';
@@ -181,6 +182,18 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                 listenable: _c,
                 builder: (context, _) => Row(
                   children: [
+                    if (_c.snapshot.encrypted) ...[
+                      Tooltip(
+                        message: S.encryptionTitle,
+                        child: Icon(
+                          Icons.lock_outline_rounded,
+                          key: const ValueKey('chat-encrypted'),
+                          size: 20,
+                          color: p.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     Expanded(child: Text(S.chat, style: theme.headlineSmall)),
                     Text(
                       S.listening(_c.snapshot.listeningCount),
@@ -194,36 +207,62 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
           ),
           _NoticeOffer(controller: _c),
           Expanded(
-            child: ReactionShower(
-              controller: _c,
-              child: ListenableBuilder(
-                listenable: Listenable.merge([_c, _c.chat, _c.receipts]),
-                builder: (context, _) => _c.chat.value.isEmpty
-                    ? const _EmptyChat()
-                    : _Messages(
-                        controller: _c,
-                        messages: _c.chat.value,
-                        scroll: _scroll,
-                        timeShownOf: _timeShownOf,
-                        onShowTime: (key) => setState(
-                          () => _timeShownOf = _timeShownOf == key ? null : key,
-                        ),
-                        onReply: _replyToMessage,
-                      ),
+            // Part of the field as far as a touch goes: pressing a message to drag it sideways or hold it must not put
+            // the keyboard away; only a plain touch on the space between the messages does
+            child: TextFieldTapRegion(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                child: ReactionShower(
+                  controller: _c,
+                  child: ListenableBuilder(
+                    listenable: Listenable.merge([
+                      _c,
+                      _c.chat,
+                      _c.receipts,
+                      _c.chatHasOlder,
+                    ]),
+                    builder: (context, _) =>
+                        _c.snapshot.encrypted && !_c.snapshot.encryptionKey
+                        ? _NeedsKey(controller: _c)
+                        : _c.chat.value.isEmpty
+                        ? const _EmptyChat()
+                        : _Messages(
+                            controller: _c,
+                            messages: _c.chat.value,
+                            hasOlder: _c.chatHasOlder.value,
+                            scroll: _scroll,
+                            timeShownOf: _timeShownOf,
+                            onShowTime: (key) => setState(
+                              () => _timeShownOf =
+                                  _timeShownOf == key ? null : key,
+                            ),
+                            onReply: _replyToMessage,
+                          ),
+                  ),
+                ),
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: ReactionBar(controller: _c),
+          // The same: reacting while writing leaves the keyboard where it is
+          TextFieldTapRegion(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: ReactionBar(controller: _c),
+            ),
           ),
           if (_replyTo case final reply?)
-            _ReplyBanner(
-              quote: reply,
-              mine: reply.by == _c.snapshot.you,
-              onCancel: () => setState(() => _replyTo = null),
+            TextFieldTapRegion(
+              child: _ReplyBanner(
+                quote: reply,
+                mine: reply.by == _c.snapshot.you,
+                onCancel: () => setState(() => _replyTo = null),
+              ),
             ),
-          Padding(
+          // Without the key of a sealed chat there is nothing to write, and the others could not read it
+          _UnlessLocked(
+            controller: _c,
+            child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -287,8 +326,61 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                 ),
               ],
             ),
-          ),
+          )),
         ],
+      ),
+    );
+  }
+}
+
+/// Shows [child] unless the chat is sealed and this device has not the key of the room.
+class _UnlessLocked extends StatelessWidget {
+  const _UnlessLocked({required this.controller, required this.child});
+
+  final RoomController controller;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, _) =>
+        controller.snapshot.encrypted && !controller.snapshot.encryptionKey
+        ? const SizedBox.shrink()
+        : child,
+  );
+}
+
+/// In a chat that is end-to-end encrypted, on a device that has not the key of the room: how to get it.
+class _NeedsKey extends StatelessWidget {
+  const _NeedsKey({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Center(
+      key: const ValueKey('chat-needs-key'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline_rounded, size: 40, color: p.textTertiary),
+            const SizedBox(height: 12),
+            Text(
+              S.encryptionNeedsKey,
+              textAlign: TextAlign.center,
+              style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.tonal(
+              onPressed: () => pasteInviteSecret(context, controller),
+              child: Text(S.encryptionPaste),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -508,6 +600,7 @@ class _Messages extends StatelessWidget {
   const _Messages({
     required this.controller,
     required this.messages,
+    required this.hasOlder,
     required this.scroll,
     required this.timeShownOf,
     required this.onShowTime,
@@ -516,6 +609,9 @@ class _Messages extends StatelessWidget {
 
   final RoomController controller;
   final List<ChatMessage> messages;
+
+  /// The room keeps messages from before the first one: a row at the top asks for them as it comes into view.
+  final bool hasOlder;
   final ScrollController scroll;
   final Object? timeShownOf;
   final ValueChanged<Object> onShowTime;
@@ -535,8 +631,25 @@ class _Messages extends StatelessWidget {
       // Pulling the messages puts the keyboard away, as in the chats of the phone
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      itemCount: messages.length,
+      itemCount: messages.length + (hasOlder ? 1 : 0),
       itemBuilder: (context, i) {
+        if (i == messages.length) {
+          // The top of what is shown: reaching it asks for the page before
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => controller.loadOlderChat(),
+          );
+          return const Padding(
+            key: ValueKey('chat-older'),
+            padding: EdgeInsets.all(16),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
         final index = messages.length - 1 - i;
         final message = messages[index];
         final before = index > 0 ? messages[index - 1] : null;
@@ -650,7 +763,22 @@ class _Bubble extends StatelessWidget {
               own: quote.by == controller.snapshot.you,
               onBubbleOfMine: mine,
             ),
-          Text(message.text, style: theme.bodyMedium?.copyWith(color: ink)),
+          message.locked
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_outline_rounded, size: 14, color: ink),
+                    const SizedBox(width: 6),
+                    Text(
+                      S.chatLocked,
+                      style: theme.bodyMedium?.copyWith(
+                        color: ink.withValues(alpha: 0.8),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                )
+              : Text(message.text, style: theme.bodyMedium?.copyWith(color: ink)),
         ],
       ),
     );
@@ -674,7 +802,7 @@ class _Bubble extends StatelessWidget {
             ),
           _SwipeToReply(
             toLeft: mine,
-            enabled: sent,
+            enabled: sent && !message.locked,
             onReply: onReply,
             child: Row(
               mainAxisAlignment: mine
@@ -699,12 +827,15 @@ class _Bubble extends StatelessWidget {
                     onTap: failed
                         ? () => controller.resendChat(message)
                         : onToggleTime,
-                    onLongPress: () => _showMessageMenu(
-                      context,
-                      controller,
-                      message,
-                      onReply,
-                    ),
+                    // Words that cannot be read can be neither answered nor copied
+                    onLongPress: message.locked
+                        ? null
+                        : () => _showMessageMenu(
+                            context,
+                            controller,
+                            message,
+                            onReply,
+                          ),
                     child: Opacity(opacity: sent ? 1 : 0.6, child: bubble),
                   ),
                 ),
