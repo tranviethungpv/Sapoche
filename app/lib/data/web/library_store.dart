@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../models.dart';
+import '../music_models.dart';
+import 'wire.dart';
 
 /// Where the library is kept between visits: one document, read when the app starts and written after a change.
 abstract interface class LibraryDisk {
@@ -11,7 +13,7 @@ abstract interface class LibraryDisk {
 
 /// What a person keeps in the app: songs they liked, what they listened to and their playlists, in memory with the
 /// whole of it saved to [disk] a moment after each change. Dart counterpart of `LibraryStore.kt` and `LibraryStore.swift`
-/// for the parts a browser has (no downloads, files on the device, skips or blocked songs yet).
+/// for the parts a browser has (no downloads and no files on the device).
 ///
 /// [tracks] holds the details of every song something points to, so lists can be shown without the network; a song
 /// nothing points to any more is dropped.
@@ -36,6 +38,7 @@ class LibraryStore {
 
   static const recentLimit = 100;
   static const historyKeep = 2000;
+  static const skipsKeep = 300;
   static const maxPlaylist = 500;
   static const maxName = 60;
   static const coverParts = 4;
@@ -45,6 +48,12 @@ class LibraryStore {
   final _likes = <String, int>{};
   // One entry per listen, oldest first
   final _history = <(String, int)>[];
+  // Songs left after a few seconds, oldest first
+  final _skips = <(String, int)>[];
+  // What was asked not to be offered, the latest last
+  final _blocked = <_Blocked>[];
+  // What YouTube listed beside a seed song, by the seed's id
+  final _suggestions = <String, _Cached>{};
   final _playlists = <_Playlist>[];
   final _folders = <_Folder>[];
   var _nextId = 1;
@@ -65,6 +74,15 @@ class LibraryStore {
       });
     return [for (final id in ids) _tracks[id]!];
   }
+
+  /// Liked songs with the time each was liked, the latest first: what the taste is worked out from.
+  List<HistoryEntry> likedEntries() => [
+    for (final t in liked())
+      HistoryEntry(track: t, at: DateTime.fromMillisecondsSinceEpoch(_likes[t.videoId]!), plays: 1),
+  ];
+
+  /// Ids of the liked songs.
+  Set<String> likedIds() => _likes.keys.toSet();
 
   void setLiked(Track track, bool liked) {
     if (liked) {
@@ -114,10 +132,73 @@ class LibraryStore {
       HistoryEntry(track: _tracks[id]!, at: DateTime.fromMillisecondsSinceEpoch(at), plays: 1),
   ];
 
+  /// Ids of the songs heard since [since] (ms since the epoch).
+  Set<String> heardSince(int since) => {
+    for (final (id, at) in _history)
+      if (at >= since) id,
+  };
+
+  /// [track] was left after a few seconds. Only the last [skipsKeep] are kept. It is not announced: nothing shows it.
+  void recordSkip(Track track) {
+    _remember(track);
+    _skips.add((track.videoId, _now()));
+    if (_skips.length > skipsKeep) _skips.removeRange(0, _skips.length - skipsKeep);
+    _dropUnused();
+    _save();
+  }
+
+  /// Songs left after a few seconds, the latest first, each time one entry.
+  List<HistoryEntry> skipped() => [
+    for (final (id, at) in _skips.reversed)
+      HistoryEntry(track: _tracks[id]!, at: DateTime.fromMillisecondsSinceEpoch(at), plays: 1),
+  ];
+
   void clearHistory() {
     _history.clear();
+    // What was left is part of the listening a person asked to forget
+    _skips.clear();
     _dropUnused();
     _changed();
+  }
+
+  // ------------------------------------------------------------------ blocked
+
+  /// Blocks a `song` (key: video id) or an `artist` (key: `Taste.artistKey`); blocking again changes the label.
+  void block(String kind, String key, String label) {
+    _blocked.removeWhere((b) => b.kind == kind && b.key == key);
+    _blocked.add(_Blocked(kind, key, label, _now()));
+    _changed();
+  }
+
+  void unblock(String kind, String key) {
+    _blocked.removeWhere((b) => b.kind == kind && b.key == key);
+    _changed();
+  }
+
+  /// What was blocked, the latest first.
+  List<BlockedItem> blocked() => [
+    for (final b in _blocked.reversed) BlockedItem(kind: b.kind, key: b.key, label: b.label),
+  ];
+
+  // ------------------------------------------------------------------ suggestions
+
+  /// What was kept for [seed], or null.
+  ({List<TrackRef> tracks, int fetchedAt})? cachedSuggestions(String seed) {
+    final kept = _suggestions[seed];
+    return kept == null ? null : (tracks: kept.tracks, fetchedAt: kept.fetchedAt);
+  }
+
+  void putSuggestions(String seed, List<TrackRef> tracks, int at) {
+    _suggestions[seed] = _Cached(tracks, at);
+    _changed();
+  }
+
+  /// Forgets what was kept for every seed but [seeds].
+  void keepSuggestionsFor(Iterable<String> seeds) {
+    final keep = seeds.toSet();
+    if (_suggestions.keys.every(keep.contains)) return;
+    _suggestions.removeWhere((seed, _) => !keep.contains(seed));
+    _save();
   }
 
   // ------------------------------------------------------------------ playlists
@@ -299,6 +380,7 @@ class LibraryStore {
     final used = {
       ..._likes.keys,
       for (final (id, _) in _history) id,
+      for (final (id, _) in _skips) id,
       for (final p in _playlists) ...p.items,
     };
     _tracks.removeWhere((id, _) => !used.contains(id));
@@ -306,6 +388,11 @@ class LibraryStore {
 
   void _changed() {
     onChanged?.call();
+    _save();
+  }
+
+  /// Writes the library after the pause, without telling the screens: nothing they show changed.
+  void _save() {
     if (disk == null) return;
     _dirty = true;
     _saving?.cancel();
@@ -321,13 +408,24 @@ class LibraryStore {
   }
 
   Map<String, Object?> _toJson() => {
-    'v': 1,
+    'v': 2,
     'next': _nextId,
     'tracks': [
       for (final t in _tracks.values) [t.videoId, t.title, t.artist, t.thumb, t.durMs],
     ],
     'likes': [for (final e in _likes.entries) [e.key, e.value]],
     'history': [for (final (id, at) in _history) [id, at]],
+    'skips': [for (final (id, at) in _skips) [id, at]],
+    'blocked': [
+      for (final b in _blocked) [b.kind, b.key, b.label, b.at],
+    ],
+    'suggestions': {
+      for (final e in _suggestions.entries)
+        e.key: {
+          'at': e.value.fetchedAt,
+          'tracks': [for (final t in e.value.tracks) [t.videoId, t.title, t.artist, t.thumb, t.durMs]],
+        },
+    },
     'playlists': [
       for (final p in _playlists)
         {'id': p.id, 'name': p.name, 'created': p.createdAt, 'updated': p.updatedAt, 'folder': p.folderId, 'items': p.items},
@@ -356,6 +454,28 @@ class LibraryStore {
       final h = row as List;
       _history.add((h[0] as String, (h[1] as num).toInt()));
     }
+    // A document written before the taste had none of these
+    for (final row in json['skips'] as List? ?? const []) {
+      final h = row as List;
+      _skips.add((h[0] as String, (h[1] as num).toInt()));
+    }
+    for (final row in json['blocked'] as List? ?? const []) {
+      final b = row as List;
+      _blocked.add(_Blocked(b[0] as String, b[1] as String, b[2] as String, (b[3] as num).toInt()));
+    }
+    (json['suggestions'] as Map<String, Object?>? ?? const {}).forEach((seed, value) {
+      final m = value as Map<String, Object?>;
+      _suggestions[seed] = _Cached([
+        for (final row in m['tracks'] as List)
+          TrackRef(
+            (row as List)[0] as String,
+            row[1] as String,
+            row[2] as String,
+            row[3] as String?,
+            (row[4] as num).toInt(),
+          ),
+      ], (m['at'] as num).toInt());
+    });
     for (final p in json['playlists'] as List) {
       final m = p as Map<String, Object?>;
       _playlists.add(
@@ -394,4 +514,20 @@ class _Folder {
   final int id;
   String name;
   int updatedAt;
+}
+
+class _Blocked {
+  _Blocked(this.kind, this.key, this.label, this.at);
+
+  final String kind;
+  final String key;
+  final String label;
+  final int at;
+}
+
+class _Cached {
+  _Cached(this.tracks, this.fetchedAt);
+
+  final List<TrackRef> tracks;
+  final int fetchedAt;
 }

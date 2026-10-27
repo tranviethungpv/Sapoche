@@ -83,9 +83,33 @@ class MusicController {
   Future<bool?> isAudioRelease(Track track) async =>
       (await radio(track.videoId)).songOf(track.videoId)?.isSong;
 
+  /// The audio release a music video was found for, by the video's id: going back to it needs no search, so the cover
+  /// of the video (a still of it, cut square) is not what the person looks at while YouTube Music is asked.
+  final _audioOf = <String, MusicTrack>{};
+
+  /// The audio release that [video] was found from, or null when it was not.
+  MusicTrack? audioOf(Track video) => _audioOf[video.videoId];
+
   /// The other release of [track]: the music video of a song when [video], else the audio release of a video.
   /// Null when YouTube Music has no such release of it.
   Future<MusicTrack?> otherRelease(Track track, {required bool video}) async {
+    final kept = video ? null : audioOf(track);
+    if (kept != null) return kept;
+    final found = await _findRelease(track, video: video);
+    if (video && found != null) {
+      _audioOf[found.videoId] = MusicTrack(
+        videoId: track.videoId,
+        title: track.title,
+        artist: track.artist,
+        durMs: track.durMs,
+        thumb: track.thumb,
+        isSong: true,
+      );
+    }
+    return found;
+  }
+
+  Future<MusicTrack?> _findRelease(Track track, {required bool video}) async {
     final name =
         '${songTitle(track.title, track.artist)} ${displayArtist(track.artist)}';
     final found = await search(name, songs: !video);

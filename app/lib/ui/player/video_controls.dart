@@ -12,8 +12,9 @@ import '../widgets/like_button.dart';
 import '../widgets/playback_bar.dart';
 import '../widgets/video_view.dart';
 
-/// The heights the picture can be fetched at, the tallest first offered last.
-const videoQualities = [360, 480, 720, 1080];
+/// The heights the picture can be fetched at, the tallest first offered last. A browser's frame does not go below 480.
+List<int> get videoQualities =>
+    kIsWeb ? const [480, 720, 1080] : const [360, 480, 720, 1080];
 
 /// The speeds a song can be played at outside a room.
 const playbackSpeeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
@@ -710,28 +711,25 @@ class _VideoSettings extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(S.videoSettings, style: theme.titleLarge),
-                // A browser's player picks the picture quality by itself
-                if (!kIsWeb) ...[
-                  heading(S.videoQuality),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final h in videoQualities)
-                        ChoiceChip(
-                          key: ValueKey('quality-$h'),
-                          label: Text('${h}p'),
-                          selected: snapshot.videoHeight == h,
-                          onSelected: (_) => controller.setVideoQuality(h),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    S.qualityNextSong,
-                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                  ),
-                ],
+                heading(S.videoQuality),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final h in videoQualities)
+                      ChoiceChip(
+                        key: ValueKey('quality-$h'),
+                        label: Text('${h}p'),
+                        selected: snapshot.videoHeight == h,
+                        onSelected: (_) => controller.setVideoQuality(h),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  S.qualityNextSong,
+                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                ),
                 heading(S.playbackSpeed),
                 if (snapshot.inRoom)
                   Text(

@@ -1128,8 +1128,10 @@ Future<void> _chooseMode(BuildContext context, bool video) async {
   }
   MusicTrack? other;
   try {
-    // Already the release asked for?
-    if (await music.isAudioRelease(current) == !video) return;
+    // Already the release asked for? A video that was reached from its audio release is known to be one
+    if (video || music.audioOf(current) == null) {
+      if (await music.isAudioRelease(current) == !video) return;
+    }
     other = await music.otherRelease(current, video: video);
   } on Object {
     return; // no network: the picture alone

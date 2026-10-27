@@ -20,6 +20,9 @@ import 'music_feed.dart';
 import 'player_port.dart';
 import 'room_client.dart';
 import 'room_socket.dart';
+import 'sleep_timer.dart';
+import 'suggestion_feed.dart';
+import 'taste.dart';
 import 'wire.dart';
 
 /// What the browser shows outside the page about what plays (media keys, the lock screen, the notification of a phone)
@@ -70,6 +73,8 @@ class WebBackend extends BackendDefaults {
         _positionTimer ??= Timer.periodic(const Duration(seconds: 1), (_) => _emitPosition());
         scheduleMicrotask(() {
           _emitState();
+          _events.add(SleepEvent(_sleep.state));
+          _renewSuggestionsIfDue();
           final code = invite;
           if (code != null && !_invited) {
             _invited = true;
@@ -96,6 +101,9 @@ class WebBackend extends BackendDefaults {
       log: (m) => _note('local: $m'),
       onQueueEnd: _autoplay,
     )..attach();
+    player
+      ..onPausedAtEnd = _sleep.songEnded
+      ..setVideoHeight(_videoHeight);
     media?.bind(
       play: () => play().ignore(),
       pause: () => pause().ignore(),
@@ -132,7 +140,7 @@ class WebBackend extends BackendDefaults {
   final MediaControls? media;
   final http.Client _http;
   final LibraryStore _library;
-  late final _listens = ListenTracker(heard: (id, durationMs) => _heard(id, durationMs));
+  late final _listens = ListenTracker(skipped: (id, durationMs) => _skipped(id, durationMs), heard: (id, durationMs) => _heard(id, durationMs));
   QueueEntry? _listened;
   final SocketOpener? _opener;
   final Random _random;
@@ -150,6 +158,7 @@ class WebBackend extends BackendDefaults {
   static const _keyLocalQueue = 'web.localQueue';
   static const _keyAutoplay = 'web.autoplay';
   static const _keyVideo = 'web.video';
+  static const _keyVideoHeight = 'web.videoHeight';
   static const _chatKept = 200;
 
   @override
@@ -598,17 +607,8 @@ class WebBackend extends BackendDefaults {
 
   /// Songs like [videoId] that are worth offering: what YouTube Music's radio lists, without the ones in [exclude] and
   /// without what is not music (mixes of hours, clips of seconds), up to [limit].
-  Future<List<TrackRef>> _moreLike(String videoId, Set<String> exclude, int limit) async {
-    final radio = (await _feed.watchNext(videoId)).tracks;
-    final seen = {...exclude, videoId};
-    return [
-      for (final t in radio)
-        if (t.durMs >= _minSongMs && t.durMs <= _maxSongMs && seen.add(t.videoId)) TrackRef.of(t),
-    ].take(limit).toList();
-  }
-
-  static const _minSongMs = 60000;
-  static const _maxSongMs = 600000;
+  Future<List<TrackRef>> _moreLike(String videoId, Set<String> exclude, int limit) =>
+      _suggestions.after(videoId, exclude, limit);
 
   /// Songs added each time the queue runs out and the music carries on by itself.
   static const _autoplayCount = 5;
@@ -875,6 +875,117 @@ class WebBackend extends BackendDefaults {
   @override
   Future<void> share(String text) async => onShare?.call(text);
 
+  // ------------------------------------------------------------------ what the person likes: suggestions, blocks
+
+  late final SuggestionFeed _suggestions = SuggestionFeed(
+    store: _library,
+    radio: (videoId) async => [for (final t in (await _feed.watchNext(videoId)).tracks) TrackRef.of(t)],
+    log: (line) => _note('suggestions: $line'),
+  );
+
+  static Track _track(TrackRef t) => Track(videoId: t.videoId, title: t.title, artist: t.artist, thumb: t.thumb, durMs: t.durMs);
+
+  @override
+  Future<List<Track>> forYou() async => [for (final t in _suggestions.forYou()) _track(t)];
+
+  @override
+  Future<List<Track>> refreshSuggestions() async {
+    await _suggestions.renew(force: true);
+    return forYou();
+  }
+
+  @override
+  Future<List<SeedList>> seedLists() async => [
+    for (final (seed, tracks) in _suggestions.seedLists()) SeedList(seed: seed, tracks: [for (final t in tracks) _track(t)]),
+  ];
+
+  @override
+  Future<List<Track>> discover() async => [for (final t in _suggestions.discover()) _track(t)];
+
+  @override
+  Future<ContextMix> contextMix() async {
+    final (bucket, tracks) = await _suggestions.contextMix();
+    return ContextMix(bucket: bucket, tracks: [for (final t in tracks) _track(t)]);
+  }
+
+  /// A song is blocked by its video id, an artist by the name of the first artist credited.
+  @override
+  Future<void> block(Track track, {bool artistOnly = false}) async {
+    if (artistOnly) {
+      _library.block(SuggestionFeed.artist, Taste.artistKey(track.artist), Taste.artistLabel(track.artist));
+    } else {
+      _library.block(SuggestionFeed.song, track.videoId, track.title);
+    }
+  }
+
+  @override
+  Future<void> unblock(BlockedItem item) async => _library.unblock(item.kind, item.key);
+
+  @override
+  Future<List<BlockedItem>> blocked() async => _library.blocked();
+
+  DateTime? _renewedAt;
+
+  /// Brings the suggestions up to date when the page opens, at most twice an hour: they are shown from what was kept, so
+  /// there is no hurry.
+  void _renewSuggestionsIfDue() {
+    final now = DateTime.now();
+    final last = _renewedAt;
+    if (last != null && now.difference(last) < const Duration(minutes: 30)) return;
+    if (_server.isEmpty || _key.isEmpty) return;
+    _renewedAt = now;
+    _suggestions.renew(force: false).ignore();
+  }
+
+  // ------------------------------------------------------------------ sleep timer
+
+  /// Stops this device after a while, or when the song is over; the fade is the player's own volume.
+  late final SleepTimer _sleep = SleepTimer(
+    wallClock: () => DateTime.now().millisecondsSinceEpoch,
+    stop: _stopForSleep,
+    fade: player.setVolume,
+    pauseAtSongEnd: player.pauseAtEnd,
+    onChanged: (state) => _events.add(SleepEvent(state)),
+  );
+
+  @override
+  Future<void> setSleep(SleepMode mode, {int minutes = 0}) async {
+    switch (mode) {
+      case SleepMode.time:
+        _sleep.startIn(minutes);
+      case SleepMode.song:
+        _sleep.startAtSongEnd();
+      case SleepMode.off:
+        _sleep.cancel();
+    }
+  }
+
+  /// The sleep timer ran out. In a room only this device stops: it carries on alone, paused, and the room plays on.
+  void _stopForSleep() {
+    final session = _session;
+    if (session == null) {
+      _local.pause();
+      return;
+    }
+    if (!session.isSolo) session.goSolo();
+    session.soloPause();
+  }
+
+  // ------------------------------------------------------------------ picture quality
+
+  int get _videoHeight => prefs.getInt(_keyVideoHeight) ?? _defaultVideoHeight;
+
+  /// What a frame of YouTube is asked for until the person says otherwise: the lowest it goes.
+  static const _defaultVideoHeight = 480;
+
+  /// The size the picture is fetched at, from the next song on, or as soon as the frame is shown larger.
+  @override
+  Future<void> setVideoQuality(int height) async {
+    await prefs.setInt(_keyVideoHeight, height);
+    player.setVideoHeight(height);
+    _emitState();
+  }
+
   /// Up to [limit] songs or, without [songsOnly], videos matching [query]. The apps read the whole of YouTube for
   /// videos; here it is what YouTube Music lists under Videos.
   @override
@@ -993,6 +1104,7 @@ class WebBackend extends BackendDefaults {
       loading: inRoom ? group?.loading ?? false : local.loading,
       // Audio is the way of every other device: the cover. Video shows the frame of YouTube in its place
       video: _video,
+      videoHeight: _videoHeight,
       playbackSpeed: inRoom ? 1 : _speed,
       name: state?.name,
       ownerId: state?.ownerId,
@@ -1026,6 +1138,7 @@ class WebBackend extends BackendDefaults {
       snapshot.trimMs,
       snapshot.playbackSpeed,
       snapshot.video,
+      snapshot.videoHeight,
     ].join('|');
     if (key == _lastKey) return;
     _lastKey = key;
@@ -1068,6 +1181,15 @@ class WebBackend extends BackendDefaults {
       _listens.setPlaying(playing, now);
       _listens.check(now);
     }
+  }
+
+  /// A song was left after a few seconds, before it counted: the person did not want it, which the taste takes in.
+  void _skipped(String id, int durationMs) {
+    final item = _listened;
+    if (item == null || item.videoId != id) return;
+    _library.recordSkip(
+      Track(videoId: id, title: item.title, artist: item.artist, thumb: item.thumb, durMs: durationMs > 0 ? durationMs : item.durMs),
+    );
   }
 
   void _heard(String id, int durationMs) {

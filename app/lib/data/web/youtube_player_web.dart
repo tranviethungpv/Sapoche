@@ -27,6 +27,7 @@ extension type _YtPlayer._(JSObject _) implements JSObject {
   external void setPlaybackRate(num rate);
   external void mute();
   external void unMute();
+  external void setVolume(num percent);
 }
 
 extension type _YtEvent._(JSObject _) implements JSObject {
@@ -98,7 +99,9 @@ class YoutubePlayer extends PlayerPort {
     // The object has no methods until the frame says it is ready, so nobody else sees it before that
     // The frame takes the place of the element it is given, so the host keeps an element of its own to give
     final place = web.document.createElement('div');
-    host.append(place);
+    host.append(_fit..append(place));
+    web.ResizeObserver(((JSAny a, JSAny b) => _fitFrame()).toJS).observe(host);
+    _fitFrame();
     final player = _YtPlayer(place as JSObject, options);
     await created.future.timeout(
       const Duration(seconds: 15),
@@ -106,6 +109,44 @@ class YoutubePlayer extends PlayerPort {
     );
     _player = player;
   }
+
+  /// The piece that holds the frame. The frame picks the quality of the picture by the size it is laid out at (the
+  /// quality it is asked for, `setPlaybackQuality`, is not heard any more), so it is laid out as large as the quality
+  /// wanted and shrunk with `transform` to fit the place the app gives it.
+  final web.HTMLElement _fit = (web.document.createElement('div') as web.HTMLElement)..className = 'sapoche-fit';
+
+  var _height = 480;
+
+  /// A frame of 360 or less is given a picture of 480 whatever it is: that is the lowest the frame goes.
+  static int _layoutHeight(int quality) => quality <= 480 ? 360 : quality;
+
+  @override
+  void setVideoHeight(int height) {
+    _height = height;
+    _fitFrame();
+  }
+
+  void _fitFrame() {
+    final w = host.clientWidth;
+    final h = host.clientHeight;
+    // A place of a few pixels is where the frame hides in Audio mode: it asks for the least there is
+    if (w < _smallest || h < _smallest) {
+      _fit.style
+        ..width = '100%'
+        ..height = '100%'
+        ..transform = 'none';
+      return;
+    }
+    final layoutWidth = _layoutHeight(_height) * 16 / 9;
+    final scale = w / layoutWidth;
+    _fit.style
+      ..width = '${layoutWidth.round()}px'
+      ..height = '${(h / scale).round()}px'
+      ..transform = 'scale($scale)';
+  }
+
+  /// Under this many pixels the frame is not on show.
+  static const _smallest = 100;
 
   static Future<void> _loadApi() {
     final done = Completer<void>();
@@ -132,7 +173,12 @@ class YoutubePlayer extends PlayerPort {
       final waiting = _waitPlaying;
       if (waiting != null && !waiting.isCompleted) waiting.complete();
     } else if (state == _ended && _loadedVideoId != null && _waitPlaying == null) {
-      onEnded?.call();
+      // Left where it ended: the one who asked to stop there carries on from here
+      if (_pauseAtEnd) {
+        onPausedAtEnd?.call();
+      } else {
+        onEnded?.call();
+      }
     }
   }
 
@@ -216,6 +262,14 @@ class YoutubePlayer extends PlayerPort {
     }
     _player?.setPlaybackRate(nearest);
   }
+
+  @override
+  void setVolume(double level) => _player?.setVolume((level.clamp(0, 1) * 100).round());
+
+  @override
+  void pauseAtEnd(bool on) => _pauseAtEnd = on;
+
+  var _pauseAtEnd = false;
 
   @override
   void setNext(QueueEntry? item) {}

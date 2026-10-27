@@ -39,6 +39,15 @@ abstract class PlayerPort {
   void stop();
   void setSpeed(double speed);
 
+  /// Sets the volume of the player, 1 is full. A player that has no volume of its own may leave it.
+  void setVolume(double level) {}
+
+  /// Asks the player to stop, and not to move on, when the song that plays now is over; [onPausedAtEnd] says it did.
+  void pauseAtEnd(bool on) {}
+
+  /// The picture quality to ask for, as a height in pixels, from the next song on. A player may not be able to.
+  void setVideoHeight(int height) {}
+
   /// Queue [item] to play right after the current one, or drop the queued item when null. A player that cannot play
   /// without a gap may ignore it, but then must never call [onAdvanced].
   void setNext(QueueEntry? item);
@@ -57,6 +66,9 @@ abstract class PlayerPort {
 
   /// The player moved on to the item given to [setNext] by itself.
   void Function()? onAdvanced;
+
+  /// The loaded item played to its end while [pauseAtEnd] was on: the player stayed there.
+  void Function()? onPausedAtEnd;
 
   /// Playback failed after it started.
   void Function(Object error)? onError;

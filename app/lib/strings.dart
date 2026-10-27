@@ -280,8 +280,8 @@ abstract final class S {
     'Thư viện, hàng đợi và cài đặt được giữ trong trình duyệt này, không ở đâu khác. Trình duyệt có thể xóa chúng khi máy thiếu chỗ, hoặc khi bạn xóa dữ liệu trang. Bài hát không được lưu ở đây: mỗi lần nghe đều phát trực tiếp từ YouTube.',
   );
   static String get webQualityHelp => _t(
-    'A browser picks the sound and picture quality itself, by your connection and the size of the player. It cannot be set here.',
-    'Trình duyệt tự chọn chất lượng âm thanh và hình theo đường truyền và kích thước khung phát. Không chỉnh được ở đây.',
+    'YouTube picks the quality of the sound in a browser, by your connection. It cannot be set here.',
+    'Trình duyệt do YouTube tự chọn chất lượng âm thanh theo đường truyền. Không chỉnh được ở đây.',
   );
   static String get cacheLimit =>
       _t('Size for played songs', 'Dung lượng cho bài đã nghe');
@@ -686,6 +686,10 @@ abstract final class S {
     'Applies from the next song. Higher quality uses more data. Music keeps playing when the screen is off; the picture does not.',
     'Áp dụng từ bài sau. Chất lượng cao hơn tốn nhiều dữ liệu hơn. Nhạc vẫn phát khi tắt màn hình; hình thì không.',
   );
+  static String get videoQualityHelpWeb => _t(
+    'Applies from the next song, or at once for a higher quality. A browser does not show a picture below 480p, so 480p is the lowest; the connection can still bring less. Higher quality uses more data.',
+    'Áp dụng từ bài sau, hoặc ngay nếu chọn chất lượng cao hơn. Trình duyệt không phát hình thấp hơn 480p nên 480p là mức thấp nhất; đường truyền yếu vẫn có thể cho hình kém hơn. Chất lượng cao hơn tốn nhiều dữ liệu hơn.',
+  );
   static String get pause => _t('Pause', 'Tạm dừng');
   static String get fullScreen => _t('Full screen', 'Toàn màn hình');
   static String get exitFullScreen =>
@@ -774,6 +778,10 @@ abstract final class S {
   static String get latencyTrimHelp => _t(
     'If this phone is always a little early or late compared with the others, nudge it here.',
     'Nếu điện thoại này luôn nhanh hoặc chậm hơn các máy khác một chút, hãy chỉnh ở đây.',
+  );
+  static String get latencyTrimHelpWeb => _t(
+    'If this browser is always a little early or late compared with the others, nudge it here.',
+    'Nếu trình duyệt này luôn nhanh hoặc chậm hơn các máy khác một chút, hãy chỉnh ở đây.',
   );
   static String get reset => _t('Reset', 'Đặt lại');
   static String get room => _t('Room', 'Phòng');
@@ -944,6 +952,10 @@ abstract final class S {
   static String get serverHelp => _t(
     'Where your Sapoche server is and the key it asks for. They stay on this phone and are not part of the app. Easiest: on a phone that already works, open Settings > Set up another phone, and point this phone’s camera at the code.',
     'Địa chỉ máy chủ Sapoche của bạn và khoá nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng. Dễ nhất: trên máy đã dùng được, mở Cài đặt > Cài đặt cho máy khác, rồi đưa camera của máy này vào mã.',
+  );
+  static String get serverHelpWeb => _t(
+    'Where your Sapoche server is and the key it asks for. They stay in this browser: clearing the site’s data removes them.',
+    'Địa chỉ máy chủ Sapoche của bạn và khoá nó yêu cầu. Chúng chỉ nằm trong trình duyệt này: xoá dữ liệu của trang là mất.',
   );
   static String get setupAnother =>
       _t('Set up another phone', 'Cài đặt cho máy khác');

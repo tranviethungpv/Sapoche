@@ -56,6 +56,19 @@ class FakePlayer extends PlayerPort {
   @override
   void setSpeed(double speed) {}
 
+  var volume = 1.0;
+  var pausesAtEnd = false;
+  var videoHeight = 0;
+
+  @override
+  void setVolume(double level) => volume = level;
+
+  @override
+  void pauseAtEnd(bool on) => pausesAtEnd = on;
+
+  @override
+  void setVideoHeight(int height) => videoHeight = height;
+
   @override
   void setNext(QueueEntry? item) => calls.add('next ${item?.id}');
 

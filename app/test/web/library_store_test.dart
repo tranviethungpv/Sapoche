@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/web/library_store.dart';
+import 'package:sapoche/data/web/wire.dart';
 
 // The cases of LibraryStoreTest.kt for what the browser keeps
 
@@ -205,6 +206,81 @@ void main() {
         ..recordListen(song('a'))
         ..createFolder('F');
       expect(heard, 3);
+    });
+  });
+
+  group('what the suggestions are made from', () {
+    test('a skip is kept with its song, latest first, and only the last 300', () {
+      library
+        ..recordSkip(song('a'))
+        ..recordSkip(song('b'));
+      expect(library.skipped().map((e) => e.track.videoId), ['b', 'a']);
+      for (var i = 0; i < LibraryStore.skipsKeep + 5; i++) {
+        library.recordSkip(song('s$i'));
+      }
+      expect(library.skipped(), hasLength(LibraryStore.skipsKeep));
+      expect(library.skipped().first.track.videoId, 's304');
+    });
+
+    test('forgetting the history forgets the skips and the songs only they kept', () {
+      library
+        ..recordSkip(song('a'))
+        ..recordListen(song('b'))
+        ..clearHistory();
+      expect(library.skipped(), isEmpty);
+      expect(library.recent(), isEmpty);
+    });
+
+    test('a block lasts until it is lifted, the latest first, and blocking again changes the label', () {
+      library
+        ..block('song', 'a', 'Song a')
+        ..block('artist', 'artist x', 'Artist X')
+        ..block('song', 'a', 'Song A again');
+      expect(library.blocked().map((b) => (b.kind, b.key, b.label)), [
+        ('song', 'a', 'Song A again'),
+        ('artist', 'artist x', 'Artist X'),
+      ]);
+      library.unblock('song', 'a');
+      expect(library.blocked().map((b) => b.key), ['artist x']);
+    });
+
+    test('liked songs come with the time they were liked, and heardSince tells what was heard lately', () {
+      library
+        ..setLiked(song('a'), true)
+        ..recordListen(song('b'));
+      expect(library.likedEntries().single.at, isNot(DateTime.fromMillisecondsSinceEpoch(0)));
+      expect(library.likedIds(), {'a'});
+      expect(library.heardSince(0), {'b'});
+      expect(library.heardSince(1 << 40), isEmpty);
+    });
+
+    test('what was kept for a seed is there until the seed is no longer one', () {
+      library
+        ..putSuggestions('s1', [const TrackRef('x', 'X', 'Artist', null, 200000)], 5)
+        ..putSuggestions('s2', [const TrackRef('y', 'Y', 'Artist', 'https://img/y', 200000)], 6);
+      expect(library.cachedSuggestions('s1')!.tracks.single.videoId, 'x');
+      expect(library.cachedSuggestions('s2')!.fetchedAt, 6);
+      library.keepSuggestionsFor(['s2']);
+      expect(library.cachedSuggestions('s1'), isNull);
+      expect(library.cachedSuggestions('s2'), isNotNull);
+    });
+
+    test('all of it survives a restart, and a library written before it still opens', () async {
+      final disk = _Disk();
+      final first = LibraryStore(disk: disk, nowMs: tick)
+        ..recordSkip(song('a'))
+        ..block('artist', 'artist', 'Artist')
+        ..putSuggestions('s', [const TrackRef('x', 'X', 'Artist', 'https://img/x', 200000)], 7);
+      await first.flush();
+      final second = LibraryStore(disk: disk, stored: disk.json, nowMs: tick);
+      expect(second.skipped().single.track.videoId, 'a');
+      expect(second.blocked().single.key, 'artist');
+      expect(second.cachedSuggestions('s')!.tracks.single.thumb, 'https://img/x');
+      final old = LibraryStore(
+        stored: '{"v":1,"next":1,"tracks":[],"likes":[],"history":[],"playlists":[],"folders":[]}',
+      );
+      expect(old.skipped(), isEmpty);
+      expect(old.blocked(), isEmpty);
     });
   });
 }

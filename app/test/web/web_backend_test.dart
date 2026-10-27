@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/web/library_store.dart';
+import 'package:sapoche/data/web/wire.dart' show TrackRef;
 import 'package:sapoche/data/web/web_backend.dart';
 
 import 'group_session_test.dart' show FakePlayer;
@@ -302,5 +303,103 @@ void main() {
     await backend.setVideoMode(false);
     await Future<void>.delayed(Duration.zero);
     expect(events.whereType<StateEvent>().last.snapshot.video, isFalse);
+  });
+
+  group('the taste of the person', () {
+    Track song(String id, String artist, {int durMs = 200000}) =>
+        Track(videoId: id, title: 'Song $id', artist: artist, durMs: durMs);
+
+    test('what was blocked is listed, latest first, and can be let back', () async {
+      final (backend, _) = await backendWith((_) => http.Response('{}', 200));
+      await backend.block(song('a', 'Jack & K-ICM'));
+      await backend.block(song('b', 'Jack & K-ICM'), artistOnly: true);
+      final blocked = await backend.blocked();
+      expect(blocked.map((b) => (b.kind, b.key, b.label)), [('artist', 'jack', 'Jack'), ('song', 'a', 'Song a')]);
+      await backend.unblock(blocked.first);
+      expect((await backend.blocked()).single.key, 'a');
+    });
+
+    test('songs for you come from what was kept for the seeds, and not from a blocked artist', () async {
+      final library = LibraryStore()
+        ..recordListen(song('seed', 'Known'))
+        ..putSuggestions('seed', const [
+          TrackRef('x1', 'X1', 'New One', null, 200000),
+          TrackRef('x2', 'X2', 'New Two', null, 200000),
+          TrackRef('x3', 'X3', 'Known', null, 200000),
+        ], DateTime.now().millisecondsSinceEpoch);
+      final (backend, _) = await backendWith((_) => http.Response('{}', 200), library: library);
+      expect((await backend.forYou()).map((t) => t.videoId), unorderedEquals(['x1', 'x2', 'x3']));
+      expect((await backend.seedLists()).single.seed, 'seed');
+      expect((await backend.discover()).map((t) => t.videoId), ['x1', 'x2']);
+      await backend.block(song('x1', 'New One'), artistOnly: true);
+      expect((await backend.forYou()).map((t) => t.videoId), isNot(contains('x1')));
+    });
+
+    test('a song left after a few seconds is a skip, and one heard to the end of a half minute is not', () async {
+      var clock = 0;
+      final library = LibraryStore();
+      final (backend, _) = await backendWith((_) => http.Response('{}', 200), nowMs: () => clock, library: library);
+      backend.events.listen((_) {});
+      await backend.add(song('a', 'A'));
+      await backend.add(song('b', 'B'));
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      clock = 5000;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await backend.next();
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      expect(library.skipped().map((e) => e.track.videoId), ['a']);
+      expect(library.recent(), isEmpty);
+    });
+  });
+
+  group('the sleep timer', () {
+    test('at the end of the song it asks the player to stay there, and pauses when the player says it did', () async {
+      final (backend, _) = await backendWith((_) => http.Response('{}', 200));
+      final events = <BackendEvent>[];
+      backend.events.listen(events.add);
+      await backend.add(const Track(videoId: 'a', title: 'A', artist: 'X', durMs: 200000));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final player = backend.player as FakePlayer;
+      await backend.setSleep(SleepMode.song);
+      await Future<void>.delayed(Duration.zero);
+      expect(player.pausesAtEnd, isTrue);
+      expect(events.whereType<SleepEvent>().last.sleep.mode, SleepMode.song);
+      player.clear();
+      player.onPausedAtEnd!();
+      await Future<void>.delayed(Duration.zero);
+      expect(player.calls, contains('pause'));
+      expect(player.pausesAtEnd, isFalse);
+      expect(events.whereType<SleepEvent>().last.sleep.on, isFalse);
+    });
+
+    test('in minutes it says when the music stops, and turning it off puts the volume back', () async {
+      final (backend, _) = await backendWith((_) => http.Response('{}', 200));
+      final events = <BackendEvent>[];
+      backend.events.listen(events.add);
+      await backend.setSleep(SleepMode.time, minutes: 30);
+      await Future<void>.delayed(Duration.zero);
+      final sleep = events.whereType<SleepEvent>().last.sleep;
+      expect(sleep.mode, SleepMode.time);
+      expect(sleep.endsAt!.difference(DateTime.now()).inMinutes, inInclusiveRange(29, 30));
+      final player = backend.player as FakePlayer..volume = 0.2;
+      await backend.setSleep(SleepMode.off);
+      await Future<void>.delayed(Duration.zero);
+      expect(player.volume, 1.0);
+      expect(events.whereType<SleepEvent>().last.sleep.on, isFalse);
+    });
+  });
+
+  test('the picture quality is the lowest a frame goes until it is chosen, and the player is told', () async {
+    final (backend, _) = await backendWith((_) => http.Response('{}', 200));
+    final events = <BackendEvent>[];
+    backend.events.listen(events.add);
+    await Future<void>.delayed(Duration.zero);
+    final player = backend.player as FakePlayer;
+    expect(events.whereType<StateEvent>().last.snapshot.videoHeight, 480);
+    expect(player.videoHeight, 480);
+    await backend.setVideoQuality(1080);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.whereType<StateEvent>().last.snapshot.videoHeight, 1080);
+    expect(player.videoHeight, 1080);
   });
 }

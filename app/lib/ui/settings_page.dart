@@ -169,13 +169,15 @@ class _SettingsPageState extends State<SettingsPage> {
             label: S.storage,
             onTap: () => _open(context, () => S.storage, _storage),
           ),
-          _NavRow(
-            selected: _shows(_backup),
-            key: const ValueKey('settings-backup'),
-            icon: Icons.backup_outlined,
-            label: S.backup,
-            onTap: () => _open(context, () => S.backup, _backup),
-          ),
+          // The web build cannot save or read a backup file yet
+          if (!kIsWeb)
+            _NavRow(
+              selected: _shows(_backup),
+              key: const ValueKey('settings-backup'),
+              icon: Icons.backup_outlined,
+              label: S.backup,
+              onTap: () => _open(context, () => S.backup, _backup),
+            ),
           // The server is set by the person on iOS and in a browser; on Android it is built into the app
           if (kIsWeb || Platform.isIOS)
             _NavRow(
@@ -372,10 +374,10 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     ),
-    // The player of a browser is YouTube's own frame, which picks both qualities by itself
+    // The sound of a browser is YouTube's own, which picks it by itself; the picture is asked for by the size it is laid out at
     if (kIsWeb)
       _Group(footer: S.webQualityHelp, children: const [])
-    else ...[
+    else
       _Group(
         title: S.soundSection,
         footer: S.audioQualityHelp,
@@ -415,39 +417,38 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
-      _Group(
-        title: S.videoSection,
-        footer: S.videoQualityHelp,
-        children: [
-          ListenableBuilder(
-            listenable: model.room,
-            builder: (context, _) => Padding(
-              padding: const EdgeInsets.all(12),
-              child: SegmentedButton<int>(
-                showSelectedIcon: false,
-                expandedInsets: EdgeInsets.zero,
-                style: SegmentedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  selectedBackgroundColor: context.palette.primaryContainer,
-                  selectedForegroundColor: context.palette.onPrimaryContainer,
-                  foregroundColor: context.palette.textSecondary,
-                  side: BorderSide(color: context.palette.outline),
-                ),
-                segments: [
-                  for (final h in videoQualities)
-                    ButtonSegment(value: h, label: Text('${h}p')),
-                ],
-                selected: {model.room.snapshot.videoHeight},
-                onSelectionChanged: (s) => model.room.setVideoQuality(s.first),
+    _Group(
+      title: S.videoSection,
+      footer: kIsWeb ? S.videoQualityHelpWeb : S.videoQualityHelp,
+      children: [
+        ListenableBuilder(
+          listenable: model.room,
+          builder: (context, _) => Padding(
+            padding: const EdgeInsets.all(12),
+            child: SegmentedButton<int>(
+              showSelectedIcon: false,
+              expandedInsets: EdgeInsets.zero,
+              style: SegmentedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                selectedBackgroundColor: context.palette.primaryContainer,
+                selectedForegroundColor: context.palette.onPrimaryContainer,
+                foregroundColor: context.palette.textSecondary,
+                side: BorderSide(color: context.palette.outline),
               ),
+              segments: [
+                for (final h in videoQualities)
+                  ButtonSegment(value: h, label: Text('${h}p')),
+              ],
+              selected: {model.room.snapshot.videoHeight},
+              onSelectionChanged: (s) => model.room.setVideoQuality(s.first),
             ),
           ),
-        ],
-      ),
-    ],
+        ),
+      ],
+    ),
     _Group(
       title: S.sync,
-      footer: S.latencyTrimHelp,
+      footer: kIsWeb ? S.latencyTrimHelpWeb : S.latencyTrimHelp,
       children: [_TrimRow(controller: model.room)],
     ),
   ];
@@ -530,7 +531,7 @@ class _ServerGroup extends StatelessWidget {
     return ListenableBuilder(
       listenable: room,
       builder: (context, _) => _Group(
-        footer: S.serverHelp,
+        footer: kIsWeb ? S.serverHelpWeb : S.serverHelp,
         children: [
           _Row(
             key: const ValueKey('server-address'),

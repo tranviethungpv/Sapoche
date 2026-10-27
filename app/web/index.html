@@ -31,7 +31,9 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     /* The frame of the YouTube player: the app places it (see video_frame.dart) and the player puts its frame inside.
        It takes no touches, the app is below it. A small round place fills with the middle of the picture. */
-    .sapoche-frame { width: 100%; height: 100%; overflow: hidden; background: #000; pointer-events: none; }
+    .sapoche-frame { position: relative; width: 100%; height: 100%; overflow: hidden; background: #000; pointer-events: none; }
+    /* The frame is laid out at the size of the picture asked for and shrunk to fit (see youtube_player_web.dart) */
+    .sapoche-fit { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; }
     .sapoche-frame iframe { width: 100%; height: 100%; border: 0; }
     .sapoche-frame.crop iframe { transform: scale(1.78); }
     .sapoche-frame.hidden, .sapoche-frame.empty { visibility: hidden; }

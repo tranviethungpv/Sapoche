@@ -42,9 +42,6 @@ abstract class BackendDefaults implements Backend {
   Future<int> videoSurface() async => throw unsupported;
 
   @override
-  Future<void> setVideoQuality(int height) async {}
-
-  @override
   Future<void> setVideoWatching(bool on, {int width = 0, int height = 0}) async {}
 
   @override
@@ -108,27 +105,6 @@ abstract class BackendDefaults implements Backend {
   Future<void> setAutoDownload(bool on) async {}
 
   @override
-  Future<List<Track>> forYou() async => const [];
-
-  @override
-  Future<List<Track>> refreshSuggestions() async => const [];
-
-  @override
-  Future<List<Track>> discover() async => const [];
-
-  @override
-  Future<ContextMix> contextMix() async => const ContextMix();
-
-  @override
-  Future<void> block(Track track, {bool artistOnly = false}) async {}
-
-  @override
-  Future<void> unblock(BlockedItem item) async {}
-
-  @override
-  Future<List<BlockedItem>> blocked() async => const [];
-
-  @override
   Future<List<String>> suggest(String query) async => const [];
 
   @override
@@ -142,9 +118,6 @@ abstract class BackendDefaults implements Backend {
 
   @override
   Future<BackupCounts?> importBackup() async => null;
-
-  @override
-  Future<void> setSleep(SleepMode mode, {int minutes = 0}) async {}
 
   @override
   Future<SongRadio> musicNext(String videoId) async => throw unsupported;
@@ -178,9 +151,6 @@ abstract class BackendDefaults implements Backend {
 
   @override
   Future<List<MusicTrack>> musicSearch(String query, {required bool songs}) async => throw unsupported;
-
-  @override
-  Future<List<SeedList>> seedLists() async => const [];
 
   @override
   Future<Lyrics?> lyrics(Track track) async => null;
