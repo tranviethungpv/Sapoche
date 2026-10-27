@@ -1,0 +1,4 @@
+Lyrics that load the first time, and tidier toasts
+- Lyrics no longer say "Couldn't load lyrics" the first time you open a song: the app asks the lyrics service again by itself when it is busy.
+- On a tablet, a computer or the web, the small messages at the bottom stay narrow and in the middle instead of running across the whole screen, and they no longer cover the player bar.
+- Phones are unchanged.

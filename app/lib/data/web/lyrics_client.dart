@@ -31,11 +31,18 @@ typedef LyricsFetch = Future<String?> Function(String url);
 
 /// Lyrics that run along with the music, from [LRCLIB](https://lrclib.net): a free service kept by volunteers that
 /// needs no key and lets any page ask. It is told the title, artist and length of the song, nothing else.
+///
+/// LRCLIB answers 503 ("the server is busy, please retry in a moment") to the first ask for a song it has not looked up
+/// lately, and the same ask a moment later is answered at once. So an ask that failed is made again after each of
+/// [retryDelays] before it is given up.
 /// Mirrors LyricsClient in Lyrics.kt.
 class LyricsClient {
-  LyricsClient(this._fetch);
+  LyricsClient(this._fetch, {this.retryDelays = defaultRetryDelays});
 
   final LyricsFetch _fetch;
+  final List<Duration> retryDelays;
+
+  static const defaultRetryDelays = [Duration(milliseconds: 600), Duration(milliseconds: 1200)];
 
   /// Lyrics of a song this much longer or shorter are probably of another recording.
   static const maxLengthGapSec = 5;
@@ -52,7 +59,7 @@ class LyricsClient {
   }
 
   Future<Lyrics?> _exact(String title, String artist, int durationSec) async {
-    final body = await _fetch(_url('get', {
+    final body = await _get(_url('get', {
       'track_name': title,
       'artist_name': artist,
       if (durationSec > 0) 'duration': '$durationSec',
@@ -64,7 +71,7 @@ class LyricsClient {
 
   /// With no exact match, the song of about the same length that has the most to show.
   Future<Lyrics?> _closest(String title, String artist, int durationSec) async {
-    final body = await _fetch(_url('search', {'track_name': title, 'artist_name': artist}));
+    final body = await _get(_url('search', {'track_name': title, 'artist_name': artist}));
     if (body == null) return null;
     final items = jsonDecode(body);
     if (items is! List) return null;
@@ -78,6 +85,17 @@ class LyricsClient {
       if (lyrics.synced) return lyrics;
     }
     return found.firstOrNull;
+  }
+
+  Future<String?> _get(String url) async {
+    for (final wait in retryDelays) {
+      try {
+        return await _fetch(url);
+      } on Object {
+        await Future<void>.delayed(wait);
+      }
+    }
+    return _fetch(url);
   }
 
   Lyrics? _lyricsOf(Map<String, Object?> item) {

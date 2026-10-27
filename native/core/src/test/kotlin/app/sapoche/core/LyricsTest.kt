@@ -1,8 +1,10 @@
 package app.sapoche.core
 
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -86,6 +88,30 @@ class LyricsTest {
         val instrumental = """{"duration":214.0,"instrumental":true,"plainLyrics":null,"syncedLyrics":null}"""
         assertNull(LyricsClient(FakeLrclib(mapOf("api/get" to instrumental))).find("Song", "Artist", 214))
         assertNull(LyricsClient(FakeLrclib(emptyMap())).find("Song", "Artist", 214))
+    }
+
+    /** A LRCLIB that is busy for its first [failures] asks, as it is for a song it has not looked up lately. */
+    private class Busy(private val failures: Int, private val body: String) : LyricsFetch {
+        var asked = 0
+        override suspend fun get(url: String): String? {
+            if (asked++ < failures) throw IOException("LRCLIB answered 503")
+            return body
+        }
+    }
+
+    @Test
+    fun `a busy service is asked again before the lyrics are given up`() = runTest {
+        val busy = Busy(2, synced)
+        val lyrics = LyricsClient(busy, retryDelaysMs = listOf(0, 0)).find("Song", "Artist", 214)!!
+        assertTrue(lyrics.synced)
+        assertEquals(3, busy.asked)
+    }
+
+    @Test
+    fun `a service that stays down is given up after the last retry`() = runTest {
+        val busy = Busy(99, synced)
+        assertFailsWith<IOException> { LyricsClient(busy, retryDelaysMs = listOf(0, 0)).find("Song", "Artist", 214) }
+        assertEquals(3, busy.asked)
     }
 
     @Test

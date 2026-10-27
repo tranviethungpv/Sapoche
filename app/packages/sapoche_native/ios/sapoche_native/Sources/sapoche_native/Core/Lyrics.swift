@@ -50,14 +50,22 @@ typealias LyricsFetch = (_ url: String) async throws -> String?
 
 /// Lyrics that run along with the music, from [LRCLIB](https://lrclib.net): a free service kept by volunteers that
 /// needs no key. It is told the title, artist and length of the song, nothing else.
+///
+/// LRCLIB answers 503 ("the server is busy, please retry in a moment") to the first ask for a song it has not looked up
+/// lately, and the same ask a moment later is answered at once. So an ask that failed is made again after each of
+/// `retryDelaysMs` before it is given up.
 struct LyricsClient {
     /// Lyrics of a song this much longer or shorter are probably of another recording.
     static let maxLengthGapSec = 5.0
 
-    private let fetch: LyricsFetch
+    static let retryDelaysMs: [UInt64] = [600, 1200]
 
-    init(fetch: @escaping LyricsFetch) {
+    private let fetch: LyricsFetch
+    private let retryDelaysMs: [UInt64]
+
+    init(retryDelaysMs: [UInt64] = Self.retryDelaysMs, fetch: @escaping LyricsFetch) {
         self.fetch = fetch
+        self.retryDelaysMs = retryDelaysMs
     }
 
     init(http: HTTPClient = URLSessionHTTP()) {
@@ -86,18 +94,30 @@ struct LyricsClient {
 
     private func exact(_ title: String, _ artist: String, _ durationSec: Int64) async throws -> Lyrics? {
         let query = [("track_name", title), ("artist_name", artist), ("duration", durationSec > 0 ? String(durationSec) : nil)]
-        guard let body = try await fetch(url("get", query)) else { return nil }
+        guard let body = try await get(url("get", query)) else { return nil }
         guard let json = JSON.parse(body), json.object != nil else { return nil }
         return lyricsOf(json)
     }
 
     /// With no exact match, the song of about the same length that has the most to show.
     private func closest(_ title: String, _ artist: String, _ durationSec: Int64) async throws -> Lyrics? {
-        guard let body = try await fetch(url("search", [("track_name", title), ("artist_name", artist)])) else { return nil }
+        guard let body = try await get(url("search", [("track_name", title), ("artist_name", artist)])) else { return nil }
         let candidates = (JSON.parse(body)?.array ?? []).filter { $0.object != nil }
         let near = candidates.filter { durationSec <= 0 || abs(($0.at("duration").double ?? 0) - Double(durationSec)) <= Self.maxLengthGapSec }
         let found = near.compactMap(lyricsOf)
         return found.first { $0.synced } ?? found.first
+    }
+
+    private func get(_ url: String) async throws -> String? {
+        for wait in retryDelaysMs {
+            do {
+                return try await fetch(url)
+            } catch {
+                try Task.checkCancellation()
+                try await Task.sleep(nanoseconds: wait * 1_000_000)
+            }
+        }
+        return try await fetch(url)
     }
 
     private func lyricsOf(_ item: JSON) -> Lyrics? {

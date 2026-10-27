@@ -1,0 +1,4 @@
+Lời bài hát tải được ngay lần đầu, và thông báo nhỏ gọn hơn
+- Lời bài hát không còn báo "Không tải được lời" ngay lần đầu mở một bài: app tự hỏi lại dịch vụ lời khi nó đang bận.
+- Trên tablet, máy tính và bản web, các thông báo nhỏ ở đáy màn hình giờ hẹp và nằm giữa thay vì trải hết chiều ngang, và không còn che thanh player.
+- Điện thoại không thay đổi.

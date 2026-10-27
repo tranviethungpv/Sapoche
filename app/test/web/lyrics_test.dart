@@ -132,6 +132,29 @@ void main() {
     expect(SongNames.artist('Alex'), 'Alex', reason: 'the x of a name is not a separator');
   });
 
+  /// A LRCLIB that is busy for its first [failures] asks, as it is for a song it has not looked up lately.
+  (LyricsClient, List<String>) busy(int failures) {
+    final asked = <String>[];
+    final client = LyricsClient((url) async {
+      asked.add(url);
+      if (asked.length <= failures) throw Exception('LRCLIB answered 503');
+      return synced;
+    }, retryDelays: const [Duration.zero, Duration.zero]);
+    return (client, asked);
+  }
+
+  test('a busy service is asked again before the lyrics are given up', () async {
+    final (client, asked) = busy(2);
+    expect((await client.find('Song', 'Artist', 214))!.synced, isTrue);
+    expect(asked.length, 3);
+  });
+
+  test('a service that stays down is given up after the last retry', () async {
+    final (client, asked) = busy(99);
+    await expectLater(client.find('Song', 'Artist', 214), throwsException);
+    expect(asked.length, 3);
+  });
+
   test('the lyrics know the line that is being sung', () {
     final lyrics = Lyrics(lines: Lrc.parse('[00:01.00]a\n[00:05.00]b'));
     expect(lyrics.lineAt(500), isNull);

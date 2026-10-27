@@ -527,6 +527,44 @@ final class LyricsTests: XCTestCase {
         XCTAssertNil(second)
     }
 
+    /// A LRCLIB that is busy for its first `failures` asks, as it is for a song it has not looked up lately.
+    private actor Busy {
+        let failures: Int
+        let body: String
+        private(set) var asked = 0
+
+        init(failures: Int, body: String) {
+            self.failures = failures
+            self.body = body
+        }
+
+        func get() throws -> String? {
+            asked += 1
+            if asked <= failures { throw HTTPFailure(status: 503, service: "LRCLIB") }
+            return body
+        }
+    }
+
+    func testABusyServiceIsAskedAgainBeforeTheLyricsAreGivenUp() async throws {
+        let busy = Busy(failures: 2, body: synced)
+        let lyrics = try await LyricsClient(retryDelaysMs: [0, 0]) { _ in try await busy.get() }
+            .find(title: "Song", artist: "Artist", durationSec: 214)
+        XCTAssertTrue(try XCTUnwrap(lyrics).synced)
+        let asked = await busy.asked
+        XCTAssertEqual(asked, 3)
+    }
+
+    func testAServiceThatStaysDownIsGivenUpAfterTheLastRetry() async throws {
+        let busy = Busy(failures: 99, body: synced)
+        let client = LyricsClient(retryDelaysMs: [0, 0]) { _ in try await busy.get() }
+        do {
+            _ = try await client.find(title: "Song", artist: "Artist", durationSec: 214)
+            XCTFail("the failure should reach the caller")
+        } catch {}
+        let asked = await busy.asked
+        XCTAssertEqual(asked, 3)
+    }
+
     func testPlainWordsAreKeptWhenThereAreNoTimes() async throws {
         let plain = #"{"duration":214.0,"plainLyrics":"Only words","syncedLyrics":null}"#
         let lyrics = try await client(FakeLrclib(["api/get": plain])).find(title: "Song", artist: "Artist", durationSec: 214)

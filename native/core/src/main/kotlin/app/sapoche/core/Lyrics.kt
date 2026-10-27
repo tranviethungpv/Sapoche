@@ -1,6 +1,8 @@
 package app.sapoche.core
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -48,8 +50,15 @@ fun interface LyricsFetch {
 /**
  * Lyrics that run along with the music, from [LRCLIB](https://lrclib.net): a free service kept by volunteers that
  * needs no key. It is told the title, artist and length of the song, nothing else.
+ *
+ * LRCLIB answers 503 ("the server is busy, please retry in a moment") to the first ask for a song it has not looked up
+ * lately, and the same ask a moment later is answered at once. So an ask that failed is made again after each of
+ * [retryDelaysMs] before it is given up.
  */
-class LyricsClient(private val fetch: LyricsFetch = OkHttpFetch()) {
+class LyricsClient(
+    private val fetch: LyricsFetch = OkHttpFetch(),
+    private val retryDelaysMs: List<Long> = RETRY_DELAYS_MS,
+) {
 
     /** The lyrics of the song, or null when LRCLIB has none. The exact name is tried first, then the name without tags. */
     suspend fun find(title: String, artist: String, durationSec: Long): Lyrics? {
@@ -62,16 +71,29 @@ class LyricsClient(private val fetch: LyricsFetch = OkHttpFetch()) {
     }
 
     private suspend fun exact(title: String, artist: String, durationSec: Long): Lyrics? {
-        val body = fetch.get(url("get", "track_name" to title, "artist_name" to artist, "duration" to durationSec.takeIf { it > 0 }?.toString())) ?: return null
+        val body = get(url("get", "track_name" to title, "artist_name" to artist, "duration" to durationSec.takeIf { it > 0 }?.toString())) ?: return null
         return (Json.parseToJsonElement(body) as? JsonObject)?.let(::lyricsOf)
     }
 
     /** With no exact match, the song of about the same length that has the most to show. */
     private suspend fun closest(title: String, artist: String, durationSec: Long): Lyrics? {
-        val body = fetch.get(url("search", "track_name" to title, "artist_name" to artist)) ?: return null
+        val body = get(url("search", "track_name" to title, "artist_name" to artist)) ?: return null
         val candidates = (Json.parseToJsonElement(body) as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
         val near = candidates.filter { durationSec <= 0 || abs((it["duration"]?.jsonPrimitive?.doubleOrNull ?: 0.0) - durationSec) <= MAX_LENGTH_GAP_SEC }
         return near.mapNotNull(::lyricsOf).let { found -> found.firstOrNull { it.synced } ?: found.firstOrNull() }
+    }
+
+    private suspend fun get(url: String): String? {
+        for (wait in retryDelaysMs) {
+            try {
+                return fetch.get(url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                delay(wait)
+            }
+        }
+        return fetch.get(url)
     }
 
     private fun lyricsOf(item: JsonObject): Lyrics? {
@@ -89,6 +111,8 @@ class LyricsClient(private val fetch: LyricsFetch = OkHttpFetch()) {
     companion object {
         /** Lyrics of a song this much longer or shorter are probably of another recording. */
         const val MAX_LENGTH_GAP_SEC = 5
+
+        val RETRY_DELAYS_MS = listOf(600L, 1200L)
     }
 }
 
