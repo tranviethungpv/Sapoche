@@ -223,6 +223,7 @@ void main() {
       ],
     });
     expect(snapshot.name, 'Family');
+    expect(snapshot.theme, isNull, reason: 'a server without themes says nothing of them');
     expect(snapshot.guestControl, GuestControl.add);
     expect(snapshot.iOwn, isFalse);
     expect(snapshot.ownerHere, isTrue);

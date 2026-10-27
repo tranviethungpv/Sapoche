@@ -269,6 +269,10 @@ abstract class Backend {
 
   Future<void> setRoomName(String name);
 
+  /// The look of the chat for the whole room: a [ChatTheme] id, or `default`, with the picture behind it as base64 of a
+  /// JPEG; null takes the picture away.
+  Future<void> setRoomTheme(String theme, {String? background});
+
   /// Owner only.
   Future<void> setGuestControl(GuestControl mode);
 
@@ -758,6 +762,10 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> setRoomName(String name) => _call('roomName', {'name': name});
+
+  @override
+  Future<void> setRoomTheme(String theme, {String? background}) =>
+      _call('roomTheme', {'theme': theme, 'bg': background ?? ''});
 
   @override
   Future<void> setGuestControl(GuestControl mode) =>

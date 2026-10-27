@@ -693,6 +693,9 @@ final class Bridge {
         case "roomName":
             try requireRoom()
             controller.requestRoomName(string("name"))
+        case "roomTheme":
+            try requireRoom()
+            controller.requestRoomTheme(string("theme"), bg: string("bg").isEmpty ? nil : string("bg"))
         case "roomSettings":
             try requireRoom()
             controller.requestRoomSettings(string("guestControl"))

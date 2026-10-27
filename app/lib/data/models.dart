@@ -396,6 +396,7 @@ class RoomSnapshot {
     this.playbackSpeed = 1.0,
     this.name,
     this.ownerId,
+    this.theme,
     this.guestControl = GuestControl.all,
     this.roomAutoplay,
     this.shuffle,
@@ -441,6 +442,10 @@ class RoomSnapshot {
 
   /// The member who owns the room, when it has an owner.
   final String? ownerId;
+
+  /// The look of the room's chat: a [ChatTheme] id, `default` for none. Null outside a room and when the server is too
+  /// old to have one, in which case the look cannot be changed.
+  final String? theme;
   final GuestControl guestControl;
 
   /// The room carries on with similar songs when its queue runs out. Null outside a room and when the server is too
@@ -573,6 +578,7 @@ class RoomSnapshot {
     playbackSpeed: (json['playbackSpeed'] as num?)?.toDouble() ?? 1.0,
     name: json['name'] as String?,
     ownerId: json['ownerId'] as String?,
+    theme: json['theme'] as String?,
     guestControl: GuestControl.parse(json['guestControl'] as String?),
     roomAutoplay: json['roomAutoplay'] as bool?,
     shuffle: json['shuffle'] as bool?,

@@ -20,6 +20,7 @@ class AppModel {
     required this.music,
     required this.update,
     this.photoPicker = pickPhoto,
+    this.wallpaperPicker = pickWallpaper,
   });
 
   final RoomController room;
@@ -42,6 +43,9 @@ class AppModel {
 
   /// Where the person's own picture comes from.
   final PhotoPicker photoPicker;
+
+  /// Where the photo behind a room's chat comes from.
+  final WallpaperPicker wallpaperPicker;
 }
 
 class AppScope extends InheritedWidget {

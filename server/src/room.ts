@@ -56,8 +56,17 @@ const DROP_CHECK_MS = 5 * 60 * 1000;
 
 const MAX_MEMBERS = 12;
 const MAX_ROOM_NAME = 32;
+/** A theme is a short name the apps know; the server only checks its shape, so a new look needs no deploy. */
+const THEME_NAME = /^[a-z0-9-]{1,24}$/;
+const BASE64 = /^[A-Za-z0-9+/=]+$/;
 const MAX_QUEUE = 200;
 const MAX_MESSAGE_CHARS = 32_768;
+/** The one message that may be longer: `room.theme` with the picture behind the chat. Protocol 16. */
+const MAX_THEME_MESSAGE_CHARS = 98_304;
+const MAX_BACKGROUND_CHARS = 90_000;
+/** What the picture behind the chat is asked for as (`avatar.get`): no member's public id looks like it. */
+const BACKGROUND_ID = "room:bg";
+const BACKGROUND_KEY = "background";
 /** A picture is sent as base64 of a small JPEG (about 256 px); anything bigger is refused. */
 const MAX_AVATAR_CHARS = 24_000;
 const AVATAR_PREFIX = "avatar:";
@@ -157,6 +166,7 @@ const CONTROL_MESSAGES = new Set([
   "autoplay",
   "shuffle",
   "room.name",
+  "room.theme",
 ]);
 
 /** The fields of a song as the queue keeps them, cut to size. */
@@ -244,7 +254,7 @@ export class Room extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
-    if (typeof raw !== "string" || raw.length > MAX_MESSAGE_CHARS) {
+    if (typeof raw !== "string" || raw.length > MAX_THEME_MESSAGE_CHARS) {
       return this.fail(ws, "bad_message", `Message must be text of at most ${MAX_MESSAGE_CHARS} characters`);
     }
     if (!this.allow(ws)) return this.fail(ws, "rate_limited", "Too many messages");
@@ -260,6 +270,9 @@ export class Room extends DurableObject<Env> {
     }
     if (typeof msg !== "object" || msg === null || typeof msg.t !== "string") {
       return this.fail(ws, "bad_message", "Missing message type");
+    }
+    if (raw.length > MAX_MESSAGE_CHARS && msg.t !== "room.theme") {
+      return this.fail(ws, "bad_message", `Message must be text of at most ${MAX_MESSAGE_CHARS} characters`);
     }
 
     if (msg.t === "ping") {
@@ -299,6 +312,7 @@ export class Room extends DurableObject<Env> {
       case "bye": return this.onBye(ws, me);
       case "kick": return this.onKick(ws, me, msg.id);
       case "room.name": return this.onRoomName(msg.name);
+      case "room.theme": return this.onRoomTheme(msg.theme, msg.bg);
       case "room.settings": return this.onRoomSettings(ws, me, msg.guestControl);
       case "resync": return this.onResync(ws, me);
       case "ready": return this.onReady(me.id, msg.epoch);
@@ -747,6 +761,11 @@ export class Room extends DurableObject<Env> {
 
   private async onAvatarGet(ws: WebSocket, id: unknown): Promise<void> {
     if (typeof id !== "string") return;
+    if (id === BACKGROUND_ID) {
+      const picture = await this.ctx.storage.get<string>(BACKGROUND_KEY);
+      if (picture === undefined || !this.s.bg) return this.send(ws, { t: "avatar", id });
+      return this.send(ws, { t: "avatar", id, av: this.s.bg, data: picture });
+    }
     const data = await this.ctx.storage.get<string>(AVATAR_PREFIX + id);
     const owner = this.members().find((m) => m.id === id);
     if (data === undefined || !owner?.av) return this.send(ws, { t: "avatar", id });
@@ -803,6 +822,34 @@ export class Room extends DurableObject<Env> {
     if (clean === (this.s.name ?? "")) return;
     if (clean) this.s.name = clean;
     else delete this.s.name;
+    await this.save();
+    this.broadcastState();
+  }
+
+  /** A theme with, if the message says so, the picture behind the chat: a string sets it, null takes it away, absent leaves it. */
+  private async onRoomTheme(theme: unknown, bg: unknown): Promise<void> {
+    if (typeof theme !== "string" || !THEME_NAME.test(theme)) return;
+    if (bg !== undefined && bg !== null && (typeof bg !== "string" || bg.length > MAX_BACKGROUND_CHARS || !BASE64.test(bg))) return;
+    let changed = false;
+    const clean = theme === "default" ? undefined : theme;
+    if (clean !== this.s.theme) {
+      if (clean) this.s.theme = clean;
+      else delete this.s.theme;
+      changed = true;
+    }
+    if (bg === null && this.s.bg) {
+      delete this.s.bg;
+      await this.ctx.storage.delete(BACKGROUND_KEY);
+      changed = true;
+    } else if (typeof bg === "string") {
+      const fp = await fingerprint(bg);
+      if (fp !== this.s.bg) {
+        await this.ctx.storage.put(BACKGROUND_KEY, bg);
+        this.s.bg = fp;
+        changed = true;
+      }
+    }
+    if (!changed) return;
     await this.save();
     this.broadcastState();
   }
@@ -1289,9 +1336,11 @@ export class Room extends DurableObject<Env> {
       const last = this.chat.at(-1);
       if (last) {
         // The songs and the settings are over, but the room itself stays for as long as its chat does
-        const { name, enc } = this.s;
+        const { name, enc, theme, bg } = this.s;
         this.s = defaultState();
         if (name) this.s.name = name;
+        if (theme) this.s.theme = theme;
+        if (bg) this.s.bg = bg;
         if (enc) this.s.enc = enc;
         this.s.alarms.gc = last.at + this.chatKeepMs();
         await this.armAlarm();
@@ -1426,7 +1475,7 @@ export class Room extends DurableObject<Env> {
 
   private publicState(): PublicState {
     const { readyIds: _r, failedIds: _f, alarms: _a, shuffleOrder: _o, ...rest } = this.s;
-    return rest;
+    return { ...rest, theme: rest.theme ?? "default" };
   }
 
   private stateMessage(you: string): ServerMessage {

@@ -33,6 +33,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
   /// Stands in for the system's photo picker.
   PhotoPicker? photoPicker,
 
+  /// Stands in for the picker of the photo behind a chat.
+  WallpaperPicker? wallpaperPicker,
+
   /// Whether the phone can show the picture in a small window.
   bool pipSupported = true,
 
@@ -71,6 +74,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
         music: MusicController(backend),
         update: UpdateController(backend),
         photoPicker: photoPicker ?? () async => null,
+        wallpaperPicker: wallpaperPicker ?? () async => null,
       ),
     ),
   );

@@ -603,9 +603,10 @@ final class BridgeTests: XCTestCase {
         _ = try await call("play")
         _ = try await call("seek", ["ms": 5000])
         _ = try await call("roomName", ["name": "New"])
+        _ = try await call("roomTheme", ["theme": "ocean", "bg": ""])
         _ = try await call("roomAutoplay", ["on": false])
         _ = try await call("setShuffle", ["on": true])
-        XCTAssertEqual(socket.sent.compactMap { JSON.parse($0)?.at("t").string }, ["play", "seek", "room.name", "autoplay", "shuffle"])
+        XCTAssertEqual(socket.sent.compactMap { JSON.parse($0)?.at("t").string }, ["play", "seek", "room.name", "room.theme", "autoplay", "shuffle"])
         XCTAssertEqual(JSON.parse(socket.sent.last ?? "")?.at("on").bool, true)
 
         // The room tells this phone to get ready, then to start

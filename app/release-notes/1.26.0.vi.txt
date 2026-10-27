@@ -1,0 +1,5 @@
+Giao diện riêng cho khung chat, hồ sơ thành viên và lịch sử bản phát hành ngay trong app
+- Chọn giao diện cho khung chat của phòng: chạm biểu tượng bảng màu trong khung chat để chọn một chủ đề, hoặc chọn một tấm ảnh của bạn, căn chỉnh trong khung rồi đặt làm nền chat, hòa với màu của ảnh. Cả phòng cùng thấy ngay. Ảnh được cắt theo khung và chia sẻ với cả phòng, nên hãy chọn ảnh bạn thấy ổn để chia sẻ.
+- Chạm vào một người trong phòng, hoặc ảnh của họ cạnh tin nhắn, để xem họ là ai: ảnh, có phải chủ phòng không, đang nghe cùng phòng không và phòng đang phát bài gì. Chạm vào ảnh để xem to hơn: chụm hoặc chạm đúp để phóng.
+- Cài đặt > Lịch sử bản phát hành liệt kê những gì đã đổi ở mọi phiên bản, bản bạn đang dùng có đánh dấu.
+- Mọi người cần bản mới nhất mới thấy giao diện của phòng; bản cũ vẫn dùng chat với màu quen thuộc.

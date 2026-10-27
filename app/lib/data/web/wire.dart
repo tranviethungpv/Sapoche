@@ -21,6 +21,8 @@ class RoomState {
     this.autoplay,
     this.shuffle,
     this.enc = false,
+    this.theme,
+    this.bg,
   });
 
   final List<QueueEntry> queue;
@@ -45,6 +47,13 @@ class RoomState {
   /// The chat is end-to-end encrypted (protocol 15): the room passes on sealed messages only.
   final bool enc;
 
+  /// The look of the room's chat, `default` for none; null from a server older than protocol 16.
+  final String? theme;
+
+  /// Fingerprint of the picture behind the chat; null when there is none (or a server older than protocol 16). It is
+  /// fetched as the picture of [Wire.backgroundId].
+  final String? bg;
+
   QueueEntry? get current =>
       index >= 0 && index < queue.length ? queue[index] : null;
 
@@ -68,6 +77,8 @@ class RoomState {
     autoplay: autoplay,
     shuffle: shuffle,
     enc: enc,
+    theme: theme,
+    bg: bg,
   );
 
   factory RoomState.fromJson(Map<String, dynamic> json) => RoomState(
@@ -87,6 +98,8 @@ class RoomState {
     autoplay: json['autoplay'] as bool?,
     shuffle: json['shuffle'] as bool?,
     enc: json['enc'] as bool? ?? false,
+    theme: json['theme'] as String?,
+    bg: json['bg'] as String?,
   );
 }
 
@@ -373,6 +386,14 @@ abstract final class Wire {
   static String bye() => _msg('bye');
   static String kick(String id) => _msg('kick', {'id': id});
   static String roomName(String name) => _msg('room.name', {'name': name});
+
+  /// What the picture behind the chat is asked for as, and comes back as: no member's id looks like it.
+  static const backgroundId = 'room:bg';
+
+  /// The look of the chat for the whole room, `default` taking it away, with the picture behind it as base64 of a JPEG
+  /// (null takes it away). Protocol 16.
+  static String roomTheme(String theme, String? bg) =>
+      _msg('room.theme', {'theme': theme, 'bg': bg});
   static String roomSettings(String guestControl) =>
       _msg('room.settings', {'guestControl': guestControl});
 

@@ -243,20 +243,23 @@ void main() {
     expect((info?.exists, info?.name, info?.members), (true, 'Family', 2));
     await backend.kick('b');
     await backend.setRoomName('Weekend');
+    await backend.setRoomTheme('ocean');
     await backend.setGuestControl(GuestControl.add);
     await backend.setRoomAutoplay(false);
     expect(seen.map((c) => c.method), [
       'roomInfo',
       'kick',
       'roomName',
+      'roomTheme',
       'roomSettings',
       'roomAutoplay',
     ]);
     expect(seen[0].arguments, {'code': 'K2A5RF'});
     expect(seen[1].arguments, {'id': 'b'});
     expect(seen[2].arguments, {'name': 'Weekend'});
-    expect(seen[3].arguments, {'guestControl': 'add'});
-    expect(seen[4].arguments, {'on': false});
+    expect(seen[3].arguments, {'theme': 'ocean', 'bg': ''});
+    expect(seen[4].arguments, {'guestControl': 'add'});
+    expect(seen[5].arguments, {'on': false});
   });
 
   test('room info is null when the server cannot be reached', () async {

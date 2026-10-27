@@ -646,7 +646,16 @@ final class WireTests: XCTestCase {
         XCTAssertEqual(state.repeatMode, "off")
         XCTAssertEqual(state.guestControl, "all")
         XCTAssertNil(state.name)
+        XCTAssertNil(state.theme, "an older server not saying is not the same as saying the default")
         XCTAssertNil(state.autoplay, "an older server not saying is not the same as saying it is off")
+    }
+
+    func testTheThemeOfTheChatIsRead() throws {
+        guard case let .state(_, _, state, _, _)? = Wire.parse(
+            #"{"t":"state","serverNow":0,"you":"me","state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0,"theme":"ocean","bg":"3fa9c01e"},"members":[]}"#
+        ) else { return XCTFail("not a state") }
+        XCTAssertEqual(state.theme, "ocean")
+        XCTAssertEqual(state.bg, "3fa9c01e")
     }
 
     func testTheRoomsAutoplayIsReadSentAndAsked() throws {
@@ -705,6 +714,10 @@ final class WireTests: XCTestCase {
         XCTAssertEqual(object(Wire.advanced(3, itemId: "q", startedAt: 99))["startedAt"] as? Int, 99)
         XCTAssertEqual((object(Wire.resolveFailed(3, reason: String(repeating: "x", count: 500)))["reason"] as? String)?.count, 200)
         XCTAssertEqual(object(Wire.roomSettings(guestControl: "add"))["guestControl"] as? String, "add")
+        XCTAssertEqual(object(Wire.roomTheme("c-1e88e5-d81b60", bg: nil))["t"] as? String, "room.theme")
+        XCTAssertEqual(object(Wire.roomTheme("c-1e88e5-d81b60", bg: nil))["theme"] as? String, "c-1e88e5-d81b60")
+        XCTAssertTrue(object(Wire.roomTheme("c-1e88e5-d81b60", bg: nil))["bg"] is NSNull, "a null takes the picture away")
+        XCTAssertEqual(object(Wire.roomTheme("ocean", bg: "QUJD"))["bg"] as? String, "QUJD")
         XCTAssertEqual(object(Wire.bye())["t"] as? String, "bye")
     }
 }

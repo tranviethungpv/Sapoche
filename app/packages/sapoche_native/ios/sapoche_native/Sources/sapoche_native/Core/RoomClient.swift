@@ -116,6 +116,9 @@ final class RoomClient: SocketEvents {
     /// The fingerprint of each member's picture as last asked for, so a picture is fetched once and not at every change.
     private var known: [String: String] = [:]
 
+    /// The fingerprint of the picture behind the chat that was last asked for.
+    private var knownBackground: String?
+
     /// What the room calls this device: members are listed by a public id, not by [clientId].
     private var you: String?
 
@@ -267,15 +270,16 @@ final class RoomClient: SocketEvents {
             lastPongMs = time.nowMs()
             clock.addSample(c0: c0, c2: time.nowMs(), s1: s1)
         case let .avatar(id, av, data):
-            known[id] = av
+            if id == Wire.backgroundId { knownBackground = av } else { known[id] = av }
             onAvatar(id, av, data)
         case let message?:
             if case .state = message, createOnJoin == true { createOnJoin = false }
-            if case let .state(_, yourId, _, members, protocolVersion) = message {
+            if case let .state(_, yourId, state, members, protocolVersion) = message {
                 you = yourId
                 serverProtocol = protocolVersion
                 shareAvatar()
                 wantPictures(members)
+                wantBackground(state.bg)
             } else if case let .members(members) = message {
                 wantPictures(members)
             }
@@ -288,6 +292,13 @@ final class RoomClient: SocketEvents {
         if avatarSent || serverProtocol < Self.avatarProtocol { return }
         avatarSent = true
         socket?.send(Wire.avatarSet(avatar))
+    }
+
+    /// Asks for the picture behind the chat when it is a new one, and tells that it went when it did.
+    private func wantBackground(_ bg: String?) {
+        if serverProtocol < Self.themeProtocol || bg == knownBackground { return }
+        knownBackground = bg
+        if bg == nil { onAvatar(Wire.backgroundId, nil, nil) } else { socket?.send(Wire.avatarGet(Wire.backgroundId)) }
     }
 
     /// Asks for the pictures of members whose picture changed since it was last fetched, and forgets those who are gone.
@@ -348,6 +359,8 @@ final class RoomClient: SocketEvents {
 
     /// The first protocol that keeps members' pictures.
     private static let avatarProtocol = 8
+    /// The first protocol with a theme for the chat, and a picture behind it.
+    private static let themeProtocol = 16
     private static let closePolicyViolation = 1008
     private static let closeRemoved = 4001
     private static let closeNotFound = 4004

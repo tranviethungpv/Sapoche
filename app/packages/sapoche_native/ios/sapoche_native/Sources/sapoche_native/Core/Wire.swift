@@ -96,12 +96,17 @@ struct RoomState: Equatable {
     var shuffle: Bool?
     /// The chat is end-to-end encrypted: the room passes on sealed messages only (see `ChatCipher`). Protocol 15.
     var enc: Bool = false
+    /// The look of the room's chat, a name the apps know, `default` for none; nil from a server older than protocol 16.
+    var theme: String?
+    /// Fingerprint of the picture behind the chat; nil when there is none (or a server older than protocol 16). It is
+    /// fetched as the picture of `Wire.backgroundId`.
+    var bg: String?
 
     var current: QueueItem? { queue.indices.contains(index) ? queue[index] : nil }
 
     init(queue: [QueueItem], index: Int, phase: String, startedAt: Int64, positionMs: Int64, epoch: Int64,
          repeatMode: String = "off", name: String? = nil, ownerId: String? = nil, guestControl: String = "all", autoplay: Bool? = nil, shuffle: Bool? = nil,
-         enc: Bool = false) {
+         enc: Bool = false, theme: String? = nil, bg: String? = nil) {
         self.queue = queue
         self.index = index
         self.phase = phase
@@ -115,6 +120,8 @@ struct RoomState: Equatable {
         self.autoplay = autoplay
         self.shuffle = shuffle
         self.enc = enc
+        self.theme = theme
+        self.bg = bg
     }
 
     init?(_ json: JSON) {
@@ -132,7 +139,9 @@ struct RoomState: Equatable {
             guestControl: json["guestControl"].string ?? "all",
             autoplay: json["autoplay"].bool,
             shuffle: json["shuffle"].bool,
-            enc: json["enc"].bool ?? false
+            enc: json["enc"].bool ?? false,
+            theme: json["theme"].string,
+            bg: json["bg"].string
         )
     }
 }
@@ -370,6 +379,15 @@ enum Wire {
     static func kick(_ id: String) -> String { msg("kick", ["id": id]) }
 
     static func roomName(_ name: String) -> String { msg("room.name", ["name": name]) }
+
+    /// What the picture behind the chat is asked for as, and comes back as: no member's id looks like it.
+    static let backgroundId = "room:bg"
+
+    /// The look of the chat for the whole room, `default` taking it away, with the picture behind it as base64 of a
+    /// JPEG (nil takes it away). Protocol 16.
+    static func roomTheme(_ theme: String, bg: String?) -> String {
+        msg("room.theme", ["theme": theme, "bg": bg ?? NSNull()])
+    }
 
     /// Owner only: `all` or `add`.
     static func roomSettings(guestControl: String) -> String { msg("room.settings", ["guestControl": guestControl]) }

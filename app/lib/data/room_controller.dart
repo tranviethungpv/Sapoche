@@ -160,6 +160,18 @@ class RoomController extends ChangeNotifier {
 
   /// The picture a member chose, or null when they have none.
   Uint8List? avatarOf(String memberId) => _avatars[memberId];
+
+  /// What the picture behind the chat is asked for as, and comes back as: no member's id looks like it.
+  static const backgroundId = 'room:bg';
+
+  /// The room the picture behind the chat was last received for.
+  String? _backgroundRoom;
+
+  /// The picture the room has put behind its chat; null if it has none.
+  Uint8List? get background =>
+      _snapshot.inRoom && _backgroundRoom == _snapshot.room
+      ? _avatars[backgroundId]
+      : null;
   Profile get profile => _profile;
 
   /// False until the first state arrived from the native side.
@@ -201,7 +213,9 @@ class RoomController extends ChangeNotifier {
         if (_chatRoom != null && code != _chatRoom) _forgetChat();
         // A picture is kept while its owner is in the room
         _avatars.removeWhere(
-          (id, _) => !snapshot.members.any((m) => m.id == id),
+          (id, _) => id == backgroundId
+              ? code == null
+              : !snapshot.members.any((m) => m.id == id),
         );
         _ready = true;
         notifyListeners();
@@ -268,6 +282,7 @@ class RoomController extends ChangeNotifier {
       case ReactionEvent():
         break; // one a newer app sent, which this one cannot show
       case AvatarEvent(:final id, :final bytes):
+        if (id == backgroundId) _backgroundRoom = _snapshot.room;
         if (bytes == null) {
           _avatars.remove(id);
         } else {
@@ -852,6 +867,14 @@ class RoomController extends ChangeNotifier {
 
   Future<void> setRoomName(String name) =>
       _run(() => _backend.setRoomName(name.trim()));
+
+  /// Gives the room's chat the look [theme], with [background] behind it or, without, no picture. Every member sees it.
+  Future<void> setTheme(String theme, {Uint8List? background}) => _run(
+    () => _backend.setRoomTheme(
+      theme,
+      background: background == null ? null : base64Encode(background),
+    ),
+  );
 
   Future<void> setGuestControl(GuestControl mode) =>
       _run(() => _backend.setGuestControl(mode));

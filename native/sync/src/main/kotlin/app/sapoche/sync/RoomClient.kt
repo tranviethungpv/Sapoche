@@ -82,6 +82,9 @@ class RoomClient(
     /** The fingerprint of each member's picture as last asked for, so a picture is fetched once and not at every change. */
     private val known = HashMap<String, String>()
 
+    /** The fingerprint of the picture behind the chat that was last asked for. */
+    private var knownBackground: String? = null
+
     /** What the room calls this device: members are listed by a public id, not by [clientId]. */
     private var you: String? = null
 
@@ -165,7 +168,8 @@ class RoomClient(
                             clock.addSample(msg.c0, nowMs(), msg.s1)
                         }
                         is ServerMessage.Avatar -> {
-                            if (msg.av != null) known[msg.id] = msg.av else known.remove(msg.id)
+                            if (msg.id == Protocol.BACKGROUND_ID) knownBackground = msg.av
+                            else if (msg.av != null) known[msg.id] = msg.av else known.remove(msg.id)
                             onAvatar(msg.id, msg.av, msg.data)
                         }
                         else -> {
@@ -175,6 +179,7 @@ class RoomClient(
                                 serverProtocol = msg.protocol
                                 shareAvatar(webSocket)
                                 wantPictures(msg.members)
+                                wantBackground(msg.state.bg)
                             } else if (msg is ServerMessage.Members) {
                                 wantPictures(msg.members)
                             }
@@ -231,6 +236,13 @@ class RoomClient(
         ws.send(Protocol.avatarSet(avatar))
     }
 
+    /** Asks for the picture behind the chat when it is a new one, and tells that it went when it did. */
+    private fun wantBackground(bg: String?) {
+        if (serverProtocol < THEME_PROTOCOL || bg == knownBackground) return
+        knownBackground = bg
+        if (bg == null) onAvatar(Protocol.BACKGROUND_ID, null, null) else socket?.send(Protocol.avatarGet(Protocol.BACKGROUND_ID))
+    }
+
     /** Asks for the pictures of members whose picture changed since it was last fetched, and forgets those who are gone. */
     private fun wantPictures(members: List<Member>) {
         if (serverProtocol < AVATAR_PROTOCOL) return
@@ -273,6 +285,9 @@ class RoomClient(
     private companion object {
         /** The first protocol that keeps members' pictures. */
         const val AVATAR_PROTOCOL = 8
+
+        /** The first protocol with a theme for the chat, and a picture behind it. */
+        const val THEME_PROTOCOL = 16
         const val CLOSE_POLICY_VIOLATION = 1008
         const val CLOSE_REMOVED = 4001
         const val CLOSE_NOT_FOUND = 4004

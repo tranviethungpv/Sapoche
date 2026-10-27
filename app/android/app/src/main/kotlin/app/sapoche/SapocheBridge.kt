@@ -745,6 +745,10 @@ class SapocheBridge(
                         requireRoom(group)
                         group.requestRoomName(call.argument<String>("name").orEmpty())
                     }
+                    "roomTheme" -> {
+                        requireRoom(group)
+                        group.requestRoomTheme(call.argument<String>("theme").orEmpty(), call.argument<String>("bg")?.takeIf { it.isNotEmpty() })
+                    }
                     "roomSettings" -> {
                         requireRoom(group)
                         group.requestRoomSettings(call.argument<String>("guestControl").orEmpty())

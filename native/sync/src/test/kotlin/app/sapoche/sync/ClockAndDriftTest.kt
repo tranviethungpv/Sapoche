@@ -265,6 +265,19 @@ class ProtocolTest {
         assertEquals("""{"t":"kick","id":"dev-b"}""", Protocol.kick("dev-b"))
         assertEquals("""{"t":"room.name","name":"Family"}""", Protocol.roomName("Family"))
         assertEquals("""{"t":"room.settings","guestControl":"add"}""", Protocol.roomSettings("add"))
+        assertEquals("""{"t":"room.theme","theme":"c-1e88e5-d81b60","bg":null}""", Protocol.roomTheme("c-1e88e5-d81b60", null))
+        assertEquals("""{"t":"room.theme","theme":"ocean","bg":"QUJD"}""", Protocol.roomTheme("ocean", "QUJD"))
+    }
+
+    @Test
+    fun `parses the theme of the chat, and an older server without one`() {
+        val text = """{"t":"state","serverNow":1,"you":"a","state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0,"theme":"ocean","bg":"3fa9c01e"},"members":[]}"""
+        val state = (Protocol.parse(text) as ServerMessage.State).state
+        assertEquals("ocean", state.theme)
+        assertEquals("3fa9c01e", state.bg)
+        val older = Protocol.parse(text.replace(""","theme":"ocean","bg":"3fa9c01e"""", "")) as ServerMessage.State
+        assertEquals(null, older.state.theme)
+        assertEquals(null, older.state.bg)
     }
 
     @Test

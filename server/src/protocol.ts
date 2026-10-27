@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 15;
+export const PROTOCOL_VERSION = 16;
 
 export interface QueueItem {
   id: string;
@@ -54,6 +54,10 @@ export interface RoomState {
   failedIds: string[];
   /** Room name, shown to members and in the recent rooms list. */
   name?: string;
+  /** The look of the room's chat, one of the names the apps know; absent for the default (the state sent says `default`). Protocol 16. */
+  theme?: string;
+  /** Fingerprint (8 hexadecimal digits) of the picture behind the chat, which is fetched with `avatar.get` for `room:bg`. Protocol 16. */
+  bg?: string;
   /** Client id of the owner; absent while nobody owns the room (it is empty, or predates owners). */
   ownerId?: string;
   guestControl: GuestControl;
@@ -162,6 +166,8 @@ export type ClientMessage =
   /** Owner only: remove a member. The device is disconnected and may join again. */
   | { t: "kick"; id: string }
   | { t: "room.name"; name: string }
+  /** The look of the chat for the whole room; restricted like the name. Protocol 16. */
+  | { t: "room.theme"; theme: string; bg?: string | null }
   /** Owner only. */
   | { t: "room.settings"; guestControl: GuestControl }
   /** [rtt] is the best round trip the device measured; the room schedules starts from the slowest. Absent from older apps. */
@@ -272,4 +278,4 @@ export type ServerMessage =
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */
-export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder">;
+export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder" | "theme"> & { theme: string };

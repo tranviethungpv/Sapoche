@@ -14,6 +14,8 @@ Connection: a WebSocket to `wss://<worker>/room/<CODE>`. Every room is a Durable
   "epoch": 17,
   "repeat": "off | all | one",
   "name": "Family",
+  "theme": "ocean",
+  "bg": "3fa9c01e",
   "ownerId": "u1",
   "guestControl": "all | add",
   "autoplay": true,
@@ -22,7 +24,7 @@ Connection: a WebSocket to `wss://<worker>/room/<CODE>`. Every room is a Durable
 }
 ```
 
-`name` and `ownerId` may be absent. See section 5c for the owner and the room name. Member ids, `ownerId`, `addedBy`, `by` and `you` are **public ids**, never the `clientId` a device joins with (section 3). `autoplay` says whether the room carries on by itself when its queue runs out (section 5e); it is absent when the server is older than protocol 9. `shuffle` says whether shuffle is on (section 5g); it is absent when the server is older than protocol 11. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d. A queue item has `"auto": true` when autoplay put it there and not a member (section 5e); the field is absent otherwise, and from servers older than protocol 12.
+`name` and `ownerId` may be absent. `theme` is the look of the chat (section 5j): `default` when the room has none, and absent when the server is older than protocol 16. `bg` is the fingerprint of the picture behind the chat and is absent when there is none. See section 5c for the owner and the room name. Member ids, `ownerId`, `addedBy`, `by` and `you` are **public ids**, never the `clientId` a device joins with (section 3). `autoplay` says whether the room carries on by itself when its queue runs out (section 5e); it is absent when the server is older than protocol 9. `shuffle` says whether shuffle is on (section 5g); it is absent when the server is older than protocol 11. `av` is the fingerprint of the member's picture and is absent when they have none; see section 5d. A queue item has `"auto": true` when autoplay put it there and not a member (section 5e); the field is absent otherwise, and from servers older than protocol 12.
 
 - `phase=playing`: the current position is `serverNow - startedAt`.
 - `phase=paused`: the position is `positionMs`.
@@ -38,7 +40,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 ## 2b. Authentication
 
-`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Sapoche-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":15}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
+`POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Sapoche-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":16}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
 
 `GET /room/<CODE>/info` is read-only and creates nothing: `{"exists":true,"name":"Family","members":2,"playing":true,"title":"..."}`; `exists:false` when the room never existed or has expired. The app uses it for the list of recent rooms.
 
@@ -50,6 +52,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 | `bye` | | Leave on purpose (as opposed to losing the connection). When the owner sends `bye` the longest-present member becomes the owner; a room with nobody left has no owner |
 | `kick` | `id` | Owner only: disconnect that member (closes 4001, with the error `removed`); they can join again |
 | `room.name` | `name` | Rename the room, at most 32 characters, empty removes the name |
+| `room.theme` | `theme`, `bg?` | The look of the room's chat, for everybody, with the picture behind it (section 5j). Restricted like `room.name`. Protocol 16 |
 | `room.settings` | `guestControl` | Owner only: `all` (everybody steers, the default) or `add` (guests can only add songs) |
 | `ping` | `c0`, `rtt?` | Clock measurement. `rtt` is the best round trip the device has measured so far, in ms; the server schedules starts from the slowest device that follows the room (section 5). Older apps leave it out |
 | `avatar.set` | `data` | The device's own picture: base64 of a small JPEG or PNG (about 256 px), at most 24,000 characters; `null` takes it away. Anything else is ignored. Only servers of protocol 8 or newer know it, and an older one answers with `unknown_type`, so a client sends it only after a `state` that says `protocol` 8 or more |
@@ -233,3 +236,11 @@ The owner can turn it on for a room, for good (`room.encrypt`). From then on the
 - **Limits.** No forward secrecy; the secret does not change when somebody is removed (a new room does that); the room cannot tell that a message was dropped or reordered except by a gap in the numbers.
 
 Test vectors for the three implementations (Kotlin, Swift, Dart) are in `native/sync/src/test/resources/e2ee_vectors.json`.
+
+## 5j. The look of the chat (protocol 16)
+
+Every room has one look for its chat, which every member sees: `state.theme`, a short name the apps know, `default` for the colours of the app. A device changes it with `room.theme`; the room accepts a name that matches `^[a-z0-9-]{1,24}$` (anything else is ignored, not an error) and sends the state again, with `default` taking the theme away. The server does not know what the names mean, so a new look needs no new server. It is restricted like `room.name`: once the owner has restricted guests to adding songs (section 5c), a guest gets `forbidden`.
+
+The names the apps know are a few presets (`ocean`, `sunset`, `forest`, `grape`, `honey`, `mono`), and `c-<rrggbb>-<rrggbb>`, two colours (hexadecimal) that a device took from a photo. An app that does not know a name shows the chat in the colours of the app. The theme is not part of the chat, so it works in a room whose chat is sealed (section 5i), and it stays with the room as long as the chat does (section 5c).
+
+**The picture behind the chat.** `room.theme` may carry `bg`: base64 of a JPEG of at most 90 000 characters (the device cuts and compresses it to the shape of a phone standing up, about 540 px wide), where a string puts it behind the chat, `null` takes it away and leaving it out changes nothing; a `bg` that is not base64 or is too long makes the room ignore the whole message. `room.theme` is the one message that may be longer than 32 768 characters (up to 98 304). The state carries only `bg`, a fingerprint of 8 hexadecimal digits like the one of a member's picture (section 5d), and a client that sees a new one sends `avatar.get` for the id `room:bg` (no member's public id looks like it) and gets `avatar` with `av` and `data`, or without them when the picture went. Like the pictures of members it is not sealed in a room whose chat is (section 5i): the room, and so the server, can see it. The room keeps one picture, as long as it keeps the theme.

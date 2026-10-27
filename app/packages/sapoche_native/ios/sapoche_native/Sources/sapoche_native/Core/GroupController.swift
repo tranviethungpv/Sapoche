@@ -835,6 +835,7 @@ final class GroupController {
     // Only meaningful in a room
     @discardableResult func requestKick(_ memberId: String) -> Bool { send(Wire.kick(memberId)) }
     @discardableResult func requestRoomName(_ name: String) -> Bool { send(Wire.roomName(name)) }
+    @discardableResult func requestRoomTheme(_ theme: String, bg: String?) -> Bool { send(Wire.roomTheme(theme, bg: bg)) }
     @discardableResult func requestRoomSettings(_ guestControl: String) -> Bool { send(Wire.roomSettings(guestControl: guestControl)) }
     @discardableResult func requestRoomAutoplay(_ on: Bool) -> Bool { send(Wire.autoplay(on)) }
 

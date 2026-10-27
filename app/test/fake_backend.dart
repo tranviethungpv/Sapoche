@@ -199,6 +199,10 @@ class FakeBackend implements Backend {
   Future<void> setRoomName(String name) => _record('roomName $name');
 
   @override
+  Future<void> setRoomTheme(String theme, {String? background}) =>
+      _record('roomTheme $theme${background == null ? '' : ' +background'}');
+
+  @override
   Future<void> setGuestControl(GuestControl mode) =>
       _record('guestControl ${mode.name}');
 
@@ -876,6 +880,7 @@ RoomSnapshot sampleRoom({
   String? soloItemId,
   String? name,
   String? ownerId,
+  String? theme,
   GuestControl guestControl = GuestControl.all,
   bool? roomAutoplay,
   bool? shuffle,
@@ -898,6 +903,7 @@ RoomSnapshot sampleRoom({
   loading: loading,
   name: name,
   ownerId: ownerId,
+  theme: theme,
   guestControl: guestControl,
   roomAutoplay: roomAutoplay,
   shuffle: shuffle,

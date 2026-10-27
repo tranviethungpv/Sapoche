@@ -8,6 +8,9 @@ import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/palette.dart';
 import '../theme/theme.dart';
+import 'chat_look.dart';
+import 'chat_theme_sheet.dart';
+import 'member_profile_sheet.dart';
 import 'rooms_sheet.dart' show pasteInviteSecret;
 import 'scope.dart';
 import 'widgets/avatars.dart';
@@ -22,6 +25,9 @@ void showChatSheet(BuildContext context) {
     useSafeArea: true,
     context: context,
     isScrollControlled: true,
+    // The chat draws its own background and handle, so that a theme reaches all the way up to the edge of the sheet
+    backgroundColor: Colors.transparent,
+    showDragHandle: false,
     builder: (_) => ChatSheet(controller: controller),
   );
 }
@@ -135,12 +141,14 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   void _replyToMessage(ChatMessage message) {
     if (message.delivery != ChatDelivery.sent) return;
     HapticFeedback.selectionClick();
-    setState(() => _replyTo = ChatQuote(
-      id: message.id,
-      by: message.by,
-      name: message.name,
-      text: _excerpt(message.text),
-    ));
+    setState(
+      () => _replyTo = ChatQuote(
+        id: message.id,
+        by: message.by,
+        name: message.name,
+        text: _excerpt(message.text),
+      ),
+    );
     _focus.requestFocus();
   }
 
@@ -157,14 +165,46 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
           child: SizedBox(
             // Most of the screen, and with the keyboard up all that is left above it
             height: min(box.maxHeight * 0.85, box.maxHeight - keyboard),
-            child: _sheet(context, p, theme),
+            child: _themed(context, p, theme),
           ),
         );
       },
     );
   }
 
-  Widget _sheet(BuildContext context, Palette p, TextTheme theme) {
+  /// The sheet in the look of the room's theme: its background fades from the sheet's own colour into the theme's.
+  Widget _themed(BuildContext context, Palette p, TextTheme theme) {
+    final sheet = Theme.of(context).bottomSheetTheme.backgroundColor ?? p.base;
+    return ListenableBuilder(
+      listenable: _c,
+      builder: (context, _) {
+        final look = ChatLook.of(_c.snapshot.theme, p, picture: _c.background);
+        return ChatLookScope(
+          look: look,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: look == null
+                ? ColoredBox(
+                    color: sheet,
+                    child: _sheet(context, p, theme, look),
+                  )
+                : ChatBackdrop(
+                    look: look,
+                    sheet: sheet,
+                    child: _sheet(context, p, theme, look),
+                  ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _sheet(
+    BuildContext context,
+    Palette p,
+    TextTheme theme,
+    ChatLook? look,
+  ) {
     return SafeArea(
       top: false,
       child: Column(
@@ -176,33 +216,66 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                 FocusManager.instance.primaryFocus?.unfocus();
               }
             },
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-              child: ListenableBuilder(
-                listenable: _c,
-                builder: (context, _) => Row(
-                  children: [
-                    if (_c.snapshot.encrypted) ...[
-                      Tooltip(
-                        message: S.encryptionTitle,
-                        child: Icon(
-                          Icons.lock_outline_rounded,
-                          key: const ValueKey('chat-encrypted'),
-                          size: 20,
-                          color: p.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(child: Text(S.chat, style: theme.headlineSmall)),
-                    Text(
-                      S.listening(_c.snapshot.listeningCount),
-                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                    ),
-                    if (_c.notificationInfo.enabled) _MuteButton(controller: _c),
-                  ],
+            child: Column(
+              children: [
+                // The handle of the sheet, in place of the one the sheet would draw outside the theme
+                Container(
+                  width: 32,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 22),
+                  decoration: BoxDecoration(
+                    // Seen on the plain sheet and on a photo alike
+                    color: p.textTertiary.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                  child: ListenableBuilder(
+                    listenable: _c,
+                    builder: (context, _) => Row(
+                      children: [
+                        if (_c.snapshot.encrypted) ...[
+                          Tooltip(
+                            message: S.encryptionTitle,
+                            child: Icon(
+                              Icons.lock_outline_rounded,
+                              key: const ValueKey('chat-encrypted'),
+                              size: 20,
+                              color: p.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: Text(S.chat, style: theme.headlineSmall),
+                        ),
+                        Text(
+                          S.listening(_c.snapshot.listeningCount),
+                          style: theme.bodySmall?.copyWith(
+                            color: p.textSecondary,
+                          ),
+                        ),
+                        // Only where the server has a theme to change
+                        if (_c.snapshot.theme != null)
+                          IconButton(
+                            key: const ValueKey('chat-theme'),
+                            onPressed: () => showChatThemeSheet(context, _c),
+                            tooltip: S.chatTheme,
+                            visualDensity: VisualDensity.compact,
+                            icon: Icon(
+                              Icons.palette_outlined,
+                              size: 22,
+                              color: look?.accent ?? p.primary,
+                            ),
+                          ),
+                        if (_c.notificationInfo.enabled)
+                          _MuteButton(controller: _c),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           _NoticeOffer(controller: _c),
@@ -234,8 +307,9 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                             scroll: _scroll,
                             timeShownOf: _timeShownOf,
                             onShowTime: (key) => setState(
-                              () => _timeShownOf =
-                                  _timeShownOf == key ? null : key,
+                              () => _timeShownOf = _timeShownOf == key
+                                  ? null
+                                  : key,
                             ),
                             onReply: _replyToMessage,
                           ),
@@ -263,70 +337,73 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
           _UnlessLocked(
             controller: _c,
             child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const ValueKey('chat-field'),
-                    controller: _field,
-                    focusNode: _focus,
-                    minLines: 1,
-                    maxLines: 4,
-                    maxLength: RoomController.maxChatChars,
-                    textCapitalization: TextCapitalization.sentences,
-                    textInputAction: TextInputAction.send,
-                    // Handled here, so that the keyboard's Send key does not put the keyboard away as well
-                    onEditingComplete: _send,
-                    // A touch anywhere else puts the keyboard away: its return key makes a new line
-                    onTapOutside: (_) =>
-                        FocusManager.instance.primaryFocus?.unfocus(),
-                    // The count shows only near the end, where it matters
-                    buildCounter:
-                        (
-                          context, {
-                          required currentLength,
-                          required isFocused,
-                          maxLength,
-                        }) => currentLength > RoomController.maxChatChars - 50
-                        ? Text('$currentLength/$maxLength')
-                        : null,
-                    decoration: InputDecoration(
-                      hintText: S.chatHint,
-                      isDense: true,
-                      filled: true,
-                      fillColor: p.primary.withValues(alpha: 0.08),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ),
-                // Part of the field as far as a touch outside it goes: sending must not put the keyboard away
-                TextFieldTapRegion(
-                  child: ValueListenableBuilder(
-                    valueListenable: _field,
-                    builder: (context, value, _) => IconButton(
-                      onPressed: value.text.trim().isEmpty ? null : _send,
-                      tooltip: S.chatSend,
-                      icon: Icon(
-                        Icons.send_rounded,
-                        color: value.text.trim().isEmpty
-                            ? p.textTertiary
-                            : p.primary,
+              padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: const ValueKey('chat-field'),
+                      controller: _field,
+                      focusNode: _focus,
+                      minLines: 1,
+                      maxLines: 4,
+                      maxLength: RoomController.maxChatChars,
+                      textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.send,
+                      // Handled here, so that the keyboard's Send key does not put the keyboard away as well
+                      onEditingComplete: _send,
+                      // A touch anywhere else puts the keyboard away: its return key makes a new line
+                      onTapOutside: (_) =>
+                          FocusManager.instance.primaryFocus?.unfocus(),
+                      // The count shows only near the end, where it matters
+                      buildCounter:
+                          (
+                            context, {
+                            required currentLength,
+                            required isFocused,
+                            maxLength,
+                          }) => currentLength > RoomController.maxChatChars - 50
+                          ? Text('$currentLength/$maxLength')
+                          : null,
+                      decoration: InputDecoration(
+                        hintText: S.chatHint,
+                        isDense: true,
+                        filled: true,
+                        fillColor: (look?.accent ?? p.primary).withValues(
+                          alpha: 0.10,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                  // Part of the field as far as a touch outside it goes: sending must not put the keyboard away
+                  TextFieldTapRegion(
+                    child: ValueListenableBuilder(
+                      valueListenable: _field,
+                      builder: (context, value, _) => IconButton(
+                        onPressed: value.text.trim().isEmpty ? null : _send,
+                        tooltip: S.chatSend,
+                        icon: Icon(
+                          Icons.send_rounded,
+                          color: value.text.trim().isEmpty
+                              ? p.textTertiary
+                              : look?.accent ?? p.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          )),
+          ),
         ],
       ),
     );
@@ -389,7 +466,9 @@ class _NeedsKey extends StatelessWidget {
 /// The start of a message, as a reply shows it.
 String _excerpt(String text) {
   final chars = text.characters;
-  return chars.length > 100 ? '${chars.take(100).toString().trimRight()}…' : text;
+  return chars.length > 100
+      ? '${chars.take(100).toString().trimRight()}…'
+      : text;
 }
 
 /// Above the field: who and what the message being written answers, and the way to drop it.
@@ -424,7 +503,9 @@ class _ReplyBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  mine ? S.chatReplyingToYourself : S.chatReplyingTo(quote.name),
+                  mine
+                      ? S.chatReplyingToYourself
+                      : S.chatReplyingTo(quote.name),
                   style: theme.labelMedium?.copyWith(
                     color: p.primary,
                     fontWeight: FontWeight.w600,
@@ -467,7 +548,12 @@ class _MuteButton extends StatelessWidget {
     return switch (choice) {
       _Mute.hour => const Duration(hours: 1),
       _Mute.eightHours => const Duration(hours: 8),
-      _Mute.tomorrow => DateTime(now.year, now.month, now.day + (now.hour < _morning ? 0 : 1), _morning).difference(now),
+      _Mute.tomorrow => DateTime(
+        now.year,
+        now.month,
+        now.day + (now.hour < _morning ? 0 : 1),
+        _morning,
+      ).difference(now),
       _ => const Duration(days: 3650),
     };
   }
@@ -478,13 +564,24 @@ class _MuteButton extends StatelessWidget {
     return PopupMenuButton<_Mute>(
       key: const ValueKey('chat-mute'),
       tooltip: S.noticesMute,
-      icon: Icon(until == null ? Icons.notifications_none_rounded : Icons.notifications_off_outlined),
-      onSelected: (choice) => controller.muteNotifications(choice == _Mute.off ? null : _length(choice)),
+      icon: Icon(
+        until == null
+            ? Icons.notifications_none_rounded
+            : Icons.notifications_off_outlined,
+      ),
+      onSelected: (choice) => controller.muteNotifications(
+        choice == _Mute.off ? null : _length(choice),
+      ),
       itemBuilder: (context) => [
-        if (until != null) PopupMenuItem(value: _Mute.off, child: Text(S.noticesUnmute)) else ...[
+        if (until != null)
+          PopupMenuItem(value: _Mute.off, child: Text(S.noticesUnmute))
+        else ...[
           PopupMenuItem(value: _Mute.hour, child: Text(S.noticesMute1h)),
           PopupMenuItem(value: _Mute.eightHours, child: Text(S.noticesMute8h)),
-          PopupMenuItem(value: _Mute.tomorrow, child: Text(S.noticesMuteTomorrow)),
+          PopupMenuItem(
+            value: _Mute.tomorrow,
+            child: Text(S.noticesMuteTomorrow),
+          ),
           PopupMenuItem(value: _Mute.always, child: Text(S.noticesMuteAlways)),
         ],
       ],
@@ -516,7 +613,12 @@ class _NoticeOfferState extends State<_NoticeOffer> {
         final info = widget.controller.notificationInfo;
         final asked = settings.noticeOfferedAt;
         final due = asked == null || DateTime.now().difference(asked) > _wait;
-        if (_hidden || !due || !info.supported || info.enabled || info.needsInstall || info.permission == NoticePermission.denied) {
+        if (_hidden ||
+            !due ||
+            !info.supported ||
+            info.enabled ||
+            info.needsInstall ||
+            info.permission == NoticePermission.denied) {
           return const SizedBox.shrink();
         }
         final p = context.palette;
@@ -524,10 +626,18 @@ class _NoticeOfferState extends State<_NoticeOffer> {
           key: const ValueKey('notice-offer'),
           margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-          decoration: BoxDecoration(color: p.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
+          decoration: BoxDecoration(
+            color: p.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+          ),
           child: Row(
             children: [
-              Expanded(child: Text(S.noticesOffer, style: Theme.of(context).textTheme.bodyMedium)),
+              Expanded(
+                child: Text(
+                  S.noticesOffer,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
               TextButton(
                 onPressed: () {
                   settings.noticeOfferedAt = DateTime.now();
@@ -743,14 +853,20 @@ class _Bubble extends StatelessWidget {
     final failed = message.delivery == ChatDelivery.failed;
     final sent = message.delivery == ChatDelivery.sent;
     const avatarSize = 28.0;
-    final ink = mine ? p.onPrimary : p.text;
+    final look = ChatLookScope.of(context);
+    final ink = mine ? look?.mineInk ?? p.onPrimary : p.text;
     final bubble = Container(
       constraints: BoxConstraints(
         maxWidth: MediaQuery.sizeOf(context).width * 0.72,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: mine ? p.primary : p.primary.withValues(alpha: 0.1),
+        color: look != null
+            ? (mine ? null : look.theirs)
+            : mine
+            ? p.primary
+            : p.primary.withValues(alpha: 0.1),
+        gradient: look != null && mine ? look.mine : null,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -778,7 +894,10 @@ class _Bubble extends StatelessWidget {
                     ),
                   ],
                 )
-              : Text(message.text, style: theme.bodyMedium?.copyWith(color: ink)),
+              : Text(
+                  message.text,
+                  style: theme.bodyMedium?.copyWith(color: ink),
+                ),
         ],
       ),
     );
@@ -813,10 +932,14 @@ class _Bubble extends StatelessWidget {
                 if (!mine) ...[
                   // The picture once, beside the first message of a run
                   startsGroup
-                      ? Avatar(
-                          name: message.name,
-                          size: avatarSize,
-                          image: controller.avatarOf(message.by),
+                      ? GestureDetector(
+                          key: ValueKey('chat-avatar-${message.id}'),
+                          onTap: () => showMemberProfile(context, message.by),
+                          child: Avatar(
+                            name: message.name,
+                            size: avatarSize,
+                            image: controller.avatarOf(message.by),
+                          ),
                         )
                       : const SizedBox(width: avatarSize),
                   const SizedBox(width: 8),
@@ -844,10 +967,7 @@ class _Bubble extends StatelessWidget {
           ),
           if (reactions.isNotEmpty)
             Padding(
-              padding: EdgeInsets.only(
-                top: 3,
-                left: mine ? 0 : avatarSize + 8,
-              ),
+              padding: EdgeInsets.only(top: 3, left: mine ? 0 : avatarSize + 8),
               child: _ReactionPill(
                 reactions: reactions,
                 you: controller.snapshot.you,
@@ -925,7 +1045,9 @@ class _Quote extends StatelessWidget {
       decoration: BoxDecoration(
         color: ink.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: ink.withValues(alpha: 0.7), width: 3)),
+        border: Border(
+          left: BorderSide(color: ink.withValues(alpha: 0.7), width: 3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -942,7 +1064,9 @@ class _Quote extends StatelessWidget {
             quote.text,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: theme.bodySmall?.copyWith(color: ink.withValues(alpha: 0.85)),
+            style: theme.bodySmall?.copyWith(
+              color: ink.withValues(alpha: 0.85),
+            ),
           ),
         ],
       ),
@@ -981,7 +1105,9 @@ class _ReactionPill extends StatelessWidget {
           color: mineGiven ? p.primary.withValues(alpha: 0.16) : p.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: mineGiven ? p.primary : p.textTertiary.withValues(alpha: 0.4),
+            color: mineGiven
+                ? p.primary
+                : p.textTertiary.withValues(alpha: 0.4),
           ),
         ),
         child: Row(
@@ -993,9 +1119,8 @@ class _ReactionPill extends StatelessWidget {
               const SizedBox(width: 3),
               Text(
                 '${reactions.length}',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: p.textSecondary,
-                ),
+                style: Theme.of(context).textTheme.labelSmall
+                    ?.copyWith(color: p.textSecondary),
               ),
             ],
           ],
@@ -1134,7 +1259,9 @@ class _SwipeToReplyState extends State<_SwipeToReply> {
             ),
           ),
           AnimatedContainer(
-            duration: _dragging ? Duration.zero : const Duration(milliseconds: 160),
+            duration: _dragging
+                ? Duration.zero
+                : const Duration(milliseconds: 160),
             curve: Curves.easeOut,
             transform: Matrix4.translationValues(_dx, 0, 0),
             child: widget.child,
@@ -1189,7 +1316,10 @@ class _MessageMenu extends StatelessWidget {
     );
     final mineGiven = current.reactions[you];
     void give(Reaction reaction) {
-      controller.reactToMessage(current, mineGiven == reaction ? null : reaction);
+      controller.reactToMessage(
+        current,
+        mineGiven == reaction ? null : reaction,
+      );
       Navigator.of(context).pop();
     }
 
@@ -1258,9 +1388,8 @@ class _MessageMenu extends StatelessWidget {
               onTap: () {
                 Clipboard.setData(ClipboardData(text: message.text));
                 Navigator.of(context).pop();
-                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                  SnackBar(content: Text(S.chatCopied)),
-                );
+                ScaffoldMessenger.maybeOf(context)
+                    ?.showSnackBar(SnackBar(content: Text(S.chatCopied)));
               },
             ),
             if (current.reactions.isNotEmpty) ...[

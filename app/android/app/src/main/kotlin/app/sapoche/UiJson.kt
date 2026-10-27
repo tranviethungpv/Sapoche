@@ -31,6 +31,8 @@ object UiJson {
             .put("name", state?.name.takeIf { inRoom } ?: JSONObject.NULL)
             .put("ownerId", state?.ownerId.takeIf { inRoom } ?: JSONObject.NULL)
             .put("guestControl", if (inRoom) state?.guestControl ?: "all" else "all")
+            // The look of the chat; null from a server older than protocol 16, which cannot change it
+            .put("theme", state?.theme.takeIf { inRoom } ?: JSONObject.NULL)
             .put("roomAutoplay", state?.autoplay.takeIf { inRoom } ?: JSONObject.NULL)
             // The chat is end-to-end encrypted, and whether this device has the secret to read it
             .put("encrypted", inRoom && state?.enc == true)

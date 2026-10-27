@@ -472,6 +472,12 @@ class WebBackend extends BackendDefaults {
   }
 
   @override
+  Future<void> setRoomTheme(String theme, {String? background}) async {
+    _inRoom();
+    _send(Wire.roomTheme(theme, background));
+  }
+
+  @override
   Future<void> setGuestControl(GuestControl mode) async {
     _inRoom();
     _send(Wire.roomSettings(mode.name));
@@ -1393,6 +1399,7 @@ class WebBackend extends BackendDefaults {
       playbackSpeed: inRoom ? 1 : _speed,
       name: state?.name,
       ownerId: state?.ownerId,
+      theme: inRoom ? state?.theme : null,
       guestControl: GuestControl.parse(state?.guestControl),
       roomAutoplay: state?.autoplay,
       encrypted: inRoom && state?.enc == true,
@@ -1419,6 +1426,7 @@ class WebBackend extends BackendDefaults {
       snapshot.loading,
       snapshot.name,
       snapshot.ownerId,
+      snapshot.theme,
       snapshot.guestControl,
       snapshot.roomAutoplay,
       snapshot.shuffle,

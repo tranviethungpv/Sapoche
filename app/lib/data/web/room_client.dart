@@ -83,6 +83,9 @@ class RoomClient {
   /// The fingerprint of each member's picture as last asked for, so a picture is fetched once and not at every change.
   final _known = <String, String>{};
 
+  /// The fingerprint of the picture behind the chat that was last asked for.
+  String? _knownBackground;
+
   /// What the room calls this device: members are listed by a public id, not by [clientId].
   String? _you;
 
@@ -238,7 +241,9 @@ class RoomClient {
         clock.addSample(msg.c0, nowMs(), msg.s1);
       case AvatarMessage():
         final av = msg.av;
-        if (av != null) {
+        if (msg.id == Wire.backgroundId) {
+          _knownBackground = av;
+        } else if (av != null) {
           _known[msg.id] = av;
         } else {
           _known.remove(msg.id);
@@ -251,6 +256,7 @@ class RoomClient {
         _shareAvatar();
         _sharePush();
         _wantPictures(msg.members);
+        _wantBackground(msg.state.bg);
         onMessage(msg);
       case MembersMessage():
         _wantPictures(msg.members);
@@ -273,6 +279,17 @@ class RoomClient {
     if (_pushSent || message == null || _serverProtocol < _pushProtocol) return;
     _pushSent = true;
     send(message);
+  }
+
+  /// Asks for the picture behind the chat when it is a new one, and tells that it went when it did.
+  void _wantBackground(String? bg) {
+    if (_serverProtocol < _themeProtocol || bg == _knownBackground) return;
+    _knownBackground = bg;
+    if (bg == null) {
+      onAvatar(Wire.backgroundId, null, null);
+    } else {
+      send(Wire.avatarGet(Wire.backgroundId));
+    }
   }
 
   /// Asks for the pictures of members whose picture changed since it was last fetched, and forgets those who are gone.
@@ -316,6 +333,9 @@ class RoomClient {
 
   /// The first protocol whose server keeps the pictures.
   static const _avatarProtocol = 8;
+
+  /// The first protocol whose server has a theme for the chat, and a picture behind it.
+  static const _themeProtocol = 16;
 
   /// The first protocol whose server sends notices of the chat to a browser that is away.
   static const _pushProtocol = 13;

@@ -63,3 +63,106 @@ Uint8List? squareAvatar(Uint8List source) {
   }
   return jpeg;
 }
+
+/// Lets the person pick a photo to put behind the chat, whole and upright, for them to place in the frame: no more
+/// than [wallpaperPickSide] px on its longest side. Null when they back out or the file is no picture.
+typedef WallpaperPicker = Future<Uint8List?> Function();
+
+/// The longest side of the photo handed to the person to place: enough to zoom in a few times on a phone screen.
+const wallpaperPickSide = 1600;
+
+Future<Uint8List?> pickWallpaper() async {
+  final file = await ImagePicker().pickImage(
+    source: ImageSource.gallery,
+    maxWidth: wallpaperPickSide.toDouble(),
+    maxHeight: wallpaperPickSide.toDouble(),
+  );
+  if (file == null) return null;
+  return compute(uprightPhoto, await file.readAsBytes());
+}
+
+/// [source] turned upright as a JPEG with nothing of its orientation left in it, so that what is shown and what is cut
+/// out of it are the same picture; shrunk to [wallpaperPickSide] if bigger. Null when [source] is not a picture.
+Uint8List? uprightPhoto(Uint8List source) {
+  final img.Image? decoded;
+  try {
+    decoded = img.decodeImage(source);
+  } catch (_) {
+    return null;
+  }
+  if (decoded == null) return null;
+  var upright = img.bakeOrientation(decoded);
+  if (max(upright.width, upright.height) > wallpaperPickSide) {
+    upright = upright.width >= upright.height
+        ? img.copyResize(upright, width: wallpaperPickSide)
+        : img.copyResize(upright, height: wallpaperPickSide);
+  }
+  return img.encodeJpg(upright, quality: 88);
+}
+
+/// The longest base64 text of the picture behind the chat that the room accepts.
+const maxWallpaperChars = 90000;
+
+/// The part of [photo] inside the rectangle given as fractions of its width and height, as a JPEG [side] px wide with
+/// the height of the frame, small enough to be sent to the room (about 67 KB): the quality goes down, and then the size,
+/// until it fits. Null when [photo] is not a picture.
+Uint8List? cutWallpaper(
+  Uint8List photo, {
+  required double left,
+  required double top,
+  required double width,
+  required double height,
+  int side = 540,
+}) {
+  final img.Image? decoded;
+  try {
+    decoded = img.decodeImage(photo);
+  } catch (_) {
+    return null;
+  }
+  if (decoded == null) return null;
+  final w = decoded.width, h = decoded.height;
+  final x = (left * w).round().clamp(0, w - 1);
+  final y = (top * h).round().clamp(0, h - 1);
+  final cut = img.copyCrop(
+    decoded,
+    x: x,
+    y: y,
+    width: (width * w).round().clamp(1, w - x),
+    height: (height * h).round().clamp(1, h - y),
+  );
+  final limit = maxWallpaperChars ~/ 4 * 3;
+  late Uint8List jpeg;
+  for (var wide = side; wide >= 270; wide = wide * 3 ~/ 4) {
+    final scaled = cut.width > wide
+        ? img.copyResize(
+            cut,
+            width: wide,
+            interpolation: img.Interpolation.average,
+          )
+        : cut;
+    for (final quality in const [82, 72, 62, 52, 42, 32]) {
+      jpeg = img.encodeJpg(scaled, quality: quality);
+      if (jpeg.length <= limit) return jpeg;
+    }
+  }
+  return jpeg;
+}
+
+/// [cutWallpaper] on another isolate: cutting and compressing a photo takes a moment, and the screen should not stop.
+Future<Uint8List?> cutWallpaperAway(
+  Uint8List photo, {
+  required double left,
+  required double top,
+  required double width,
+  required double height,
+}) => compute(
+  (List<Object> a) => cutWallpaper(
+    a[0] as Uint8List,
+    left: a[1] as double,
+    top: a[2] as double,
+    width: a[3] as double,
+    height: a[4] as double,
+  ),
+  [photo, left, top, width, height],
+);

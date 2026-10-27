@@ -159,11 +159,11 @@ function sane(s) {
 const NASTY = [null, true, false, 0, -1, 1e308, -1e308, 2 ** 53 + 1, 0.5, "", " ", "x".repeat(5000), "../../etc", "<script>", "\u0000", "💥".repeat(100), [], [1, 2], {}, { a: 1 }, "NaN", "Infinity", "-0", "11characters", "bNp9pn0ni3I", "q1"];
 
 const TYPES = [
-  "join", "bye", "kick", "room.name", "room.settings", "ping", "avatar.set", "avatar.get", "queue.add", "queue.addMany", "queue.remove",
+  "join", "bye", "kick", "room.name", "room.theme", "room.settings", "ping", "avatar.set", "avatar.get", "queue.add", "queue.addMany", "queue.remove",
   "queue.swap", "queue.clear", "queue.shuffle", "jump", "queue.move", "play", "pause", "seek", "next", "prev", "repeat", "autoplay", "shuffle",
   "solo", "resync", "ready", "resolveFailed", "ended", "advanced", "report", "nope", "", "__proto__", "constructor", "toString",
 ];
-const FIELDS = ["clientId", "name", "create", "id", "guestControl", "c0", "rtt", "data", "videoId", "title", "artist", "thumb", "durMs", "next", "tracks", "track", "toIndex", "positionMs", "from", "mode", "on", "epoch", "reason", "itemId", "startedAt", "posMs", "bufferMs"];
+const FIELDS = ["clientId", "name", "theme", "create", "id", "guestControl", "c0", "rtt", "data", "videoId", "title", "artist", "thumb", "durMs", "next", "tracks", "track", "toIndex", "positionMs", "from", "mode", "on", "epoch", "reason", "itemId", "startedAt", "posMs", "bufferMs"];
 
 async function hostileSection() {
   console.log("Hostile input");

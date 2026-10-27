@@ -55,6 +55,10 @@ data class RoomState(
     val shuffle: Boolean? = null,
     /** The chat is end-to-end encrypted: the room passes on sealed messages only (see [ChatCipher]). Protocol 15. */
     val enc: Boolean = false,
+    /** The look of the room's chat, a name the apps know, `default` for none; null from a server older than protocol 16. */
+    val theme: String? = null,
+    /** Fingerprint of the picture behind the chat; null when there is none (or a server older than protocol 16). It is fetched as the picture of [BACKGROUND_ID]. */
+    val bg: String? = null,
 ) {
     val current: QueueItem? get() = queue.getOrNull(index)
 }
@@ -177,6 +181,9 @@ sealed interface ServerMessage {
 }
 
 object Protocol {
+    /** What the picture behind the chat is asked for as, and comes back as: no member's id looks like it. */
+    const val BACKGROUND_ID = "room:bg"
+
     val json = Json { ignoreUnknownKeys = true }
 
     /** Returns null for anything that is not a well-formed message we understand. */
@@ -241,6 +248,12 @@ object Protocol {
     fun kick(id: String) = msg("kick") { put("id", id) }
 
     fun roomName(name: String) = msg("room.name") { put("name", name) }
+
+    /** The look of the chat for the whole room, `default` taking it away, with the picture behind it as base64 of a JPEG (null takes it away). Protocol 16. */
+    fun roomTheme(theme: String, bg: String?) = msg("room.theme") {
+        put("theme", theme)
+        put("bg", bg)
+    }
 
     /** Owner only: `all` or `add`. */
     fun roomSettings(guestControl: String) = msg("room.settings") { put("guestControl", guestControl) }

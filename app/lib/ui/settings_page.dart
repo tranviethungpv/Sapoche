@@ -20,10 +20,12 @@ import 'player/video_controls.dart';
 import 'scope.dart';
 import 'setup_dialog.dart';
 import 'profile_sheet.dart';
+import 'release_history_list.dart';
 import 'widgets/ambient_backdrop.dart';
 import 'widgets/avatars.dart';
 import 'widgets/page_width.dart';
 import 'widgets/play_row.dart';
+import 'widgets/release_notes_text.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/text_dialog.dart';
 
@@ -224,6 +226,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 );
               },
             ),
+          // What changed in each version: it is in the app, so it reads the same on every platform
+          _NavRow(
+            selected: _shows(_releaseNotes),
+            key: const ValueKey('settings-release-notes'),
+            icon: Icons.history_rounded,
+            label: S.releaseNotes,
+            onTap: () => _open(context, () => S.releaseNotes, _releaseNotes),
+          ),
         ],
       ),
       _Group(
@@ -531,6 +541,10 @@ class _SettingsPageState extends State<SettingsPage> {
     _UpdateGroup(update: model.update),
   ];
 
+  static List<Widget> _releaseNotes(BuildContext context, AppModel model) => [
+    const ReleaseHistoryList(),
+  ];
+
   static List<Widget> _room(BuildContext context, AppModel model) => [
     _RoomGroup(room: model.room),
   ];
@@ -817,7 +831,7 @@ class _UpdateGroup extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          _ReleaseNotes(info.notes!),
+                          ReleaseNotesText(info.notes!),
                         ],
                       ],
                     ),
@@ -833,57 +847,6 @@ class _UpdateGroup extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-/// The notes of a release: a line that starts with "- " is a bullet, any other line is a heading.
-class _ReleaseNotes extends StatelessWidget {
-  const _ReleaseNotes(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final theme = Theme.of(context).textTheme;
-    final lines = text
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty);
-    return Column(
-      key: const ValueKey('release-notes'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final line in lines)
-          if (line.startsWith('- '))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 10, left: 2),
-                    child: Text(
-                      '•',
-                      style: theme.bodyMedium?.copyWith(color: p.primary),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      line.substring(2).trim(),
-                      style: theme.bodyMedium,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 6),
-              child: Text(line, style: theme.titleSmall),
-            ),
-      ],
     );
   }
 }

@@ -13,7 +13,7 @@ import 'fake_backend.dart';
 import 'pump_app.dart';
 
 // A 1x1 transparent PNG: enough for an image that decodes
-final _png = Uint8List.fromList([
+final pngBytes = Uint8List.fromList([
   137,
   80,
   78,
@@ -84,7 +84,7 @@ void main() {
   testWidgets('a photo can be chosen, is kept, and can be removed', (
     tester,
   ) async {
-    final backend = await settings(tester, photoPicker: () async => _png);
+    final backend = await settings(tester, photoPicker: () async => pngBytes);
     expect(
       tester.widget<Avatar>(find.byType(Avatar).first).image,
       isNull,
@@ -147,13 +147,13 @@ void main() {
       (m) => m.id != room.snapshot.you,
     );
     expect(room.avatarOf(other.id), isNull);
-    backend.emit(AvatarEvent(other.id, _png));
+    backend.emit(AvatarEvent(other.id, pngBytes));
     await tester.pump();
-    expect(room.avatarOf(other.id), _png);
+    expect(room.avatarOf(other.id), pngBytes);
     backend.emit(AvatarEvent(other.id, null));
     await tester.pump();
     expect(room.avatarOf(other.id), isNull);
-    backend.emit(AvatarEvent(other.id, _png));
+    backend.emit(AvatarEvent(other.id, pngBytes));
     await tester.pump();
     // Someone who has left takes the picture with them
     backend.emit(

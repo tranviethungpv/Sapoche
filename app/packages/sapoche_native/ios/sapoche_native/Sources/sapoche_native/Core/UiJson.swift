@@ -25,6 +25,8 @@ enum UiJson {
             "name": (inRoom ? state?.name : nil) ?? NSNull(),
             "ownerId": (inRoom ? state?.ownerId : nil) ?? NSNull(),
             "guestControl": inRoom ? state?.guestControl ?? "all" : "all",
+            // The look of the chat; null from a server older than protocol 16, which cannot change it
+            "theme": (inRoom ? state?.theme : nil) ?? NSNull(),
             "roomAutoplay": (inRoom ? state?.autoplay : nil) ?? NSNull(),
             // The chat is end-to-end encrypted, and whether this device has the secret to read it
             "encrypted": inRoom && state?.enc == true,

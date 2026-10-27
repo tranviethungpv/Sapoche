@@ -603,6 +603,47 @@ abstract final class S {
   static String get keepPlaying => _t('Keep playing', 'Tiếp tục phát');
   static String get someone => _t('Someone', 'Ai đó');
   static String get chat => _t('Chat', 'Trò chuyện');
+  static String get chatTheme => _t('Chat theme', 'Giao diện trò chuyện');
+  static String get chatThemeShared =>
+      _t('Everyone in the room sees it.', 'Cả phòng cùng thấy.');
+  static String get chatThemeLocked => _t(
+    'Only the owner can change it right now.',
+    'Hiện chỉ chủ phòng đổi được.',
+  );
+  static String get chatThemeFromPhoto => _t('From a photo', 'Từ một ảnh');
+  static String get chatThemeFromPhotoHint => _t(
+    'Pick a photo, place it, and it goes behind the chat, blended with its colours. Everyone in the room gets the picture; choosing another look takes it away.',
+    'Chọn một ảnh, căn chỉnh rồi đặt làm nền chat, hòa với màu của ảnh. Cả phòng nhận tấm ảnh này; chọn giao diện khác thì ảnh sẽ bị gỡ.',
+  );
+  static String get wallpaperTitle => _t('Fit the picture', 'Căn chỉnh ảnh');
+  static String get wallpaperUse => _t('Use', 'Dùng');
+  static String get wallpaperHint => _t(
+    'Drag to move the picture, pinch or slide to zoom. Shown as the chat will look.',
+    'Kéo để dời ảnh, chụm hoặc trượt để phóng. Hiển thị đúng như khung chat sẽ có.',
+  );
+  static String get wallpaperSaving =>
+      _t('Getting the picture ready…', 'Đang chuẩn bị ảnh…');
+  static String get wallpaperShowPhoto =>
+      _t('Show the photo alone', 'Chỉ xem ảnh');
+  static String get wallpaperShowBlend =>
+      _t('Show it with the colours', 'Xem cùng màu hòa vào');
+  static String get wallpaperSample1 =>
+      _t('What shall we play next?', 'Mình nghe bài gì tiếp nhỉ?');
+  static String get wallpaperSample2 =>
+      _t('Something slow tonight', 'Bài nào nhẹ nhàng đi');
+  static String get wallpaperSample3 => _t('Good idea', 'Hay đó');
+  static String get chatThemeUnreadable =>
+      _t('That photo could not be read', 'Không đọc được ảnh này');
+  static String chatThemeName(String id) => switch (id) {
+    'default' => _t('Classic', 'Mặc định'),
+    'ocean' => _t('Ocean', 'Đại dương'),
+    'sunset' => _t('Sunset', 'Hoàng hôn'),
+    'forest' => _t('Forest', 'Rừng xanh'),
+    'grape' => _t('Grape', 'Nho tím'),
+    'honey' => _t('Honey', 'Mật ong'),
+    'mono' => _t('Graphite', 'Than chì'),
+    _ => _t('Your photo', 'Ảnh của bạn'),
+  };
   static String chatFrom(String name, String text) =>
       '${name.isEmpty ? someone : name}: $text';
   static String get chatOpen => _t('Open', 'Mở');
@@ -804,6 +845,25 @@ abstract final class S {
   static String get statusListening => _t('Listening', 'Đang nghe');
   static String get statusAlone => _t('On their own', 'Đang nghe riêng');
   static String get statusAway => _t('Connection lost', 'Mất kết nối');
+  static String get viewPhoto => _t('View photo', 'Xem ảnh');
+  static String get profileListeningTo => _t('Listening to', 'Đang nghe');
+  static String get profileAloneNote => _t(
+    'Listening on their own. What they play is not shared with the room.',
+    'Đang nghe riêng. Bài họ nghe không được chia sẻ với phòng.',
+  );
+  static String get profileAwayNote => _t(
+    'The connection was lost. They may be back soon.',
+    'Mất kết nối. Có thể họ sẽ quay lại sớm.',
+  );
+  static String get profileNothing =>
+      _t('Nothing is playing in the room', 'Phòng chưa phát bài nào');
+  static String profileQueued(int n) => _t(
+    n == 1 ? '1 song in the queue is theirs' : '$n songs in the queue are theirs',
+    '$n bài trong hàng đợi do họ thêm',
+  );
+  static String get profileEdit => _t('Edit my profile', 'Sửa hồ sơ của tôi');
+  static String get profileGone =>
+      _t('They have left the room', 'Họ đã rời khỏi phòng');
   static String get statusLoading => _t('Loading…', 'Đang tải…');
   static String awayCount(int n) => _t('$n away', '$n mất kết nối');
   static String unplayable(String title) => _t(
@@ -1010,6 +1070,11 @@ abstract final class S {
 
   // Updates of the app
   static String get updates => _t('Updates', 'Cập nhật');
+  static String get releaseNotes =>
+      _t('Release notes', 'Lịch sử bản phát hành');
+  static String get releaseNotesInstalled => _t('Installed', 'Đang dùng');
+  static String get releaseNotesNone =>
+      _t('The notes could not be read', 'Không đọc được ghi chú');
   static String get serverSection => _t('Server', 'Máy chủ');
   static String get serverAddress => _t('Address', 'Địa chỉ');
   static String get serverKey => _t('Room key', 'Khoá phòng');

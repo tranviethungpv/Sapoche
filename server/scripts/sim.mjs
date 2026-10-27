@@ -649,6 +649,13 @@ async function fullRoomSection() {
 }
 
 /** The owner names the room, restricts guests, removes people and hands the room over. */
+/** What the room says its state is, asked for afresh. */
+async function resyncState(client) {
+  client.inbox.length = 0;
+  client.send({ t: "resync" });
+  return (await client.waitFor((m) => m.t === "state")).state;
+}
+
 async function ownerSection() {
   console.log("Owner and guests");
   const code = await newCode();
@@ -670,6 +677,41 @@ async function ownerSection() {
   owner.send({ t: "room.name", name: "  Family  " });
   check("the owner names the room and everyone sees it", (await seen(guest, (s) => s.name === "Family")).state.name === "Family");
   check("a guest cannot change the settings", await refuses(guest, { t: "room.settings", guestControl: "add" }));
+  check("a room starts with the default theme", (await resyncState(guest)).theme === "default");
+  owner.send({ t: "room.theme", theme: "ocean" });
+  check("the owner picks a theme and everyone sees it", (await seen(guest, (s) => s.theme === "ocean")).state.theme === "ocean");
+  guest.send({ t: "room.theme", theme: "Not a theme!" });
+  check("a theme that is not a name is ignored", (await resyncState(guest)).theme === "ocean");
+  guest.send({ t: "room.theme", theme: "grape" });
+  check("a guest picks a theme while guests are free", (await seen(owner, (s) => s.theme === "grape")).state.theme === "grape");
+  owner.send({ t: "room.theme", theme: "default" });
+  check("the default theme takes the name away", (await seen(guest, (s) => s.theme === "default")).state.theme === "default");
+  owner.send({ t: "room.theme", theme: "sunset" });
+  await seen(guest, (s) => s.theme === "sunset");
+
+  // The picture behind the chat
+  const picture = Buffer.from("a picture of a lake, as a small jpeg".repeat(400)).toString("base64");
+  check("a room starts with no picture behind its chat", (await resyncState(guest)).bg === undefined);
+  owner.send({ t: "room.theme", theme: "c-1e88e5-d81b60", bg: picture });
+  const withPicture = (await seen(guest, (s) => s.bg !== undefined)).state;
+  check("the owner puts a picture behind the chat with its colours, and the room sees a fingerprint of it", /^[0-9a-f]{8}$/.test(withPicture.bg) && withPicture.theme === "c-1e88e5-d81b60");
+  guest.send({ t: "avatar.get", id: "room:bg" });
+  const fetched = await guest.waitFor((m) => m.t === "avatar" && m.id === "room:bg");
+  check("and fetches the picture itself, not through the state", fetched.data === picture && fetched.av === withPicture.bg);
+  owner.send({ t: "room.theme", theme: "c-1e88e5-d81b60" });
+  owner.send({ t: "ping", c0: Date.now() });
+  check("a theme sent without a picture leaves the picture alone", (await resyncState(guest)).bg === withPicture.bg);
+  owner.send({ t: "room.theme", theme: "x", bg: "!!not base64!!" });
+  owner.send({ t: "room.theme", theme: "x", bg: "A".repeat(90_001) });
+  check("a picture that is not base64, or too big, is ignored with its theme", (await resyncState(guest)).theme === "c-1e88e5-d81b60");
+  guest.send({ t: "ping", c0: 1, pad: "x".repeat(40_000) });
+  check("only the theme message may be longer than 32 KB", (await guest.waitFor((m) => m.t === "error")).code === "bad_message");
+  owner.send({ t: "room.theme", theme: "ocean", bg: null });
+  const without = (await seen(guest, (s) => s.bg === undefined)).state;
+  check("a theme with null takes the picture away", without.theme === "ocean");
+  guest.send({ t: "avatar.get", id: "room:bg" });
+  const gone = await guest.waitFor((m) => m.t === "avatar" && m.id === "room:bg");
+  check("and there is nothing to fetch any more", gone.data === undefined);
 
   owner.send({ t: "room.settings", guestControl: "add" });
   check("the owner restricts guests to adding songs", (await seen(guest, (s) => s.guestControl === "add")).state.guestControl === "add");
@@ -681,6 +723,7 @@ async function ownerSection() {
   check("a restricted guest cannot clear the queue", await refuses(guest, { t: "queue.clear" }));
   check("a restricted guest cannot swap a song for its video", await refuses(guest, { t: "queue.swap", id: prepared.item.id, track: { videoId: VIDEO_B, title: "One", artist: "x", durMs: 200000 } }));
   check("a restricted guest cannot rename the room", await refuses(guest, { t: "room.name", name: "Mine" }));
+  check("a restricted guest cannot change the theme", await refuses(guest, { t: "room.theme", theme: "forest" }));
   guest.send({ t: "solo", on: true });
   const alone = await guest.waitFor((m) => m.t === "members" && m.members.find((x) => x.id === pid("g-id"))?.solo);
   check("a restricted guest can still listen on their own", alone.members.length === 3);
@@ -895,6 +938,8 @@ async function lifetimeSection() {
   await first.join(true);
   first.send({ t: "chat", text: "anyone?", cid: "c-b" });
   await first.waitFor((m) => m.t === "chat");
+  first.send({ t: "room.theme", theme: "ocean", bg: Buffer.from("wallpaper").toString("base64") });
+  await first.waitFor((m) => m.t === "state" && m.state.theme === "ocean" && m.state.bg !== undefined);
   first.close();
   await sleep(500);
   check("an empty room with nothing queued is kept for a moment", (await roomInfo(bare)).exists === true);
@@ -902,7 +947,10 @@ async function lifetimeSection() {
   // The short life of a room without songs is over, but its chat is not: the room stays for as long as the chat does
   check("a room with a chat outlives that short lifetime", (await roomInfo(bare)).exists === true);
   const back = new Client(bare, "b-id", "Bee");
-  await back.join(false);
+  const backState = await back.join(false);
+  check("and still has its theme", backState.state.theme === "ocean");
+  back.send({ t: "avatar.get", id: "room:bg" });
+  check("and the picture behind its chat", (await back.waitFor((m) => m.t === "avatar" && m.id === "room:bg")).data === Buffer.from("wallpaper").toString("base64"));
   const remembered = await back.waitFor((m) => m.t === "chat.history");
   check("and still has its chat when somebody comes back", remembered.msgs.map((m) => m.text).join() === "anyone?");
   back.close();
@@ -910,7 +958,7 @@ async function lifetimeSection() {
   await sleep(5200);
   check("and is gone when the chat is old", (await roomInfo(bare)).exists === false);
   const again = new Client(bare, "b-id", "Bee");
-  await again.join(true);
+  check("and a new room has the default theme", (await again.join(true)).state.theme === "default");
   check("its chat went with it", (await again.waitFor((m) => m.t === "chat.history")).msgs.length === 0);
   again.close();
 

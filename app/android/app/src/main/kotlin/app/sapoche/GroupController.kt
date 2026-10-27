@@ -790,6 +790,7 @@ class GroupController(
     // Only meaningful in a room
     fun requestKick(memberId: String) = send(Protocol.kick(memberId))
     fun requestRoomName(name: String) = send(Protocol.roomName(name))
+    fun requestRoomTheme(theme: String, bg: String?) = send(Protocol.roomTheme(theme, bg))
     fun requestRoomSettings(guestControl: String) = send(Protocol.roomSettings(guestControl))
     fun requestRoomAutoplay(on: Boolean) = send(Protocol.autoplay(on))
 

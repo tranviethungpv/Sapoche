@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
+import '../theme/palette.dart';
 import '../theme/theme.dart';
+import 'member_profile_sheet.dart';
 import 'scope.dart';
 import 'widgets/avatars.dart';
 
@@ -56,7 +58,7 @@ class _MembersSheet extends StatelessWidget {
                     isYou: member.id == snapshot.you,
                     loading: snapshot.phase == 'preparing' && !member.ready,
                     onRemove: snapshot.iOwn && member.id != snapshot.you
-                        ? () => _confirmRemove(context, member)
+                        ? () => confirmRemoveMember(context, controller, member)
                         : null,
                   ),
                 const SizedBox(height: 12),
@@ -76,30 +78,6 @@ class _MembersSheet extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmRemove(BuildContext context, Member member) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(S.removeFromRoom),
-        content: Text(S.removeQuestion(member.name)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(S.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(
-              S.remove,
-              style: TextStyle(color: context.palette.error),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) controller.kick(member);
-  }
-
   /// You first, then people who are listening, then those on their own, then those who are away.
   List<Member> _sorted(RoomSnapshot snapshot) {
     int rank(Member m) => m.id == snapshot.you
@@ -111,6 +89,32 @@ class _MembersSheet extends StatelessWidget {
         : 1;
     return [...snapshot.members]..sort((a, b) => rank(a).compareTo(rank(b)));
   }
+}
+
+/// Asks whether to remove [member] from the room, and does it when the answer is yes.
+Future<void> confirmRemoveMember(
+  BuildContext context,
+  RoomController controller,
+  Member member,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(S.removeFromRoom),
+      content: Text(S.removeQuestion(member.name)),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text(S.cancel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(S.remove, style: TextStyle(color: context.palette.error)),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true) controller.kick(member);
 }
 
 /// The switch that decides whether the room's play, pause and skip move this device.
@@ -156,6 +160,16 @@ class _FollowCard extends StatelessWidget {
   }
 }
 
+/// What a member is doing, in words and in the colour of the dot beside them.
+(String, Color) memberStatus(Palette p, Member member, bool loading) =>
+    member.away
+    ? (S.statusAway, p.textTertiary)
+    : member.solo
+    ? (S.statusAlone, p.primary)
+    : loading
+    ? (S.statusLoading, p.textSecondary)
+    : (S.statusListening, p.success);
+
 class _MemberRow extends StatelessWidget {
   const _MemberRow({
     required this.member,
@@ -175,72 +189,71 @@ class _MemberRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    final (status, color) = member.away
-        ? (S.statusAway, p.textTertiary)
-        : member.solo
-        ? (S.statusAlone, p.primary)
-        : loading
-        ? (S.statusLoading, p.textSecondary)
-        : (S.statusListening, p.success);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Opacity(
-            opacity: member.away ? 0.4 : 1,
-            child: Avatar(
-              name: member.name,
-              size: 40,
-              image: isYou
-                  ? AppScope.of(context).settings.avatar
-                  : AppScope.roomOf(context).avatarOf(member.id),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    isYou ? '${member.name} (${S.you})' : member.name,
-                    style: theme.titleMedium?.copyWith(
-                      color: member.away ? p.textTertiary : p.text,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (member.owner) ...[
-                  const SizedBox(width: 6),
-                  Icon(
-                    Icons.workspace_premium_rounded,
-                    size: 16,
-                    color: p.primary,
-                    semanticLabel: S.owner,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          Text(status, style: theme.bodySmall?.copyWith(color: color)),
-          if (onRemove != null)
-            IconButton(
-              onPressed: onRemove,
-              tooltip: S.removeFromRoom,
-              visualDensity: VisualDensity.compact,
-              icon: Icon(
-                Icons.person_remove_outlined,
-                size: 20,
-                color: p.textTertiary,
+    final (status, color) = memberStatus(p, member, loading);
+    return InkWell(
+      key: ValueKey('member-${member.id}'),
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => showMemberProfile(context, member.id),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Opacity(
+              opacity: member.away ? 0.4 : 1,
+              child: Avatar(
+                name: member.name,
+                size: 40,
+                image: isYou
+                    ? AppScope.of(context).settings.avatar
+                    : AppScope.roomOf(context).avatarOf(member.id),
               ),
             ),
-        ],
+            const SizedBox(width: 14),
+            Expanded(
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      isYou ? '${member.name} (${S.you})' : member.name,
+                      style: theme.titleMedium?.copyWith(
+                        color: member.away ? p.textTertiary : p.text,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (member.owner) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.workspace_premium_rounded,
+                      size: 16,
+                      color: p.primary,
+                      semanticLabel: S.owner,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            Text(status, style: theme.bodySmall?.copyWith(color: color)),
+            if (onRemove != null)
+              IconButton(
+                onPressed: onRemove,
+                tooltip: S.removeFromRoom,
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.person_remove_outlined,
+                  size: 20,
+                  color: p.textTertiary,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

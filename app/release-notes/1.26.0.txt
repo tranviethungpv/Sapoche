@@ -1,0 +1,5 @@
+A look for your chat, who's who in the room, and every release note in the app
+- Choose how the room's chat looks: touch the palette in the chat to pick a theme, or pick one of your photos, place it in the frame and it goes behind the chat, blended with its colours. Everyone in the room sees it at once. The photo is cut to the frame and shared with the room, so pick one you are happy to share.
+- Touch someone in the room, or their picture beside a message, to see who they are: their picture, whether they are the owner, whether they are listening with the room, and what the room is playing. Touch a picture to look at it closer: pinch or double-tap to zoom.
+- Settings > Release notes lists what changed in every version, with the one you have marked.
+- Everyone needs the latest version to see the themes of a room; with an older version the chat just keeps its usual colours.
