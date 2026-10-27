@@ -3,7 +3,7 @@ import 'dart:convert';
 import '../models.dart';
 
 // Wire protocol with the room server. Mirrors Protocol.kt, Wire.swift, server/src/protocol.ts and docs/PROTOCOL.md.
-// The picture of a member (`av`) is not read yet; the other types are the app's own models.
+// The picture of a member is `av` in the member list and `avatar` when it is asked for; the other types are the app's own models.
 
 /// Room state as the server broadcasts it. [phase] is one of idle, preparing, playing, paused.
 class RoomState {

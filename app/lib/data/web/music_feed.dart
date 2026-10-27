@@ -1,15 +1,17 @@
 
 import '../music_models.dart';
+import 'lyrics_client.dart';
 import 'music_client.dart';
 import 'music_parser.dart';
 
 /// What the full player and the discovery pages show. Every answer is kept for a while, so going back and forth
-/// between songs, or opening the same page twice, does not ask again. Mirrors MusicFeed.kt, without the lyrics of
-/// LRCLIB and the files they are kept in.
+/// between songs, or opening the same page twice, does not ask again. Mirrors MusicFeed.kt, without the files the lyrics
+/// are kept in: [MusicController] keeps them while the page is open.
 class MusicFeed {
-  MusicFeed(this._music, {int Function()? now}) : _now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
+  MusicFeed(this._music, this._lyrics, {int Function()? now}) : _now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
 
   final MusicClient _music;
+  final LyricsClient _lyrics;
   final int Function() _now;
 
   final _next = _Recent<String, WatchNext>();
@@ -88,10 +90,28 @@ class MusicFeed {
     return found.length > limit ? found.sublist(0, limit) : found;
   }
 
-  /// The plain words YouTube Music has for a song, else null.
-  Future<String?> plainLyrics(String videoId) async {
+  /// The lyrics of a song: lyrics with times when LRCLIB has them, else the plain words YouTube Music has, else null.
+  /// When LRCLIB cannot be reached (a blocker in the browser, or the service is down) the plain words still show;
+  /// the failure is only told when there is nothing else to show.
+  Future<Lyrics?> lyrics(String videoId, String title, String artist, int durationSec) async {
+    Lyrics? timed;
+    Object? failure;
+    try {
+      timed = await _lyrics.find(title, artist, durationSec);
+    } on Object catch (e) {
+      failure = e;
+    }
+    if (timed != null && timed.synced) return timed;
+    final plain = await _plainFromYoutube(videoId);
+    if (plain != null) return plain;
+    if (failure != null) throw failure;
+    return timed;
+  }
+
+  Future<Lyrics?> _plainFromYoutube(String videoId) async {
     final page = (await watchNext(videoId)).lyricsId;
-    return page == null ? null : _music.lyrics(page);
+    final words = page == null ? null : await _music.lyrics(page);
+    return words == null ? null : Lyrics(plain: words);
   }
 }
 

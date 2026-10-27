@@ -973,7 +973,7 @@ class _MoreButton extends StatelessWidget {
         if (!current.isLocal)
           PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
         PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
-        if (!current.isLocal)
+        if (!current.isLocal && !kIsWeb)
           ...switch (library.downloadState(current.videoId)) {
             DownloadState.done => [
               PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),

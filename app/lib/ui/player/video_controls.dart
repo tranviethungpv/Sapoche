@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -709,25 +710,28 @@ class _VideoSettings extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(S.videoSettings, style: theme.titleLarge),
-                heading(S.videoQuality),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final h in videoQualities)
-                      ChoiceChip(
-                        key: ValueKey('quality-$h'),
-                        label: Text('${h}p'),
-                        selected: snapshot.videoHeight == h,
-                        onSelected: (_) => controller.setVideoQuality(h),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  S.qualityNextSong,
-                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                ),
+                // A browser's player picks the picture quality by itself
+                if (!kIsWeb) ...[
+                  heading(S.videoQuality),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final h in videoQualities)
+                        ChoiceChip(
+                          key: ValueKey('quality-$h'),
+                          label: Text('${h}p'),
+                          selected: snapshot.videoHeight == h,
+                          onSelected: (_) => controller.setVideoQuality(h),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    S.qualityNextSong,
+                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  ),
+                ],
                 heading(S.playbackSpeed),
                 if (snapshot.inRoom)
                   Text(

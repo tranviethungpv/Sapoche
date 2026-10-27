@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../models.dart';
 import 'clocks.dart';
 import 'job.dart';
 import 'room_socket.dart';
@@ -9,8 +10,7 @@ import 'wire.dart';
 enum Connection { connecting, connected, reconnecting, closed, unauthorized, refused }
 
 /// WebSocket connection to one room. Joins on every (re)connect, keeps the clock offset fresh with pings, and
-/// reconnects with exponential backoff when the connection drops. Mirrors RoomClient.kt, except for the pictures of
-/// the members, which are not fetched yet.
+/// reconnects with exponential backoff when the connection drops. Mirrors RoomClient.kt.
 class RoomClient {
   RoomClient({
     required Uri baseUrl,
@@ -57,6 +57,10 @@ class RoomClient {
 
   /// Called after each successful (re)connect, once the join message was sent.
   void Function() onConnected = () {};
+
+  /// A member's picture arrived ([av] is its fingerprint, [data] the picture as base64), or with no [data] they took it
+  /// away.
+  void Function(String id, String? av, String? data) onAvatar = (_, _, _) {};
   void Function(Connection connection) onConnection = (_) {};
 
   Connection _connection = Connection.connecting;
@@ -64,6 +68,19 @@ class RoomClient {
 
   /// Shown to the others; sent again on every reconnect.
   String name;
+
+  /// This device's own picture, as base64; shared with the room once the server says it can keep pictures.
+  String? _avatar;
+
+  /// What the server last said it can do, and whether the picture went out on this connection.
+  int _serverProtocol = 0;
+  bool _avatarSent = false;
+
+  /// The fingerprint of each member's picture as last asked for, so a picture is fetched once and not at every change.
+  final _known = <String, String>{};
+
+  /// What the room calls this device: members are listed by a public id, not by [clientId].
+  String? _you;
 
   Job? _loop;
   RoomSocket? _socket;
@@ -87,6 +104,12 @@ class RoomClient {
     if (socket == null) return false;
     socket.send(text);
     return true;
+  }
+
+  /// Sets, or with null takes away, the picture the others see of this device. Sent again on every reconnect.
+  void setAvatar(String? data) {
+    _avatar = data;
+    if (_serverProtocol >= _avatarProtocol) send(Wire.avatarSet(data));
   }
 
   /// Changes the display name without dropping the connection: the server accepts a second join.
@@ -139,6 +162,7 @@ class RoomClient {
           attempt = 0;
           _socket = ws;
           _lastPongMs = nowMs();
+          _avatarSent = false;
           _set(Connection.connected);
           log('connected to $_url');
           ws.send(Wire.join(clientId, name, create: _createOnJoin));
@@ -193,11 +217,51 @@ class RoomClient {
       case PongMessage():
         _lastPongMs = nowMs();
         clock.addSample(msg.c0, nowMs(), msg.s1);
+      case AvatarMessage():
+        final av = msg.av;
+        if (av != null) {
+          _known[msg.id] = av;
+        } else {
+          _known.remove(msg.id);
+        }
+        onAvatar(msg.id, av, msg.data);
       case StateMessage():
         if (_createOnJoin == true) _createOnJoin = false;
+        _you = msg.you;
+        _serverProtocol = msg.protocol;
+        _shareAvatar();
+        _wantPictures(msg.members);
+        onMessage(msg);
+      case MembersMessage():
+        _wantPictures(msg.members);
         onMessage(msg);
       default:
         onMessage(msg);
+    }
+  }
+
+  /// Hands the room this device's picture, once per connection, when the server can keep it.
+  void _shareAvatar() {
+    if (_avatarSent || _serverProtocol < _avatarProtocol) return;
+    _avatarSent = true;
+    send(Wire.avatarSet(_avatar));
+  }
+
+  /// Asks for the pictures of members whose picture changed since it was last fetched, and forgets those who are gone.
+  void _wantPictures(List<Member> members) {
+    if (_serverProtocol < _avatarProtocol) return;
+    final ids = {for (final m in members) m.id};
+    _known.removeWhere((id, _) => !ids.contains(id));
+    for (final member in members) {
+      if (member.id == clientId || member.id == _you) continue;
+      final av = member.av;
+      if (av == null) {
+        // They had one and took it away
+        if (_known.remove(member.id) != null) onAvatar(member.id, null, null);
+      } else if (_known[member.id] != av) {
+        _known[member.id] = av;
+        send(Wire.avatarGet(member.id));
+      }
     }
   }
 
@@ -222,6 +286,8 @@ class RoomClient {
   Duration _backoff(int attempt) =>
       Duration(milliseconds: (1000 << (attempt > 4 ? 4 : attempt)).clamp(0, 15000));
 
+  /// The first protocol whose server keeps the pictures.
+  static const _avatarProtocol = 8;
   static const _closePolicyViolation = 1008;
   static const _closeRemoved = 4001;
   static const _closeNotFound = 4004;

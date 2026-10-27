@@ -263,6 +263,26 @@ abstract final class S {
   static String get storage => _t('Storage', 'Bộ nhớ');
   static String get storageDownloads => _t('Downloads', 'Bài đã tải');
   static String get storagePlayed => _t('Played songs', 'Bài đã nghe');
+  static String get browserStorageUsed =>
+      _t('Used by Sapoche', 'Sapoche đang dùng');
+  static String get browserStorageKeep =>
+      _t('Keep my data', 'Giữ dữ liệu của tôi');
+  static String get browserStorageKept =>
+      _t('Kept unless you clear it', 'Được giữ, trừ khi bạn tự xóa');
+  static String get browserStorageNotKept =>
+      _t('The browser may clear it', 'Trình duyệt có thể xóa');
+  static String get browserStorageDenied => _t(
+    'The browser did not agree. It may agree once the page is installed or used more often.',
+    'Trình duyệt chưa đồng ý. Có thể nó sẽ đồng ý khi trang được cài hoặc dùng thường xuyên hơn.',
+  );
+  static String get browserStorageHelp => _t(
+    'Your library, queue and settings are kept in this browser, and nowhere else. A browser may clear them when the device runs short of space, or when its site data is cleared. Songs are not saved here: they are streamed from YouTube each time.',
+    'Thư viện, hàng đợi và cài đặt được giữ trong trình duyệt này, không ở đâu khác. Trình duyệt có thể xóa chúng khi máy thiếu chỗ, hoặc khi bạn xóa dữ liệu trang. Bài hát không được lưu ở đây: mỗi lần nghe đều phát trực tiếp từ YouTube.',
+  );
+  static String get webQualityHelp => _t(
+    'A browser picks the sound and picture quality itself, by your connection and the size of the player. It cannot be set here.',
+    'Trình duyệt tự chọn chất lượng âm thanh và hình theo đường truyền và kích thước khung phát. Không chỉnh được ở đây.',
+  );
   static String get cacheLimit =>
       _t('Size for played songs', 'Dung lượng cho bài đã nghe');
   static String get cacheLimitHelp => _t(

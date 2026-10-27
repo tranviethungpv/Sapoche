@@ -14,6 +14,7 @@ import 'group_session.dart';
 import 'library_store.dart';
 import 'listen_tracker.dart';
 import 'local_session.dart';
+import 'lyrics_client.dart';
 import 'music_client.dart';
 import 'music_feed.dart';
 import 'player_port.dart';
@@ -302,6 +303,8 @@ class WebBackend extends BackendDefaults {
       session.onMessage(message);
     };
     client.onConnected = session.onReconnected;
+    client.onAvatar = (id, _, data) => _events.add(AvatarEvent(id, data == null ? null : base64Decode(data)));
+    client.setAvatar(_avatar);
     client.onConnection = (c) {
       _connection = c;
       _emitState();
@@ -741,7 +744,7 @@ class WebBackend extends BackendDefaults {
 
   // ------------------------------------------------------------------ YouTube Music
 
-  late final MusicFeed _feed = MusicFeed(MusicClient(_askYoutube, region: region));
+  late final MusicFeed _feed = MusicFeed(MusicClient(_askYoutube, region: region), LyricsClient(_askLrclib));
   var _language = 'en';
 
   /// Asks YouTube Music through the room server, which a page cannot do itself.
@@ -767,6 +770,15 @@ class WebBackend extends BackendDefaults {
     return utf8.decode(reply.bodyBytes);
   }
 
+  /// Asks LRCLIB itself: it is open to any page, and takes no key, so the room server is not needed. No header is
+  /// added, as a browser would then ask it for permission first.
+  Future<String?> _askLrclib(String url) async {
+    final reply = await _http.get(Uri.parse(url));
+    if (reply.statusCode == 404) return null;
+    if (reply.statusCode != 200) throw BackendException('failed', 'LRCLIB answered ${reply.statusCode}');
+    return utf8.decode(reply.bodyBytes);
+  }
+
   DateTime _keyRefusedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// The server does not take the key: said once in a while, not at every request, as a page asks many at once.
@@ -775,6 +787,15 @@ class WebBackend extends BackendDefaults {
     if (now.difference(_keyRefusedAt) < const Duration(seconds: 20)) return;
     _keyRefusedAt = now;
     _events.add(ErrorEvent(const ServerError('key_refused', 'The room key was not accepted')));
+  }
+
+  /// This device's own picture as base64, shown to every room it is in.
+  String? _avatar;
+
+  @override
+  Future<void> setAvatar(String? base64) async {
+    _avatar = base64;
+    _roomClient?.setAvatar(base64);
   }
 
   @override
@@ -912,12 +933,8 @@ class WebBackend extends BackendDefaults {
   @override
   Future<List<MusicShelf>> musicCharts() => _feed.charts();
 
-  /// The plain words YouTube Music has; the timed ones of LRCLIB come later.
   @override
-  Future<Lyrics?> lyrics(Track track) async {
-    final words = await _feed.plainLyrics(track.videoId);
-    return words == null ? null : Lyrics(plain: words);
-  }
+  Future<Lyrics?> lyrics(Track track) => _feed.lyrics(track.videoId, track.title, track.artist, track.durMs ~/ 1000);
 
   // ------------------------------------------------------------------ what the screen is told
 

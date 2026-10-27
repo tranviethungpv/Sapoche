@@ -166,6 +166,47 @@ void main() {
     expect(radio.hasRelated, isTrue);
   });
 
+  group('lyrics', () {
+    const track = Track(videoId: 'lYBUbBu4W08', title: 'Song', artist: 'Artist', durMs: 213000);
+    const timed = '{"duration":213.0,"plainLyrics":"One","syncedLyrics":"[00:01.00] One\\n[00:02.00] Two"}';
+
+    /// The room server answers the pages of YouTube Music; LRCLIB answers with [lrclib].
+    http.Response Function(http.Request) answers(http.Response Function() lrclib) => (request) {
+      if (request.url.host == 'lrclib.net') return lrclib();
+      return ok(fixture(request.url.path.endsWith('/next') ? 'next_song' : 'lyrics'));
+    };
+
+    test('run along with the music when LRCLIB has them, and LRCLIB is told only the name and the length', () async {
+      final (backend, seen) = await backendWith(answers(() => ok(timed)), prefs: {'web.key': 'k'});
+      final lyrics = (await backend.lyrics(track))!;
+      expect(lyrics.synced, isTrue);
+      expect(lyrics.lines.map((l) => l.text), ['One', 'Two']);
+      final asked = seen.firstWhere((r) => r.url.host == 'lrclib.net');
+      expect(asked.url.queryParameters, {'track_name': 'Song', 'artist_name': 'Artist', 'duration': '213'});
+      expect(asked.headers.keys.map((k) => k.toLowerCase()), isNot(contains('x-sapoche-key')), reason: 'the key is for the room server only');
+    });
+
+    test('are the plain words of YouTube Music when LRCLIB has none', () async {
+      final (backend, _) = await backendWith(answers(() => http.Response('', 404)), prefs: {'web.key': 'k'});
+      final lyrics = (await backend.lyrics(track))!;
+      expect(lyrics.synced, isFalse);
+      expect(lyrics.plain, startsWith("We're no strangers to love"));
+    });
+
+    test('are still the plain words when LRCLIB cannot be reached', () async {
+      final (backend, _) = await backendWith(answers(() => http.Response('', 503)), prefs: {'web.key': 'k'});
+      expect((await backend.lyrics(track))!.plain, startsWith("We're no strangers to love"));
+    });
+
+    test('are a failure, not "none", when nobody could be asked', () async {
+      final (backend, _) = await backendWith(
+        (request) => request.url.host == 'lrclib.net' ? http.Response('', 503) : http.Response('', 502),
+        prefs: {'web.key': 'k'},
+      );
+      await expectLater(backend.lyrics(track), throwsA(isA<Object>()));
+    });
+  });
+
   test('commands that only a room understands say there is none', () async {
     final (backend, _) = await backendWith((_) => http.Response('{}', 200));
     await expectLater(

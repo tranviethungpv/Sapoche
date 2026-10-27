@@ -841,15 +841,16 @@ class _Sidebar extends StatelessWidget {
                       label: S.likedSongs,
                       onTap: () => onLibrary(LibraryRequests.liked),
                     ),
-                    _SideRow(
-                      leading: _SideTile(
-                        icon: Icons.download_done_rounded,
-                        color: p.veilStrong,
-                        on: p.text,
+                    if (!kIsWeb)
+                      _SideRow(
+                        leading: _SideTile(
+                          icon: Icons.download_done_rounded,
+                          color: p.veilStrong,
+                          on: p.text,
+                        ),
+                        label: S.downloadedSongs,
+                        onTap: () => onLibrary(LibraryRequests.downloaded),
                       ),
-                      label: S.downloadedSongs,
-                      onTap: () => onLibrary(LibraryRequests.downloaded),
-                    ),
                     if (library.localStatus.enabled)
                       _SideRow(
                         leading: _SideTile(

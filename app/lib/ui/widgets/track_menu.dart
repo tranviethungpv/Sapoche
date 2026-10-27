@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
@@ -49,20 +50,21 @@ class TrackMenu extends StatelessWidget {
         PopupMenuItem(value: 'next', child: Text(S.playNext)),
         PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
         PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
-        // A file on this phone is not downloaded, and has no YouTube artist to be tired of
-        if (!track.isLocal) ...switch (library.downloadState(track.videoId)) {
-          DownloadState.done => [
-            PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
-          ],
-          DownloadState.queued || DownloadState.waiting => [
-            PopupMenuItem(
-              enabled: false,
-              value: 'none',
-              child: Text(S.downloading),
-            ),
-          ],
-          _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
-        },
+        // A file on this phone is not downloaded, and has no YouTube artist to be tired of; a browser downloads nothing
+        if (!track.isLocal && !kIsWeb)
+          ...switch (library.downloadState(track.videoId)) {
+            DownloadState.done => [
+              PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
+            ],
+            DownloadState.queued || DownloadState.waiting => [
+              PopupMenuItem(
+                enabled: false,
+                value: 'none',
+                child: Text(S.downloading),
+              ),
+            ],
+            _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
+          },
         PopupMenuItem(
           value: 'like',
           child: Text(library.isLikedSong(track) ? S.unlike : S.like),

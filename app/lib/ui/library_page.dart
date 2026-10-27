@@ -172,7 +172,7 @@ class _LibraryScreen extends StatelessWidget {
             iconSize: side * 0.4,
           ),
           menu: [
-            if (library.liked.isNotEmpty)
+            if (library.liked.isNotEmpty && !kIsWeb)
               _MenuAction(
                 S.downloadAll,
                 () => startDownload(context, library.liked),
@@ -326,16 +326,18 @@ class _Overview extends StatelessWidget {
             subtitle: S.songCount(library.recent.length),
             onTap: () => onOpen(const _Recent()),
           ),
-          _CollectionRow(
-            leading: const _IconTile(Icons.download_done_rounded),
-            title: S.downloadedSongs,
-            subtitle: S.songCount(
-              library.downloads
-                  .where((d) => d.state == DownloadState.done)
-                  .length,
+          // A browser downloads nothing, so the list would never have a song
+          if (!kIsWeb)
+            _CollectionRow(
+              leading: const _IconTile(Icons.download_done_rounded),
+              title: S.downloadedSongs,
+              subtitle: S.songCount(
+                library.downloads
+                    .where((d) => d.state == DownloadState.done)
+                    .length,
+              ),
+              onTap: () => onOpen(const _Downloaded()),
             ),
-            onTap: () => onOpen(const _Downloaded()),
-          ),
           if (library.localStatus.enabled)
             _CollectionRow(
               leading: const _IconTile(Icons.smartphone_rounded),
@@ -589,7 +591,7 @@ class _PlaylistPage extends StatelessWidget {
       onRemove: (track) => library.removeFromPlaylist(id, track),
       onMove: (track, to) => library.movePlaylistItem(id, track, to),
       menu: [
-        if (tracks.isNotEmpty)
+        if (tracks.isNotEmpty && !kIsWeb)
           _MenuAction(S.downloadAll, () => startDownload(context, tracks)),
         if (playlist != null)
           _MenuAction(

@@ -208,11 +208,15 @@ class Member {
     this.solo = false,
     this.away = false,
     this.owner = false,
+    this.av,
   });
 
   final String id;
   final String name;
   final bool ready;
+
+  /// Fingerprint of the member's picture; null when they have none. The picture itself is asked for with `avatar.get`.
+  final String? av;
 
   /// Listening on their own: the room's play, pause and skip do not move them.
   final bool solo;
@@ -230,6 +234,7 @@ class Member {
     solo: json['solo'] as bool? ?? false,
     away: json['away'] as bool? ?? false,
     owner: json['owner'] as bool? ?? false,
+    av: json['av'] as String?,
   );
 }
 

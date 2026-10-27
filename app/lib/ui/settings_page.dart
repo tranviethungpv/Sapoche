@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../data/browser_storage.dart';
 import '../data/library_controller.dart';
 import '../data/models.dart';
 import '../data/room_controller.dart';
@@ -371,70 +372,79 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     ),
-    _Group(
-      title: S.soundSection,
-      footer: S.audioQualityHelp,
-      children: [
-        ListenableBuilder(
-          listenable: model.room,
-          builder: (context, _) => Column(
-            children: [
-              for (final (quality, label, rate) in [
-                (AudioQuality.low, S.audioQualityLow, S.audioQualityLowRate),
-                (
-                  AudioQuality.normal,
-                  S.audioQualityNormal,
-                  S.audioQualityNormalRate,
-                ),
-                (AudioQuality.high, S.audioQualityHigh, S.audioQualityHighRate),
-                (AudioQuality.max, S.audioQualityMax, S.audioQualityMaxRate),
-              ])
-                _Row(
-                  key: ValueKey('audio-quality-${quality.name}'),
-                  label: label,
-                  value: rate,
-                  trailing: model.room.audioQuality == quality
-                      ? Icon(
-                          Icons.check_rounded,
-                          color: context.palette.primary,
-                        )
-                      : null,
-                  onTap: () => model.room.setAudioQuality(quality),
-                ),
-            ],
-          ),
-        ),
-      ],
-    ),
-    _Group(
-      title: S.videoSection,
-      footer: S.videoQualityHelp,
-      children: [
-        ListenableBuilder(
-          listenable: model.room,
-          builder: (context, _) => Padding(
-            padding: const EdgeInsets.all(12),
-            child: SegmentedButton<int>(
-              showSelectedIcon: false,
-              expandedInsets: EdgeInsets.zero,
-              style: SegmentedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                selectedBackgroundColor: context.palette.primaryContainer,
-                selectedForegroundColor: context.palette.onPrimaryContainer,
-                foregroundColor: context.palette.textSecondary,
-                side: BorderSide(color: context.palette.outline),
-              ),
-              segments: [
-                for (final h in videoQualities)
-                  ButtonSegment(value: h, label: Text('${h}p')),
+    // The player of a browser is YouTube's own frame, which picks both qualities by itself
+    if (kIsWeb)
+      _Group(footer: S.webQualityHelp, children: const [])
+    else ...[
+      _Group(
+        title: S.soundSection,
+        footer: S.audioQualityHelp,
+        children: [
+          ListenableBuilder(
+            listenable: model.room,
+            builder: (context, _) => Column(
+              children: [
+                for (final (quality, label, rate) in [
+                  (AudioQuality.low, S.audioQualityLow, S.audioQualityLowRate),
+                  (
+                    AudioQuality.normal,
+                    S.audioQualityNormal,
+                    S.audioQualityNormalRate,
+                  ),
+                  (
+                    AudioQuality.high,
+                    S.audioQualityHigh,
+                    S.audioQualityHighRate,
+                  ),
+                  (AudioQuality.max, S.audioQualityMax, S.audioQualityMaxRate),
+                ])
+                  _Row(
+                    key: ValueKey('audio-quality-${quality.name}'),
+                    label: label,
+                    value: rate,
+                    trailing: model.room.audioQuality == quality
+                        ? Icon(
+                            Icons.check_rounded,
+                            color: context.palette.primary,
+                          )
+                        : null,
+                    onTap: () => model.room.setAudioQuality(quality),
+                  ),
               ],
-              selected: {model.room.snapshot.videoHeight},
-              onSelectionChanged: (s) => model.room.setVideoQuality(s.first),
             ),
           ),
-        ),
-      ],
-    ),
+        ],
+      ),
+      _Group(
+        title: S.videoSection,
+        footer: S.videoQualityHelp,
+        children: [
+          ListenableBuilder(
+            listenable: model.room,
+            builder: (context, _) => Padding(
+              padding: const EdgeInsets.all(12),
+              child: SegmentedButton<int>(
+                showSelectedIcon: false,
+                expandedInsets: EdgeInsets.zero,
+                style: SegmentedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  selectedBackgroundColor: context.palette.primaryContainer,
+                  selectedForegroundColor: context.palette.onPrimaryContainer,
+                  foregroundColor: context.palette.textSecondary,
+                  side: BorderSide(color: context.palette.outline),
+                ),
+                segments: [
+                  for (final h in videoQualities)
+                    ButtonSegment(value: h, label: Text('${h}p')),
+                ],
+                selected: {model.room.snapshot.videoHeight},
+                onSelectionChanged: (s) => model.room.setVideoQuality(s.first),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ],
     _Group(
       title: S.sync,
       footer: S.latencyTrimHelp,
@@ -443,7 +453,9 @@ class _SettingsPageState extends State<SettingsPage> {
   ];
 
   static List<Widget> _storage(BuildContext context, AppModel model) => [
-    _StorageGroup(library: model.library),
+    kIsWeb
+        ? const _BrowserStorageGroup()
+        : _StorageGroup(library: model.library),
   ];
 
   static List<Widget> _backup(BuildContext context, AppModel model) => [
@@ -1032,6 +1044,67 @@ class _StorageGroupState extends State<_StorageGroup> {
   }
 }
 
+/// What a browser keeps for the page, in place of the downloads and the played songs that only an app has.
+class _BrowserStorageGroup extends StatefulWidget {
+  const _BrowserStorageGroup();
+
+  @override
+  State<_BrowserStorageGroup> createState() => _BrowserStorageGroupState();
+}
+
+class _BrowserStorageGroupState extends State<_BrowserStorageGroup> {
+  BrowserStorage? _info;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final info = await browserStorage();
+    if (mounted) setState(() => _info = info);
+  }
+
+  Future<void> _keep() async {
+    final kept = await keepBrowserStorage();
+    if (!mounted) return;
+    if (!kept) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(S.browserStorageDenied)));
+    }
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final info = _info;
+    return _Group(
+      footer: S.browserStorageHelp,
+      children: [
+        if (info != null) ...[
+          _Row(
+            label: S.browserStorageUsed,
+            value: '${formatBytes(info.usage)} / ${formatBytes(info.quota)}',
+          ),
+          _Row(
+            key: const ValueKey('browser-storage-keep'),
+            label: info.persistent
+                ? S.browserStorageKept
+                : S.browserStorageNotKept,
+            trailing: info.persistent
+                ? null
+                : TextButton(
+                    onPressed: _keep,
+                    child: Text(S.browserStorageKeep),
+                  ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 /// Rounded block of related rows with a small heading, like a settings group on iOS.
 /// Saves the library to a file and adds one back, for a new phone or after a reinstall.
 class _BackupGroup extends StatelessWidget {
@@ -1285,26 +1358,27 @@ class _Group extends StatelessWidget {
               ),
             ),
           // See-through on the page's backdrop, like the rest of what sits on it
-          Container(
-            decoration: BoxDecoration(
-              color: p.veil,
-              borderRadius: BorderRadius.circular(SapocheTheme.groupRadius),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (var i = 0; i < children.length; i++) ...[
-                  if (i > 0)
-                    Divider(
-                      height: 1,
-                      indent: 16,
-                      color: p.text.withValues(alpha: 0.07),
-                    ),
-                  children[i],
+          if (children.isNotEmpty)
+            Container(
+              decoration: BoxDecoration(
+                color: p.veil,
+                borderRadius: BorderRadius.circular(SapocheTheme.groupRadius),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  for (var i = 0; i < children.length; i++) ...[
+                    if (i > 0)
+                      Divider(
+                        height: 1,
+                        indent: 16,
+                        color: p.text.withValues(alpha: 0.07),
+                      ),
+                    children[i],
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
           if (footer != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),

@@ -5,10 +5,10 @@ import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../home_shell.dart';
 import '../player_sheet.dart';
+import 'artwork.dart';
 import 'glass.dart';
 import 'marquee_text.dart';
 import 'transport.dart';
-import 'video_frame.dart';
 
 /// Floating capsule above the tab bar. Tap it, or drag it up, to open the full player.
 class MiniPlayer extends StatelessWidget {
@@ -110,11 +110,11 @@ class MiniPlayerCapsule extends StatelessWidget {
               if (ghost)
                 SizedBox.square(dimension: cover)
               else
-                MiniCover(
-                  sheet: sheet,
+                Artwork(
+                  key: sheet.miniCover,
                   url: current.thumb,
                   size: cover,
-                  video: controller.snapshot.video,
+                  radius: cover / 2,
                 ),
               const SizedBox(width: 12),
               Expanded(
