@@ -221,6 +221,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
       if (_sheet.isOpen) _sheet.close();
     };
     room.invite.addListener(_onInvite);
+    room.chatRequests.addListener(_onChatRequest);
     room.setup.addListener(_onSetup);
     room.addListener(_precacheCover);
     room.addListener(_askForKey);
@@ -237,6 +238,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     TabNavigation._closePlayer = null;
     _stack.dispose();
     _watched?.invite.removeListener(_onInvite);
+    _watched?.chatRequests.removeListener(_onChatRequest);
     _watched?.setup.removeListener(_onSetup);
     _watched?.removeListener(_precacheCover);
     _watched?.removeListener(_askForKey);
@@ -297,6 +299,11 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   }
 
   /// A setup link arrived, from the camera of this phone or from a message: the server and key of another phone.
+  /// The person touched a notice of the chat: the chat opens, over whatever is shown.
+  void _onChatRequest() {
+    if (mounted) showChatSheet(context);
+  }
+
   Future<void> _onSetup() async {
     final room = AppScope.roomOf(context);
     final link = room.setup.value;

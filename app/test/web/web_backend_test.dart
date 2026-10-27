@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/web/library_store.dart';
+import 'package:sapoche/data/web/push_port.dart';
+import 'package:sapoche/data/web/room_socket.dart';
 import 'package:sapoche/data/web/wire.dart' show TrackRef;
 import 'package:sapoche/data/web/web_backend.dart';
 
@@ -27,6 +30,9 @@ Future<(WebBackend, List<http.Request>)> backendWith(
   MediaControls? media,
   int Function()? nowMs,
   LibraryStore? library,
+  PushPort? push,
+  bool openChat = false,
+  SocketOpener? opener,
 }) async {
   SharedPreferences.setMockInitialValues(prefs);
   final seen = <http.Request>[];
@@ -35,15 +41,30 @@ Future<(WebBackend, List<http.Request>)> backendWith(
     prefs: await SharedPreferences.getInstance(),
     defaultServer: 'https://sapoche.example',
     invite: invite,
+    openChat: openChat,
+    opener: opener,
     media: media,
     nowMs: nowMs,
     library: library,
+    push: push,
     client: MockClient((request) async {
       seen.add(request);
       return handler(request);
     }),
   );
   return (backend, seen);
+}
+
+class _Socket implements RoomSocket {
+  _Socket(this._onSend);
+
+  final void Function(String text) _onSend;
+
+  @override
+  void send(String text) => _onSend(text);
+
+  @override
+  void close(int code, String reason) {}
 }
 
 class _Media implements MediaControls {
@@ -62,6 +83,45 @@ class _Media implements MediaControls {
     required void Function() prev,
     required void Function(int positionMs) seek,
   }) => this.pause = pause;
+}
+
+/// A browser that gives notices to the page: it keeps what it was asked for.
+class _Push implements PushPort {
+  _Push({this.support = PushSupport.ready, this.allows = true});
+
+  @override
+  PushSupport support;
+  @override
+  NoticePermission permission = NoticePermission.undecided;
+
+  /// What the person answers when asked for leave.
+  final bool allows;
+  final asked = <String>[];
+  var unsubscribed = 0;
+  Map<String, Object?>? subscription;
+
+  @override
+  Future<Map<String, Object?>?> subscribe(String serverKey) async {
+    asked.add(serverKey);
+    permission = allows ? NoticePermission.granted : NoticePermission.denied;
+    if (!allows) return null;
+    return subscription = {
+      'endpoint': 'https://fcm.googleapis.com/fcm/send/abc',
+      'keys': {'p256dh': 'k', 'auth': 'a'},
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>?> current() async => subscription;
+
+  @override
+  Future<void> unsubscribe() async {
+    unsubscribed++;
+    subscription = null;
+  }
+
+  @override
+  Stream<String> get opened => const Stream.empty();
 }
 
 void main() {
@@ -455,5 +515,142 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(events.whereType<StateEvent>().last.snapshot.videoHeight, 1080);
     expect(player.videoHeight, 1080);
+  });
+
+  group('a touch on a notice with no page open', () {
+    /// A room whose server answers the join with a state and an empty chat.
+    SocketOpener room(List<String> sent) => (url, {required onOpen, required onMessage, required onClose}) {
+      final socket = _Socket((text) {
+        sent.add(text);
+        if (!text.contains('"join"')) return;
+        scheduleMicrotask(() => onMessage(
+          '{"t":"state","serverNow":0,"you":"me","protocol":13,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":[]}',
+        ));
+        scheduleMicrotask(() => onMessage('{"t":"chat.history","msgs":[]}'));
+      });
+      scheduleMicrotask(onOpen);
+      return socket;
+    };
+
+    Future<List<BackendEvent>> started(WebBackend backend) async {
+      final events = <BackendEvent>[];
+      backend.events.listen(events.add);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      return events;
+    }
+
+    test('goes into the room and opens its chat when the room has told it', () async {
+      final sent = <String>[];
+      final (backend, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        opener: room(sent),
+      );
+      final events = await started(backend);
+      expect(sent.where((t) => t.contains('"join"')), hasLength(1));
+      expect(events.whereType<InviteEvent>(), isEmpty);
+      final opened = events.indexWhere((e) => e is OpenChatEvent && e.room == 'ABC234');
+      expect(opened, greaterThan(events.indexWhere((e) => e is ChatEvent)), reason: 'after the chat came');
+    });
+
+    test('offers the room as an invitation when the browser has no name yet', () async {
+      final sent = <String>[];
+      final (backend, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k'},
+        invite: 'ABC234',
+        openChat: true,
+        opener: room(sent),
+      );
+      final events = await started(backend);
+      expect(sent, isEmpty);
+      expect(events.whereType<InviteEvent>().single.code, 'ABC234');
+    });
+
+    test('is an invitation, as any link of a room is, when it was not a notice that was touched', () async {
+      final (backend, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        opener: room([]),
+      );
+      expect((await started(backend)).whereType<InviteEvent>(), hasLength(1));
+    });
+  });
+
+  group('notices of the chat', () {
+    http.Response Function(http.Request) server({bool keys = true}) => (request) {
+      if (request.url.path == '/push/key') return keys ? ok('{"key":"BPUBLIC"}') : http.Response('', 404);
+      return http.Response('', 404);
+    };
+
+    test('are not there in a browser that cannot give them', () async {
+      final (backend, _) = await backendWith(server());
+      expect((await backend.notifications()).supported, isFalse);
+      final (other, _) = await backendWith(server(), push: _Push(support: PushSupport.none));
+      expect((await other.notifications()).supported, isFalse);
+    });
+
+    test('an iPhone with the page in a tab is told to put it on the Home Screen, and cannot turn them on', () async {
+      final push = _Push(support: PushSupport.needsInstall);
+      final (backend, _) = await backendWith(server(), push: push, prefs: {'web.key': 'k'});
+      final info = await backend.notifications();
+      expect((info.supported, info.needsInstall, info.enabled), (true, true, false));
+      expect((await backend.setNotifications(true)).enabled, isFalse);
+      expect(push.asked, isEmpty);
+    });
+
+    test('are turned on with the key of the server, and stay on while the browser allows them', () async {
+      final push = _Push();
+      final (backend, seen) = await backendWith(server(), push: push, prefs: {'web.key': 'k'});
+      final info = await backend.setNotifications(true);
+      expect(seen.single.url.path, '/push/key');
+      expect(seen.single.headers['X-Sapoche-Key'], 'k');
+      expect(push.asked, ['BPUBLIC']);
+      expect((info.enabled, info.permission), (true, NoticePermission.granted));
+      expect((await backend.notifications()).enabled, isTrue);
+    });
+
+    test('stay off when the person says no, and the answer shows it', () async {
+      final (backend, _) = await backendWith(server(), push: _Push(allows: false), prefs: {'web.key': 'k'});
+      final info = await backend.setNotifications(true);
+      expect((info.enabled, info.permission), (false, NoticePermission.denied));
+    });
+
+    test('cannot be turned on at a server that sends none', () async {
+      final (backend, _) = await backendWith(server(keys: false), push: _Push(), prefs: {'web.key': 'k'});
+      await expectLater(
+        backend.setNotifications(true),
+        throwsA(isA<BackendException>().having((e) => e.code, 'code', 'unsupported')),
+      );
+    });
+
+    test('are turned off by letting go of the subscription', () async {
+      final push = _Push();
+      final (backend, _) = await backendWith(server(), push: push, prefs: {'web.key': 'k'});
+      await backend.setNotifications(true);
+      final info = await backend.setNotifications(false);
+      expect(info.enabled, isFalse);
+      expect(push.unsubscribed, 1);
+    });
+
+    test('keep a room quiet until a time, and forget the time when it has passed', () async {
+      final (backend, _) = await backendWith(server(), push: _Push(), prefs: {'web.key': 'k'});
+      final later = DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch;
+      await backend.muteRoomNotifications('ABC234', later);
+      await backend.muteRoomNotifications('XYZ789', DateTime.now().millisecondsSinceEpoch - 1);
+      expect((await backend.notifications()).mutes, {'ABC234': later});
+      await backend.muteRoomNotifications('ABC234', null);
+      expect((await backend.notifications()).mutes, isEmpty);
+    });
+
+    test('the preview is on until the person turns it off', () async {
+      final (backend, _) = await backendWith(server(), push: _Push());
+      expect((await backend.notifications()).preview, isTrue);
+      await backend.setNotificationPreview(false);
+      expect((await backend.notifications()).preview, isFalse);
+    });
   });
 }

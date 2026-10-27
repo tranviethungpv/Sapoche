@@ -71,6 +71,10 @@ class SapocheBridge(
 
     /** An invitation that arrived before the UI was listening. */
     private var pendingInvite: String? = null
+    private var pendingChat: String? = null
+
+    /** Waits for the answer of the system's dialog that asks for leave to show notifications. */
+    private var noticeAnswer: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
 
     /** Last structural state sent, so an unchanged room is not sent again. */
     private var lastState: String? = null
@@ -139,6 +143,30 @@ class SapocheBridge(
         if (uri == null || !own && !web) return
         val code = uri.lastPathSegment?.trim()?.uppercase()?.takeIf { INVITE_CODE.matches(it) } ?: return
         if (sink != null) emit(UiJson.invite(code)) else pendingInvite = code
+    }
+
+    /** The person touched a notification of the chat of a room: its chat is what they want. */
+    fun onOpenChat(intent: Intent?) {
+        val room = intent?.getStringExtra(ChatNotifier.EXTRA_OPEN_CHAT)?.takeIf { INVITE_CODE.matches(it) } ?: return
+        intent.removeExtra(ChatNotifier.EXTRA_OPEN_CHAT)
+        if (sink != null) emit(UiJson.openChat(room)) else pendingChat = room
+    }
+
+    /** The dialog that asks for leave to show notifications closed. */
+    fun onNoticePermission(requestCode: Int, grantResults: IntArray) {
+        if (requestCode != NOTICE_REQUEST) return
+        noticeAnswer?.complete(grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        noticeAnswer = null
+    }
+
+    /** True when the phone lets the app show notifications, asking the person if it has to (from Android 13). */
+    private suspend fun askForNotices(): Boolean {
+        val notifier = SapocheApp.chatNotifier
+        if (notifier.granted() || Build.VERSION.SDK_INT < 33) return notifier.granted()
+        val answer = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        noticeAnswer = answer
+        activity.requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), NOTICE_REQUEST)
+        return answer.await().also { notifier.markRefused(!it) }
     }
 
     /** A file picker opened for [BackupFiles] closed. */
@@ -232,6 +260,10 @@ class SapocheBridge(
         pendingInvite?.let {
             pendingInvite = null
             emit(UiJson.invite(it))
+        }
+        pendingChat?.let {
+            pendingChat = null
+            emit(UiJson.openChat(it))
         }
         emit(UiJson.update(SapocheApp.updater.state.value))
         emit(UiJson.calm(SapocheApp.heat.calm.value))
@@ -522,6 +554,21 @@ class SapocheBridge(
                 "downloadCount" to SapocheApp.library.downloads().count { it.state == LibraryStore.DONE },
                 "autoDownload" to autoDownload,
             )
+            "notifications" -> return SapocheApp.chatNotifier.info()
+            "setNotifications" -> {
+                val notifier = SapocheApp.chatNotifier
+                val on = call.argument<Boolean>("on") == true
+                notifier.setEnabled(on && askForNotices())
+                return notifier.info()
+            }
+            "setNotificationPreview" -> {
+                SapocheApp.chatNotifier.preview = call.argument<Boolean>("on") == true
+                return null
+            }
+            "muteRoomNotifications" -> {
+                SapocheApp.chatNotifier.mute(call.argument<String>("code").orEmpty().uppercase(), (call.argument<Number>("until"))?.toLong())
+                return null
+            }
             "clearPlayCache" -> {
                 withContext(Dispatchers.IO) { SapocheApp.caches.clearPlay() }
                 return null
@@ -901,5 +948,8 @@ class SapocheBridge(
         const val VIDEO_DEFAULT_WIDTH = 1280
         const val VIDEO_DEFAULT_HEIGHT = 720
         private val INVITE_CODE = Regex("[A-Z0-9]{6}")
+
+        /** Request code of the dialog that asks for leave to show notifications. */
+        const val NOTICE_REQUEST = 4713
     }
 }

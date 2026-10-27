@@ -28,6 +28,18 @@ protocol PlatformServices: AnyObject {
     /// Opens the system's list of places to play to.
     func pickOutput()
 
+    /// Whether the phone lets the app show notifications: `granted`, `denied`, or `undecided` while the person was not asked.
+    func noticePermission() async -> String
+
+    /// Asks the person's leave to show notifications; true when they give it.
+    func askForNotices() async -> Bool
+
+    /// Shows a notification of the chat of [room]; those of one room are kept together.
+    func showNotice(room: String, title: String, body: String)
+
+    /// Takes the notifications of the chat away: the person is looking at the app.
+    func clearNotices()
+
     /// Opens the share sheet with [text].
     func share(_ text: String)
 
@@ -94,6 +106,9 @@ final class Bridge {
 
     /// An invitation that arrived before the UI was listening.
     private var pendingInvite: String?
+    private var pendingChat: String?
+    private var noticeSubscription: Subscription?
+    private lazy var notices = NoticeSettings(prefs: prefs) { [time] in time.nowMs() }
     private var pendingSetup: String?
 
     /// Last structure of the room sent, so an unchanged room is not sent again.
@@ -141,6 +156,35 @@ final class Bridge {
             guard let self, self.visible else { return }
             self.emit(UiJson.volume(level))
         }
+        // A message, an answer or a reaction that comes while nobody looks at the app is told as a notification
+        noticeSubscription = controller.chatNotices.observe { [weak self] notice in self?.tell(notice) }
+    }
+
+    private func tell(_ notice: ChatNotice) {
+        guard !visible, notices.enabled, !notices.isMuted(notice.room) else { return }
+        let showText = notices.preview
+        let lang = self.language
+        let platform = platform
+        Task { @MainActor in
+            guard await platform.noticePermission() == "granted" else { return }
+            platform.showNotice(room: notice.room, title: notice.title(lang), body: notice.body(lang, preview: showText))
+        }
+    }
+
+    /// The person touched a notification of the chat of a room: its chat is what they want.
+    func onOpenChat(_ room: String) {
+        let code = room.uppercased()
+        guard Self.inviteCode(code) else { return }
+        if sink != nil { emit(UiJson.openChat(code)) } else { pendingChat = code }
+    }
+
+    /// How the notices stand, as the screen takes it (see NotificationInfo.fromMap).
+    private func noticeInfo() async -> [String: Any] {
+        let permission = await platform.noticePermission()
+        return [
+            "supported": true, "permission": permission, "enabled": notices.enabled && permission == "granted",
+            "preview": notices.preview, "mutes": notices.mutes().mapValues { NSNumber(value: $0) },
+        ]
     }
 
     private var settings: ServerConfig { ServerConfig.load(prefs) }
@@ -158,6 +202,7 @@ final class Bridge {
 
     func setVisible(_ value: Bool) {
         if value {
+            platform.clearNotices() // what was said is on the screen now
             lastState = nil // a UI that just came back wants the full picture again
             lastStructure = nil
             if libraryDirty {
@@ -226,6 +271,10 @@ final class Bridge {
         if let link = pendingSetup {
             pendingSetup = nil
             emit(UiJson.setup(link))
+        }
+        if let room = pendingChat {
+            pendingChat = nil
+            emit(UiJson.openChat(room))
         }
         emit(UiJson.calm(platform.calm.value))
         emit(UiJson.output(platform.output.value))
@@ -483,6 +532,22 @@ final class Bridge {
                 "playBytes": files.playBytes(), "playLimitMb": Int(prefs.int64(Self.keyCacheLimit) ?? Self.defaultCacheMb),
                 "downloadBytes": files.downloadBytes(), "downloadCount": done, "autoDownload": autoDownload,
             ] as [String: Any]
+        case "notifications":
+            return await noticeInfo()
+        case "setNotifications":
+            if bool("on") {
+                notices.enabled = await platform.askForNotices()
+            } else {
+                notices.enabled = false
+                platform.clearNotices()
+            }
+            return await noticeInfo()
+        case "setNotificationPreview":
+            notices.preview = bool("on")
+            return nil
+        case "muteRoomNotifications":
+            notices.mute(string("code").uppercased(), until: args["until"] == nil || args["until"] is NSNull ? nil : int64("until"))
+            return nil
         case "clearPlayCache":
             files.clearPlay()
             return nil

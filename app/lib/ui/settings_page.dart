@@ -140,6 +140,19 @@ class _SettingsPageState extends State<SettingsPage> {
             label: S.playback,
             onTap: () => _open(context, () => S.playback, _playback),
           ),
+          // Only where the device can tell the person of the chat while the app is away
+          ListenableBuilder(
+            listenable: model.room,
+            builder: (context, _) => model.room.notificationInfo.supported
+                ? _NavRow(
+                    selected: _shows(_notices),
+                    key: const ValueKey('settings-notices'),
+                    icon: Icons.notifications_none_rounded,
+                    label: S.notices,
+                    onTap: () => _open(context, () => S.notices, _notices),
+                  )
+                : const SizedBox.shrink(),
+          ),
           _NavRow(
             selected: _shows(_suggestions),
             key: const ValueKey('settings-suggestions'),
@@ -353,6 +366,53 @@ class _SettingsPageState extends State<SettingsPage> {
           },
         ),
       ],
+    ),
+  ];
+
+  static List<Widget> _notices(BuildContext context, AppModel model) => [
+    ListenableBuilder(
+      listenable: model.room,
+      builder: (context, _) {
+        final info = model.room.notificationInfo;
+        final blocked = info.permission == NoticePermission.denied;
+        return Column(
+          children: [
+            _Group(
+              footer: info.needsInstall
+                  ? S.noticesNeedInstall
+                  : blocked
+                  ? S.noticesDenied
+                  : S.noticesSwitchHelp,
+              children: [
+                Material(
+                  type: MaterialType.transparency,
+                  child: SwitchListTile(
+                    key: const ValueKey('notices-switch'),
+                    title: Text(S.noticesSwitch),
+                    value: info.enabled,
+                    onChanged: info.needsInstall || blocked ? null : model.room.setNotifications,
+                  ),
+                ),
+              ],
+            ),
+            if (info.enabled)
+              _Group(
+                footer: S.noticesPreviewHelp,
+                children: [
+                  Material(
+                    type: MaterialType.transparency,
+                    child: SwitchListTile(
+                      key: const ValueKey('notices-preview'),
+                      title: Text(S.noticesPreview),
+                      value: info.preview,
+                      onChanged: model.room.setNotificationPreview,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        );
+      },
     ),
   ];
 

@@ -76,6 +76,10 @@ class RoomClient {
   int _serverProtocol = 0;
   bool _avatarSent = false;
 
+  /// The `push.set` of this device (see [Wire.pushSet]), or null when it wants no notices; sent once per connection.
+  String? _push;
+  bool _pushSent = false;
+
   /// The fingerprint of each member's picture as last asked for, so a picture is fetched once and not at every change.
   final _known = <String, String>{};
 
@@ -110,6 +114,20 @@ class RoomClient {
   void setAvatar(String? data) {
     _avatar = data;
     if (_serverProtocol >= _avatarProtocol) send(Wire.avatarSet(data));
+  }
+
+  /// Sets, or with null takes away, the notices of the chat this device asks the server for while it is away. Sent
+  /// again on every reconnect.
+  void setPush(String? message) {
+    final was = _push;
+    _push = message;
+    if (_serverProtocol < _pushProtocol) return;
+    if (message != null) {
+      send(message);
+      _pushSent = true;
+    } else if (was != null) {
+      send(Wire.pushClear());
+    }
   }
 
   /// Changes the display name without dropping the connection: the server accepts a second join.
@@ -163,6 +181,7 @@ class RoomClient {
           _socket = ws;
           _lastPongMs = nowMs();
           _avatarSent = false;
+          _pushSent = false;
           _set(Connection.connected);
           log('connected to $_url');
           ws.send(Wire.join(clientId, name, create: _createOnJoin));
@@ -230,6 +249,7 @@ class RoomClient {
         _you = msg.you;
         _serverProtocol = msg.protocol;
         _shareAvatar();
+        _sharePush();
         _wantPictures(msg.members);
         onMessage(msg);
       case MembersMessage():
@@ -245,6 +265,14 @@ class RoomClient {
     if (_avatarSent || _serverProtocol < _avatarProtocol) return;
     _avatarSent = true;
     send(Wire.avatarSet(_avatar));
+  }
+
+  /// Asks the server for the notices of the chat, once per connection, when it can send them.
+  void _sharePush() {
+    final message = _push;
+    if (_pushSent || message == null || _serverProtocol < _pushProtocol) return;
+    _pushSent = true;
+    send(message);
   }
 
   /// Asks for the pictures of members whose picture changed since it was last fetched, and forgets those who are gone.
@@ -288,6 +316,9 @@ class RoomClient {
 
   /// The first protocol whose server keeps the pictures.
   static const _avatarProtocol = 8;
+
+  /// The first protocol whose server sends notices of the chat to a browser that is away.
+  static const _pushProtocol = 13;
   static const _closePolicyViolation = 1008;
   static const _closeRemoved = 4001;
   static const _closeNotFound = 4004;

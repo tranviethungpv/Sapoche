@@ -46,6 +46,23 @@ final class FakePlatform: PlatformServices {
 
     func importFile() async throws -> String? { toImport }
 
+    /// What the phone says of notifications, whether the person gives leave when asked, and what was shown.
+    var noticeAnswer = "undecided"
+    var noticeLeave = true
+    var noticesShown: [(room: String, title: String, body: String)] = []
+    var noticesCleared = 0
+
+    func noticePermission() async -> String { noticeAnswer }
+
+    func askForNotices() async -> Bool {
+        noticeAnswer = noticeLeave ? "granted" : "denied"
+        return noticeLeave
+    }
+
+    func showNotice(room: String, title: String, body: String) { noticesShown.append((room, title, body)) }
+
+    func clearNotices() { noticesCleared += 1 }
+
     func whileInBackground(_ work: @escaping () async -> Void) async { await work() }
 }
 
@@ -655,6 +672,97 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(engine.watching, ["true 720x1280", "false 720x1280"])
         _ = try await call("pipEnter")
         XCTAssertEqual(engine.pipStarts, 1)
+    }
+
+    // ------------------------------------------------------------------ notices of the chat while the screen is off
+
+    /// The phone is in room ABC234 as "me", and the screen is off.
+    private func inRoomWithTheScreenOff() async throws -> FakeSocket {
+        _ = try await call("configure", ["server": "https://sapoche.example.dev"])
+        _ = try await call("join", ["code": "abc234", "name": "Me"])
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        socket.receive(#"{"t":"state","serverNow":1,"you":"me","protocol":13,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":1},"members":[{"id":"u2","name":"Ann","ready":true}]}"#)
+        await time.advance(10)
+        bridge.setVisible(false)
+        return socket
+    }
+
+    func testNoticesAreOffUntilThePersonTurnsThemOn() async throws {
+        let info = try await result("notifications", as: [String: Any].self)
+        XCTAssertEqual(info["supported"] as? Bool, true)
+        XCTAssertEqual(info["enabled"] as? Bool, false)
+        XCTAssertEqual(info["permission"] as? String, "undecided")
+        XCTAssertEqual(info["preview"] as? Bool, true)
+
+        let socket = try await inRoomWithTheScreenOff()
+        socket.receive(#"{"t":"chat","msg":{"id":1,"by":"u2","name":"Ann","text":"hello","at":5}}"#)
+        await settle()
+        XCTAssertTrue(platform.noticesShown.isEmpty)
+    }
+
+    func testTurningThemOnAsksTheSystemAndAnswersWithHowThingsStand() async throws {
+        platform.noticeLeave = false
+        let refused = try await result("setNotifications", ["on": true], as: [String: Any].self)
+        XCTAssertEqual(refused["enabled"] as? Bool, false)
+        XCTAssertEqual(refused["permission"] as? String, "denied")
+
+        platform.noticeLeave = true
+        platform.noticeAnswer = "undecided"
+        let given = try await result("setNotifications", ["on": true], as: [String: Any].self)
+        XCTAssertEqual(given["enabled"] as? Bool, true)
+        XCTAssertEqual(given["permission"] as? String, "granted")
+
+        let off = try await result("setNotifications", ["on": false], as: [String: Any].self)
+        XCTAssertEqual(off["enabled"] as? Bool, false)
+        XCTAssertGreaterThan(platform.noticesCleared, 0)
+    }
+
+    func testAMessageWhileTheScreenIsOffIsShownAsANotice() async throws {
+        _ = try await call("setNotifications", ["on": true])
+        let socket = try await inRoomWithTheScreenOff()
+        socket.receive(#"{"t":"chat","msg":{"id":1,"by":"u2","name":"Ann","text":"hello","at":5}}"#)
+        socket.receive(#"{"t":"chat","msg":{"id":2,"by":"me","name":"Me","text":"mine","at":6}}"#)
+        await settle()
+        XCTAssertEqual(platform.noticesShown.count, 1, "this phone's own message is no news")
+        XCTAssertEqual(platform.noticesShown.first?.room, "ABC234")
+        XCTAssertEqual(platform.noticesShown.first?.title, "Ann")
+        XCTAssertEqual(platform.noticesShown.first?.body, "hello")
+
+        _ = try await call("setNotificationPreview", ["on": false])
+        socket.receive(#"{"t":"chat","msg":{"id":3,"by":"u2","name":"Ann","text":"secret","at":7}}"#)
+        await settle()
+        XCTAssertEqual(platform.noticesShown.last?.body, "sent a message")
+    }
+
+    func testNothingIsShownWhileTheScreenIsOnOrTheRoomIsQuiet() async throws {
+        _ = try await call("setNotifications", ["on": true])
+        let socket = try await inRoomWithTheScreenOff()
+        bridge.setVisible(true)
+        socket.receive(#"{"t":"chat","msg":{"id":1,"by":"u2","name":"Ann","text":"seen","at":5}}"#)
+        await settle()
+        XCTAssertTrue(platform.noticesShown.isEmpty, "the screen shows it")
+
+        bridge.setVisible(false)
+        let until = Int64(Date().timeIntervalSince1970 * 1000) + 3_600_000
+        _ = try await call("muteRoomNotifications", ["code": "abc234", "until": until])
+        let quiet = try await result("notifications", as: [String: Any].self)
+        XCTAssertEqual((quiet["mutes"] as? [String: Any])?["ABC234"] as? Int64, until)
+        socket.receive(#"{"t":"chat","msg":{"id":2,"by":"u2","name":"Ann","text":"quiet","at":6}}"#)
+        await settle()
+        XCTAssertTrue(platform.noticesShown.isEmpty)
+
+        _ = try await call("muteRoomNotifications", ["code": "ABC234", "until": NSNull()])
+        socket.receive(#"{"t":"chat","msg":{"id":3,"by":"u2","name":"Ann","text":"loud","at":7}}"#)
+        await settle()
+        XCTAssertEqual(platform.noticesShown.map(\.body), ["loud"])
+    }
+
+    func testATouchOnANoticeOpensItsChatOnTheScreen() async throws {
+        bridge.onOpenChat("abc234")
+        let opened = try XCTUnwrap(events.last { $0["type"] as? String == "openChat" })
+        XCTAssertEqual(opened["room"] as? String, "ABC234")
     }
 
     func testTheRoomsChatAndReactionsReachTheScreenAndItsOwnGoOut() async throws {

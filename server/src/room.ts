@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { PROTOCOL_VERSION, REACTIONS, isEmoji } from "./protocol";
+import { sendWebPush, readSubscription } from "./push";
+import type { VapidKeys, WebPushSubscription } from "./push";
 import type {
   AlarmKind,
   ChatMessage,
@@ -75,7 +77,31 @@ const MAX_REACTORS = 32;
 const KNOWN_REACTIONS = new Set<string>(REACTIONS);
 /** Taps on a reaction that one message may carry. */
 const MAX_REACTION_COUNT = 10;
+/** A device that asked for pushes is kept under this key plus its public id. */
+const PUSH_PREFIX = "push:";
+/** A device away longer than this is no longer told of the chat: it is not really in the room any more. */
+const PUSH_FRESH_MS = 12 * 60 * 60 * 1000;
+/** A notice shows this many characters of the message it is about. */
+const PUSH_PREVIEW_CHARS = 120;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/** A browser that asked to be told of the chat while it is away. */
+interface PushDevice {
+  sub: WebPushSubscription;
+  /** The room code, for the notice to open the room it is about. */
+  room: string;
+  /** The last time it was in the room: now while it is, when its connection closed otherwise. */
+  seen: number;
+  /** Quiet until this server time (ms); absent when not. */
+  until?: number;
+  /** False keeps the text of the messages out of its notices. */
+  preview?: false;
+  /** The language its notices are written in, as the app said. */
+  lang?: string;
+}
+
+/** What a notice is about: a new message, an answer to one's own, or a reaction to one's own. */
+type PushKind = "chat" | "reply" | "react";
 
 interface Attachment {
   /** The device's own secret id: only it knows it, and it proves the device is the same one when it reconnects. */
@@ -258,6 +284,8 @@ export class Room extends DurableObject<Env> {
       case "chat": return this.onChat(me, msg.text, msg.cid, msg.reply);
       case "chat.react": return this.onChatReact(me, msg.id, msg.e);
       case "chat.receipt": return this.onChatReceipt(me, msg.delivered, msg.read);
+      case "push.set": return this.onPushSet(ws, me, msg);
+      case "push.clear": return this.ctx.storage.delete(PUSH_PREFIX + me.id).then(() => undefined);
       case "react": return this.onReact(me, msg.e, msg.n);
       case "report": return; // diagnostics only for now
       default: return this.fail(ws, "unknown_type", `Unknown message type`);
@@ -266,11 +294,13 @@ export class Room extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket): Promise<void> {
     ws.close(1000, "closed");
+    await this.notePushSeen(ws);
     await this.onMembersChanged();
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
     ws.close(1011, "error");
+    await this.notePushSeen(ws);
     await this.onMembersChanged();
   }
 
@@ -392,6 +422,7 @@ export class Room extends DurableObject<Env> {
     this.pruneReceipts();
     await this.ctx.storage.put({ [CHAT_KEY]: this.chat, [RECEIPTS_KEY]: this.receipts });
     this.broadcast({ t: "chat", msg });
+    await this.pushNotice(me, clean, (id) => (quoted?.by === id ? "reply" : "chat"));
   }
 
   /** Sets, or with null takes away, this member's reaction to a chat message, and sends the message again. */
@@ -411,6 +442,92 @@ export class Room extends DurableObject<Env> {
     else delete msg.rx;
     await this.ctx.storage.put(CHAT_KEY, this.chat);
     this.broadcast({ t: "chat.update", msg });
+    // The author of the message is told of a reaction given to it; taking one away is no news
+    if (typeof e === "string" && msg.by !== me.id) await this.pushNotice(me, msg.text, (id) => (id === msg.by ? "react" : null), e);
+  }
+
+  // ------------------------------------------------------------------ notices to devices that are away
+
+  private vapid(): VapidKeys | null {
+    const { VAPID_PRIVATE: privateKey, VAPID_PUBLIC: publicKey, VAPID_SUBJECT: subject } = this.env;
+    if (!privateKey || !publicKey) return null;
+    return { privateKey, publicKey, subject: subject ?? "https://github.com/tranviethungpv/Sapoche" };
+  }
+
+  /** Keeps the browser of this member to be told of the chat while it is away. Sent again at every join, so it stays fresh. */
+  private async onPushSet(ws: WebSocket, me: Attachment, msg: Extract<ClientMessage, { t: "push.set" }>): Promise<void> {
+    if (!this.vapid()) return this.fail(ws, "push_unavailable", "This server sends no notifications");
+    const { room, until, preview, lang } = msg;
+    const sub = readSubscription(msg.sub, this.env.PUSH_LOCAL === "1");
+    if (!sub || typeof room !== "string" || !/^[A-Za-z0-9]{6}$/.test(room)) {
+      return this.fail(ws, "bad_message", "push.set needs a subscription of a push service and the code of the room");
+    }
+    // A room has at most MAX_MEMBERS people; twice that leaves room for those who changed browser
+    const kept = await this.pushDevices();
+    if (!kept.has(me.id) && kept.size >= MAX_MEMBERS * 2) return this.fail(ws, "push_full", "Too many devices ask for notifications");
+    const device: PushDevice = {
+      sub,
+      room: room.toUpperCase(),
+      seen: Date.now(),
+      ...(typeof until === "number" && Number.isFinite(until) ? { until } : {}),
+      ...(preview === false ? { preview: false as const } : {}),
+      ...(typeof lang === "string" && /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(lang) ? { lang } : {}),
+    };
+    await this.ctx.storage.put(PUSH_PREFIX + me.id, device);
+  }
+
+  /** The devices that ask for notices and are still in the room, by public id. Those that left long ago are let go. */
+  private async pushDevices(): Promise<Map<string, PushDevice>> {
+    const fresh = millis(this.env.PUSH_FRESH_MS, PUSH_FRESH_MS);
+    const here = new Set(this.members().map((m) => m.id));
+    const now = Date.now();
+    const out = new Map<string, PushDevice>();
+    const gone: string[] = [];
+    for (const [key, device] of await this.ctx.storage.list<PushDevice>({ prefix: PUSH_PREFIX })) {
+      const id = key.slice(PUSH_PREFIX.length);
+      if (here.has(id) || now - device.seen <= fresh) out.set(id, device);
+      else gone.push(key);
+    }
+    if (gone.length) await this.ctx.storage.delete(gone);
+    return out;
+  }
+
+  /** A device is in the room until it closes its connection: that is the last time it was seen. */
+  private async notePushSeen(ws: WebSocket): Promise<void> {
+    const att = ws.deserializeAttachment() as Attachment | null;
+    if (!att) return;
+    const device = await this.ctx.storage.get<PushDevice>(PUSH_PREFIX + att.id);
+    if (device) await this.ctx.storage.put(PUSH_PREFIX + att.id, { ...device, seen: Date.now() });
+  }
+
+  /**
+   * Tells the devices that asked for notices what [by] did, each in the way [kindFor] says (null: not at all). A
+   * device with the room open decides for itself whether to show it, so a device that is connected is told as well.
+   */
+  private async pushNotice(by: { id: string; name: string }, text: string, kindFor: (id: string) => PushKind | null, e?: string): Promise<void> {
+    const vapid = this.vapid();
+    if (!vapid) return;
+    const now = Date.now();
+    const dead: string[] = [];
+    const preview = Array.from(text).slice(0, PUSH_PREVIEW_CHARS).join("");
+    await Promise.all(
+      [...(await this.pushDevices())].map(async ([id, device]) => {
+        const k = id === by.id ? null : kindFor(id);
+        if (!k || (device.until ?? 0) > now) return;
+        const notice = {
+          k,
+          room: device.room,
+          ...(this.s.name ? { rn: this.s.name } : {}),
+          name: by.name,
+          ...(device.preview === false ? {} : { text: preview }),
+          ...(e ? { e } : {}),
+          ...(device.lang ? { l: device.lang } : {}),
+        };
+        // These mean the browser is gone or does not take this server's signature: it will never work again
+        if ([401, 403, 404, 410].includes(await sendWebPush(device.sub, notice, vapid))) dead.push(PUSH_PREFIX + id);
+      }),
+    );
+    if (dead.length) await this.ctx.storage.delete(dead);
   }
 
   /** Notes how far this member has got in the chat and tells everybody, when it is further than before. */
@@ -480,6 +597,7 @@ export class Room extends DurableObject<Env> {
 
   /** The device is leaving on purpose. An owner hands the room to whoever has been here longest. */
   private async onBye(ws: WebSocket, me: Attachment): Promise<void> {
+    await this.ctx.storage.delete(PUSH_PREFIX + me.id); // leaving on purpose ends the notices too
     ws.close(1000, "left"); // the socket no longer counts as a member from here on
     if (this.s.ownerId === me.id) {
       // Somebody who is really here: a device gone quiet (away) only gets the room when nobody else is left
@@ -502,6 +620,7 @@ export class Room extends DurableObject<Env> {
   private async onKick(ws: WebSocket, me: Attachment, id: unknown): Promise<void> {
     if (me.id !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
     if (typeof id !== "string" || id === me.id) return;
+    await this.ctx.storage.delete(PUSH_PREFIX + id);
     for (const other of this.ctx.getWebSockets()) {
       const att = other.deserializeAttachment() as Attachment | null;
       if (att?.id !== id) continue;

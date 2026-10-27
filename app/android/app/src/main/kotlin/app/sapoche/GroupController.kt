@@ -12,6 +12,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.ChatMessage
+import app.sapoche.sync.ChatNotice
+import app.sapoche.sync.ChatNotices
 import app.sapoche.sync.ChatReceipt
 import app.sapoche.sync.ClockSync
 import app.sapoche.sync.Connection
@@ -138,6 +140,10 @@ class GroupController(
 
     private val _chat = MutableSharedFlow<Chat>(extraBufferCapacity = 64)
     val chat: SharedFlow<Chat> = _chat.asSharedFlow()
+
+    /** What the person is to be told of the chat; whether it is shown depends on whether they are looking at the app. */
+    private val _chatNotices = MutableSharedFlow<ChatNotice>(extraBufferCapacity = 16)
+    val chatNotices: SharedFlow<ChatNotice> = _chatNotices.asSharedFlow()
 
     /** The room's chat as last heard; null until the room sent its history (a server older than protocol 10 never does). */
     @Volatile
@@ -515,12 +521,18 @@ class GroupController(
                 chatLog?.lastOrNull()?.let(::acknowledge)
             }
             is ServerMessage.Chat -> {
+                ChatNotices.forMessage(message.msg, room, session?.snapshot?.value?.you)?.let { _chatNotices.tryEmit(it) }
                 chatLog = (chatLog.orEmpty() + message.msg).takeLast(CHAT_KEPT)
                 _chat.tryEmit(Chat(room, listOf(message.msg), replace = false))
                 acknowledge(message.msg)
             }
             is ServerMessage.ChatUpdate -> {
                 val log = chatLog ?: return
+                val snapshot = session?.snapshot?.value
+                val news = ChatNotices.forUpdate(log.firstOrNull { it.id == message.msg.id }, message.msg, room, snapshot?.you) { who ->
+                    snapshot?.members?.firstOrNull { it.id == who }?.name
+                }
+                news?.let { _chatNotices.tryEmit(it) }
                 chatLog = log.map { if (it.id == message.msg.id) message.msg else it }
                 _chat.tryEmit(Chat(room, listOf(message.msg), replace = false))
             }

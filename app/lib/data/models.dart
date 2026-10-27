@@ -110,6 +110,66 @@ class StorageInfo {
   );
 }
 
+/// Whether the person let this device tell them of the chat while the app is away.
+enum NoticePermission {
+  granted,
+  denied,
+
+  /// Not asked yet, or the browser or phone does not say.
+  undecided;
+
+  static NoticePermission parse(Object? name) => values.firstWhere((v) => v.name == name, orElse: () => undecided);
+}
+
+/// What this device can do to tell the person of a message in the room's chat while the app is away, and how it is set.
+class NotificationInfo {
+  const NotificationInfo({
+    this.supported = false,
+    this.permission = NoticePermission.undecided,
+    this.enabled = false,
+    this.preview = true,
+    this.needsInstall = false,
+    this.mutes = const {},
+  });
+
+  /// False where nothing can be done (a browser without notifications, a build that does not have them yet): the app
+  /// then shows nothing about them.
+  final bool supported;
+  final NoticePermission permission;
+
+  /// The person turned them on and the device allows them.
+  final bool enabled;
+
+  /// The notice shows the message and not only who wrote it.
+  final bool preview;
+
+  /// On an iPhone a web page gets notices only once it is on the Home Screen.
+  final bool needsInstall;
+
+  /// Until when (milliseconds since 1970) each room, by its code, is kept quiet.
+  final Map<String, int> mutes;
+
+  /// Until when [room] is quiet, or null when it is not.
+  DateTime? mutedUntil(String? room, {DateTime? now}) {
+    final until = mutes[room];
+    if (until == null) return null;
+    final at = DateTime.fromMillisecondsSinceEpoch(until);
+    return at.isAfter(now ?? DateTime.now()) ? at : null;
+  }
+
+  factory NotificationInfo.fromMap(Map<Object?, Object?> map) => NotificationInfo(
+    supported: map['supported'] as bool? ?? false,
+    permission: NoticePermission.parse(map['permission']),
+    enabled: map['enabled'] as bool? ?? false,
+    preview: map['preview'] as bool? ?? true,
+    needsInstall: map['needsInstall'] as bool? ?? false,
+    mutes: {
+      for (final e in ((map['mutes'] as Map<Object?, Object?>?) ?? const {}).entries)
+        if (e.value is num) e.key as String: (e.value as num).toInt(),
+    },
+  );
+}
+
 /// A playlist the person made, as listed: its cover is its first song's picture.
 class SavedPlaylist {
   const SavedPlaylist({

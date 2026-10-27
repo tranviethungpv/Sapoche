@@ -5,16 +5,20 @@ import MediaPlayer
 import Network
 import UIKit
 import UniformTypeIdentifiers
+import UserNotifications
 
 /// What the iPhone offers that the rest of the native side asks for through [PlatformServices].
 @MainActor
-final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate {
+final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate, UNUserNotificationCenterDelegate {
     let calm = StateFlow<Bool>(false)
     let output = StateFlow<AudioOutput>(AudioOutput(kind: "speaker", name: ""))
     let volume = StateFlow<Float>(AVAudioSession.sharedInstance().outputVolume)
 
     /// The network changed or came back; [Bool] says whether it is another one than before.
     var onNetwork: ((Bool) -> Void)?
+
+    /// The person touched the notification of the chat of a room, given by its code.
+    var onOpenChat: ((String) -> Void)?
 
     private let monitor = NWPathMonitor()
     private var metered = true
@@ -72,6 +76,7 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
             Task { @MainActor in self?.pathChanged(metered: expensive || !ok, satisfied: ok, interfaces: types) }
         }
         monitor.start(queue: DispatchQueue(label: "sapoche.network"))
+        UNUserNotificationCenter.current().delegate = self
     }
 
     // ------------------------------------------------------------------ PlatformServices
@@ -81,6 +86,45 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate 
     var deviceModel: String { UIDevice.current.model }
 
     var isMetered: Bool { metered }
+
+    // ------------------------------------------------------------------ notifications of the chat
+
+    func noticePermission() async -> String {
+        switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+        case .authorized, .provisional, .ephemeral: return "granted"
+        case .denied: return "denied"
+        default: return "undecided"
+        }
+    }
+
+    func askForNotices() async -> Bool {
+        (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
+    }
+
+    func showNotice(room: String, title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        // The notices of one room are kept together in the list of notifications
+        content.threadIdentifier = room
+        content.userInfo = ["room": room]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    func clearNotices() {
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
+        -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard let room = response.notification.request.content.userInfo["room"] as? String else { return }
+        await MainActor.run { self.onOpenChat?(room) }
+    }
 
     func share(_ text: String) {
         let sheet = UIActivityViewController(activityItems: [text], applicationActivities: nil)

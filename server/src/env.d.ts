@@ -7,6 +7,17 @@ interface Env {
    * set (local development) the server is open.
    */
   ROOM_KEY?: string;
+  /**
+   * The keys that sign pushes to browsers (see push.ts): `wrangler secret put VAPID_PRIVATE`, and the public half in
+   * VAPID_PUBLIC. Without them the server sends no pushes and says so to a device that asks for them.
+   */
+  VAPID_PRIVATE?: string;
+  VAPID_PUBLIC?: string;
+  /** Who runs the server, for the push services; a default is used without it. */
+  VAPID_SUBJECT?: string;
+  /** Only the tests set these: pushes may go to a service on this machine, and a device counts as away this soon (ms). */
+  PUSH_LOCAL?: string;
+  PUSH_FRESH_MS?: string;
   /** Overrides how long a silent device stays present before it is marked away (milliseconds); only the tests set it. */
   STALE_MS?: string;
   /**

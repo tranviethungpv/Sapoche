@@ -66,13 +66,16 @@ export default {
       return Response.json(ASSET_LINKS, { headers: { "Cache-Control": "public, max-age=3600" } });
     }
 
+    const pushKey = url.pathname === "/push/key";
     const update = url.pathname.match(UPDATE_ROUTE);
     const youtube = url.pathname.match(YOUTUBE_ROUTE);
     const isRoomRoute = url.pathname === "/rooms" || ROOM_ROUTE.test(url.pathname);
-    if ((isRoomRoute || update || youtube) && !(await authorized(request, url, env))) {
+    if ((isRoomRoute || update || youtube || pushKey) && !(await authorized(request, url, env))) {
       return new Response("Unauthorized", { status: 401 });
     }
 
+    // The public half of the key that signs pushes: a browser needs it to ask for them
+    if (pushKey) return env.VAPID_PUBLIC ? Response.json({ key: env.VAPID_PUBLIC }) : new Response("Not found", { status: 404 });
     if (update) return serveUpdate(request, env, update[1]);
     if (youtube) return serveYoutube(request, youtube[1]);
 

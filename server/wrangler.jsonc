@@ -17,7 +17,7 @@
 	"assets": {
 		"directory": "./web-dist",
 		"not_found_handling": "single-page-application",
-		"run_worker_first": ["/health", "/rooms", "/room/*", "/join/*", "/update/*", "/yt/*", "/.well-known/*"]
+		"run_worker_first": ["/health", "/rooms", "/room/*", "/join/*", "/update/*", "/yt/*", "/push/*", "/.well-known/*"]
 	},
 	// Releases of the app, for updates from inside it. Create it first: wrangler r2 bucket create sapoche-releases
 	"r2_buckets": [

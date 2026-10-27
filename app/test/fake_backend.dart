@@ -299,6 +299,57 @@ class FakeBackend implements Backend {
   @override
   Future<void> clearPlayCache() => _record('clearPlayCache');
 
+  /// How the notices stand; a test changes it to see the screen for another kind of device.
+  NotificationInfo noticeInfo = const NotificationInfo();
+
+  @override
+  Future<NotificationInfo> notifications() async {
+    await _record('notifications');
+    return noticeInfo;
+  }
+
+  @override
+  Future<NotificationInfo> setNotifications(bool on) async {
+    await _record('notifications $on');
+    // A device that has not been asked, or has refused, stays as it is
+    if (noticeInfo.supported && noticeInfo.permission != NoticePermission.denied) {
+      noticeInfo = _noticeInfoWith(permission: NoticePermission.granted, enabled: on);
+    }
+    return noticeInfo;
+  }
+
+  @override
+  Future<void> setNotificationPreview(bool on) async {
+    await _record('noticePreview $on');
+    noticeInfo = _noticeInfoWith(preview: on);
+  }
+
+  @override
+  Future<void> muteRoomNotifications(String code, int? until) async {
+    await _record('muteRoom $code $until');
+    final mutes = {...noticeInfo.mutes};
+    if (until == null) {
+      mutes.remove(code);
+    } else {
+      mutes[code] = until;
+    }
+    noticeInfo = _noticeInfoWith(mutes: mutes);
+  }
+
+  NotificationInfo _noticeInfoWith({
+    NoticePermission? permission,
+    bool? enabled,
+    bool? preview,
+    Map<String, int>? mutes,
+  }) => NotificationInfo(
+    supported: noticeInfo.supported,
+    permission: permission ?? noticeInfo.permission,
+    enabled: enabled ?? noticeInfo.enabled,
+    preview: preview ?? noticeInfo.preview,
+    needsInstall: noticeInfo.needsInstall,
+    mutes: mutes ?? noticeInfo.mutes,
+  );
+
   @override
   Future<void> setCacheLimit(int mb) => _record('cacheLimit $mb');
 

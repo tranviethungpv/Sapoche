@@ -35,6 +35,7 @@ class SapocheApp : Application() {
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
         suggestions = SuggestionFeed(library, resolver, musicFeed) { EventLog.d("suggest", it) }
+        chatNotifier = ChatNotifier(this)
         heat = Heat(this)
         updater = Updater(this, UpdateClient(Config.SERVER, Config.authHeaders))
     }
@@ -91,6 +92,10 @@ class SapocheApp : Application() {
         lateinit var heat: Heat
             private set
 
+        /** Tells the person of the chat while the app is not in front. */
+        lateinit var chatNotifier: ChatNotifier
+            private set
+
         /** Checks for a newer release of this app and installs it. */
         lateinit var updater: Updater
             private set
@@ -121,6 +126,8 @@ class SapocheApp : Application() {
 
         fun setUiVisible(value: Boolean) {
             visibleFlow.value = value
+            // What was said is on the screen now
+            if (value) chatNotifier.clear()
         }
 
         private val stopFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)

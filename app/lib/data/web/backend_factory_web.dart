@@ -9,6 +9,7 @@ import '../backend.dart';
 import 'library_disk_web.dart';
 import 'library_store.dart';
 import 'media_controls_web.dart';
+import 'push_port_web.dart';
 import 'web_backend.dart';
 import 'youtube_player_web.dart';
 
@@ -25,6 +26,7 @@ Future<Backend> createBackend() async {
     // A browser that keeps nothing for a page (it may refuse even to say so) still opens the app
   }
   final invite = Uri.base.queryParameters['join']?.toUpperCase();
+  final fromNotice = Uri.base.queryParameters['chat'] == '1';
   if (invite != null) web.window.history.replaceState(null, '', web.window.location.pathname);
   final disk = IndexedDbDisk();
   String? stored;
@@ -45,8 +47,10 @@ Future<Backend> createBackend() async {
   defaultServer: web.window.location.origin,
   region: () => PlatformDispatcher.instance.locale.countryCode ?? 'US',
   invite: invite != null && RegExp(r'^[A-Z0-9]{6}$').hasMatch(invite) ? invite : null,
+  openChat: fromNotice,
   onShare: _share,
   media: BrowserMediaControls(),
+  push: createPushPort(),
   sink: (line) => web.console.log(line.toJS),
 );
   // A page that goes away does not wait for the pause before a write

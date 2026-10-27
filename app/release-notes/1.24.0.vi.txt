@@ -1,0 +1,4 @@
+Thông báo cho khung chat của phòng
+- Bật ở Cài đặt > Thông báo để nhận tin khi có tin nhắn mới, lời trả lời tin của bạn hoặc cảm xúc lên tin của bạn lúc app không đang hiện. Mặc định tắt, bạn tự bật.
+- Trên Android và iPhone, thông báo đến khi app còn kết nối với phòng, ví dụ lúc đang phát nhạc. Trên web thông báo còn đến được cả khi đã đóng tab; trên iPhone cần thêm app web vào Màn hình chính. Chạm vào thông báo là mở khung chat.
+- Chuông trong khung chat tắt tiếng một phòng trong một giờ, tám giờ, đến sáng mai hoặc đến khi bạn bật lại.

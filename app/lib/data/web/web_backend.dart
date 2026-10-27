@@ -15,6 +15,7 @@ import 'library_store.dart';
 import 'listen_tracker.dart';
 import 'local_session.dart';
 import 'lyrics_client.dart';
+import 'push_port.dart';
 import 'music_client.dart';
 import 'music_feed.dart';
 import 'player_port.dart';
@@ -57,8 +58,10 @@ class WebBackend extends BackendDefaults {
     this._opener,
     this.region = _usa,
     this.invite,
+    this.openChat = false,
     this.onShare,
     this.media,
+    this.push,
     this.sink = _ignore,
   }) : _http = client ?? http.Client(),
        _library = library ?? LibraryStore(),
@@ -79,7 +82,7 @@ class WebBackend extends BackendDefaults {
           final code = invite;
           if (code != null && !_invited) {
             _invited = true;
-            _events.add(InviteEvent(code));
+            _followNotice(code);
           }
         });
       },
@@ -112,6 +115,7 @@ class WebBackend extends BackendDefaults {
       prev: () => prev().ignore(),
       seek: (ms) => seek(ms).ignore(),
     );
+    push?.opened.listen((room) => _events.add(OpenChatEvent(room)));
     _local.changes.listen((_) {
       _emitState();
       // The player starts right after the queue says it is loaded: tell the screen how it stands once it has
@@ -139,6 +143,9 @@ class WebBackend extends BackendDefaults {
   /// Hands text to the browser's share sheet, or its clipboard; null where there is neither.
   final Future<void> Function(String text)? onShare;
   final MediaControls? media;
+
+  /// The browser's notices of the chat while the page is away; null where there is no such thing (the tests).
+  final PushPort? push;
   final http.Client _http;
   final LibraryStore _library;
   late final _listens = ListenTracker(skipped: (id, durationMs) => _skipped(id, durationMs), heard: (id, durationMs) => _heard(id, durationMs));
@@ -149,6 +156,24 @@ class WebBackend extends BackendDefaults {
   late final StreamController<BackendEvent> _events;
   late final LocalSession _local;
   var _invited = false;
+
+  /// The link came from a touch on a notice of the chat: into the room, and its chat opens when it is there.
+  final bool openChat;
+
+  /// The room whose chat opens as soon as the room has told it.
+  String? _chatWhenReady;
+
+  /// An invitation link arrived: the screen offers the room, or, from a notice of the chat, the person goes straight in
+  /// when this browser has what it takes (a name and the key) and the chat opens.
+  void _followNotice(String code) {
+    final name = prefs.getString(_keyName);
+    if (openChat && name != null && name.isNotEmpty && _server.isNotEmpty && _key.isNotEmpty) {
+      _chatWhenReady = code;
+      _enter(code, name, create: false);
+      return;
+    }
+    _events.add(InviteEvent(code));
+  }
 
   static const _keyServer = 'web.server';
   static const _keyKey = 'web.key';
@@ -330,6 +355,7 @@ class WebBackend extends BackendDefaults {
     _connection = Connection.connecting;
     _emitState();
     client.start();
+    _offerPush().ignore();
   }
 
   final _clock = ClockSync();
@@ -379,6 +405,7 @@ class WebBackend extends BackendDefaults {
     _roomCode = null;
     _connection = null;
     _chatLog = null;
+    _chatWhenReady = null;
     _deliveredUpTo = 0;
     _lastKey = null;
     _emitState();
@@ -716,6 +743,10 @@ class WebBackend extends BackendDefaults {
         _chatLog = kept;
         _events.add(ChatEvent(room: room, messages: kept, replace: true, receipts: message.receipts));
         if (kept.isNotEmpty) _acknowledge(kept.last);
+        if (_chatWhenReady == room) {
+          _chatWhenReady = null;
+          _events.add(OpenChatEvent(room));
+        }
       case ChatMessageReceived():
         final log = [...?_chatLog, message.message];
         _chatLog = log.length > _chatKept ? log.sublist(log.length - _chatKept) : log;
@@ -741,6 +772,117 @@ class WebBackend extends BackendDefaults {
     _deliveredUpTo = last.id;
     // What this device wrote itself needs no word
     if (last.by != _session?.snapshot.you) _send(Wire.chatReceipt(delivered: last.id));
+  }
+
+  // ------------------------------------------------------------------ notices of the chat while the page is away
+
+  static const _keyNotify = 'web.notify';
+  static const _keyNotifyPreview = 'web.notifyPreview';
+  static const _keyNotifyMutes = 'web.notifyMutes';
+
+  @override
+  Future<NotificationInfo> notifications() async {
+    final port = push;
+    final support = port?.support ?? PushSupport.none;
+    if (port == null || support == PushSupport.none) return const NotificationInfo();
+    final permission = port.permission;
+    return NotificationInfo(
+      supported: true,
+      permission: permission,
+      enabled: support == PushSupport.ready && permission == NoticePermission.granted && (prefs.getBool(_keyNotify) ?? false),
+      preview: prefs.getBool(_keyNotifyPreview) ?? true,
+      needsInstall: support == PushSupport.needsInstall,
+      mutes: _readMutes(),
+    );
+  }
+
+  @override
+  Future<NotificationInfo> setNotifications(bool on) async {
+    final port = push;
+    if (port == null) return notifications();
+    if (!on) {
+      await prefs.setBool(_keyNotify, false);
+      await port.unsubscribe();
+      _roomClient?.setPush(null);
+      return notifications();
+    }
+    // A page an iPhone keeps in a tab gets none, however it asks
+    if (port.support != PushSupport.ready) return notifications();
+    _requireSetUp();
+    final sub = await port.subscribe(await _pushKey());
+    await prefs.setBool(_keyNotify, sub != null);
+    await _offerPush();
+    return notifications();
+  }
+
+  @override
+  Future<void> setNotificationPreview(bool on) async {
+    await prefs.setBool(_keyNotifyPreview, on);
+    await _offerPush();
+  }
+
+  @override
+  Future<void> muteRoomNotifications(String code, int? until) async {
+    final mutes = _readMutes();
+    if (until == null) {
+      mutes.remove(code);
+    } else {
+      mutes[code] = until;
+    }
+    await prefs.setString(_keyNotifyMutes, jsonEncode(mutes));
+    if (code == _roomCode) await _offerPush();
+  }
+
+  /// The rooms kept quiet, and until when; those whose time has passed are let go.
+  Map<String, int> _readMutes() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final saved = jsonDecode(prefs.getString(_keyNotifyMutes) ?? '{}') as Map<String, dynamic>;
+      return {
+        for (final e in saved.entries)
+          if (e.value is num && (e.value as num).toInt() > now) e.key: (e.value as num).toInt(),
+      };
+    } on Object {
+      return {};
+    }
+  }
+
+  /// The public key the server signs its pushes with; a server without one does not send them.
+  Future<String> _pushKey() async {
+    final http.Response reply;
+    try {
+      reply = await _http.get(Uri.parse('$_server/push/key'), headers: _authHeaders);
+    } on Object {
+      throw BackendException('failed', 'The server cannot be reached');
+    }
+    if (reply.statusCode == 401) {
+      _keyRefused();
+      throw BackendException('failed', 'The server turned the key down');
+    }
+    final key = reply.statusCode == 200 ? (jsonDecode(reply.body) as Map<String, dynamic>)['key'] : null;
+    if (key is! String) throw BackendException('unsupported', 'This server sends no notifications');
+    return key;
+  }
+
+  /// Tells the room's server what this browser wants of it, or that it wants nothing: sent when the person changes
+  /// their mind and at every join.
+  Future<void> _offerPush() async {
+    final client = _roomClient;
+    final code = _roomCode;
+    if (client == null || code == null) return;
+    if (!(prefs.getBool(_keyNotify) ?? false)) return client.setPush(null);
+    final sub = await push?.current();
+    // The person may have left the room while the browser answered
+    if (sub == null || _roomClient != client) return;
+    client.setPush(
+      Wire.pushSet(
+        sub,
+        code,
+        until: _readMutes()[code],
+        preview: prefs.getBool(_keyNotifyPreview) ?? true,
+        lang: _language,
+      ),
+    );
   }
 
   // ------------------------------------------------------------------ YouTube Music

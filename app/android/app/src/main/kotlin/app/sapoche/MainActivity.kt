@@ -11,12 +11,13 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        bridge = SapocheBridge(this, flutterEngine.dartExecutor.binaryMessenger, flutterEngine.renderer).also { it.onLink(intent?.data) }
+        bridge = SapocheBridge(this, flutterEngine.dartExecutor.binaryMessenger, flutterEngine.renderer).also { it.onLink(intent?.data); it.onOpenChat(intent) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         bridge?.onLink(intent.data)
+        bridge?.onOpenChat(intent)
     }
 
     @Deprecated("The file picker answers through the framework callback")
@@ -31,6 +32,7 @@ class MainActivity : FlutterActivity() {
         @Suppress("DEPRECATION")
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         SapocheApp.deviceMusic.onPermissionResult(requestCode)
+        bridge?.onNoticePermission(requestCode, grantResults)
     }
 
     /** Rotation and other changes are handled here without recreating the activity; note when they happen. */

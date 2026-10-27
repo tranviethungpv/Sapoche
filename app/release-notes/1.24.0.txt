@@ -1,0 +1,4 @@
+Notifications for the room's chat
+- Turn on Settings > Notifications to hear about a new message, an answer to one of yours, or a reaction to one of yours when the app is not in front. It is off until you turn it on.
+- On Android and iPhone the notification comes while the app is connected to the room, for example while music plays. On the web it also reaches a closed tab; on an iPhone the web app must be on the Home Screen. Touching it opens the chat.
+- The bell in the chat keeps a room quiet for an hour, eight hours, until tomorrow morning, or until you turn it back on.

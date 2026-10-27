@@ -349,6 +349,12 @@ abstract final class Wire {
   static String avatarSet(String? data) => _msg('avatar.set', {'data': data});
   static String avatarGet(String id) => _msg('avatar.get', {'id': id});
 
+  /// Asks to be told of the chat of [room] while away, at the browser with push subscription [sub]; see push.set in
+  /// docs/PROTOCOL.md. [until] is server time in milliseconds.
+  static String pushSet(Map<String, Object?> sub, String room, {int? until, bool preview = true, String? lang}) =>
+      _msg('push.set', {'sub': sub, 'room': room, 'until': ?until, if (!preview) 'preview': false, 'lang': ?lang});
+  static String pushClear() => _msg('push.clear');
+
   static String chat(String text, String cid, {int? reply}) =>
       _msg('chat', {'text': text, 'cid': cid, 'reply': ?reply});
   static String chatReact(int id, String? e) =>

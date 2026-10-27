@@ -184,6 +184,9 @@ object UiJson {
 
     fun invite(code: String): String = JSONObject().put("type", "invite").put("code", code).toString()
 
+    /** The person touched the notification of the chat of room [room]. */
+    fun openChat(room: String): String = JSONObject().put("type", "openChat").put("room", room).toString()
+
     /** Another member paused the room or skipped a song; [by] is their name. */
     fun notice(notice: GroupController.Notice): String = JSONObject()
         .put("type", "notice")

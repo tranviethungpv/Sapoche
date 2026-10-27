@@ -1,7 +1,8 @@
 // End-to-end simulation of the room protocol against a running server (`npm run dev`).
 // Usage: node scripts/sim.mjs [baseUrl]   (default http://127.0.0.1:8787)
 // When the server has a ROOM_KEY, pass it in SAPOCHE_KEY (npm run sim:keyed does this against a local server).
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, createECDH, hkdfSync, createDecipheriv, verify } from "node:crypto";
+import { createServer } from "node:http";
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:8787";
 const WS_BASE = BASE.replace(/^http/, "ws");
@@ -122,6 +123,11 @@ async function main() {
   if (process.env.SIM_ONLY === "threads") {
     await chatThreadsSection();
     await autoplayLaneSection();
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+  }
+  if (process.env.SIM_ONLY === "push") {
+    await pushSection();
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);
   }
@@ -281,6 +287,7 @@ async function main() {
   await chatSection();
   await chatThreadsSection();
   await autoplayLaneSection();
+  if (process.env.SIM_VAPID_PUBLIC) await pushSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
 
   [a, b, d].forEach((x) => x.close());
@@ -1327,6 +1334,189 @@ async function chatThreadsSection() {
 }
 
 /** What autoplay adds stays apart from the songs members chose (protocol 12). */
+/** The browser side of a push: a key pair, and the reading of what a push service is handed (RFC 8291). */
+function pushDevice(onReceive) {
+  const ecdh = createECDH("prime256v1");
+  ecdh.generateKeys();
+  const auth = Buffer.from(Array.from({ length: 16 }, (_, i) => (i * 37 + 11) & 255));
+  const b64 = (buf) => Buffer.from(buf).toString("base64url");
+  const received = [];
+  const service = createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      const body = Buffer.concat(chunks);
+      // salt(16) | record size(4) | key length(1) | server key(65) | ciphertext
+      const salt = body.subarray(0, 16);
+      const serverKey = body.subarray(21, 21 + body[20]);
+      const shared = ecdh.computeSecret(serverKey);
+      const prk = Buffer.from(hkdfSync("sha256", shared, auth, Buffer.concat([Buffer.from("WebPush: info\0"), ecdh.getPublicKey(), serverKey]), 32));
+      const key = Buffer.from(hkdfSync("sha256", prk, salt, Buffer.from("Content-Encoding: aes128gcm\0"), 16));
+      const nonce = Buffer.from(hkdfSync("sha256", prk, salt, Buffer.from("Content-Encoding: nonce\0"), 12));
+      const sealed = body.subarray(21 + body[20]);
+      const decipher = createDecipheriv("aes-128-gcm", key, nonce);
+      decipher.setAuthTag(sealed.subarray(sealed.length - 16));
+      const plain = Buffer.concat([decipher.update(sealed.subarray(0, sealed.length - 16)), decipher.final()]);
+      const message = JSON.parse(plain.subarray(0, plain.lastIndexOf(2)).toString());
+      received.push({ message, headers: req.headers, path: req.url });
+      res.statusCode = device.answer;
+      res.end();
+    });
+  });
+  const device = {
+    received,
+    /** What the service says to the next pushes: 201 takes the message, 410 says the browser is gone. */
+    answer: 201,
+    listening: new Promise((resolve) => service.listen(0, "127.0.0.1", resolve)),
+    subscription: () => ({ endpoint: `http://127.0.0.1:${service.address().port}/push/${b64(auth).slice(0, 6)}`, keys: { p256dh: b64(ecdh.getPublicKey()), auth: b64(auth) } }),
+    close: () => service.close(),
+  };
+  return device;
+}
+
+/** Notices to devices that are away (protocol 13): who is told, of what, and when not. */
+async function pushSection() {
+  console.log("Push: notices of the chat to devices that are away");
+  const code = await newCode();
+  const ann = new Client(code, "psh-an", "Ann");
+  await ann.join(true);
+  const bob = new Client(code, "psh-bo", "Bob");
+  await bob.join(false);
+  const annPhone = pushDevice();
+  const bobPhone = pushDevice();
+  await Promise.all([annPhone.listening, bobPhone.listening]);
+  const wait = (ms = 400) => sleep(ms);
+
+  // The public key of the server is given to a client that knows the room key
+  const keyReply = await fetch(`${BASE}/push/key`, { headers: keyHeaders });
+  const served = keyReply.ok ? (await keyReply.json()).key : "";
+  check("the server gives the public key that signs its pushes", served === process.env.SIM_VAPID_PUBLIC, `${keyReply.status}`);
+  if (KEY) check("and only to one that has the room key", (await fetch(`${BASE}/push/key`)).status === 401);
+
+  // Where a notice may be sent is limited to the push services of the browsers
+  ann.send({ t: "push.set", sub: { endpoint: "https://evil.example/push", keys: annPhone.subscription().keys }, room: code });
+  check("an address that is no push service is refused", (await ann.waitFor((m) => m.t === "error")).code === "bad_message");
+  ann.send({ t: "push.set", sub: { endpoint: "http://127.0.0.1:9/x", keys: { p256dh: "AAAA", auth: "AAAA" } }, room: code });
+  check("so are keys that are not a browser's", (await ann.waitFor((m) => m.t === "error")).code === "bad_message");
+
+  ann.send({ t: "push.set", sub: annPhone.subscription(), room: code });
+  bob.send({ t: "push.set", sub: bobPhone.subscription(), room: code });
+  await wait();
+
+  bob.send({ t: "chat", text: "hello there" });
+  const hello = await ann.waitFor((m) => m.t === "chat");
+  await wait();
+  const first = annPhone.received.at(-1);
+  check("a message is told to the other devices, once", annPhone.received.length === 1 && first.message.k === "chat" && first.message.name === "Bob" && first.message.text === "hello there" && first.message.room === code, JSON.stringify(annPhone.received.map((r) => r.message)));
+  check("and not to the one that wrote it", bobPhone.received.length === 0);
+  check("it is encrypted for the browser and signed by the server", first.headers["content-encoding"] === "aes128gcm" && /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=/.test(first.headers.authorization ?? ""), first.headers.authorization);
+  const [head, claims, signature] = first.headers.authorization.slice(8, first.headers.authorization.indexOf(",")).split(".");
+  const point = Buffer.from(process.env.SIM_VAPID_PUBLIC, "base64url");
+  const publicKey = createPublicKey({ key: { kty: "EC", crv: "P-256", x: point.subarray(1, 33).toString("base64url"), y: point.subarray(33).toString("base64url") }, format: "jwk" });
+  check("the signature is the server's, over a claim for the push service's own address", verify("sha256", Buffer.from(`${head}.${claims}`), { key: publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(signature, "base64url")) && JSON.parse(Buffer.from(claims, "base64url")).aud === new URL(annPhone.subscription().endpoint).origin);
+
+  // An answer to one's own message is told as one, and nobody else is told twice
+  ann.send({ t: "chat", text: "welcome" });
+  const welcome = await bob.waitFor((m) => m.t === "chat" && m.msg.text === "welcome");
+  await wait();
+  bob.send({ t: "chat", text: "thanks", reply: welcome.msg.id });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "thanks");
+  await wait();
+  check("a message that answers one of yours is told as an answer", annPhone.received.at(-1).message.k === "reply" && annPhone.received.at(-1).message.text === "thanks", JSON.stringify(annPhone.received.at(-1)?.message));
+  bob.send({ t: "chat", text: "plain again" });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "plain again");
+  await wait();
+  check("and a plain one is told as a plain one", annPhone.received.at(-1).message.k === "chat");
+
+  // A reaction to one's own message
+  const before = bobPhone.received.length;
+  ann.send({ t: "chat.react", id: hello.msg.id, e: "fire" });
+  await bob.waitFor((m) => m.t === "chat.update");
+  await wait();
+  check("the author is told of a reaction to the message", bobPhone.received.length === before + 1 && bobPhone.received.at(-1).message.k === "react" && bobPhone.received.at(-1).message.e === "fire" && bobPhone.received.at(-1).message.name === "Ann" && bobPhone.received.at(-1).message.text === "hello there", JSON.stringify(bobPhone.received.at(-1)?.message));
+  ann.send({ t: "chat.react", id: hello.msg.id, e: null });
+  await bob.waitFor((m) => m.t === "chat.update");
+  bob.send({ t: "chat.react", id: hello.msg.id, e: "heart" });
+  await ann.waitFor((m) => m.t === "chat.update");
+  await wait();
+  check("taking a reaction away is no news, and neither is a reaction to one's own message", bobPhone.received.length === before + 1 && annPhone.received.at(-1).message.k === "chat");
+
+  // Quiet for a while
+  const heard = annPhone.received.length;
+  ann.send({ t: "push.set", sub: annPhone.subscription(), room: code, until: Date.now() + 60_000 });
+  await wait();
+  bob.send({ t: "chat", text: "while you are quiet" });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "while you are quiet");
+  await wait();
+  check("a device that asked for quiet is not told", annPhone.received.length === heard);
+  ann.send({ t: "push.set", sub: annPhone.subscription(), room: code, until: Date.now() - 1 });
+  await wait();
+  bob.send({ t: "chat", text: "quiet is over" });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "quiet is over");
+  await wait();
+  check("and is again when the time has passed", annPhone.received.length === heard + 1);
+
+  // What a device asks to keep out of its notices
+  ann.send({ t: "push.set", sub: annPhone.subscription(), room: code, preview: false, lang: "vi" });
+  await wait();
+  bob.send({ t: "chat", text: "a secret" });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "a secret");
+  await wait();
+  const hidden = annPhone.received.at(-1).message;
+  check("a device that wants no text in its notices gets none, and its language", hidden.text === undefined && hidden.name === "Bob" && hidden.l === "vi", JSON.stringify(hidden));
+  ann.send({ t: "push.set", sub: annPhone.subscription(), room: code });
+  await wait();
+
+  // Long messages are cut for the notice
+  bob.send({ t: "chat", text: "z".repeat(400) });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text.startsWith("zzz"));
+  await wait();
+  check("a long message is cut to 120 characters", Array.from(annPhone.received.at(-1).message.text).length === 120);
+
+  // A device whose browser is gone is let go
+  annPhone.answer = 410;
+  bob.send({ t: "chat", text: "gone one" });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "gone one");
+  await wait();
+  const asked = annPhone.received.length;
+  bob.send({ t: "chat", text: "after the gone one" });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "after the gone one");
+  await wait();
+  check("a browser the push service says is gone is not asked again", annPhone.received.length === asked);
+
+  // Away for long: the time is shortened by the server's test setting
+  const cara = new Client(code, "psh-ca", "Cara");
+  await cara.join(false);
+  const caraPhone = pushDevice();
+  await caraPhone.listening;
+  cara.send({ t: "push.set", sub: caraPhone.subscription(), room: code });
+  await wait();
+  cara.close();
+  await wait();
+  bob.send({ t: "chat", text: "cara is just away" });
+  await bob.waitFor((m) => m.t === "chat" && m.msg.text === "cara is just away");
+  await wait();
+  check("a device that left a moment ago is still told", caraPhone.received.length === 1);
+  const fresh = Number(process.env.SIM_PUSH_FRESH_MS) || 3000;
+  await sleep(fresh + 500);
+  bob.send({ t: "chat", text: "cara is long gone" });
+  await bob.waitFor((m) => m.t === "chat" && m.msg.text === "cara is long gone");
+  await wait();
+  check("one that has been away longer than the time is not", caraPhone.received.length === 1);
+
+  // Leaving on purpose ends the notices
+  bobPhone.received.length = 0;
+  bob.send({ t: "bye" });
+  await bob.closed;
+  ann.send({ t: "chat", text: "bob left" });
+  await ann.waitFor((m) => m.t === "chat" && m.msg.text === "bob left");
+  await wait();
+  check("leaving the room ends the notices", bobPhone.received.length === 0);
+
+  for (const phone of [annPhone, bobPhone, caraPhone]) phone.close();
+  ann.close();
+}
+
 async function autoplayLaneSection() {
   console.log("Autoplay songs stay apart from the list");
   const [a, b] = await freshRoom(["La", "Lb"]);

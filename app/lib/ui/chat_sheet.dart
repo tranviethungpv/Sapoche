@@ -186,11 +186,13 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                       S.listening(_c.snapshot.listeningCount),
                       style: theme.bodySmall?.copyWith(color: p.textSecondary),
                     ),
+                    if (_c.notificationInfo.enabled) _MuteButton(controller: _c),
                   ],
                 ),
               ),
             ),
           ),
+          _NoticeOffer(controller: _c),
           Expanded(
             child: ReactionShower(
               controller: _c,
@@ -353,6 +355,105 @@ class _ReplyBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+enum _Mute { hour, eightHours, tomorrow, always, off }
+
+/// Keeps the notices of this room quiet for a while, or turns them back on.
+class _MuteButton extends StatelessWidget {
+  const _MuteButton({required this.controller});
+
+  final RoomController controller;
+
+  /// The notices of the night are over by this hour.
+  static const _morning = 8;
+
+  Duration _length(_Mute choice) {
+    final now = DateTime.now();
+    return switch (choice) {
+      _Mute.hour => const Duration(hours: 1),
+      _Mute.eightHours => const Duration(hours: 8),
+      _Mute.tomorrow => DateTime(now.year, now.month, now.day + (now.hour < _morning ? 0 : 1), _morning).difference(now),
+      _ => const Duration(days: 3650),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final until = controller.roomMutedUntil;
+    return PopupMenuButton<_Mute>(
+      key: const ValueKey('chat-mute'),
+      tooltip: S.noticesMute,
+      icon: Icon(until == null ? Icons.notifications_none_rounded : Icons.notifications_off_outlined),
+      onSelected: (choice) => controller.muteNotifications(choice == _Mute.off ? null : _length(choice)),
+      itemBuilder: (context) => [
+        if (until != null) PopupMenuItem(value: _Mute.off, child: Text(S.noticesUnmute)) else ...[
+          PopupMenuItem(value: _Mute.hour, child: Text(S.noticesMute1h)),
+          PopupMenuItem(value: _Mute.eightHours, child: Text(S.noticesMute8h)),
+          PopupMenuItem(value: _Mute.tomorrow, child: Text(S.noticesMuteTomorrow)),
+          PopupMenuItem(value: _Mute.always, child: Text(S.noticesMuteAlways)),
+        ],
+      ],
+    );
+  }
+}
+
+/// Offers the notices of the chat to a person who has not turned them on, at the place where a message matters: here.
+/// Once the person says "not now" the offer waits a week.
+class _NoticeOffer extends StatefulWidget {
+  const _NoticeOffer({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  State<_NoticeOffer> createState() => _NoticeOfferState();
+}
+
+class _NoticeOfferState extends State<_NoticeOffer> {
+  static const _wait = Duration(days: 7);
+  var _hidden = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = AppScope.of(context).settings;
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) {
+        final info = widget.controller.notificationInfo;
+        final asked = settings.noticeOfferedAt;
+        final due = asked == null || DateTime.now().difference(asked) > _wait;
+        if (_hidden || !due || !info.supported || info.enabled || info.needsInstall || info.permission == NoticePermission.denied) {
+          return const SizedBox.shrink();
+        }
+        final p = context.palette;
+        return Container(
+          key: const ValueKey('notice-offer'),
+          margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+          decoration: BoxDecoration(color: p.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
+          child: Row(
+            children: [
+              Expanded(child: Text(S.noticesOffer, style: Theme.of(context).textTheme.bodyMedium)),
+              TextButton(
+                onPressed: () {
+                  settings.noticeOfferedAt = DateTime.now();
+                  setState(() => _hidden = true);
+                },
+                child: Text(S.noticesNotNow),
+              ),
+              FilledButton(
+                onPressed: () {
+                  setState(() => _hidden = true);
+                  widget.controller.setNotifications(true);
+                },
+                child: Text(S.noticesTurnOn),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

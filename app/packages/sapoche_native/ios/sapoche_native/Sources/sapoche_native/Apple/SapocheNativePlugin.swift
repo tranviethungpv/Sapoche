@@ -130,6 +130,7 @@ final class SapocheRuntime {
         }
         controller.view.observe { [weak self] _ in self?.nowPlaying.refresh() }.keep()
         platform.onNetwork = { [weak self] changed in self?.controller.networkChanged(changed: changed) }
+        platform.onOpenChat = { [weak self] room in self?.bridge.onOpenChat(room) }
         controller.recoverRoom()
     }
 }

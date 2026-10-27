@@ -29,6 +29,12 @@ class InviteEvent extends BackendEvent {
   final String code;
 }
 
+/// The person touched a notice of the chat of room [room]: the chat of that room is what they want to see.
+class OpenChatEvent extends BackendEvent {
+  const OpenChatEvent(this.room);
+  final String room;
+}
+
 /// Someone opened a `sapoche://setup?server=…&key=…` link, which another phone shows to set this one up.
 class SetupEvent extends BackendEvent {
   const SetupEvent(this.link);
@@ -300,6 +306,19 @@ abstract class Backend {
   Future<StorageInfo> storage();
   Future<void> clearPlayCache();
 
+  /// Whether, and how, the person is told of the chat of a room while the app is away.
+  Future<NotificationInfo> notifications();
+
+  /// Turns the notices on (asking the system for its leave, which needs the touch the person just made) or off.
+  /// Answers with how things stand after, so a refusal shows.
+  Future<NotificationInfo> setNotifications(bool on);
+
+  /// Whether a notice shows the message, or only who wrote it.
+  Future<void> setNotificationPreview(bool on);
+
+  /// Keeps the room with this [code] quiet until [until] (milliseconds since 1970); null ends it.
+  Future<void> muteRoomNotifications(String code, int? until);
+
   /// Size of the cache of played songs in MB; counts from the next start of the app.
   Future<void> setCacheLimit(int mb);
   Future<void> setAutoDownload(bool on);
@@ -480,6 +499,7 @@ class NativeBackend implements Backend {
         late: json['late'] == true,
       ),
       'invite' => InviteEvent(json['code'] as String),
+      'openChat' => OpenChatEvent(json['room'] as String),
       'setup' => SetupEvent(json['link'] as String),
       'notice' => NoticeEvent(
         kind: json['kind'] as String,
@@ -787,6 +807,21 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> clearPlayCache() => _call('clearPlayCache');
+
+  @override
+  Future<NotificationInfo> notifications() async =>
+      NotificationInfo.fromMap((await _call<Map<Object?, Object?>>('notifications'))!);
+
+  @override
+  Future<NotificationInfo> setNotifications(bool on) async =>
+      NotificationInfo.fromMap((await _call<Map<Object?, Object?>>('setNotifications', {'on': on}))!);
+
+  @override
+  Future<void> setNotificationPreview(bool on) => _call('setNotificationPreview', {'on': on});
+
+  @override
+  Future<void> muteRoomNotifications(String code, int? until) =>
+      _call('muteRoomNotifications', {'code': code, 'until': until});
 
   @override
   Future<void> setCacheLimit(int mb) => _call('setCacheLimit', {'mb': mb});

@@ -162,6 +162,9 @@ final class GroupController {
 
     let chat = SharedFlow<Chat>()
 
+    /// What the person is to be told of the chat; whether it is shown depends on whether they are looking at the app.
+    let chatNotices = SharedFlow<ChatNotice>()
+
     /// The room's chat as last heard; nil until the room sent its history (a server older than protocol 10 never does).
     private var chatLog: [ChatMessage]?
 
@@ -597,11 +600,17 @@ final class GroupController {
             chat.emit(Chat(room: room, messages: kept, replace: true, receipts: receipts))
             if let last = kept.last { acknowledge(last) }
         case let .chat(message):
+            if let notice = ChatNotices.forMessage(message, room: room, you: session?.snapshot.value.you) { chatNotices.emit(notice) }
             chatLog = Array(((chatLog ?? []) + [message]).suffix(Self.chatKept))
             chat.emit(Chat(room: room, messages: [message], replace: false))
             acknowledge(message)
         case let .chatUpdate(message):
             guard let log = chatLog else { return }
+            let snapshot = session?.snapshot.value
+            if let notice = ChatNotices.forUpdate(before: log.first { $0.id == message.id }, after: message, room: room, you: snapshot?.you,
+                                                  nameOf: { who in snapshot?.members.first { $0.id == who }?.name }) {
+                chatNotices.emit(notice)
+            }
             chatLog = log.map { $0.id == message.id ? message : $0 }
             chat.emit(Chat(room: room, messages: [message], replace: false))
         case let .chatReceipts(receipts):

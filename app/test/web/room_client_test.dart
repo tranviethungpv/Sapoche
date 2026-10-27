@@ -131,4 +131,41 @@ void main() {
     expect(heard, [('you', null, null)], reason: 'taking the picture away is told');
     client.close();
   });
+
+  group('the notices of the chat', () {
+    const push = '{"t":"push.set","sub":{"endpoint":"https://fcm.googleapis.com/x","keys":{"p256dh":"a","auth":"b"}},"room":"ABC234"}';
+    Iterable<String> pushes(_Room room) => room.received.where((t) => t.contains('"push.'));
+
+    test('are asked for once per connection, after the server has said it is of protocol 13', () async {
+      final room = _Room(state: () => _state(13, '[]'));
+      final client = _client(room)..setPush(push);
+      client.start();
+      await _settle();
+      expect(pushes(room), [push]);
+      client.close();
+    });
+
+    test('are not asked of a server that does not know them', () async {
+      final room = _Room(state: () => _state(12, '[]'));
+      final client = _client(room)..setPush(push);
+      client.start();
+      await _settle();
+      expect(pushes(room), isEmpty);
+      client.close();
+    });
+
+    test('are asked for at once when the person turns them on in the room, and taken back when they turn them off', () async {
+      final room = _Room(state: () => _state(13, '[]'));
+      final client = _client(room);
+      client.start();
+      await _settle();
+      client.setPush(push);
+      expect(pushes(room), [push]);
+      client.setPush(null);
+      expect(pushes(room).last, '{"t":"push.clear"}');
+      client.setPush(null);
+      expect(pushes(room), hasLength(2), reason: 'there is nothing to take back the second time');
+      client.close();
+    });
+  });
 }

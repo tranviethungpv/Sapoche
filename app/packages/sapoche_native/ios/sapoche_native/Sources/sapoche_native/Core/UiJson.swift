@@ -120,6 +120,9 @@ enum UiJson {
     /// An invitation link was opened: the UI offers to join that room.
     static func invite(_ code: String) -> String { JSONText.encode(["type": "invite", "code": code]) }
 
+    /// The person touched the notification of the chat of room [room].
+    static func openChat(_ room: String) -> String { JSONText.encode(["type": "openChat", "room": room]) }
+
     /// A setup link was opened: the address and key of the server, to be used if the person agrees.
     static func setup(_ link: String) -> String { JSONText.encode(["type": "setup", "link": link]) }
 

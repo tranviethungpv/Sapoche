@@ -121,6 +121,17 @@ class RoomController extends ChangeNotifier {
   /// The app is shown in a small window over other apps, where only the picture belongs.
   final ValueNotifier<bool> pictureInPicture = ValueNotifier(false);
 
+  /// Goes up each time the person touches a notice of the chat of the room they are in: the chat is what they want.
+  final ValueNotifier<int> chatRequests = ValueNotifier(0);
+
+  NotificationInfo _noticeInfo = const NotificationInfo();
+
+  /// Whether, and how, the person is told of the chat while the app is away.
+  NotificationInfo get notificationInfo => _noticeInfo;
+
+  /// Until when the room the person is in is quiet, or null when it is not.
+  DateTime? get roomMutedUntil => _noticeInfo.mutedUntil(_snapshot.room);
+
   bool _pipSupported = false;
 
   /// The phone can show the picture in a small window over other apps.
@@ -165,7 +176,16 @@ class RoomController extends ChangeNotifier {
     } on Object {
       // No small window then
     }
+    await _refreshNotices();
     notifyListeners();
+  }
+
+  Future<void> _refreshNotices() async {
+    try {
+      _noticeInfo = await _backend.notifications();
+    } on Object {
+      // The device does not say: it has none
+    }
   }
 
   void _onEvent(BackendEvent event) {
@@ -200,6 +220,13 @@ class RoomController extends ChangeNotifier {
         _updateWatching();
       case InviteEvent(:final code):
         invite.value = code;
+      case OpenChatEvent(:final room):
+        // In that room the chat opens; out of it, or in another, the room is offered like an invitation
+        if (room == _snapshot.room) {
+          chatRequests.value++;
+        } else {
+          invite.value = room;
+        }
       case SetupEvent(:final link):
         // A link that is not one is ignored, as is any other thing that is opened
         final parsed = SetupLink.parse(link);
@@ -995,6 +1022,28 @@ class RoomController extends ChangeNotifier {
       _run(() => _backend.setVideoQuality(height));
   Future<List<String>> log() => _backend.log();
 
+  /// Turns the notices of the chat on or off. Called from a touch: the system's leave can only be asked for from one.
+  Future<void> setNotifications(bool on) => _run(() async {
+    _noticeInfo = await _backend.setNotifications(on);
+    notifyListeners();
+  });
+
+  Future<void> setNotificationPreview(bool on) => _run(() async {
+    await _backend.setNotificationPreview(on);
+    await _refreshNotices();
+    notifyListeners();
+  });
+
+  /// Keeps the room the person is in quiet for [length], or with null makes it loud again. A room cannot be kept quiet
+  /// outside it, as no notice would come from it.
+  Future<void> muteNotifications(Duration? length) => _run(() async {
+    final code = _snapshot.room;
+    if (code == null) return;
+    await _backend.muteRoomNotifications(code, length == null ? null : DateTime.now().add(length).millisecondsSinceEpoch);
+    await _refreshNotices();
+    notifyListeners();
+  });
+
   Future<void> _run(Future<void> Function() action) async {
     try {
       await action();
@@ -1027,6 +1076,7 @@ class RoomController extends ChangeNotifier {
     invite.dispose();
     setup.dispose();
     pictureInPicture.dispose();
+    chatRequests.dispose();
     super.dispose();
   }
 }

@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 
 export interface QueueItem {
   id: string;
@@ -193,6 +193,15 @@ export type ClientMessage =
   | { t: "autoplay"; on: boolean }
   /** Turns the room's shuffle on or off, restricted like [repeat]. Protocol 11. */
   | { t: "shuffle"; on: boolean }
+  /**
+   * Asks to be told of chat while away: the browser's push [sub]scription, the [room] to open when the notice is
+   * touched, and until when to keep quiet ([until], server time in ms; absent for not at all). [preview] false keeps
+   * the text of the messages out of the notices; [lang] is the language the notice is written in. Sent again at every
+   * join. Protocol 13.
+   */
+  | { t: "push.set"; sub: { endpoint: string; keys: { p256dh: string; auth: string } }; room: string; until?: number; preview?: boolean; lang?: string }
+  /** Stops being told of chat. Leaving the room does this too. Protocol 13. */
+  | { t: "push.clear" }
   /** Start or stop listening on one's own. A solo device never holds the room back. */
   | { t: "solo"; on: boolean }
   /** Ask for the room's current state again, e.g. when rejoining after listening alone. */

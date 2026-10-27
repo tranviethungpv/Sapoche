@@ -608,6 +608,40 @@ abstract final class S {
   static String get chatOpen => _t('Open', 'Mở');
   static String get chatHint => _t('Say something…', 'Nhắn gì đó…');
   static String get chatSend => _t('Send', 'Gửi');
+
+  // Notices of the chat while the app is away
+  static String get notices => _t('Notifications', 'Thông báo');
+  static String get noticesSwitch => _t('Notify me of the chat', 'Thông báo khi có tin nhắn');
+  static String get noticesSwitchHelp => _t(
+    'When a message, an answer to one of yours or a reaction to one of yours comes while the app is not in front. Each room can be kept quiet from its chat.',
+    'Khi có tin nhắn, lời trả lời tin của bạn hoặc cảm xúc lên tin của bạn mà app không đang hiện. Mỗi phòng có thể tắt tiếng từ khung chat.',
+  );
+  static String get noticesPreview => _t('Show the message in the notice', 'Hiện nội dung tin trong thông báo');
+  static String get noticesPreviewHelp => _t(
+    'Off: the notice says only who wrote.',
+    'Tắt: thông báo chỉ cho biết ai đã nhắn.',
+  );
+  static String get noticesDenied => _t(
+    'Blocked. Allow notifications for Sapoche in the settings of the browser or the phone, then come back here.',
+    'Đang bị chặn. Hãy cho phép thông báo cho Sapoche trong cài đặt của trình duyệt hoặc điện thoại, rồi quay lại đây.',
+  );
+  static String get noticesNeedInstall => _t(
+    'On an iPhone, notifications come only once Sapoche is on the Home Screen: in Safari choose Share, then Add to Home Screen, and open it from there.',
+    'Trên iPhone, thông báo chỉ có khi Sapoche nằm trên Màn hình chính: trong Safari chọn Chia sẻ, rồi Thêm vào Màn hình chính, và mở app từ đó.',
+  );
+  static String get noticesOffer => _t(
+    'Get a notification when a message comes while the app is not open?',
+    'Nhận thông báo khi có tin nhắn lúc app không mở?',
+  );
+  static String get noticesTurnOn => _t('Turn on', 'Bật');
+  static String get noticesNotNow => _t('Not now', 'Để sau');
+  static String get noticesMute => _t('Mute notifications of this room', 'Tắt tiếng thông báo của phòng này');
+  static String get noticesMute1h => _t('For 1 hour', 'Trong 1 giờ');
+  static String get noticesMute8h => _t('For 8 hours', 'Trong 8 giờ');
+  static String get noticesMuteTomorrow => _t('Until tomorrow morning', 'Đến sáng mai');
+  static String get noticesMuteAlways => _t('Until I turn them back on', 'Cho đến khi tôi bật lại');
+  static String get noticesUnmute => _t('Turn notifications of this room back on', 'Bật lại thông báo của phòng này');
+
   static String get chatEmpty => _t('No messages yet', 'Chưa có tin nhắn nào');
   static String get chatEmptyBody => _t(
     'Say hi, or react to what is playing.',

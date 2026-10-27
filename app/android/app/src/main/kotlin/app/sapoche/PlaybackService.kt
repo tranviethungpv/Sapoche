@@ -182,6 +182,11 @@ class PlaybackService : MediaSessionService() {
                 }
         }
 
+        // A message, an answer or a reaction that comes while nobody looks at the app is told as a notification
+        scope.launch {
+            group.chatNotices.collect { notice -> if (!SapocheApp.uiVisible.value) SapocheApp.chatNotifier.show(notice) }
+        }
+
         // The names of those buttons follow the app's language
         scope.launch {
             SapocheApp.language.drop(1).collect { session?.setMediaButtonPreferences(roomButtons(repeatMode)) }

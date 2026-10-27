@@ -50,6 +50,20 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// When the person last answered "not now" to the offer of notices of the chat; null if they never did.
+  DateTime? get noticeOfferedAt {
+    final ms = _prefs.getInt(_noticeOfferedKey);
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  set noticeOfferedAt(DateTime? at) {
+    if (at == null) {
+      _prefs.remove(_noticeOfferedKey);
+    } else {
+      _prefs.setInt(_noticeOfferedKey, at.millisecondsSinceEpoch);
+    }
+  }
+
   /// The person's own picture, shown on this phone only; null while they have not chosen one.
   Uint8List? get avatar => _avatar;
 
@@ -74,6 +88,7 @@ class AppSettings extends ChangeNotifier {
   }
 
   static const _avatarKey = 'avatar';
+  static const _noticeOfferedKey = 'noticeOfferedAt';
   static const _key = 'theme_mode';
   static const _languageKey = 'language';
 
