@@ -1,0 +1,10 @@
+Start a room with the song you are hearing, and songs start faster
+- Creating a room while a song plays now offers "Create a room with this song": the room opens with that song and what comes after it, from where you were. "Empty room" is still there.
+- The first songs of a search or of Quick picks are got ready ahead of time, so touching one starts it almost at once.
+- Home shows "Room · 3 listening · Join" when the room you were in last has people in it.
+- "Added to queue" has an Undo.
+- Invitation links carry the group key, so someone who never used Sapoche can join from the link in a browser. On an iPhone the page says the app comes from SideStore and offers the browser first.
+- Autoplay no longer clears a long queue: it adds songs, and drops the oldest played ones when the queue is full.
+- Buttons and the seek bar are named for screen readers. Greyed text is easier to read in the light theme.
+- "Room key" is now "Group key". The chat encryption card says what it does not cover. Failing to join or make a room now says what to do.
+- On iPhone and the web, Settings > Server has "Check the connection".

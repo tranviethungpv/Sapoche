@@ -1,0 +1,10 @@
+Tạo phòng ngay với bài đang nghe, và bài lên tiếng nhanh hơn
+- Khi đang phát nhạc mà tạo phòng, app hỏi "Tạo phòng với bài đang nghe": phòng mở với bài đó và các bài sau nó, tiếp từ chỗ bạn đang nghe. Vẫn có "Phòng trống".
+- Vài bài đầu của kết quả tìm kiếm hay Quick picks được chuẩn bị trước, nên chạm vào là phát gần như ngay.
+- Trang chủ hiện "Phòng · 3 đang nghe · Vào" khi phòng bạn vào gần nhất đang có người.
+- "Đã thêm vào hàng đợi" có nút Hoàn tác.
+- Liên kết mời mang theo khoá nhóm, nên người chưa từng dùng Sapoche vào được phòng từ liên kết trên trình duyệt. Trên iPhone, trang mời nói rõ app cài qua SideStore và đưa trình duyệt lên trước.
+- Tự phát bài không còn xoá hàng đợi dài: nó nối thêm bài, và bỏ các bài đã phát cũ nhất khi hàng đợi đầy.
+- Nút bấm và thanh tua có tên cho trình đọc màn hình. Chữ xám ở giao diện sáng dễ đọc hơn.
+- "Khoá phòng" đổi thành "Khoá nhóm". Thẻ mã hoá chat nói rõ phần không được mã hoá. Vào phòng hay tạo phòng không được thì báo cách xử lý bằng lời.
+- Trên iPhone và web, Cài đặt > Máy chủ có "Kiểm tra kết nối".
