@@ -22,6 +22,7 @@ import 'rooms_sheet.dart';
 import 'scope.dart';
 import 'settings_page.dart';
 import 'widgets/artwork.dart';
+import 'widgets/avatars.dart';
 import 'widgets/cached_cover.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
@@ -275,9 +276,28 @@ class _HomePageState extends State<HomePage> {
       'quick': home.quickPicks.isEmpty
           ? null
           : _frame('quick', _QuickPicks(tracks: home.quickPicks)),
+      // Not the song that is playing: it is there because it was just heard, and the row is for what to hear again
       'again': home.listenAgain.isEmpty
           ? null
-          : _frame('again', songs(S.listenAgain, home.listenAgain)),
+          : _frame(
+              'again',
+              ListenableBuilder(
+                listenable: AppScope.roomOf(context),
+                builder: (context, _) {
+                  final playing = AppScope.roomOf(context)
+                      .snapshot
+                      .current
+                      ?.videoId;
+                  final tracks = [
+                    for (final t in home.listenAgain)
+                      if (t.videoId != playing) t,
+                  ];
+                  return tracks.isEmpty
+                      ? const SizedBox.shrink()
+                      : songs(S.listenAgain, tracks);
+                },
+              ),
+            ),
       'context': home.context.isEmpty
           ? null
           : _frame(
@@ -573,48 +593,89 @@ class _FriendsListeningState extends State<_FriendsListening>
               return const SizedBox.shrink();
             }
             final song = info.playing ? info.title : null;
+            final theme = Theme.of(context).textTheme;
+            const radius = BorderRadius.all(
+              Radius.circular(SapocheTheme.cardRadius),
+            );
+            // Quiet like the rest of the page: a faint tile and a small ring of the app's pink around the icon, with
+            // the one word that does something at the end
             return Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
-              child: Material(
-                color: p.primaryContainer,
-                borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
-                  child: Row(
-                    children: [
-                      Icon(Icons.groups_rounded, color: p.onPrimaryContainer),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              info.name ?? last.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(color: p.onPrimaryContainer),
+              child: Semantics(
+                button: true,
+                child: Material(
+                  color: p.text.withValues(alpha: 0.07),
+                  borderRadius: radius,
+                  child: InkWell(
+                    borderRadius: radius,
+                    onTap: _busy
+                        ? null
+                        : () => _rejoinLast(context, (busy) {
+                            if (mounted) setState(() => _busy = busy);
+                          }),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 14, 8),
+                      child: Row(
+                        children: [
+                          if (info.who.isEmpty)
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: p.primary.withValues(alpha: 0.16),
+                              ),
+                              child: Icon(
+                                Icons.groups_rounded,
+                                size: 20,
+                                color: p.primary,
+                              ),
+                            )
+                          else
+                            _Faces(names: info.who),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  info.name ?? last.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.titleSmall,
+                                ),
+                                Text(
+                                  [
+                                    S.recentLive(info.members),
+                                    ?song,
+                                  ].join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.bodySmall?.copyWith(
+                                    color: p.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
-                            Text(
-                              [S.recentLive(info.members), ?song].join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: p.onPrimaryContainer),
-                            ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 8),
+                          _busy
+                              ? SizedBox.square(
+                                  dimension: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: p.primary,
+                                  ),
+                                )
+                              : Text(
+                                  S.join,
+                                  style: theme.labelLarge?.copyWith(
+                                    color: p.primary,
+                                  ),
+                                ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: _busy
-                            ? null
-                            : () => _rejoinLast(context, (busy) {
-                                if (mounted) setState(() => _busy = busy);
-                              }),
-                        child: Text(S.join),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -622,6 +683,33 @@ class _FriendsListeningState extends State<_FriendsListening>
           },
         );
       },
+    );
+  }
+}
+
+/// The first few who are in the room, as overlapping initials: their pictures are only sent to those who are in it.
+class _Faces extends StatelessWidget {
+  const _Faces({required this.names});
+
+  final List<String> names;
+
+  static const _size = 32.0;
+
+  @override
+  Widget build(BuildContext context) {
+    const step = _size * 0.68;
+    return SizedBox(
+      height: _size,
+      width: step * (names.length - 1) + _size,
+      child: Stack(
+        children: [
+          for (final (i, name) in names.indexed)
+            Positioned(
+              left: step * i,
+              child: Avatar(name: name, size: _size, ring: true),
+            ),
+        ],
+      ),
     );
   }
 }

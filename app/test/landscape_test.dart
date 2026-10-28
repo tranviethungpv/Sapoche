@@ -284,14 +284,14 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 700));
       expect(tester.takeException(), isNull);
-      expect(tester.getSize(find.byType(MiniPlayer)).height, 52);
+      expect(tester.getSize(find.byType(MiniPlayer)).height, 40);
       final context = tester.element(find.byType(HomeShell));
       expect(HomeShell.bottomInsetOf(context), lessThan(176));
       // Nothing of the bars is out of the window
       expect(tester.getRect(find.byType(MiniPlayer)).bottom, lessThan(390));
       // And upright they are what they were
       await resize(tester, 390, 844);
-      expect(tester.getSize(find.byType(MiniPlayer)).height, 58);
+      expect(tester.getSize(find.byType(MiniPlayer)).height, 46);
     });
   });
 

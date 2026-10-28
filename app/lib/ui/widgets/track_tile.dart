@@ -32,6 +32,7 @@ class TrackTile extends StatefulWidget {
     this.onTap,
     this.leading,
     this.leadingOverlay,
+    this.badge,
     this.highlight = false,
     this.dimmed = false,
     this.dense = false,
@@ -49,6 +50,9 @@ class TrackTile extends StatefulWidget {
 
   /// Drawn over the cover, e.g. the equalizer for the song that is playing.
   final Widget? leadingOverlay;
+
+  /// Small, on the corner of the cover, e.g. the picture of the person who added the song.
+  final Widget? badge;
   final bool highlight;
   final bool dimmed;
 
@@ -71,6 +75,7 @@ class _TrackTileState extends State<TrackTile> {
       :onTap,
       :leading,
       :leadingOverlay,
+      :badge,
       :highlight,
       :dimmed,
       :dense,
@@ -94,6 +99,7 @@ class _TrackTileState extends State<TrackTile> {
                 leading ??
                     Stack(
                       alignment: Alignment.center,
+                      clipBehavior: Clip.none,
                       children: [
                         Artwork(url: track.thumb, size: 54),
                         if (leadingOverlay != null)
@@ -108,6 +114,8 @@ class _TrackTileState extends State<TrackTile> {
                               child: Center(child: leadingOverlay),
                             ),
                           ),
+                        if (badge != null)
+                          Positioned(right: -6, bottom: -6, child: badge),
                       ],
                     ),
                 const SizedBox(width: 14),

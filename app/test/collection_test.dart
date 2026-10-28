@@ -8,7 +8,7 @@ import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/ui/artist_page.dart';
 import 'package:sapoche/ui/collection_screen.dart';
 import 'package:sapoche/ui/home_shell.dart';
-import 'package:sapoche/ui/widgets/player_backdrop.dart';
+import 'package:sapoche/ui/widgets/ambient_backdrop.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';
@@ -359,7 +359,10 @@ void main() {
     ) async {
       await open(tester);
       // The colours come from the picture, as on the page of an album
-      expect(find.byType(PlayerBackdrop), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((w) => w is AmbientBackdrop && w.ownCover),
+        findsOneWidget,
+      );
       expect(find.byTooltip('Back'), findsOneWidget);
       expect(find.text('1.2M subscribers'), findsOneWidget);
       expect(find.text('Play'), findsOneWidget);

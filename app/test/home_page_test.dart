@@ -6,6 +6,8 @@ import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/strings.dart';
+import 'package:sapoche/ui/widgets/avatars.dart';
+import 'package:sapoche/ui/widgets/song_card.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';
@@ -103,12 +105,15 @@ void main() {
           members: 3,
           playing: true,
           title: 'Hello',
+          who: ['Anna', 'Binh', 'Chi'],
         ),
       );
       expect(find.text('Family'), findsOneWidget);
+      // Who is there, as their initials
+      expect(find.byType(Avatar), findsNWidgets(3));
       expect(find.text('3 listening · Hello'), findsOneWidget);
       expect(backend.calls.where((c) => c == 'roomInfo K2A5RF'), hasLength(1));
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await tester.tap(find.text('Join'));
       await tester.pump();
       expect(backend.calls, contains('join K2A5RF Anna'));
       await tester.pumpAndSettle();
@@ -124,7 +129,7 @@ void main() {
           prefs: recent,
           prepare: (b) => b.roomInfoResult = info,
         );
-        expect(find.widgetWithText(FilledButton, 'Join'), findsNothing);
+        expect(find.text('Join'), findsNothing);
       }
     });
 
@@ -139,7 +144,7 @@ void main() {
             b.roomInfoResult = const RoomInfo(exists: true, members: 3),
       );
       expect(backend.calls.where((c) => c.startsWith('roomInfo')), isEmpty);
-      expect(find.widgetWithText(FilledButton, 'Join'), findsNothing);
+      expect(find.text('Join'), findsNothing);
     });
   });
 
@@ -184,6 +189,49 @@ void main() {
           .first,
     );
     expect(find.text('Because you listened to Hello'), findsOneWidget);
+  });
+
+  testWidgets('Listen again leaves out the song that is playing', (
+    tester,
+  ) async {
+    final backend = await openHome(
+      tester,
+      prepare: (b) => b.recentSongs = [heard(anna), heard(beck)],
+    );
+    final shelf = find.ancestor(
+      of: find.text('Listen again'),
+      matching: find.byType(CardShelf),
+    );
+    expect(
+      find.descendant(of: shelf, matching: find.text('Loser')),
+      findsOneWidget,
+    );
+    backend.emit(
+      StateEvent(
+        RoomSnapshot(
+          phase: 'playing',
+          queue: [
+            QueueEntry(
+              id: 'q',
+              videoId: beck.videoId,
+              title: 'Loser',
+              artist: 'Beck',
+              durMs: 1000,
+              addedBy: '',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: shelf, matching: find.text('Loser')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: shelf, matching: find.text('Hello')),
+      findsOneWidget,
+    );
   });
 
   testWidgets(

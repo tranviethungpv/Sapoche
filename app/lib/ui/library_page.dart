@@ -11,6 +11,7 @@ import 'collection_screen.dart';
 import 'home_shell.dart';
 import 'scope.dart';
 import 'settings_page.dart';
+import 'widgets/ambient_backdrop.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
 import 'widgets/folder_cover.dart';
@@ -19,7 +20,6 @@ import 'widgets/library_lost_notice.dart';
 import 'widgets/page_width.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
-import 'widgets/player_backdrop.dart';
 import 'widgets/playlist_cover.dart';
 import 'widgets/queue_actions.dart';
 import 'widgets/scroll_edge.dart';
@@ -722,7 +722,10 @@ class _FolderPage extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        PlayerBackdrop(coverUrl: playlists.firstOrNull?.thumbs.firstOrNull),
+        AmbientBackdrop.cover(
+          cover: playlists.firstOrNull?.thumbs.firstOrNull,
+          child: const SizedBox.expand(),
+        ),
         Padding(
           padding: EdgeInsets.only(left: SideInset.of(context)),
           child: Scaffold(
@@ -1321,7 +1324,10 @@ class _TrackList extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            PlayerBackdrop(coverUrl: tracks.firstOrNull?.thumb),
+            AmbientBackdrop.cover(
+              cover: tracks.firstOrNull?.thumb,
+              child: const SizedBox.expand(),
+            ),
             Padding(
               padding: EdgeInsets.only(left: SideInset.of(context)),
               child: Scaffold(

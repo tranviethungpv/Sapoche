@@ -18,7 +18,7 @@ class PlayerBar extends StatelessWidget {
 
   final RoomController controller;
 
-  static const height = 76.0;
+  static const height = 68.0;
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +74,7 @@ class PlayerBarBody extends StatelessWidget {
   final VoidCallback? onTap;
   final bool ghost;
 
-  static const _cover = 52.0;
+  static const _cover = 46.0;
 
   @override
   Widget build(BuildContext context) {

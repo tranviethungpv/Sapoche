@@ -876,10 +876,13 @@ export class Room extends DurableObject<Env> {
   /** What the app shows about a room before joining it. Reads only: it never creates anything. */
   private info() {
     const item = this.s.queue[this.s.index];
+    const here = this.members().filter((m) => !m.away);
     return {
       exists: this.created,
       name: this.s.name ?? null,
-      members: this.members().filter((m) => !m.away).length,
+      members: here.length,
+      // The first few by name, for the pictures on the way back in; their own pictures are only sent to those who join
+      who: here.slice(0, 3).map((m) => m.name),
       playing: this.s.phase === "playing",
       title: item?.title ?? null,
       ...(this.s.enc ? { enc: true } : {}),

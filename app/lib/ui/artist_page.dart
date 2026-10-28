@@ -15,7 +15,7 @@ import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/play_row.dart';
-import 'widgets/player_backdrop.dart';
+import 'widgets/ambient_backdrop.dart';
 
 /// Opens the page of an artist in the tab that is showing, with a way back.
 Future<void> openArtist(BuildContext context, String artistId) {
@@ -61,7 +61,10 @@ class _ArtistScreenState extends State<ArtistScreen> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            PlayerBackdrop(coverUrl: page?.thumb),
+            AmbientBackdrop.cover(
+              cover: page?.thumb,
+              child: const SizedBox.expand(),
+            ),
             Padding(
               padding: EdgeInsets.only(left: SideInset.of(context)),
               child: Scaffold(

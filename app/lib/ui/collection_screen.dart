@@ -8,12 +8,12 @@ import 'artist_page.dart';
 import 'home_shell.dart';
 import 'player/player_message.dart';
 import 'scope.dart';
+import 'widgets/ambient_backdrop.dart';
 import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/page_width.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
-import 'widgets/player_backdrop.dart';
 import 'widgets/queue_actions.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
@@ -72,7 +72,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            PlayerBackdrop(coverUrl: page?.thumb ?? widget.thumb),
+            AmbientBackdrop.cover(
+              cover: page?.thumb ?? widget.thumb,
+              child: const SizedBox.expand(),
+            ),
             Padding(
               padding: EdgeInsets.only(left: SideInset.of(context)),
               child: page != null

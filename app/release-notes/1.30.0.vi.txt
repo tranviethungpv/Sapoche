@@ -1,0 +1,7 @@
+Thanh dưới gọn hơn, và biết ai thêm bài chỉ với một cái nhìn
+- Thanh tab và mini player thấp hơn và cách xa hai mép hơn. Khi thu gọn, nút tab và nút Tìm kiếm co lại bằng chiều cao mini player.
+- Trong phòng, người thêm bài là một ảnh nhỏ ở góc bìa, thay cho dòng chữ hay bị tên dài đẩy mất.
+- Trang chủ: thẻ phòng đang có người nay nhỏ và nhẹ nhàng hơn, kèm vài người đang ở đó.
+- Album, playlist, nghệ sĩ và các danh sách trong Thư viện có vầng sáng đầu trang theo màu bìa của chính nó.
+- Trên Android, Cài đặt cũng có "Kiểm tra kết nối".
+- "Nghe lại" không còn đưa ra bài đang phát. Tìm kiếm không còn để các dòng đang tải lộ qua kết quả.

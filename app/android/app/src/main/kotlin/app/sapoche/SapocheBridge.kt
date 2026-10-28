@@ -853,6 +853,7 @@ class SapocheBridge(
                 "members" to json.optInt("members"),
                 "playing" to json.optBoolean("playing"),
                 "title" to if (json.isNull("title")) null else json.getString("title"),
+                "who" to json.optJSONArray("who")?.let { names -> List(names.length()) { names.optString(it) } }.orEmpty(),
             )
         }
     }

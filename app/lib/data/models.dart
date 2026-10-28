@@ -323,6 +323,7 @@ class RoomInfo {
     this.members = 0,
     this.playing = false,
     this.title,
+    this.who = const [],
   });
 
   /// False when the code was never used or the room has expired.
@@ -336,12 +337,16 @@ class RoomInfo {
   /// The song the room is on.
   final String? title;
 
+  /// The names of the first few who are there; empty from a server older than protocol 17.
+  final List<String> who;
+
   factory RoomInfo.fromMap(Map<Object?, Object?> map) => RoomInfo(
     exists: map['exists'] as bool? ?? false,
     name: map['name'] as String?,
     members: (map['members'] as num?)?.toInt() ?? 0,
     playing: map['playing'] as bool? ?? false,
     title: map['title'] as String?,
+    who: [for (final name in map['who'] as List? ?? const []) '$name'],
   );
 }
 

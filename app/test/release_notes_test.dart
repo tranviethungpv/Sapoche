@@ -96,7 +96,9 @@ void main() {
       PackageInfo.setMockInitialValues(
         appName: 'Sapoche',
         packageName: 'app.sapoche',
-        version: '1.26.0',
+        // The version that is in this tree, which is the newest of the notes listed
+        version: RegExp(r'^version: (\S+)\+', multiLine: true)
+            .firstMatch(File('pubspec.yaml').readAsStringSync())![1]!,
         buildNumber: '58',
         buildSignature: '',
       );

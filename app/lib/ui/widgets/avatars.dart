@@ -69,6 +69,36 @@ class Avatar extends StatelessWidget {
   }
 }
 
+/// The avatar of one member of the room, with the picture they chose if they chose one.
+class MemberAvatar extends StatelessWidget {
+  const MemberAvatar({
+    super.key,
+    required this.member,
+    this.size = 36,
+    this.ring = false,
+  });
+
+  final Member member;
+  final double size;
+  final bool ring;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = AppScope.of(context);
+    return ListenableBuilder(
+      listenable: Listenable.merge([model.settings, model.room]),
+      builder: (context, _) => Avatar(
+        name: member.name,
+        size: size,
+        ring: ring,
+        image: member.id == model.room.snapshot.you
+            ? model.settings.avatar
+            : model.room.avatarOf(member.id),
+      ),
+    );
+  }
+}
+
 /// Overlapping avatars of everyone in the room.
 class AvatarStack extends StatelessWidget {
   const AvatarStack({

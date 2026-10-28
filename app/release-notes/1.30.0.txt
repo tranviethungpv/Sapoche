@@ -1,0 +1,7 @@
+Neater bars, and who added a song at a glance
+- The tabs and the mini player are lower and sit further in from the sides. Folded away, the tab and Search shrink to the height of the mini player.
+- In a room, the person who added a song is a small picture on its cover instead of a line of text that long names pushed out of sight.
+- Home: the card for a room with people in it is quiet and small now, with the first few who are there.
+- Albums, playlists, artists and the lists in Library glow along the top in the colours of their own cover.
+- On Android, Settings has "Check the connection" too.
+- "Listen again" no longer offers the song that is playing. Search no longer shows its loading rows through the results.

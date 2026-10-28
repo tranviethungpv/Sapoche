@@ -118,7 +118,8 @@ class _RoomPageState extends State<RoomPage> {
               listenable: controller.playState,
               builder: (context, _) => TrackTile(
                 track: current,
-                subtitle: _byline(snapshot, current),
+                subtitle: _byline(current),
+                badge: _badge(snapshot, current),
                 highlight: true,
                 leadingOverlay: Equalizer(
                   active: controller.isPlaying,
@@ -179,7 +180,8 @@ class _RoomPageState extends State<RoomPage> {
                   animate: !_known.contains(entry.id),
                   child: TrackTile(
                     track: entry,
-                    subtitle: _byline(snapshot, entry),
+                    subtitle: _byline(entry),
+                    badge: _badge(snapshot, entry),
                     onTap: () => controller.jump(entry),
                   ),
                 ),
@@ -208,7 +210,8 @@ class _RoomPageState extends State<RoomPage> {
               entry,
               TrackTile(
                 track: entry,
-                subtitle: _byline(snapshot, entry),
+                subtitle: _byline(entry),
+                badge: _badge(snapshot, entry),
                 dimmed: true,
                 // Tap to hear it again
                 onTap: () => controller.jump(entry),
@@ -236,13 +239,24 @@ class _RoomPageState extends State<RoomPage> {
     child: child,
   );
 
-  String _byline(RoomSnapshot snapshot, QueueEntry entry) {
-    // Lined up by autoplay: no member picked it, whoever's device fetched it
-    if (entry.auto) return '${entry.artist} · ${S.autoplay}';
-    final who = entry.addedBy == snapshot.you
-        ? S.you
-        : snapshot.nameOf(entry.addedBy);
-    return who.isEmpty ? entry.artist : '${entry.artist} · ${S.addedBy(who)}';
+  /// Autoplay is said in words; the person who added a song is the small picture on its cover.
+  String _byline(QueueEntry entry) =>
+      entry.auto ? '${entry.artist} · ${S.autoplay}' : entry.artist;
+
+  /// Who added the song, small enough to see at a glance down the list, whatever the length of the artist's name. Nothing
+  /// for a song lined up by autoplay (no member picked it) or by somebody who has left.
+  Widget? _badge(RoomSnapshot snapshot, QueueEntry entry) {
+    if (entry.auto) return null;
+    final member = snapshot.members
+        .where((m) => m.id == entry.addedBy)
+        .firstOrNull;
+    if (member == null) return null;
+    final who = member.id == snapshot.you ? S.you : member.name;
+    return Semantics(
+      label: S.addedBy(who),
+      excludeSemantics: true,
+      child: MemberAvatar(member: member, size: 22, ring: true),
+    );
   }
 }
 

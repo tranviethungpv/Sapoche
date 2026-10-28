@@ -620,6 +620,7 @@ async function existenceSection() {
   check("joining a room that exists works", joined.state.ownerId === pid("own-id") && joined.members.length === 2);
   const info = await roomInfo(code);
   check("info tells whether the room exists and who is in it", info.exists === true && info.members === 2 && info.playing === false && info.name === null);
+  check("and names the first of them", Array.isArray(info.who) && info.who.length === 2 && info.who.includes("Olga") && info.who.includes("Gus"));
   if (KEY) {
     const noKey = await fetch(`${BASE}/room/${code}/info`);
     check("info needs the key too", noKey.status === 401, `status=${noKey.status}`);

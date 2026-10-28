@@ -42,7 +42,7 @@ It measures 8 times when joining and keeps the sample with the smallest `rtt`. I
 
 `POST /rooms`, `GET /room/<CODE>/info` and `WS /room/<CODE>` need the shared key `ROOM_KEY` (header `X-Sapoche-Key`, or the parameter `?key=` where no header can be set). A wrong or missing key gets HTTP 401 before the WebSocket upgrade; the client treats that as a final error and does not retry. Three routes are always open: `GET /health` returns `{"ok":true,"protocol":17}`; `GET /join/<CODE>` is the page an invitation link opens (it tries to open the app with `intent://`, and otherwise shows the code); `GET /.well-known/assetlinks.json` lets Android verify the app's https links. These three do not touch any room, so they need no key. Operational details are in [../server/README.md](../server/README.md).
 
-`GET /room/<CODE>/info` is read-only and creates nothing: `{"exists":true,"name":"Family","members":2,"playing":true,"title":"..."}`; `exists:false` when the room never existed or has expired. The app uses it for the list of recent rooms.
+`GET /room/<CODE>/info` is read-only and creates nothing: `{"exists":true,"name":"Family","members":2,"who":["Anna","Binh"],"playing":true,"title":"..."}`; `exists:false` when the room never existed or has expired. `who` is the names of the first three members who are there (absent from a server older than this addition; a client shows nothing for it). The app uses it for the list of recent rooms and the card on its home page.
 
 ## 3. Messages client → server
 

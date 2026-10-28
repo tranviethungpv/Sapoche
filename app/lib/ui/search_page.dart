@@ -616,6 +616,10 @@ class _SearchPageState extends State<SearchPage> {
     final bottom = HomeShell.bottomInsetOf(context);
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
+      // The loading rows and the results are different shapes: the one that goes is gone at once, instead of showing
+      // through the one that comes
+      layoutBuilder: (current, previous) =>
+          Stack(fit: StackFit.expand, children: [?current]),
       child: switch (_phase) {
         // Before the first answer, what is typed has its completions only
         _Phase.idle when _field.text.trim().isNotEmpty => ListView(

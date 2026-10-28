@@ -17,12 +17,16 @@ class MiniPlayer extends StatelessWidget {
   final RoomController controller;
 
   /// How far the bars are folded away, 0 to 1. Folded, the capsule sits between the tab that is open and Search, as
-  /// low as they are, with the cover, the title and the play button only.
+  /// low as they are and as high, with the cover, the title and the play button only.
   final double folded;
 
-  /// Lower on a screen that is wider than it is tall, where height is what is short.
+  /// Lower on a screen that is wider than it is tall, where height is what is short, and always lower than the tabs
+  /// under it on a phone. A tablet's, which floats alone, is a little lower than a phone's was.
   static double heightOf(BuildContext context) =>
-      HomeShell.isWide(context) ? 52 : 58;
+      switch (HomeShell.layoutOf(context)) {
+        ShellLayout.bars => HomeShell.isWide(context) ? 40 : 46,
+        _ => HomeShell.isWide(context) ? 48 : 54,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -91,8 +95,7 @@ class MiniPlayerCapsule extends StatelessWidget {
     final sheet = PlayerSheetScope.of(context);
     final current = controller.snapshot.current;
     if (current == null) return const SizedBox.shrink();
-    final open = MiniPlayer.heightOf(context);
-    final height = open + (HomeShell.tabHeightOf(context) - open) * folded;
+    final height = MiniPlayer.heightOf(context);
     final cover = (height - 8).clamp(0.0, 44.0);
     // What folding takes away is gone half way
     final fading = (1 - 2 * folded).clamp(0.0, 1.0);

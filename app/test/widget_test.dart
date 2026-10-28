@@ -10,6 +10,7 @@ import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/ui/home_shell.dart';
 import 'package:sapoche/ui/now_playing_page.dart';
 import 'package:sapoche/ui/setup_dialog.dart';
+import 'package:sapoche/ui/widgets/avatars.dart';
 import 'package:sapoche/ui/widgets/qr_code_view.dart';
 import 'package:sapoche/ui/widgets/shimmer.dart';
 import 'package:sapoche/ui/widgets/mini_player.dart';
@@ -920,7 +921,7 @@ void main() {
     final search = tester.getRect(find.byTooltip('Search'));
     // At the right end, level with the tabs
     final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
-    expect(search.right, closeTo(width - 12, 1));
+    expect(search.right, closeTo(width - 24, 1));
     expect(search.left, greaterThan(tabs.right));
     expect(search.top, lessThan(tabs.top));
     expect(search.bottom, greaterThan(tabs.bottom));
@@ -1060,7 +1061,7 @@ void main() {
       );
       // Every page asks the same question, from under the scaffold: the home indicator, the tabs, and a little room
       final page = tester.element(find.byType(ListView).last);
-      expect(HomeShell.bottomInsetOf(page), 34 + 60 + 16);
+      expect(HomeShell.bottomInsetOf(page), 34 + 46 + 16);
     });
 
     testWidgets('and the end of a long queue clears them too', (tester) async {
@@ -1405,7 +1406,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     backend.searchPageResult = SearchResults(
       items: [
-        for (var i = 0; i < 14; i++)
+        for (var i = 0; i < 20; i++)
           SearchItem(kind: 'artist', id: 'UC$i', title: 'Artist $i'),
       ],
       more: 'NEXT',
@@ -1434,7 +1435,7 @@ void main() {
       backend.searchPageResult = SearchResults(
         chips: const [SearchChip(label: 'Songs', params: 'SONGS')],
         items: [
-          for (var i = 0; i < 14; i++)
+          for (var i = 0; i < 20; i++)
             SearchItem(kind: 'artist', id: 'UC$i', title: 'Artist $i'),
         ],
       );
@@ -1735,6 +1736,30 @@ void main() {
     expect(find.byType(NowPlayingPage), findsNothing);
     expect(find.byType(MiniPlayer), findsOneWidget);
   });
+
+  testWidgets(
+    'who added a song is a small picture on its cover, not a line of text',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester, listen: false);
+      backend.emit(StateEvent(sampleRoom(songs: 3)));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Listen'));
+      await tester.pump(const Duration(milliseconds: 100));
+      // The artist keeps the whole line, however long the name of the person who added the song
+      expect(find.text('Artist 1'), findsOneWidget);
+      expect(find.textContaining('Added by'), findsNothing);
+      // One picture to a song: Song 0 and Song 2 are Anna's (this device's), Song 1 is Binh's
+      expect(
+        [
+          for (final a in tester.widgetList<MemberAvatar>(
+            find.byType(MemberAvatar),
+          ))
+            a.member.name,
+        ],
+        ['Anna', 'Binh', 'Anna'],
+      );
+    },
+  );
 
   testWidgets('a new song slides in but the ones already there do not', (
     tester,

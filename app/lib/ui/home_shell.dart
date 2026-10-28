@@ -63,14 +63,14 @@ class HomeShell extends StatefulWidget {
   }
 
   /// Bottom padding lists need so their last row can scroll clear of the bars. A phone's bars are folded by the time a
-  /// page has been scrolled to its end, so it is their folded height (the row of tabs above the system's bar) and a
+  /// page has been scrolled to its end, so it is their folded height (the mini player's, the row above the system's bar) and a
   /// little room: made for the open bars, the end of every page was a long empty band under the folded ones. Scrolled
   /// back up, the open mini player covers the last rows, as glass that shows them.
   static double bottomInsetOf(BuildContext context) =>
       switch (layoutOf(context)) {
         ShellLayout.bars =>
           math.max(_systemBottomOf(context), _barsBottom) +
-              tabHeightOf(context) +
+              MiniPlayer.heightOf(context) +
               16,
         ShellLayout.rail => 120,
         ShellLayout.sidebar => 112,
@@ -102,8 +102,9 @@ class HomeShell extends StatefulWidget {
     ShellLayout.sidebar => 172,
   };
 
-  /// Height of the capsule of tabs and of the Search button.
-  static double tabHeightOf(BuildContext context) => isWide(context) ? 40 : 60;
+  /// Height of the capsule of tabs and of the Search button: always a little more than the mini player's, which they
+  /// come down to when the bars are folded.
+  static double tabHeightOf(BuildContext context) => isWide(context) ? 42 : 54;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -611,7 +612,7 @@ class _Side extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         final content = box.maxWidth - inset;
-        final mini = (content - 32).clamp(0.0, 520.0);
+        final mini = (content - 32).clamp(0.0, 460.0);
         return Stack(
           children: [
             // The pages take the whole window, and keep clear of the rail or the sidebar themselves
@@ -652,7 +653,7 @@ class _Side extends StatelessWidget {
                   : Align(
                       heightFactor: 1,
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 820),
+                        constraints: const BoxConstraints(maxWidth: 740),
                         child: PlayerBar(controller: controller),
                       ),
                     ),
@@ -1030,12 +1031,15 @@ class _Bars extends StatelessWidget {
     // Between the mini player and the tabs, between the tabs and Search, and to the sides of the screen
     final gap = wide ? 4.0 : 10.0;
     final apart = wide ? 8.0 : 10.0;
-    const side = 12.0;
+    // Room at the sides, or the bars look as wide as the screen and flat
+    final side = wide ? 16.0 : 24.0;
     return ListenableBuilder(
       listenable: Listenable.merge([controller, shrink, drop]),
       builder: (context, _) {
         final shrink = this.shrink.value;
         final drop = this.drop.value;
+        // Folded, the tab and Search are as high as the mini player between them, and as low as the bars were
+        final high = tabs + (mini - tabs) * shrink;
         // Where the row of tabs starts: below the mini player, when there is a song
         final row = controller.snapshot.current == null ? 0.0 : mini + gap;
         return Stack(
@@ -1072,7 +1076,7 @@ class _Bars extends StatelessWidget {
                   builder: (context, box) {
                     final open = box.maxWidth - 2 * side - apart - tabs;
                     // The mini player's sides, folded: beside the tab on the left and Search on the right
-                    final inset = side + tabs + apart;
+                    final inset = side + mini + apart;
                     return Stack(
                       // A song that ends draws its capsule above the bars as it goes
                       clipBehavior: Clip.none,
@@ -1080,7 +1084,9 @@ class _Bars extends StatelessWidget {
                         Positioned(
                           left: side + (inset - side) * drop,
                           right: side + (inset - side) * drop,
-                          top: (row - gap - mini) * (1 - drop) + row * drop,
+                          top:
+                              (row - gap - mini) * (1 - drop) +
+                              (row + tabs - mini) * drop,
                           child: MiniPlayer(
                             controller: controller,
                             folded: drop,
@@ -1088,9 +1094,9 @@ class _Bars extends StatelessWidget {
                         ),
                         Positioned(
                           left: side,
-                          top: row,
-                          width: open + (tabs - open) * shrink,
-                          height: tabs,
+                          top: row + tabs - high,
+                          width: open + (mini - open) * shrink,
+                          height: high,
                           child: _Tabs(
                             index: index,
                             browsing: browsing,
@@ -1102,11 +1108,11 @@ class _Bars extends StatelessWidget {
                         ),
                         Positioned(
                           right: side,
-                          top: row,
-                          width: tabs,
-                          height: tabs,
+                          top: row + tabs - high,
+                          width: high,
+                          height: high,
                           child: Glass(
-                            borderRadius: BorderRadius.circular(tabs / 2),
+                            borderRadius: BorderRadius.circular(high / 2),
                             child: IconButton(
                               onPressed: () => onSelect(1),
                               tooltip: S.tabSearch,
@@ -1168,7 +1174,8 @@ class _Tabs extends StatelessWidget {
     final items = _items;
     final slot = items.indexWhere((item) => item.$1 == browsing);
     return Glass(
-      borderRadius: round,
+      // A capsule whatever its height is while it shrinks
+      borderRadius: BorderRadius.circular(HomeShell.tabHeightOf(context)),
       child: Stack(
         fit: StackFit.expand,
         children: [
