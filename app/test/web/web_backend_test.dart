@@ -217,6 +217,33 @@ void main() {
     expect(errors.map((e) => e.code), ['key_refused']);
   });
 
+  group('checking the server', () {
+    Future<ServerCheck> check(http.Response Function(http.Request request) answer, {Map<String, Object> prefs = const {'web.key': 'k'}}) async {
+      final (backend, _) = await backendWith(answer, prefs: prefs);
+      return backend.checkServer();
+    }
+
+    test('says it is there, takes the key and its protocol', () async {
+      final result = await check(
+        (r) => r.url.path == '/health' ? http.Response('{"ok":true,"protocol":17}', 200) : http.Response('{"code":"ABC234"}', 200),
+      );
+      expect(result.reachable, isTrue);
+      expect(result.protocol, 17);
+      expect(result.keyAccepted, isTrue);
+    });
+
+    test('a key the server turns down is told apart from a server that is down', () async {
+      final refused = await check(
+        (r) => r.url.path == '/health' ? http.Response('{"ok":true,"protocol":17}', 200) : http.Response('no', 401),
+      );
+      expect(refused.reachable, isTrue);
+      expect(refused.keyAccepted, isFalse);
+      final down = await check((_) => http.Response('', 503));
+      expect(down.reachable, isFalse);
+      expect(down.keyAccepted, isNull);
+    });
+  });
+
   test('YouTube Music saying no is an error the screen can show', () async {
     final (backend, _) = await backendWith((_) => http.Response('no', 502), prefs: {'web.key': 'k'});
     await expectLater(backend.musicArtist('UC'), throwsA(isA<BackendException>()));

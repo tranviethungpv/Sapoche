@@ -69,6 +69,18 @@ void main() {
       expect(find.byKey(const ValueKey('chat-mute')), findsOneWidget);
     });
 
+    testWidgets('the offer steps aside while the keyboard is up, and is back when it goes', (tester) async {
+      await chatOpen(tester, askable);
+      expect(find.text(S.noticesOffer), findsOneWidget);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 800);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(find.text(S.noticesOffer), findsNothing);
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(find.text(S.noticesOffer), findsOneWidget);
+    });
+
     testWidgets('do not offer them again for a week after "not now"', (tester) async {
       await chatOpen(tester, askable);
       await tester.tap(find.text(S.noticesNotNow));

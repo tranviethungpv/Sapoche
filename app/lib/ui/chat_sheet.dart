@@ -613,7 +613,10 @@ class _NoticeOfferState extends State<_NoticeOffer> {
         final info = widget.controller.notificationInfo;
         final asked = settings.noticeOfferedAt;
         final due = asked == null || DateTime.now().difference(asked) > _wait;
+        // With the keyboard up the offer would take a sixth of the little that is left for the messages
+        final typing = MediaQuery.viewInsetsOf(context).bottom > 0;
         if (_hidden ||
+            typing ||
             !due ||
             !info.supported ||
             info.enabled ||

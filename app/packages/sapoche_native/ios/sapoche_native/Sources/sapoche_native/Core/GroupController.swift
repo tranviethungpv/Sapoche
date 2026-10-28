@@ -393,8 +393,8 @@ final class GroupController {
                 let more = try await self.moreLike(like.videoId, queued, Self.autoplayCount)
                 if more.isEmpty || self.session != nil || !self.local.snapshot.value.finished { return }
                 EventLog.d("local", "autoplay adds \(more.count) songs like '\(like.title)'")
-                // A queue that has grown long by carrying on is started afresh rather than filling up
-                if self.local.snapshot.value.queue.count > Self.autoplayRestartAt { self.local.clear() }
+                // Carrying on only adds: what has been played makes room when the new songs would not fit
+                self.local.dropPlayed(self.local.snapshot.value.queue.count + more.count - LocalSession.maxQueue)
                 self.local.add(more, next: false)
             } catch is CancellationError {
                 throw CancellationError()
@@ -907,7 +907,6 @@ final class GroupController {
     private static let keyLastActive = "room_last_active"
     private static let keyAutoplay = "autoplay"
     private static let keyVideo = "video_mode"
-    private static let autoplayRestartAt = 150
 
     /// Songs added each time the queue runs out and the music carries on by itself.
     private static let autoplayCount = 5

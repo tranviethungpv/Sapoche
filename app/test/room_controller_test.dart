@@ -139,6 +139,16 @@ void main() {
     expect(backend.warmed, ['video0,video1,video2']);
   });
 
+  test('the check of the server asks the backend, and a backend that fails says the server is not there', () async {
+    backend.serverCheckResult = const ServerCheck(reachable: true, protocol: 16, keyAccepted: false);
+    final check = await controller.checkServer();
+    expect(backend.calls.last, 'checkServer');
+    expect(check.keyAccepted, isFalse);
+    expect(check.protocol, lessThan(serverProtocolNeeded));
+    backend.failWith = BackendException('failed', 'boom');
+    expect((await controller.checkServer()).reachable, isFalse);
+  });
+
   test('is ready once the first state arrives', () async {
     backend.emit(const StateEvent(RoomSnapshot()));
     await settle();

@@ -418,6 +418,16 @@ class LocalSession {
     save();
   }
 
+  /// Takes up to [count] of the oldest songs off the queue, the ones already played, to make room at the end: never the
+  /// song playing, and never one still to come. Once the queue has finished all of it has been played.
+  void dropPlayed(int count) {
+    final s = snapshot;
+    final drop = min(count, s.finished ? s.queue.length : s.index);
+    if (drop <= 0) return;
+    _update((s) => s.copyWith(queue: s.queue.sublist(drop), index: max(s.index - drop, 0)));
+    save();
+  }
+
   void clear() {
     _stopPlayer();
     _skippedInARow = 0; // a new list is a new start

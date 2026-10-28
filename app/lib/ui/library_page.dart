@@ -15,6 +15,7 @@ import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
 import 'widgets/folder_cover.dart';
 import 'widgets/folder_sheets.dart';
+import 'widgets/library_lost_notice.dart';
 import 'widgets/page_width.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
@@ -315,6 +316,7 @@ class _Overview extends StatelessWidget {
               ],
             ),
           ),
+          const LibraryLostNotice(),
           _CollectionRow(
             leading: const _IconTile(Icons.favorite_rounded),
             title: S.likedSongs,
@@ -398,6 +400,27 @@ class _Overview extends StatelessWidget {
               title: playlist.name,
               subtitle: S.songCount(playlist.count),
               onTap: () => onOpen(_Playlist(playlist.id)),
+            ),
+          // Nothing under the heading would read as a page that did not load
+          if (library.playlists.isEmpty && library.folders.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(36, 24, 36, 0),
+              child: Column(
+                children: [
+                  Text(S.noPlaylistsTitle, style: theme.titleMedium),
+                  const SizedBox(height: 6),
+                  Text(
+                    S.noPlaylistsBody,
+                    textAlign: TextAlign.center,
+                    style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton(
+                    onPressed: () => _create(context, library),
+                    child: Text(S.newPlaylist),
+                  ),
+                ],
+              ),
             ),
         ],
       ),

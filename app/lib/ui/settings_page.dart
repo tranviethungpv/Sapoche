@@ -23,6 +23,7 @@ import 'profile_sheet.dart';
 import 'release_history_list.dart';
 import 'widgets/ambient_backdrop.dart';
 import 'widgets/avatars.dart';
+import 'widgets/library_lost_notice.dart';
 import 'widgets/page_width.dart';
 import 'widgets/play_row.dart';
 import 'widgets/release_notes_text.dart';
@@ -530,6 +531,7 @@ class _SettingsPageState extends State<SettingsPage> {
   ];
 
   static List<Widget> _backup(BuildContext context, AppModel model) => [
+    const LibraryLostNotice(),
     _BackupGroup(library: model.library),
   ];
 
@@ -639,7 +641,107 @@ class _ServerGroup extends StatelessWidget {
             label: S.setupPaste,
             onTap: () => _paste(context),
           ),
+          _Row(
+            key: const ValueKey('server-check'),
+            label: S.checkConnectionRow,
+            onTap: () => _check(context),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Asks the server three things and says what it answered: whether it is there, whether it takes the key, and whether
+  /// it is new enough for this app.
+  Future<void> _check(BuildContext context) async {
+    final result = room.checkServer();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => FutureBuilder<ServerCheck>(
+        future: result,
+        builder: (context, snapshot) {
+          final check = snapshot.data;
+          final p = context.palette;
+          Widget line(bool? ok, String text) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  ok == null
+                      ? Icons.help_outline_rounded
+                      : ok
+                      ? Icons.check_circle_rounded
+                      : Icons.cancel_rounded,
+                  size: 20,
+                  color: ok == null
+                      ? p.textTertiary
+                      : ok
+                      ? p.success
+                      : p.error,
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(text)),
+              ],
+            ),
+          );
+          final protocol = check?.protocol;
+          return AlertDialog(
+            title: Text(S.checkConnectionRow),
+            content: check == null
+                ? Row(
+                    children: [
+                      const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 14),
+                      Text(S.checkingConnection),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      line(
+                        check.reachable,
+                        check.reachable
+                            ? S.checkServerReached
+                            : S.checkServerUnreachable,
+                      ),
+                      if (check.reachable) ...[
+                        line(
+                          check.keyAccepted,
+                          check.keyAccepted == null
+                              ? S.checkKeyUnknown
+                              : check.keyAccepted!
+                              ? S.checkKeyOk
+                              : S.checkKeyRefused,
+                        ),
+                        line(
+                          protocol == null
+                              ? null
+                              : protocol >= serverProtocolNeeded,
+                          protocol == null
+                              ? S.checkVersionUnknown
+                              : protocol >= serverProtocolNeeded
+                              ? S.checkVersionOk(protocol)
+                              : S.checkVersionOld(
+                                  protocol,
+                                  serverProtocolNeeded,
+                                ),
+                        ),
+                      ],
+                    ],
+                  ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(S.close),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

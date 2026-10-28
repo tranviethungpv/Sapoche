@@ -470,6 +470,37 @@ final class LocalSessionTests: XCTestCase {
         XCTAssertNil(h.player.loaded)
     }
 
+    func testDroppingPlayedSongsKeepsTheOnePlayingAndThoseToCome() async {
+        let h = harness()
+        h.session.add([track(1), track(2), track(3), track(4)], next: false)
+        await h.step()
+        h.session.jump(h.session.snapshot.value.queue[2].id)
+        await h.step()
+        h.session.dropPlayed(10)
+        await h.step()
+        XCTAssertEqual(h.titles(), ["Song 3", "Song 4"])
+        XCTAssertEqual(h.session.snapshot.value.index, 0)
+        XCTAssertEqual(h.player.loaded?.title, "Song 3")
+    }
+
+    func testOnceTheQueueHasFinishedAllOfItMayBeDroppedOldestFirst() async {
+        let h = harness()
+        h.session.add([track(1), track(2), track(3)], next: false)
+        await h.step()
+        h.session.jump(h.session.snapshot.value.queue[2].id)
+        await h.step()
+        h.player.onEnded?()
+        await h.step()
+        XCTAssertTrue(h.session.snapshot.value.finished)
+        h.session.dropPlayed(2)
+        await h.step()
+        XCTAssertEqual(h.titles(), ["Song 3"])
+        XCTAssertEqual(h.session.snapshot.value.index, 0)
+        h.session.dropPlayed(0)
+        h.session.dropPlayed(-5)
+        XCTAssertEqual(h.titles(), ["Song 3"])
+    }
+
     func testARestoredQueueLoadsNothingAndPlaysNothingUntilAsked() async {
         let song = item("a", "aaaaaaaaaaa", "One")
         let other = item("b", "bbbbbbbbbbb", "Two")

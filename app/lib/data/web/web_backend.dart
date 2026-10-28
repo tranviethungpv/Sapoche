@@ -267,6 +267,8 @@ class WebBackend extends BackendDefaults {
     autoplay: _autoplayOn,
     configured: _server.isNotEmpty,
     hasKey: _key.isNotEmpty,
+    // The browser would not give the stored library back: this one lasts until the page closes
+    libraryLost: _library.disk == null,
   );
 
   /// A link that opens this app with the key already in it (see index.html), for sending to the people of the group.
@@ -310,6 +312,25 @@ class WebBackend extends BackendDefaults {
       return RoomInfo.fromMap(jsonDecode(reply.body) as Map<String, dynamic>);
     } on Object {
       return null;
+    }
+  }
+
+  @override
+  Future<ServerCheck> checkServer() async {
+    if (_server.isEmpty) return const ServerCheck();
+    try {
+      final health = await _http.get(Uri.parse('$_server/health'));
+      if (health.statusCode != 200) return const ServerCheck();
+      final protocol = (jsonDecode(health.body) as Map<String, dynamic>)['protocol'];
+      // The same call that makes a room: it only draws a code, and is what asks for the key
+      final key = await _http.post(Uri.parse('$_server/rooms'), headers: _authHeaders);
+      return ServerCheck(
+        reachable: true,
+        protocol: protocol is num ? protocol.toInt() : null,
+        keyAccepted: key.statusCode == 401 ? false : key.statusCode >= 200 && key.statusCode < 300 ? true : null,
+      );
+    } on Object {
+      return const ServerCheck();
     }
   }
 
@@ -688,9 +709,6 @@ class WebBackend extends BackendDefaults {
   /// Songs that follow one that was played on its own.
   static const _radioCount = 20;
 
-  /// A queue that has grown long by carrying on is started afresh rather than filling up.
-  static const _autoplayRestartAt = 150;
-
   var _autoplaying = false;
 
   /// The personal queue ran out. Unless the person turned it off, it carries on with songs like the last one, so the
@@ -703,7 +721,8 @@ class WebBackend extends BackendDefaults {
         final more = await _moreLike(last.videoId, {for (final e in _local.snapshot.queue) e.videoId}, _autoplayCount);
         if (more.isEmpty || _session != null || !_local.snapshot.finished) return;
         _note("local: autoplay adds ${more.length} songs like '${last.title}'");
-        if (_local.snapshot.queue.length > _autoplayRestartAt) _local.clear();
+        // Carrying on only adds: what has been played makes room when the new songs would not fit
+        _local.dropPlayed(_local.snapshot.queue.length + more.length - LocalSession.maxQueue);
         _local.add(more, next: false);
       } on Object catch (e) {
         _note('local: autoplay found nothing: $e');

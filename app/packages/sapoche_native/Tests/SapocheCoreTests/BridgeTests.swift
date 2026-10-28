@@ -332,6 +332,14 @@ final class BridgeTests: XCTestCase {
         XCTAssertNil(again["secret"])
     }
 
+    func testTheProfileSaysWhenTheLibraryCouldNotBeOpened() async throws {
+        let profile = try await result("profile", as: [String: Any].self)
+        XCTAssertNil(profile["libraryLost"], "a library that opened says nothing")
+        bridge.libraryOpened = false
+        let lost = try await result("profile", as: [String: Any].self)
+        XCTAssertEqual(lost["libraryLost"] as? Bool, true)
+    }
+
     func testTheAudioQualityIsKeptAndTold() async throws {
         let first = try await result("profile", as: [String: Any].self)
         XCTAssertEqual(first["audioQuality"] as? Int, 3, "the best until the person chooses")

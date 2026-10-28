@@ -20,6 +20,10 @@ int queueMax({required bool inRoom}) => inRoom ? 200 : 1000;
 /// How many songs the server takes from one `queue.addMany`; more are sent in several.
 const _serverAddMany = 100;
 
+/// The room protocol this app expects of the server (`PROTOCOL_VERSION` in `server/src/protocol.ts`). Raise it when the
+/// app needs something that older servers lack; the check in Settings > Server says when the server is behind.
+const serverProtocolNeeded = 17;
+
 /// How many songs of a list on the screen have their streams looked up ahead, see [RoomController.warmUp].
 const _warmCount = 3;
 
@@ -860,6 +864,15 @@ class RoomController extends ChangeNotifier {
     _profile = await _backend.profile();
     await _readGroupKey();
     notifyListeners();
+  }
+
+  /// Asks the server whether it answers, takes the key and is new enough for this app.
+  Future<ServerCheck> checkServer() async {
+    try {
+      return await _backend.checkServer();
+    } on Object {
+      return const ServerCheck();
+    }
   }
 
   /// The link that sets up another phone like this one; null when this one has no server.

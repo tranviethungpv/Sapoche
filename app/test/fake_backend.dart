@@ -186,6 +186,18 @@ class FakeBackend implements Backend {
 
   RoomInfo? roomInfoResult;
 
+  ServerCheck serverCheckResult = const ServerCheck(
+    reachable: true,
+    protocol: 17,
+    keyAccepted: true,
+  );
+
+  @override
+  Future<ServerCheck> checkServer() async {
+    await _record('checkServer');
+    return serverCheckResult;
+  }
+
   @override
   Future<RoomInfo?> roomInfo(String code) async {
     await _record('roomInfo $code');

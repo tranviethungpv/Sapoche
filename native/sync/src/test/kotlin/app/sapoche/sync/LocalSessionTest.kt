@@ -491,6 +491,39 @@ class LocalSessionTest {
     }
 
     @Test
+    fun `dropping played songs keeps the one playing and those to come`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2), track(3), track(4)), next = false)
+        step()
+        h.session.jump(h.session.snapshot.value.queue[2].id)
+        step()
+        h.session.dropPlayed(10)
+        step()
+        assertEquals(listOf("Song 3", "Song 4"), h.titles())
+        assertEquals(0, h.session.snapshot.value.index)
+        assertEquals("Song 3", h.player.loaded?.title)
+    }
+
+    @Test
+    fun `once the queue has finished all of it may be dropped, oldest first`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2), track(3)), next = false)
+        step()
+        h.session.jump(h.session.snapshot.value.queue[2].id)
+        step()
+        h.player.onEnded?.invoke()
+        step()
+        assertTrue(h.session.snapshot.value.finished)
+        h.session.dropPlayed(2)
+        step()
+        assertEquals(listOf("Song 3"), h.titles())
+        assertEquals(0, h.session.snapshot.value.index)
+        h.session.dropPlayed(0)
+        h.session.dropPlayed(-5)
+        assertEquals(listOf("Song 3"), h.titles())
+    }
+
+    @Test
     fun `a restored queue loads nothing and plays nothing until asked`() = runTest {
         val song = QueueItem("a", "aaaaaaaaaaa", "One", "x", null, 200_000, "")
         val other = QueueItem("b", "bbbbbbbbbbb", "Two", "x", null, 200_000, "")

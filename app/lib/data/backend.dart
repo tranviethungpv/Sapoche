@@ -144,6 +144,10 @@ abstract class Backend {
   /// left out stays as it was.
   Future<void> configure({String? server, String? key});
 
+  /// Asks the room server whether it answers, which version of the protocol it speaks and whether it takes the key.
+  /// Nothing it does changes anything: a room is only made when somebody connects to it.
+  Future<ServerCheck> checkServer();
+
   /// A link that sets up another phone with this one's server and key (Android, which has them built in); null when
   /// there is no server. It holds the secret, so it is only for the person to see.
   Future<String?> setupLink();
@@ -558,6 +562,11 @@ class NativeBackend implements Backend {
   @override
   Future<void> configure({String? server, String? key}) =>
       _call('configure', {'server': ?server, 'key': ?key});
+
+  @override
+  Future<ServerCheck> checkServer() async => ServerCheck.fromMap(
+    (await _call<Map<Object?, Object?>>('checkServer'))!,
+  );
 
   @override
   Future<String?> setupLink() => _call<String>('setupLink');

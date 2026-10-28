@@ -351,6 +351,16 @@ final class LocalSession {
         save()
     }
 
+    /// Takes up to [count] of the oldest songs off the queue, the ones already played, to make room at the end: never the
+    /// song playing, and never one still to come. Once the queue has finished all of it has been played.
+    func dropPlayed(_ count: Int) {
+        let s = snapshot.value
+        let drop = min(count, s.finished ? s.queue.count : s.index)
+        guard drop > 0 else { return }
+        snapshot.update { $0.queue = Array($0.queue.dropFirst(drop)); $0.index = max($0.index - drop, 0) }
+        save()
+    }
+
     func clear() {
         stopPlayer()
         skippedInARow = 0 // a new list is a new start
@@ -591,7 +601,7 @@ final class LocalSession {
     }
 
     /// What the queue outside a room holds. A room's holds 200 (`MAX_QUEUE` in `server/src/room.ts`); `queueMax` in `room_controller.dart` says both.
-    private static let maxQueue = 1000
+    static let maxQueue = 1000
     private static let maxRecoveries = 3
     private static let maxSkippedInARow = 3
     private static let prevRestartsAfterMs: Int64 = 3000

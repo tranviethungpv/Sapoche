@@ -402,6 +402,12 @@ abstract final class S {
   );
   static String get playlists => _t('Playlists', 'Danh sách phát');
   static String get newPlaylist => _t('New playlist', 'Danh sách phát mới');
+  static String get noPlaylistsTitle =>
+      _t('No playlists yet', 'Chưa có danh sách phát');
+  static String get noPlaylistsBody => _t(
+    'Make one to keep songs together, or bring one in from a YouTube link.',
+    'Tạo một danh sách để gom bài lại, hoặc nhập từ liên kết YouTube.',
+  );
   static String get importFromLink =>
       _t('Import from a link', 'Nhập từ liên kết');
   static String get playlistName => _t('Playlist name', 'Tên danh sách phát');
@@ -1121,6 +1127,39 @@ abstract final class S {
   );
   static String get serverKeySet => _t('Set', 'Đã đặt');
   static String get serverKeyNotSet => _t('Not set', 'Chưa đặt');
+  static String get libraryLostTitle =>
+      _t('The library could not be opened', 'Không mở được thư viện');
+  static String get libraryLostBody => _t(
+    'What you change now will not be saved when the app closes. Do not restore a backup yet: restart the app first.',
+    'Thay đổi bây giờ sẽ không được lưu khi tắt app. Đừng khôi phục sao lưu lúc này: hãy khởi động lại app trước.',
+  );
+  static String get checkConnectionRow =>
+      _t('Check the connection', 'Kiểm tra kết nối');
+  static String get checkingConnection =>
+      _t('Checking…', 'Đang kiểm tra…');
+  static String get checkServerReached =>
+      _t('The server answers', 'Máy chủ có trả lời');
+  static String get checkServerUnreachable => _t(
+    'The server does not answer: check the address and the network',
+    'Máy chủ không trả lời: hãy kiểm tra địa chỉ và mạng',
+  );
+  static String get checkKeyOk => _t('The group key is accepted', 'Khoá nhóm được chấp nhận');
+  static String get checkKeyRefused => _t(
+    'The group key is not accepted',
+    'Khoá nhóm không được chấp nhận',
+  );
+  static String get checkKeyUnknown =>
+      _t('The group key could not be tried', 'Chưa thử được khoá nhóm');
+  static String checkVersionOk(int protocol) => _t(
+    'The server is up to date (protocol $protocol)',
+    'Máy chủ đủ mới (giao thức $protocol)',
+  );
+  static String checkVersionOld(int protocol, int needed) => _t(
+    'The server is older than this app expects (protocol $protocol, needs $needed)',
+    'Máy chủ cũ hơn app cần (giao thức $protocol, cần $needed)',
+  );
+  static String get checkVersionUnknown =>
+      _t('The server version is not known', 'Chưa biết phiên bản máy chủ');
   static String get serverHelp => _t(
     'Where your Sapoche server is and the group key it asks for. They stay on this phone and are not part of the app. Easiest: on a phone that already works, open Settings > Set up another phone, and point this phone’s camera at the code.',
     'Địa chỉ máy chủ Sapoche của bạn và khoá nhóm nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng. Dễ nhất: trên máy đã dùng được, mở Cài đặt > Cài đặt cho máy khác, rồi đưa camera của máy này vào mã.',

@@ -71,6 +71,7 @@ final class SapocheRuntime {
         let feed = MusicFeed(music: music, lyricsClient: LyricsClient(http: http), lyricsStore: lyrics)
 
         let store: LibraryStore
+        var libraryOpened = true
         do {
             let language = { prefs.string("language") ?? "en" }
             store = try LibraryStore(
@@ -82,6 +83,8 @@ final class SapocheRuntime {
             // A library that cannot be opened is better replaced than left to crash the app
             EventLog.d("library", "could not open the library: \(error.localizedDescription)")
             store = try! LibraryStore(path: ":memory:")
+            // What is changed meanwhile is lost when the app closes: the screen says so
+            libraryOpened = false
         }
 
         let folder = platform.musicFolder
@@ -110,7 +113,8 @@ final class SapocheRuntime {
             secrets: KeychainSecrets()
         )
         bridge = Bridge(controller: controller, prefs: prefs, platform: platform, store: store, resolver: resolver, streams: streams,
-                        music: feed, suggestions: suggestions, media: media, files: files, downloader: downloader, http: http)
+                        music: feed, suggestions: suggestions, media: media, files: files, downloader: downloader, http: http,
+                        libraryOpened: libraryOpened)
         let bridge = bridge
         nowPlaying = NowPlaying(controller: controller, engine: engine, localCover: { id in
             try? await bridge.handle("localCover", ["videoId": id]) as? Data

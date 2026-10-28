@@ -1003,6 +1003,7 @@ class Profile {
     this.configured = true,
     this.hasKey = true,
     this.audioQuality = AudioQuality.max,
+    this.libraryLost = false,
   });
 
   /// Name used in the last room, to prefill the field asking for it.
@@ -1025,6 +1026,10 @@ class Profile {
   /// The key the server asks for is known.
   final bool hasKey;
 
+  /// The library file could not be opened (iPhone) and an empty one stands in: what is changed in it is lost when the
+  /// app closes, and a backup restored into it with it.
+  final bool libraryLost;
+
   Profile withAutoplay(bool value) => Profile(
     name: name,
     device: device,
@@ -1034,6 +1039,7 @@ class Profile {
     configured: configured,
     hasKey: hasKey,
     audioQuality: audioQuality,
+    libraryLost: libraryLost,
   );
 
   Profile withAudioQuality(AudioQuality value) => Profile(
@@ -1045,6 +1051,7 @@ class Profile {
     configured: configured,
     hasKey: hasKey,
     audioQuality: value,
+    libraryLost: libraryLost,
   );
 
   factory Profile.fromMap(Map<Object?, Object?> map) => Profile(
@@ -1056,6 +1063,7 @@ class Profile {
     configured: map['configured'] as bool? ?? true,
     hasKey: map['key'] as bool? ?? true,
     audioQuality: AudioQuality.of((map['audioQuality'] as num?)?.toInt()),
+    libraryLost: map['libraryLost'] as bool? ?? false,
   );
 }
 
@@ -1085,6 +1093,26 @@ class SleepState {
           : DateTime.fromMillisecondsSinceEpoch(endsAt),
     );
   }
+}
+
+/// What asking the room server three things told: [reachable] is whether `/health` answered, [protocol] is the version
+/// of the room protocol it says it speaks, and [keyAccepted] is whether it took the key (null when it could not be asked).
+class ServerCheck {
+  const ServerCheck({
+    this.reachable = false,
+    this.protocol,
+    this.keyAccepted,
+  });
+
+  final bool reachable;
+  final int? protocol;
+  final bool? keyAccepted;
+
+  factory ServerCheck.fromMap(Map<Object?, Object?> map) => ServerCheck(
+    reachable: map['reachable'] as bool? ?? false,
+    protocol: (map['protocol'] as num?)?.toInt(),
+    keyAccepted: map['keyAccepted'] as bool?,
+  );
 }
 
 /// Where the sound goes: [kind] is `speaker`, `headphones`, `bluetooth`, `airplay`, `car` or `other`, and [name] is

@@ -2021,6 +2021,30 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    testWidgets('a library that could not be opened says so, and only then', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(
+        tester,
+        profile: const Profile(name: 'Anna', libraryLost: true),
+      );
+      await openPlaylists(tester, backend);
+      expect(find.text('The library could not be opened'), findsOneWidget);
+    });
+
+    testWidgets('a Library with no playlist says so and offers to make one', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      await openPlaylists(tester, backend);
+      expect(find.text('No playlists yet'), findsOneWidget);
+      expect(find.text('The library could not be opened'), findsNothing);
+      await tester.tap(find.widgetWithText(FilledButton, 'New playlist'));
+      await tester.pumpAndSettle();
+      // The same box as the plus of the heading asks for the name
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
     testWidgets('a new playlist is named, made and opened', (tester) async {
       final (backend, _) = await pumpApp(tester);
       await openPlaylists(tester, backend);

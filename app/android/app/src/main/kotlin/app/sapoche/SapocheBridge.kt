@@ -49,6 +49,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.IOException
 
 /**
  * Everything the Flutter UI can ask of the native side, and the stream of room state it gets back.
@@ -504,6 +505,7 @@ class SapocheBridge(
             "searchPlaylists" -> return searchPlaylists(call.argument<String>("query").orEmpty())
             "search" -> return search(call.argument<String>("query").orEmpty(), call.argument<Boolean>("songsOnly") == true, call.argument<Number>("limit")?.toInt() ?: SEARCH_LIMIT)
             "lookup" -> return lookup(call.argument<String>("text").orEmpty())
+            "checkServer" -> return checkServer()
             "roomInfo" -> return roomInfo(call.argument<String>("code").orEmpty())
             "libraryLiked" -> return SapocheApp.library.liked().map { it.toMap() }
             "libraryRecent" -> return SapocheApp.library.recent().map { it.toMap() }
@@ -852,6 +854,24 @@ class SapocheBridge(
                 "playing" to json.optBoolean("playing"),
                 "title" to if (json.isNull("title")) null else json.getString("title"),
             )
+        }
+    }
+
+    /** Whether the server answers, which protocol it speaks and whether it takes the key; nothing it is asked changes anything. */
+    private suspend fun checkServer(): Map<String, Any?> = withContext(Dispatchers.IO) {
+        try {
+            val health = http.newCall(Request.Builder().url("${Config.SERVER}/health").build()).execute().use {
+                if (!it.isSuccessful) return@use null
+                JSONObject(it.body.string()).optInt("protocol", -1).takeIf { protocol -> protocol >= 0 }
+            }
+            // The call that makes a room only draws a code, and is what asks for the key
+            val key = http.newCall(
+                Request.Builder().url("${Config.SERVER}/rooms").post("".toRequestBody())
+                    .apply { Config.authHeaders.forEach { (k, v) -> header(k, v) } }.build(),
+            ).execute().use { if (it.code == 401) false else if (it.isSuccessful) true else null }
+            mapOf("reachable" to true, "protocol" to health, "keyAccepted" to key)
+        } catch (e: IOException) {
+            mapOf("reachable" to false, "protocol" to null, "keyAccepted" to null)
         }
     }
 

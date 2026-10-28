@@ -246,7 +246,7 @@ class QuickAccess extends StatelessWidget {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              tile.title,
+                              _keepHyphens(tile.title),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: theme.titleSmall,
@@ -499,3 +499,7 @@ class ChartsShelves extends StatelessWidget {
     },
   );
 }
+
+/// [text] with its hyphens kept from ending a line: "Sơn Tùng M-TP" would otherwise break as "M-" and "TP". A word joiner
+/// after each stops the break and has no width.
+String _keepHyphens(String text) => text.replaceAll('-', '-\u2060');

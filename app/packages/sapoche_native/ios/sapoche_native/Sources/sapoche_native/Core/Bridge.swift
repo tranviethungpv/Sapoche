@@ -88,6 +88,8 @@ final class Bridge {
     private let store: LibraryStore
     private let resolver: StreamResolver
     private let streams: StreamCache
+    /// False when the library file could not be opened and an empty one in memory stands in: nothing written to it lasts.
+    var libraryOpened: Bool
     private let music: MusicFeed
     private let suggestions: SuggestionFeed
     private let media: MediaLibrary
@@ -125,7 +127,8 @@ final class Bridge {
 
     init(controller: GroupController, prefs: KeyValueStore, platform: PlatformServices, store: LibraryStore, resolver: StreamResolver,
          streams: StreamCache, music: MusicFeed, suggestions: SuggestionFeed, media: MediaLibrary, files: MediaFiles,
-         downloader: Downloader, http: HTTPClient, time: TimeSource? = nil) {
+         downloader: Downloader, http: HTTPClient, time: TimeSource? = nil, libraryOpened: Bool = true) {
+        self.libraryOpened = libraryOpened
         self.controller = controller
         self.prefs = prefs
         self.platform = platform
@@ -395,6 +398,7 @@ final class Bridge {
             ]
             // Only a name the person chose: the phone's own name would be shown to everybody in the room
             if let name = prefs.string(Self.keyRoomName) { profile["name"] = name }
+            if !libraryOpened { profile["libraryLost"] = true }
             return profile
         case "configure":
             // What is left out stays as it was
@@ -488,6 +492,8 @@ final class Bridge {
             return try await search(string("query"), songsOnly: bool("songsOnly"), limit: int("limit"))
         case "lookup":
             return try await lookup(string("text"))
+        case "checkServer":
+            return await checkServer()
         case "roomInfo":
             return await roomInfo(string("code"))
         case "libraryLiked":
@@ -775,6 +781,26 @@ final class Bridge {
             "exists": json.at("exists").bool ?? false, "name": json.at("name").string ?? NSNull(), "members": json.at("members").int ?? 0,
             "playing": json.at("playing").bool ?? false, "title": json.at("title").string ?? NSNull(),
         ]
+    }
+
+    /// Whether the server answers, which protocol it speaks and whether it takes the key; nothing it is asked changes anything.
+    private func checkServer() async -> [String: Any] {
+        let config = settings
+        guard config.isSet, let health = URL(string: "\(config.server)/health"), let rooms = URL(string: "\(config.server)/rooms"),
+              let reply = try? await http.send(URLRequest(url: health)), (200..<300).contains(reply.status) else {
+            return ["reachable": false]
+        }
+        var result: [String: Any] = ["reachable": true]
+        if let protocolVersion = JSON.parse(data: reply.data)?.at("protocol").int { result["protocol"] = protocolVersion }
+        // The call that makes a room only draws a code, and is what asks for the key
+        var request = URLRequest(url: rooms)
+        request.httpMethod = "POST"
+        request.httpBody = Data()
+        config.authHeaders.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        if let key = try? await http.send(request) {
+            if key.status == 401 { result["keyAccepted"] = false } else if (200..<300).contains(key.status) { result["keyAccepted"] = true }
+        }
+        return result
     }
 
     private func createRoom() async throws -> String {

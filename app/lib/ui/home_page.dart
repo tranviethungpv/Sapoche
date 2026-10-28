@@ -145,6 +145,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   children: [
                     const _Header(),
+                    const _FriendsListening(),
                     if (home.isEmpty) const _Welcome(),
                     HomeChips(personal: _personalChips(home)),
                     QuickAccess(tiles: _quickTiles(context, library, home)),
@@ -492,6 +493,139 @@ class _MixRow extends StatelessWidget {
   }
 }
 
+/// Goes back into the room this device was in last, with the name it used. Without a room to go back to, or a name to go
+/// in with, the room sheet is the way; so it is when the room cannot be entered (gone, or the server out of reach), and
+/// it says what went wrong. [busy] is told when the going in begins and ends.
+Future<void> _rejoinLast(BuildContext context, ValueChanged<bool> busy) async {
+  final model = AppScope.of(context);
+  final room = model.room;
+  final last = model.recents.rooms.firstOrNull;
+  final name = room.snapshot.me?.name ?? room.profile.name ?? '';
+  if (room.snapshot.inRoom || last == null || name.isEmpty) {
+    return showRoomSheet(context);
+  }
+  busy(true);
+  final error = await room.join(last.code, name);
+  busy(false);
+  if (error != null && context.mounted) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(error)));
+    await showRoomSheet(context);
+  }
+}
+
+/// "Room X · 3 listening · Join" above the home page's shelves, when the room this device was in last has people in it
+/// and this device is not in a room. The room is asked about once when the page is first drawn, when the last room
+/// changes and when the app comes back to the front: never while it is away.
+class _FriendsListening extends StatefulWidget {
+  const _FriendsListening();
+
+  @override
+  State<_FriendsListening> createState() => _FriendsListeningState();
+}
+
+class _FriendsListeningState extends State<_FriendsListening>
+    with WidgetsBindingObserver {
+  Future<RoomInfo?>? _info;
+  String? _asked;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back in front: who is in the room may have changed meanwhile
+    if (state == AppLifecycleState.resumed) setState(() => _asked = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final model = AppScope.of(context);
+    final p = context.palette;
+    return ListenableBuilder(
+      listenable: Listenable.merge([model.room, model.recents]),
+      builder: (context, _) {
+        final last = model.recents.rooms.firstOrNull;
+        if (model.room.snapshot.inRoom || last == null) {
+          _asked = null;
+          return const SizedBox.shrink();
+        }
+        if (_asked != last.code) {
+          _asked = last.code;
+          _info = model.room.roomInfo(last.code);
+        }
+        return FutureBuilder<RoomInfo?>(
+          future: _info,
+          builder: (context, snapshot) {
+            final info = snapshot.data;
+            if (info == null || !info.exists || info.members == 0) {
+              return const SizedBox.shrink();
+            }
+            final song = info.playing ? info.title : null;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+              child: Material(
+                color: p.primaryContainer,
+                borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.groups_rounded, color: p.onPrimaryContainer),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              info.name ?? last.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(color: p.onPrimaryContainer),
+                            ),
+                            Text(
+                              [S.recentLive(info.members), ?song].join(' · '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: p.onPrimaryContainer),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _busy
+                            ? null
+                            : () => _rejoinLast(context, (busy) {
+                                if (mounted) setState(() => _busy = busy);
+                              }),
+                        child: Text(S.join),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 /// The way into a room from the home page, so that it is not a trip to another tab: it says "Room" when there is
 /// nothing to go back to, "Rejoin" when this device has been in a room (a touch goes straight back into the last one),
 /// and the room's code while this device is in one (a touch opens the room's panel). Holding it opens the list of
@@ -506,27 +640,9 @@ class _RoomChip extends StatefulWidget {
 class _RoomChipState extends State<_RoomChip> {
   bool _busy = false;
 
-  Future<void> _touch() async {
-    final model = AppScope.of(context);
-    final room = model.room;
-    final last = model.recents.rooms.firstOrNull;
-    final name = room.snapshot.me?.name ?? room.profile.name ?? '';
-    // Without a room to go back to, or a name to go in with, the sheet is the way
-    if (room.snapshot.inRoom || last == null || name.isEmpty) {
-      return showRoomSheet(context);
-    }
-    setState(() => _busy = true);
-    final error = await room.join(last.code, name);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    // The room may be gone or the server out of reach: the sheet shows the rooms there are, and says what went wrong
-    if (error != null) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(error)));
-      await showRoomSheet(context);
-    }
-  }
+  Future<void> _touch() => _rejoinLast(context, (busy) {
+    if (mounted) setState(() => _busy = busy);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -298,6 +298,18 @@ class LocalSession(
         save()
     }
 
+    /**
+     * Takes up to [count] of the oldest songs off the queue, the ones already played, to make room at the end: never the
+     * song playing, and never one still to come. Once the queue has finished all of it has been played.
+     */
+    fun dropPlayed(count: Int) {
+        val s = snapshot.value
+        val drop = minOf(count, if (s.finished) s.queue.size else s.index)
+        if (drop <= 0) return
+        _snapshot.update { it.copy(queue = it.queue.drop(drop), index = (it.index - drop).coerceAtLeast(0)) }
+        save()
+    }
+
     fun clear() {
         stopPlayer()
         skippedInARow = 0 // a new list is a new start
@@ -516,14 +528,14 @@ class LocalSession(
         )
     }
 
-    private companion object {
+    companion object {
         /** What the queue outside a room holds. A room's holds 200 (`MAX_QUEUE` in `server/src/room.ts`); `queueMax` in `room_controller.dart` says both. */
         const val MAX_QUEUE = 1000
-        const val MAX_RECOVERIES = 3
-        const val MAX_SKIPPED_IN_A_ROW = 3
-        const val PREV_RESTARTS_AFTER_MS = 3000L
+        private const val MAX_RECOVERIES = 3
+        private const val MAX_SKIPPED_IN_A_ROW = 3
+        private const val PREV_RESTARTS_AFTER_MS = 3000L
 
         /** A load that takes longer than this is said to be slow. */
-        const val SLOW_LOAD_MS = 8_000L
+        private const val SLOW_LOAD_MS = 8_000L
     }
 }

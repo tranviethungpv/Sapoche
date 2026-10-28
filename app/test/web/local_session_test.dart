@@ -44,6 +44,36 @@ void main() {
 
   List<String> titles() => [for (final e in session.snapshot.queue) e.title];
 
+  test('dropping played songs keeps the one playing and those to come', () {
+    run(() {
+      session.add([song('1'), song('2'), song('3'), song('4')], next: false);
+      async.elapse(const Duration(milliseconds: 10));
+      session.jump(session.snapshot.queue[2].id);
+      async.elapse(const Duration(milliseconds: 10));
+      session.dropPlayed(10);
+      async.elapse(const Duration(milliseconds: 10));
+      expect(titles(), ['Song 3', 'Song 4']);
+      expect(session.snapshot.index, 0);
+    });
+  });
+
+  test('once the queue has finished all of it may be dropped, oldest first', () {
+    run(() {
+      session.add([song('1'), song('2'), song('3')], next: false);
+      async.elapse(const Duration(milliseconds: 10));
+      session.jump(session.snapshot.queue[2].id);
+      async.elapse(const Duration(milliseconds: 10));
+      player.onEnded?.call();
+      async.elapse(const Duration(milliseconds: 10));
+      expect(session.snapshot.finished, isTrue);
+      session.dropPlayed(2);
+      session.dropPlayed(0);
+      session.dropPlayed(-5);
+      expect(titles(), ['Song 3']);
+      expect(session.snapshot.index, 0);
+    });
+  });
+
   test('adding to an empty queue starts the first song', () {
     run(() {
       session.add([song('1'), song('2')], next: false);

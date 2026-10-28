@@ -313,8 +313,8 @@ class GroupController(
                 val more = moreLike(like.videoId, local.snapshot.value.queue.map { it.videoId }.toSet(), AUTOPLAY_COUNT)
                 if (more.isEmpty() || session != null || !local.snapshot.value.finished) return@launch
                 EventLog.d("local", "autoplay adds ${more.size} songs like '${like.title}'")
-                // A queue that has grown long by carrying on is started afresh rather than filling up
-                if (local.snapshot.value.queue.size > AUTOPLAY_RESTART_AT) local.clear()
+                // Carrying on only adds: what has been played makes room when the new songs would not fit
+                local.dropPlayed(local.snapshot.value.queue.size + more.size - LocalSession.MAX_QUEUE)
                 local.add(more, next = false)
             } catch (e: CancellationException) {
                 throw e
@@ -920,7 +920,6 @@ class GroupController(
         const val KEY_AUTOPLAY = "autoplay"
         const val MIN_SPEED = 0.25f
         const val MAX_SPEED = 2f
-        const val AUTOPLAY_RESTART_AT = 150
 
         /** Songs added each time the queue runs out and the music carries on by itself. */
         const val AUTOPLAY_COUNT = 5

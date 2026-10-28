@@ -88,6 +88,61 @@ void main() {
     semantics.dispose();
   });
 
+  group('friends listening', () {
+    const recent = {'recent_rooms': '[{"code":"K2A5RF","at":5}]'};
+
+    testWidgets('a room with people in it is offered, and Join goes in', (
+      tester,
+    ) async {
+      final backend = await openHome(
+        tester,
+        prefs: recent,
+        prepare: (b) => b.roomInfoResult = const RoomInfo(
+          exists: true,
+          name: 'Family',
+          members: 3,
+          playing: true,
+          title: 'Hello',
+        ),
+      );
+      expect(find.text('Family'), findsOneWidget);
+      expect(find.text('3 listening · Hello'), findsOneWidget);
+      expect(backend.calls.where((c) => c == 'roomInfo K2A5RF'), hasLength(1));
+      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await tester.pump();
+      expect(backend.calls, contains('join K2A5RF Anna'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an empty or expired room is not offered', (tester) async {
+      for (final info in [
+        const RoomInfo(exists: true, members: 0),
+        const RoomInfo(exists: false),
+      ]) {
+        await openHome(
+          tester,
+          prefs: recent,
+          prepare: (b) => b.roomInfoResult = info,
+        );
+        expect(find.widgetWithText(FilledButton, 'Join'), findsNothing);
+      }
+    });
+
+    testWidgets('nothing is asked while this device is in a room', (
+      tester,
+    ) async {
+      final backend = await openHome(
+        tester,
+        prefs: recent,
+        inRoom: true,
+        prepare: (b) =>
+            b.roomInfoResult = const RoomInfo(exists: true, members: 3),
+      );
+      expect(backend.calls.where((c) => c.startsWith('roomInfo')), isEmpty);
+      expect(find.widgetWithText(FilledButton, 'Join'), findsNothing);
+    });
+  });
+
   testWidgets('what was heard, liked and suggested fills the shelves', (
     tester,
   ) async {
