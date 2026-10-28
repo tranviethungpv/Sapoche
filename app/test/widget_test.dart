@@ -1800,8 +1800,9 @@ void main() {
 
     Future<FakeBackend> addFromSearch(
       WidgetTester tester,
-      GuestControl guestControl,
-    ) async {
+      GuestControl guestControl, {
+      bool empty = false,
+    }) async {
       final (backend, _) = await pumpApp(tester);
       backend.searchResults = [waiting];
       RoomSnapshot room(int songs) => sampleRoom(
@@ -1814,7 +1815,9 @@ void main() {
         ],
       );
       // Not queued yet, so that it can be added
-      backend.emit(StateEvent(room(1)));
+      backend.emit(
+        StateEvent(empty ? sampleRoom(songs: 0, phase: 'idle') : room(1)),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Library'));
       await tester.pumpAndSettle();
@@ -1840,6 +1843,14 @@ void main() {
       await tester.tap(find.text('Undo'));
       await tester.pump();
       expect(backend.calls.last, 'remove q2');
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a song that starts at once has no way back but pause', (
+      tester,
+    ) async {
+      await addFromSearch(tester, GuestControl.all, empty: true);
+      expect(find.text('Undo'), findsNothing);
       await tester.pumpAndSettle();
     });
 

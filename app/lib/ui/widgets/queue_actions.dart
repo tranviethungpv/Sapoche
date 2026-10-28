@@ -16,6 +16,7 @@ Future<void> queueTrack(
   final room = AppScope.roomOf(context);
   final messenger = ScaffoldMessenger.of(context);
   final queued = room.snapshot.isQueued(track);
+  final undo = queued ? null : undoAddAction(room, track);
   if (!queued) await room.add(track, playNext: playNext);
   messenger
     ..hideCurrentSnackBar()
@@ -28,19 +29,25 @@ Future<void> queueTrack(
               ? S.willPlayNext
               : S.addedToQueue,
         ),
-        action: queued ? null : undoAddAction(room, track),
+        action: undo,
         // Long enough to reach the way back
-        duration: Duration(milliseconds: queued ? 1400 : 4000),
+        duration: Duration(milliseconds: undo == null ? 1400 : 4000),
       ),
     );
 }
 
-/// The way back from putting [track] on the queue, for whoever may take songs off it: not a guest of a room where
-/// guests may only add songs.
-SnackBarAction? undoAddAction(RoomController room, Track track) =>
-    room.snapshot.canControl
-    ? SnackBarAction(label: S.undo, onPressed: () => room.undoAdd(track))
-    : null;
+/// The way back from putting [track] on the queue, asked before it is put there: only when it will wait behind a song
+/// (on a queue with nothing playing it starts at once, and the way back from that is pause), and only for whoever may
+/// take songs off: not a guest of a room where guests may only add songs.
+SnackBarAction? undoAddAction(RoomController room, Track track) {
+  final snapshot = room.snapshot;
+  if (!snapshot.canControl ||
+      snapshot.current == null ||
+      snapshot.phase == 'idle') {
+    return null;
+  }
+  return SnackBarAction(label: S.undo, onPressed: () => room.undoAdd(track));
+}
 
 /// Puts [tracks] on the queue (or next) and says how many went on: the ones already waiting there are left out.
 Future<void> queueTracks(

@@ -1241,12 +1241,10 @@ class _TrackList extends StatelessWidget {
         confirm(S.localNoRoom);
         return;
       }
+      final undo = undoAddAction(room, track);
       await room.add(track, playNext: playNext);
       if (context.mounted) {
-        confirm(
-          playNext ? S.willPlayNext : S.addedToQueue,
-          action: undoAddAction(room, track),
-        );
+        confirm(playNext ? S.willPlayNext : S.addedToQueue, action: undo);
       }
     }
 

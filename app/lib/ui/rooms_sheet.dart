@@ -179,10 +179,11 @@ class _StartRoomState extends State<_StartRoom> {
             }
           },
           maxLength: 24,
-          // The label stays once a name is typed: it says who will see it
+          // Says who will see the name, also once one is typed; under the field, since a floating label sits on the
+          // edge of a filled field with no border
           decoration: InputDecoration(
-            labelText: S.nameInRoom,
             hintText: S.yourName,
+            helperText: S.nameInRoom,
             counterText: '',
           ),
           onChanged: (_) {
