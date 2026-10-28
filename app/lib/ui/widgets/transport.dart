@@ -81,18 +81,30 @@ class SkipButton extends StatelessWidget {
     required this.forward,
     required this.onPressed,
     this.size = 44,
+    this.box,
   });
 
   final bool forward;
   final VoidCallback onPressed;
   final double size;
 
+  /// A square of this side with the glyph in it at the proportion [PlayPauseButton] has, so that the two are as large
+  /// as each other and level when they stand side by side (the mini player). Without it, [size] is the glyph's.
+  final double? box;
+
   @override
   Widget build(BuildContext context) {
     return IconButton(
       onPressed: onPressed,
       tooltip: forward ? S.nextSong : S.previousSong,
-      iconSize: size,
+      iconSize: box == null ? size : box! * 0.56,
+      style: box == null
+          ? null
+          : IconButton.styleFrom(
+              fixedSize: Size.square(box!),
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
       icon: Icon(
         forward ? Icons.skip_next_rounded : Icons.skip_previous_rounded,
       ),

@@ -1,0 +1,6 @@
+Điện thoại nằm ngang đẹp hơn, và bìa nhuộm màu cả trang
+- Điện thoại nằm ngang có thanh tab mảnh dọc bên trái, mini player nổi riêng ở đáy, nên danh sách bài có lại chiều cao mà hai thanh ở đáy từng chiếm.
+- Album, playlist, nghệ sĩ và các danh sách trong Thư viện đặt bìa cạnh danh sách bài khi điện thoại nằm ngang, như trên máy tính bảng.
+- Các trang đó được nhuộm màu bìa trên toàn trang, không còn vệt mặt bị kéo giãn.
+- Nút Phát và nút Tiếp của mini player to bằng nhau và thẳng hàng. Các thanh cách hai mép xa hơn một chút.
+- Sửa bản dựng cho iPhone của 1.30.0.

@@ -780,7 +780,7 @@ final class Bridge {
         return [
             "exists": json.at("exists").bool ?? false, "name": json.at("name").string ?? NSNull(), "members": json.at("members").int ?? 0,
             "playing": json.at("playing").bool ?? false, "title": json.at("title").string ?? NSNull(),
-            "who": json.at("who").array?.compactMap { $0.string } ?? [],
+            "who": json.at("who").array.compactMap { $0.string },
         ]
     }
 

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,12 +10,12 @@ import 'artist_page.dart';
 import 'home_shell.dart';
 import 'player/player_message.dart';
 import 'scope.dart';
-import 'widgets/ambient_backdrop.dart';
 import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/page_width.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
+import 'widgets/player_backdrop.dart';
 import 'widgets/queue_actions.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
@@ -72,9 +74,9 @@ class _CollectionScreenState extends State<CollectionScreen> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            AmbientBackdrop.cover(
-              cover: page?.thumb ?? widget.thumb,
-              child: const SizedBox.expand(),
+            PlayerBackdrop(
+              coverUrl: page?.thumb ?? widget.thumb,
+              mesh: true,
             ),
             Padding(
               padding: EdgeInsets.only(left: SideInset.of(context)),
@@ -136,7 +138,8 @@ class CollectionCover extends StatelessWidget {
 
   final String? url;
 
-  /// Side of the cover; by default what the width of the screen gives.
+  /// Side of the cover; by default what the width of the screen gives, and no more than half its height, so that a
+  /// phone on its side is not given a cover taller than itself.
   final double? side;
 
   /// Draws what is not one picture of [url] (a playlist's grid, an icon), at the side it is given.
@@ -144,8 +147,10 @@ class CollectionCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
     final size =
-        side ?? (MediaQuery.sizeOf(context).width * 0.74).clamp(200.0, 320.0);
+        side ??
+        math.min(screen.width * 0.74, screen.height * 0.5).clamp(120.0, 320.0);
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: DecoratedBox(
@@ -322,7 +327,8 @@ class _ContentState extends State<_Content> {
     return LayoutBuilder(
       builder: (context, box) {
         // Wide, the cover goes beside what is said of it, and the songs keep to a readable width in the middle
-        final wide = box.maxWidth >= 720;
+        final split = SplitLayout.of(box);
+        final wide = split != null || box.maxWidth >= 720;
         final gutter = ((box.maxWidth - 1100) / 2).clamp(0.0, double.infinity);
         final align = wide
             ? CrossAxisAlignment.start
@@ -339,7 +345,9 @@ class _ContentState extends State<_Content> {
               child: Text(
                 _page.title,
                 textAlign: textAlign,
-                style: wide ? theme.headlineLarge : theme.headlineSmall,
+                style: wide && split?.phone != true
+                    ? theme.headlineLarge
+                    : theme.headlineSmall,
               ),
             ),
             if (_page.owner != null)
@@ -439,27 +447,29 @@ class _ContentState extends State<_Content> {
         );
         // A browser with room beside a list of songs: the cover and what is said of it stay on the left, and the songs
         // take the rest of the width, as on Apple Music's web page, instead of a column in the middle with the sides empty
-        if (box.maxWidth >= splitWidth) {
+        if (split != null) {
           return Scaffold(
             appBar: AppBar(leading: const RoundBackButton()),
             body: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: splitMax),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  padding: EdgeInsets.symmetric(horizontal: split.pad),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        width: splitCover,
+                        width: split.left,
                         child: SingleChildScrollView(
-                          padding: const EdgeInsets.only(bottom: 24),
+                          padding: EdgeInsets.only(
+                            bottom: HomeShell.bottomInsetOf(context),
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               CollectionCover(
                                 url: _page.thumb,
-                                side: splitCover,
+                                side: split.cover,
                               ),
                               const SizedBox(height: 20),
                               info,
@@ -467,7 +477,7 @@ class _ContentState extends State<_Content> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: splitGap),
+                      SizedBox(width: split.gap),
                       Expanded(
                         child: CustomScrollView(
                           controller: _scroll,

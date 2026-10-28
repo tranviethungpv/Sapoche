@@ -35,7 +35,7 @@ class ScrollEdge extends StatefulWidget {
   /// wide screen), and by nothing on a phone, where the edge has already put it below the status bar. Read from the
   /// page's own context, which is above the edge.
   static double topOf(BuildContext context) =>
-      HomeShell.layoutOf(context) == ShellLayout.bars
+      HomeShell.endsBelowStatusOf(context)
       ? 0
       : MediaQuery.paddingOf(context).top;
 
@@ -72,7 +72,7 @@ class _ScrollEdgeState extends State<ScrollEdge> {
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
     // On a phone the page simply ends below the status bar, as it did before the strip: it looked heavy there
-    if (HomeShell.layoutOf(context) == ShellLayout.bars) {
+    if (HomeShell.endsBelowStatusOf(context)) {
       return Padding(
         padding: EdgeInsets.only(top: top),
         child: MediaQuery.removePadding(

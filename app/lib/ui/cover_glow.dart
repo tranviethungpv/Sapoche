@@ -64,8 +64,19 @@ class CoverGlow {
   static Future<ui.Image?> top(String url, {bool light = false}) =>
       _of(url, light, true);
 
-  static Future<ui.Image?> _of(String url, bool light, bool top) {
-    final key = '${top ? 'top ' : ''}${light ? 'light' : 'dark'} $url';
+  /// The same mesh of colours for the whole of a page, not faded away: the background of the pages of an album, an
+  /// artist or a playlist.
+  static Future<ui.Image?> page(String url, {bool light = false}) =>
+      _of(url, light, true, page: true);
+
+  static Future<ui.Image?> _of(
+    String url,
+    bool light,
+    bool top, {
+    bool page = false,
+  }) {
+    final key =
+        '${page ? 'page ' : top ? 'top ' : ''}${light ? 'light' : 'dark'} $url';
     if (_cache.containsKey(key)) {
       // Most recently used goes last
       final image = _cache.remove(key);
@@ -73,7 +84,7 @@ class CoverGlow {
       return Future.value(image);
     }
     return _pending.putIfAbsent(key, () async {
-      final image = await _make(url, light, top);
+      final image = await _make(url, light, top, page: page);
       _remember(key, image);
       _pending.remove(key);
       return image;
@@ -88,12 +99,17 @@ class CoverGlow {
     }
   }
 
-  static Future<ui.Image?> _make(String url, bool light, bool top) async {
+  static Future<ui.Image?> _make(
+    String url,
+    bool light,
+    bool top, {
+    bool page = false,
+  }) async {
     final small = await _load(url);
     if (small == null) return null;
     try {
       return top
-          ? await renderTop(small, light: light)
+          ? await renderTop(small, light: light, page: page)
           : await render(small, light: light);
     } finally {
       small.dispose();
@@ -170,10 +186,12 @@ class CoverGlow {
   /// The glow along the top of a page, in the manner of Apple Music's mesh of colours: the cover is not blurred but
   /// reduced to a [grid] of patches of colour, which are smoothed into one another. No shape of the cover is left (a
   /// face stretched across a page is a smear), only where its colours are, and they are brought up as in [render]. It
-  /// is faded from the top to nothing, so that it can be drawn as it is. Public so that it can be tested.
+  /// is faded from the top to nothing, so that it can be drawn as it is; or, for a [page], only to a softer hold over the
+  /// whole of it. Public so that it can be tested.
   static Future<ui.Image> renderTop(
     ui.Image cover, {
     bool light = false,
+    bool page = false,
   }) async {
     final data = await cover.toByteData(format: ui.ImageByteFormat.rawRgba);
     final rgba = data?.buffer.asUint8List() ?? Uint8List(0);
@@ -220,7 +238,9 @@ class CoverGlow {
           ..shader = ui.Gradient.linear(
             area.topCenter,
             area.bottomCenter,
-            const [Color(0x99FFFFFF), Color(0x52FFFFFF), Color(0x00FFFFFF)],
+            page
+                ? const [Color(0x99FFFFFF), Color(0x80FFFFFF), Color(0x66FFFFFF)]
+                : const [Color(0x99FFFFFF), Color(0x52FFFFFF), Color(0x00FFFFFF)],
             const [0, 0.5, 1],
           ),
       )

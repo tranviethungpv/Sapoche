@@ -45,7 +45,12 @@ class PlayerSheetController extends ChangeNotifier {
 
   /// Where the mini player's capsule is on the screen; a guess while it is not on it.
   Rect miniRect(Size screen) {
-    final box = miniBar.currentContext?.findRenderObject();
+    RenderObject? box;
+    try {
+      box = miniBar.currentContext?.findRenderObject();
+    } on FlutterError {
+      // The capsule is on its way to another place in the tree, as when a phone is turned while the player is open
+    }
     if (box is RenderBox && box.attached && box.hasSize) {
       return box.localToGlobal(Offset.zero) & box.size;
     }

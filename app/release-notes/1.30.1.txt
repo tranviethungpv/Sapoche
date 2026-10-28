@@ -1,0 +1,6 @@
+Landscape on a phone, and covers that colour the whole page
+- A phone on its side has its tabs in a slim rail up the left, and the mini player floats alone at the foot, so the songs get the height the two bars took.
+- Albums, playlists, artists and the lists in Library are laid out with the cover beside the songs on a phone on its side, as on a tablet.
+- Those pages are coloured all over by their cover, with no smeared faces.
+- The play and next buttons of the mini player are the same size and level. The bars are a little further from the sides.
+- Fixes the iPhone build of 1.30.0.

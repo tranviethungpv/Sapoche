@@ -22,6 +22,7 @@ class PlayerBackdrop extends StatefulWidget {
     required this.coverUrl,
     this.glowHeight,
     this.moving,
+    this.mesh = false,
   });
 
   final String? coverUrl;
@@ -36,6 +37,11 @@ class PlayerBackdrop extends StatefulWidget {
   /// they ease to a stop and stand still where they are, so that pausing does not change the picture. Null for a page
   /// that plays nothing (an album, an artist): the picture alone.
   final bool? moving;
+
+  /// The whole page in the mesh of colours of the cover, as the glow along the top is made, instead of the blurred
+  /// cover the full player has: no shape of the cover is left to smear when it is stretched over a page of any shape,
+  /// a phone on its side included. For the pages of an album, an artist, a playlist.
+  final bool mesh;
 
   @override
   State<PlayerBackdrop> createState() => _PlayerBackdropState();
@@ -168,7 +174,9 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
     }
     final light = _light!;
     // Along the top it is the glow of the page, made of the colours of the cover and not of its shape
-    final made = widget.glowHeight == null
+    final made = widget.mesh
+        ? CoverGlow.page(url, light: light)
+        : widget.glowHeight == null
         ? CoverGlow.of(url, light: light)
         : CoverGlow.top(url, light: light);
     made.then((image) {
@@ -190,6 +198,7 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
     _drift.run(_toMove || _pace > 0);
     final fraction = widget.glowHeight;
     if (fraction != null) return _topGlow(glow, fraction);
+    if (widget.mesh) return _meshPage(glow);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -277,6 +286,40 @@ extension on _PlayerBackdropState {
           );
         },
       ),
+    );
+  }
+}
+
+extension on _PlayerBackdropState {
+  /// The mesh of colours over the whole page, on the app's own ground, fading from one picture to the next as the
+  /// song does. Until it is made, and for a cover that cannot be read, the pink veil.
+  Widget _meshPage(ui.Image? glow) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(color: context.palette.base),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 900),
+          switchInCurve: Curves.easeInOut,
+          switchOutCurve: Curves.easeInOut,
+          layoutBuilder: (current, previous) =>
+              Stack(fit: StackFit.expand, children: [...previous, ?current]),
+          child: glow == null
+              ? const PinkWash(
+                  key: ValueKey('pink'),
+                  intensity: 0.55,
+                  opaque: false,
+                  child: SizedBox.expand(),
+                )
+              : RepaintBoundary(
+                  key: ValueKey(_shownFor),
+                  child: CustomPaint(
+                    painter: _GlowPainter(glow),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }

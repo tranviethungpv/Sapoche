@@ -15,7 +15,7 @@ import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/play_row.dart';
-import 'widgets/ambient_backdrop.dart';
+import 'widgets/player_backdrop.dart';
 
 /// Opens the page of an artist in the tab that is showing, with a way back.
 Future<void> openArtist(BuildContext context, String artistId) {
@@ -61,10 +61,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            AmbientBackdrop.cover(
-              cover: page?.thumb,
-              child: const SizedBox.expand(),
-            ),
+            PlayerBackdrop(coverUrl: page?.thumb, mesh: true),
             Padding(
               padding: EdgeInsets.only(left: SideInset.of(context)),
               child: Scaffold(
@@ -135,38 +132,43 @@ class _ContentState extends State<_Content> {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, box) => box.maxWidth >= splitWidth
-          ? _split(context)
-          : _column(context, box.maxWidth),
+      builder: (context, box) {
+        final split = SplitLayout.of(box);
+        return split != null
+            ? _split(context, split)
+            : _column(context, box.maxWidth);
+      },
     );
   }
 
   /// A browser, a tablet on its side, a television: the picture, the buttons and what the artist says of themselves stay
   /// on the left, and the songs, the releases and the other artists take the rest, as the page of a playlist does.
-  Widget _split(BuildContext context) {
+  Widget _split(BuildContext context, SplitLayout split) {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: splitMax),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: EdgeInsets.symmetric(horizontal: split.pad),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: splitCover,
+                width: split.left,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 24),
+                  padding: EdgeInsets.only(
+                    bottom: HomeShell.bottomInsetOf(context),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _Hero(page: _page, available: splitCover, inset: 0),
+                      _Hero(page: _page, available: split.cover, inset: 0),
                       _playRow(inline: true),
                       ..._about(context, inset: 0),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: splitGap),
+              SizedBox(width: split.gap),
               Expanded(
                 child: ListView(
                   physics: const BouncingScrollPhysics(

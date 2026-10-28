@@ -54,8 +54,11 @@ void main() {
   group('the layout follows the width of the window', () {
     for (final (width, height, layout) in [
       (390.0, 844.0, ShellLayout.bars),
-      (844.0, 390.0, ShellLayout.bars),
+      // A phone on its side keeps its tabs up the side
+      (844.0, 390.0, ShellLayout.rail),
+      (667.0, 375.0, ShellLayout.rail),
       (599.0, 900.0, ShellLayout.bars),
+      (540.0, 360.0, ShellLayout.bars),
       (820.0, 1180.0, ShellLayout.rail),
       (1280.0, 800.0, ShellLayout.sidebar),
       (1920.0, 1080.0, ShellLayout.sidebar),

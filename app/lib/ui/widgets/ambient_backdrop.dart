@@ -12,21 +12,9 @@ import 'wash.dart';
 ///
 /// It is the same picture as the player's, made once per song, so it costs no more than the veil did.
 class AmbientBackdrop extends StatelessWidget {
-  const AmbientBackdrop({super.key, required this.child})
-    : cover = null,
-      ownCover = false;
-
-  /// The backdrop of a page that is about one cover (an album, a playlist, an artist): the same glow, in the colours
-  /// of [cover] instead of the song that is playing. With no cover, as while it is being found, it is the pink veil.
-  const AmbientBackdrop.cover({
-    super.key,
-    required this.cover,
-    required this.child,
-  }) : ownCover = true;
+  const AmbientBackdrop({super.key, required this.child});
 
   final Widget child;
-  final String? cover;
-  final bool ownCover;
 
   /// How far down the page the glow reaches.
   static const glowHeight = 0.34;
@@ -40,20 +28,19 @@ class AmbientBackdrop extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (ownCover)
-            _glow(cover)
-          else
-            ListenableBuilder(
-              listenable: room,
-              builder: (context, _) => _glow(room.snapshot.current?.thumb),
-            ),
+          ListenableBuilder(
+            listenable: room,
+            builder: (context, _) {
+              final cover = room.snapshot.current?.thumb;
+              if (cover == null) {
+                return const PinkWash(opaque: false, child: SizedBox.expand());
+              }
+              return PlayerBackdrop(coverUrl: cover, glowHeight: glowHeight);
+            },
+          ),
           child,
         ],
       ),
     );
   }
-
-  static Widget _glow(String? cover) => cover == null
-      ? const PinkWash(opaque: false, child: SizedBox.expand())
-      : PlayerBackdrop(coverUrl: cover, glowHeight: glowHeight);
 }

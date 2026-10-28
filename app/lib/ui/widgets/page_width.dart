@@ -46,3 +46,47 @@ const splitMax = 1500.0;
 /// The side of the cover, and the space between it and the list, in that layout.
 const splitCover = 320.0;
 const splitGap = 40.0;
+
+/// How a page with a cover and a list of songs is laid out beside each other: the cover and what is said of it on the
+/// left, the list on the right. A window [splitWidth] wide has it at full size; a phone on its side has it too, with the
+/// left half narrower and the cover small by the height it has, so that the title and Play still show above the mini
+/// player that floats over the foot of it. Null where the page is a single column.
+class SplitLayout {
+  const SplitLayout._({
+    required this.left,
+    required this.cover,
+    required this.gap,
+    required this.pad,
+    this.phone = false,
+  });
+
+  /// Width of the left half, side of the cover in it, space between the halves and at the sides of the pair.
+  final double left;
+  final double cover;
+  final double gap;
+  final double pad;
+
+  /// A phone on its side, where the title is set smaller too: the mini player floats over the foot of the left half.
+  final bool phone;
+
+  static SplitLayout? of(BoxConstraints box) {
+    if (box.maxWidth >= splitWidth) {
+      return const SplitLayout._(
+        left: splitCover,
+        cover: splitCover,
+        gap: splitGap,
+        pad: 32,
+      );
+    }
+    if (box.maxWidth > box.maxHeight && box.maxWidth >= 560) {
+      return SplitLayout._(
+        left: 300,
+        cover: (box.maxHeight * 0.25).clamp(88.0, 140.0),
+        gap: 20,
+        pad: 20,
+        phone: true,
+      );
+    }
+    return null;
+  }
+}

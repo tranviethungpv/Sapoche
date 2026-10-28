@@ -25,6 +25,8 @@ class MiniPlayer extends StatelessWidget {
   static double heightOf(BuildContext context) =>
       switch (HomeShell.layoutOf(context)) {
         ShellLayout.bars => HomeShell.isWide(context) ? 40 : 46,
+        // On its side a phone has little height; a tablet's is a little lower than a phone's was
+        ShellLayout.rail when HomeShell.compactOf(context) => 40,
         _ => HomeShell.isWide(context) ? 48 : 54,
       };
 
@@ -97,6 +99,8 @@ class MiniPlayerCapsule extends StatelessWidget {
     if (current == null) return const SizedBox.shrink();
     final height = MiniPlayer.heightOf(context);
     final cover = (height - 8).clamp(0.0, 44.0);
+    // The play button and the next one are the same size and on the same line
+    final button = height < 48 ? height : 48.0;
     // What folding takes away is gone half way
     final fading = (1 - 2 * folded).clamp(0.0, 1.0);
     return Glass(
@@ -156,7 +160,7 @@ class MiniPlayerCapsule extends StatelessWidget {
                   playing: controller.isPlaying,
                   starting: controller.isStarting,
                   onPressed: controller.togglePlay,
-                  size: height < 48 ? height : 48,
+                  size: button,
                   filled: false,
                 ),
               ),
@@ -169,7 +173,7 @@ class MiniPlayerCapsule extends StatelessWidget {
                     child: SkipButton(
                       forward: true,
                       onPressed: controller.next,
-                      size: 34,
+                      box: button,
                     ),
                   ),
                 ),

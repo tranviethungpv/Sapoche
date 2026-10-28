@@ -8,7 +8,7 @@ import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/ui/artist_page.dart';
 import 'package:sapoche/ui/collection_screen.dart';
 import 'package:sapoche/ui/home_shell.dart';
-import 'package:sapoche/ui/widgets/ambient_backdrop.dart';
+import 'package:sapoche/ui/widgets/player_backdrop.dart';
 
 import 'fake_backend.dart';
 import 'pump_app.dart';
@@ -87,6 +87,22 @@ void main() {
   );
 
   group('an album', () {
+    testWidgets('on a phone on its side the cover is beside the songs', (
+      tester,
+    ) async {
+      final (backend, context) = await start(tester);
+      tester.view.physicalSize = const Size(1688, 780);
+      await tester.pump();
+      backend.collectionResult = album;
+      await openAlbum(tester, context);
+      expect(tester.takeException(), isNull);
+      final cover = tester.getRect(find.byType(CollectionCover));
+      final one = tester.getRect(find.text('One'));
+      expect(cover.right, lessThan(one.left));
+      expect(cover.height, lessThan(200));
+      expect(tester.getRect(find.text('The Album')).right, lessThan(one.left));
+    });
+
     testWidgets('has its cover facts, numbered songs and rows below', (
       tester,
     ) async {
@@ -359,10 +375,7 @@ void main() {
     ) async {
       await open(tester);
       // The colours come from the picture, as on the page of an album
-      expect(
-        find.byWidgetPredicate((w) => w is AmbientBackdrop && w.ownCover),
-        findsOneWidget,
-      );
+      expect(find.byType(PlayerBackdrop), findsOneWidget);
       expect(find.byTooltip('Back'), findsOneWidget);
       expect(find.text('1.2M subscribers'), findsOneWidget);
       expect(find.text('Play'), findsOneWidget);
@@ -450,6 +463,22 @@ void main() {
         );
       },
     );
+
+    testWidgets('a phone on its side has them beside the songs too', (
+      tester,
+    ) async {
+      final (backend, context) = await start(tester);
+      tester.view.physicalSize = const Size(1688, 780);
+      await tester.pump();
+      backend.artistResult = page;
+      openArtist(context, 'UCzen');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final hit = tester.getRect(find.text('Hit'));
+      expect(tester.getRect(find.text('Play')).right, lessThan(hit.left));
+      // The picture is small enough to leave room for what is under it
+      expect(tester.getSize(find.byType(ClipRRect).first).height, lessThan(200));
+    });
 
     testWidgets('a profile has no play and shuffle without songs', (
       tester,

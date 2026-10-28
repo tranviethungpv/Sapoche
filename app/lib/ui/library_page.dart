@@ -11,7 +11,6 @@ import 'collection_screen.dart';
 import 'home_shell.dart';
 import 'scope.dart';
 import 'settings_page.dart';
-import 'widgets/ambient_backdrop.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
 import 'widgets/folder_cover.dart';
@@ -20,6 +19,7 @@ import 'widgets/library_lost_notice.dart';
 import 'widgets/page_width.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
+import 'widgets/player_backdrop.dart';
 import 'widgets/playlist_cover.dart';
 import 'widgets/queue_actions.dart';
 import 'widgets/scroll_edge.dart';
@@ -722,9 +722,9 @@ class _FolderPage extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        AmbientBackdrop.cover(
-          cover: playlists.firstOrNull?.thumbs.firstOrNull,
-          child: const SizedBox.expand(),
+        PlayerBackdrop(
+          coverUrl: playlists.firstOrNull?.thumbs.firstOrNull,
+          mesh: true,
         ),
         Padding(
           padding: EdgeInsets.only(left: SideInset.of(context)),
@@ -732,6 +732,7 @@ class _FolderPage extends StatelessWidget {
             appBar: AppBar(leading: const RoundBackButton()),
             body: LayoutBuilder(
               builder: (context, box) {
+                final split = SplitLayout.of(box);
                 final gutter = ((box.maxWidth - 1100) / 2).clamp(
                   0.0,
                   double.infinity,
@@ -740,6 +741,7 @@ class _FolderPage extends StatelessWidget {
                   children: [
                     Center(
                       child: CollectionCover(
+                        side: split?.cover,
                         picture: (side) => FolderCover(
                           thumbs: thumbs,
                           size: side,
@@ -855,23 +857,25 @@ class _FolderPage extends StatelessWidget {
                   ),
                 ];
                 // A browser with room: the folder on the left, its playlists on the right
-                if (box.maxWidth >= splitWidth) {
+                if (split != null) {
                   return Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: splitMax),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        padding: EdgeInsets.symmetric(horizontal: split.pad),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             SizedBox(
-                              width: splitCover,
+                              width: split.left,
                               child: SingleChildScrollView(
-                                padding: const EdgeInsets.only(bottom: 24),
+                                padding: EdgeInsets.only(
+                                  bottom: HomeShell.bottomInsetOf(context),
+                                ),
                                 child: header,
                               ),
                             ),
-                            const SizedBox(width: splitGap),
+                            SizedBox(width: split.gap),
                             Expanded(
                               child: CustomScrollView(
                                 slivers: [
@@ -1324,9 +1328,9 @@ class _TrackList extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            AmbientBackdrop.cover(
-              cover: tracks.firstOrNull?.thumb,
-              child: const SizedBox.expand(),
+            PlayerBackdrop(
+              coverUrl: tracks.firstOrNull?.thumb,
+              mesh: true,
             ),
             Padding(
               padding: EdgeInsets.only(left: SideInset.of(context)),
@@ -1335,7 +1339,8 @@ class _TrackList extends StatelessWidget {
                 body: LayoutBuilder(
                   builder: (context, box) {
                     // Wide, the cover goes beside what is said of it, and the songs keep to a readable width
-                    final wide = box.maxWidth >= 720;
+                    final split = SplitLayout.of(box);
+                    final wide = split != null || box.maxWidth >= 720;
                     final gutter = ((box.maxWidth - 1100) / 2).clamp(
                       0.0,
                       double.infinity,
@@ -1357,7 +1362,7 @@ class _TrackList extends StatelessWidget {
                             textAlign: wide
                                 ? TextAlign.start
                                 : TextAlign.center,
-                            style: wide
+                            style: wide && split?.phone != true
                                 ? theme.headlineLarge
                                 : theme.headlineSmall,
                           ),
@@ -1433,25 +1438,29 @@ class _TrackList extends StatelessWidget {
                       ),
                     ];
                     // A browser with room: the cover and what is said of the songs on the left, the songs on the right
-                    if (!bare && box.maxWidth >= splitWidth) {
+                    if (!bare && split != null) {
                       return Center(
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: splitMax),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: split.pad,
+                            ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 SizedBox(
-                                  width: splitCover,
+                                  width: split.left,
                                   child: SingleChildScrollView(
-                                    padding: const EdgeInsets.only(bottom: 24),
+                                    padding: EdgeInsets.only(
+                                      bottom: HomeShell.bottomInsetOf(context),
+                                    ),
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
                                         CollectionCover(
-                                          side: splitCover,
+                                          side: split.cover,
                                           picture: cover,
                                         ),
                                         const SizedBox(height: 20),
@@ -1460,7 +1469,7 @@ class _TrackList extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: splitGap),
+                                SizedBox(width: split.gap),
                                 Expanded(
                                   child: CustomScrollView(
                                     slivers: [

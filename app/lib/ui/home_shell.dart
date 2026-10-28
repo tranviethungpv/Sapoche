@@ -57,10 +57,26 @@ class HomeShell extends StatefulWidget {
 
   static ShellLayout layoutOf(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    // A phone on its side is wide but short, and keeps the phone's bars
-    if (size.width < 600 || size.height < 480) return ShellLayout.bars;
+    // A phone on its side is wide but short: two bars stacked along its foot would take a quarter of what height it
+    // has, so the tabs go up the side, as a rail of icons, and the mini player floats alone
+    if (size.height < 480) {
+      return size.width > size.height && size.width >= 560
+          ? ShellLayout.rail
+          : ShellLayout.bars;
+    }
+    if (size.width < 600) return ShellLayout.bars;
     return size.width < 840 ? ShellLayout.rail : ShellLayout.sidebar;
   }
+
+  /// The rail of a phone on its side: icons only, and lower bars all round.
+  static bool compactOf(BuildContext context) =>
+      layoutOf(context) == ShellLayout.rail &&
+      MediaQuery.sizeOf(context).height < 480;
+
+  /// Whether the pages end below the status bar, as on a phone, instead of scrolling up under a strip of glass there as
+  /// they do on a tablet: a phone on its side has no height to give that strip.
+  static bool endsBelowStatusOf(BuildContext context) =>
+      layoutOf(context) == ShellLayout.bars || compactOf(context);
 
   /// Bottom padding lists need so their last row can scroll clear of the bars. A phone's bars are folded by the time a
   /// page has been scrolled to its end, so it is their folded height (the mini player's, the row above the system's bar) and a
@@ -72,7 +88,13 @@ class HomeShell extends StatefulWidget {
           math.max(_systemBottomOf(context), _barsBottom) +
               MiniPlayer.heightOf(context) +
               16,
-        ShellLayout.rail => 120,
+        ShellLayout.rail =>
+          compactOf(context)
+              ? math.max(_systemBottomOf(context), 0) +
+                    MiniPlayer.heightOf(context) +
+                    _Side.compactBottom +
+                    16
+              : 120,
         ShellLayout.sidebar => 112,
       };
 
@@ -98,7 +120,7 @@ class HomeShell extends StatefulWidget {
   /// Side of a cover in a row of cards: larger where the window is.
   static double cardSizeOf(BuildContext context) => switch (layoutOf(context)) {
     ShellLayout.bars => 148,
-    ShellLayout.rail => 164,
+    ShellLayout.rail => compactOf(context) ? 132 : 164,
     ShellLayout.sidebar => 172,
   };
 
@@ -602,17 +624,29 @@ class _Side extends StatelessWidget {
 
   static const _gap = 12.0;
 
+  /// Space under the mini player of a phone on its side, which has little height to spare.
+  static const compactBottom = 12.0;
+
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.viewPaddingOf(context);
     final rail = layout == ShellLayout.rail;
+    final compact = HomeShell.compactOf(context);
+    final railWidth = _Rail.widthOf(compact);
+    final edge = compact ? 12.0 : 16.0;
     // Where the pages start: right of the rail or the sidebar, with a gap on either side of it
-    final inset = rail ? 16 + _Rail.width + 16 : _gap + _Sidebar.width + _gap;
-    final bottom = padding.bottom + (rail ? 16 : _gap);
+    final inset = rail ? edge + railWidth + edge : _gap + _Sidebar.width + _gap;
+    final bottom =
+        padding.bottom +
+        (compact
+            ? compactBottom
+            : rail
+            ? 16
+            : _gap);
     return LayoutBuilder(
       builder: (context, box) {
         final content = box.maxWidth - inset;
-        final mini = (content - 32).clamp(0.0, 460.0);
+        final mini = (content - 32).clamp(0.0, compact ? 400.0 : 460.0);
         return Stack(
           children: [
             // The pages take the whole window, and keep clear of the rail or the sidebar themselves
@@ -621,11 +655,15 @@ class _Side extends StatelessWidget {
             ),
             if (rail)
               Positioned(
-                left: 16,
-                top: padding.top + 16,
+                left: edge,
+                top: padding.top + edge,
                 bottom: bottom,
-                width: _Rail.width,
-                child: _Rail(index: index, onSelect: onSelect),
+                width: railWidth,
+                child: _Rail(
+                  index: index,
+                  onSelect: onSelect,
+                  compact: compact,
+                ),
               )
             else
               Positioned(
@@ -667,12 +705,22 @@ class _Side extends StatelessWidget {
 
 /// The tabs in a column of glass on the left of a tablet held upright, with Settings at the bottom.
 class _Rail extends StatelessWidget {
-  const _Rail({required this.index, required this.onSelect});
+  const _Rail({
+    required this.index,
+    required this.onSelect,
+    this.compact = false,
+  });
 
   final int index;
   final ValueChanged<int> onSelect;
 
+  /// Icons only, for a phone on its side.
+  final bool compact;
+
   static const width = 80.0;
+  static const compactWidth = 56.0;
+
+  static double widthOf(bool compact) => compact ? compactWidth : width;
 
   /// A getter, not a constant: the names follow the language.
   static List<(int, IconData, String)> get _items => [
@@ -685,12 +733,13 @@ class _Rail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final tile = compact ? 44.0 : 64.0;
     return Column(
       children: [
         Glass(
-          borderRadius: BorderRadius.circular(width / 2),
+          borderRadius: BorderRadius.circular(widthOf(compact) / 2),
           child: Padding(
-            padding: const EdgeInsets.all(8),
+            padding: EdgeInsets.all(compact ? 6 : 8),
             child: Column(
               children: [
                 for (final (tab, icon, label) in _items)
@@ -698,37 +747,50 @@ class _Rail extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 2),
                     child: Material(
                       color: tab == index ? p.veilStrong : Colors.transparent,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(compact ? 22 : 20),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(compact ? 22 : 20),
                         onTap: () => onSelect(tab),
                         child: SizedBox.square(
-                          dimension: 64,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                icon,
-                                size: 26,
-                                color: tab == index
-                                    ? p.primary
-                                    : p.textSecondary,
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                label,
-                                maxLines: 1,
-                                overflow: TextOverflow.fade,
-                                softWrap: false,
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
+                          dimension: tile,
+                          child: compact
+                              ? Tooltip(
+                                  message: label,
+                                  child: Icon(
+                                    icon,
+                                    size: 24,
+                                    color: tab == index
+                                        ? p.primary
+                                        : p.textSecondary,
+                                  ),
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      icon,
+                                      size: 26,
                                       color: tab == index
                                           ? p.primary
                                           : p.textSecondary,
                                     ),
-                              ),
-                            ],
-                          ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.fade,
+                                      softWrap: false,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                            color: tab == index
+                                                ? p.primary
+                                                : p.textSecondary,
+                                          ),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
                     ),
@@ -739,9 +801,9 @@ class _Rail extends StatelessWidget {
         ),
         const Spacer(),
         SizedBox.square(
-          dimension: 56,
+          dimension: compact ? 44 : 56,
           child: Glass(
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(compact ? 22 : 28),
             child: IconButton(
               onPressed: () => openSettings(context),
               tooltip: S.settingsTitle,

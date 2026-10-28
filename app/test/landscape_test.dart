@@ -277,6 +277,70 @@ void main() {
   });
 
   group('the bars on their side', () {
+    testWidgets('are a rail of icons up the left, and the mini player floats alone', (
+      tester,
+    ) async {
+      await openPlayer(tester, snapshot: sampleRoom());
+      await resize(tester, 844, 390);
+      await tester.tap(find.byTooltip(S.close));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(tester.takeException(), isNull);
+      final context = tester.element(find.byType(HomeShell));
+      expect(HomeShell.layoutOf(context), ShellLayout.rail);
+      expect(HomeShell.compactOf(context), isTrue);
+      // The four places and Settings, named by their tooltips, in a column on the left that fits the window
+      final rail = [
+        for (final name in [S.tabHome, S.tabSearch, S.tabLibrary, S.tabListen])
+          tester.getRect(find.byTooltip(name)),
+      ];
+      for (final r in rail) {
+        expect(r.right, lessThan(90));
+        expect(r.bottom, lessThan(390));
+      }
+      expect(rail.first.top, lessThan(rail.last.top));
+      expect(tester.getRect(find.byTooltip(S.settingsTitle)).bottom, lessThan(390));
+      // The mini player is beside the rail, not under it, and no wider than a phone's was long
+      final mini = tester.getRect(find.byType(MiniPlayer));
+      expect(mini.left, greaterThan(rail.first.right));
+      expect(mini.width, lessThanOrEqualTo(400));
+      expect(mini.bottom, lessThan(390));
+    });
+
+    for (final size in [const Size(390, 844), const Size(844, 390)]) {
+      testWidgets('the play and next buttons of the mini player are alike and level at $size', (
+        tester,
+      ) async {
+        final (backend, _) = await pumpApp(tester);
+        tester.view.physicalSize = size * 2;
+        backend.emit(StateEvent(sampleRoom()));
+        await tester.pump(const Duration(milliseconds: 700));
+        await tester.pump(const Duration(milliseconds: 700));
+        final mini = find.byType(MiniPlayer);
+        final play = tester.getRect(
+          find.descendant(of: mini, matching: find.byType(PlayPauseButton)),
+        );
+        final next = tester.getRect(
+          find.descendant(of: mini, matching: find.byType(SkipButton)),
+        );
+        expect(next.center.dy, closeTo(play.center.dy, 0.5), reason: '$size');
+        expect(next.size, play.size, reason: '$size');
+        final glyphs = [
+          for (final button in [PlayPauseButton, SkipButton])
+            tester.getSize(
+              find.descendant(
+                of: find.descendant(
+                  of: mini,
+                  matching: find.byType(button),
+                ),
+                matching: find.byType(Icon),
+              ),
+            ),
+        ];
+        expect(glyphs.first, glyphs.last, reason: '$size');
+      });
+    }
+
     testWidgets('are lower, and lists clear them', (tester) async {
       await openPlayer(tester, snapshot: sampleRoom());
       await resize(tester, 844, 390);
