@@ -514,10 +514,14 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     );
     final home = Scaffold(
       extendBody: true,
-      // Beside a notch, when the phone is on its side
+      // Beside a notch, when the phone is on its side. With a rail or a sidebar the pages are not inside it: they take the
+      // whole window, so that their backdrops are under the notch and the system's bar as well, and keep clear of them
+      // by [SideInset]
       body: SafeArea(
         top: false,
         bottom: false,
+        left: layout == ShellLayout.bars,
+        right: layout == ShellLayout.bars,
         child: Column(
           children: [
             // Until the browser has the group key, the way to give it stays in sight
@@ -635,7 +639,11 @@ class _Side extends StatelessWidget {
     final railWidth = _Rail.widthOf(compact);
     final edge = compact ? 12.0 : 16.0;
     // Where the pages start: right of the rail or the sidebar, with a gap on either side of it
-    final inset = rail ? edge + railWidth + edge : _gap + _Sidebar.width + _gap;
+    // The notch, or the system's bar, at either side
+    final left = padding.left;
+    final right = padding.right;
+    final inset =
+        left + (rail ? edge + railWidth + edge : _gap + _Sidebar.width + _gap);
     final bottom =
         padding.bottom +
         (compact
@@ -645,17 +653,27 @@ class _Side extends StatelessWidget {
             : _gap);
     return LayoutBuilder(
       builder: (context, box) {
-        final content = box.maxWidth - inset;
+        final content = box.maxWidth - inset - right;
         final mini = (content - 32).clamp(0.0, compact ? 400.0 : 460.0);
         return Stack(
           children: [
             // The pages take the whole window, and keep clear of the rail or the sidebar themselves
             Positioned.fill(
-              child: SideInset(left: inset, child: child),
+              child: SideInset(
+                left: inset,
+                right: right,
+                // What the pages are inset by is said once: a safe area inside a page is not to take it again
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeLeft: true,
+                  removeRight: true,
+                  child: child,
+                ),
+              ),
             ),
             if (rail)
               Positioned(
-                left: edge,
+                left: left + edge,
                 top: padding.top + edge,
                 bottom: bottom,
                 width: railWidth,
@@ -667,7 +685,7 @@ class _Side extends StatelessWidget {
               )
             else
               Positioned(
-                left: _gap,
+                left: left + _gap,
                 top: padding.top + _gap,
                 bottom: bottom,
                 width: _Sidebar.width,
@@ -681,7 +699,7 @@ class _Side extends StatelessWidget {
             // The mini player floats in the middle of the pages, the player bar runs along them
             Positioned(
               left: rail ? inset + (content - mini) / 2 : inset,
-              right: rail ? null : _gap,
+              right: rail ? null : right + _gap,
               width: rail ? mini : null,
               bottom: bottom,
               child: rail

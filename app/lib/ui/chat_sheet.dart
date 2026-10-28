@@ -17,9 +17,20 @@ import 'widgets/avatars.dart';
 import 'widgets/reactions.dart';
 
 /// The room's chat, over whatever is shown: messages, the reactions, and a field to write in.
-void showChatSheet(BuildContext context) {
+Future<void> showChatSheet(BuildContext context) async {
   final controller = AppScope.roomOf(context);
-  showModalBottomSheet<void>(
+  // Only one at a time: each touch on a notice asks for the chat, and nobody wants ten of them to close one by one
+  if (controller.chatSheetShown) return;
+  controller.chatSheetShown = true;
+  try {
+    await _showChatSheet(context, controller);
+  } finally {
+    controller.chatSheetShown = false;
+  }
+}
+
+Future<void> _showChatSheet(BuildContext context, RoomController controller) {
+  return showModalBottomSheet<void>(
     useRootNavigator: true,
     // Below the status bar, the notch and the island, keyboard or not
     useSafeArea: true,

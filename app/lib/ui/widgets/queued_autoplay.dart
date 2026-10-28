@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
+import 'avatars.dart';
 import 'delete_background.dart';
 import 'track_tile.dart';
 
@@ -43,7 +44,11 @@ class QueuedAutoplay extends StatelessWidget {
               HapticFeedback.lightImpact();
               controller.remove(entry);
             },
-            child: TrackTile(track: entry, onTap: () => controller.jump(entry)),
+            child: TrackTile(
+              track: entry,
+              badge: const AutoplayBadge(),
+              onTap: () => controller.jump(entry),
+            ),
           ),
       ],
     );

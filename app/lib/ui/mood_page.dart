@@ -44,40 +44,47 @@ class _MoodScreenState extends State<MoodScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The page with its bar keeps clear of the rail and the notch as a whole, so what it holds is not inset again
     return AmbientBackdrop(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          leading: const RoundBackButton(),
-          title: Text(widget.chip.label),
-        ),
-        body: PageWidth(
-          child: FutureBuilder<MusicHome>(
-            future: _home,
-            builder: (context, async) {
-              if (async.hasError) {
-                return PlayerMessage(
-                  icon: Icons.cloud_off_rounded,
-                  text: S.moodFailed,
-                  action: S.tryAgain,
-                  onAction: () => setState(_load),
-                );
-              }
-              final shelves = async.data?.shelves;
-              if (shelves == null) {
-                return const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                );
-              }
-              return ListView(
-                padding: EdgeInsets.only(
-                  bottom: HomeShell.bottomInsetOf(context),
-                ),
-                children: [
-                  for (final shelf in shelves) MusicShelfView(shelf: shelf),
-                ],
-              );
-            },
+      child: Padding(
+        padding: SideInset.paddingOf(context),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            leading: const RoundBackButton(),
+            title: Text(widget.chip.label),
+          ),
+          body: SideInset(
+            left: 0,
+            child: PageWidth(
+              child: FutureBuilder<MusicHome>(
+                future: _home,
+                builder: (context, async) {
+                  if (async.hasError) {
+                    return PlayerMessage(
+                      icon: Icons.cloud_off_rounded,
+                      text: S.moodFailed,
+                      action: S.tryAgain,
+                      onAction: () => setState(_load),
+                    );
+                  }
+                  final shelves = async.data?.shelves;
+                  if (shelves == null) {
+                    return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  }
+                  return ListView(
+                    padding: EdgeInsets.only(
+                      bottom: HomeShell.bottomInsetOf(context),
+                    ),
+                    children: [
+                      for (final shelf in shelves) MusicShelfView(shelf: shelf),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
         ),
       ),

@@ -1,0 +1,4 @@
+Một cửa sổ chat, và các trang phủ đến tận mép
+- Chạm vào thông báo của chat chỉ mở chat một lần. Chạm nhiều lần, hay chạm vào thông báo đã gộp mười tin, không còn chồng mười cửa sổ chat phải thoát từng cái.
+- Khi điện thoại nằm ngang, các trang được phủ màu đến tận mép, kể cả dưới tai thỏ và các thanh của hệ thống, không chỉ ở phần bên trong.
+- Bài do tự phát xếp vào danh sách của phòng có một tia sáng nhỏ ở góc bìa, thay cho chữ "Autoplay" sau tên nghệ sĩ.

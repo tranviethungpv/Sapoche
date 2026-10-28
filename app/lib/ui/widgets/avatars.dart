@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
+import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
 
@@ -65,6 +66,37 @@ class Avatar extends StatelessWidget {
                 color: dark ? const Color(0xFFFFE8EF) : const Color(0xFF5A2A3A),
               ),
             ),
+    );
+  }
+}
+
+/// What stands where a person's picture would, on a song that autoplay lined up: nobody picked it.
+class AutoplayBadge extends StatelessWidget {
+  const AutoplayBadge({super.key, this.size = 22});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Semantics(
+      label: S.autoplay,
+      excludeSemantics: true,
+      child: Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: p.primaryContainer,
+          border: Border.all(color: p.base, width: 2),
+        ),
+        child: Icon(
+          Icons.auto_awesome_rounded,
+          size: size * 0.52,
+          color: p.primary,
+        ),
+      ),
     );
   }
 }

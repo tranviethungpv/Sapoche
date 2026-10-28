@@ -79,7 +79,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
               mesh: true,
             ),
             Padding(
-              padding: EdgeInsets.only(left: SideInset.of(context)),
+              padding: SideInset.paddingOf(context),
               child: page != null
                   ? _Content(page: page)
                   : Scaffold(

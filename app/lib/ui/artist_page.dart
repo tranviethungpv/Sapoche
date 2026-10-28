@@ -63,7 +63,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
           children: [
             PlayerBackdrop(coverUrl: page?.thumb, mesh: true),
             Padding(
-              padding: EdgeInsets.only(left: SideInset.of(context)),
+              padding: SideInset.paddingOf(context),
               child: Scaffold(
                 appBar: AppBar(leading: const RoundBackButton()),
                 body: switch (page) {

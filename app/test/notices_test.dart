@@ -127,4 +127,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ChatSheet), findsOneWidget);
   });
+
+  testWidgets('ten touches on the notices open one chat, which closes once', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    backend.emit(history([message(1, 'b', 'hi there')]));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 10; i++) {
+      backend.emit(const OpenChatEvent('ABC234'));
+    }
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatSheet), findsOneWidget);
+    // One Back and it is gone, not ten
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatSheet), findsNothing);
+    // And it opens again when it is asked for again
+    backend.emit(const OpenChatEvent('ABC234'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatSheet), findsOneWidget);
+  });
 }

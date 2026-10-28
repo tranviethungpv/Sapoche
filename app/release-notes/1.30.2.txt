@@ -1,0 +1,4 @@
+One chat window, and pages that reach the edges
+- Touching a notice of the chat opens the chat once. Touching several, or the notice that gathered ten messages, no longer piles up ten chat windows to close one by one.
+- On a phone on its side, the pages are coloured right to the edge, under the camera notch and the system's bars, not only inside them.
+- A song that autoplay lined up has a small spark on its cover in the room's list, in place of the word "Autoplay" after the artist's name.

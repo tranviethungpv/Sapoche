@@ -1,18 +1,34 @@
 import 'package:flutter/material.dart';
 
 /// How far from the left edge of the window the pages of a tab begin: the width of the rail or the sidebar, which the
-/// pages are drawn beside. A page with a backdrop of its own (an album's) paints it across the whole window, so that
-/// the glass of the sidebar blurs its colours, and keeps its content clear of this inset.
+/// pages are drawn beside, and the notch or the system's bar at that side. A page with a backdrop of its own (an
+/// album's) paints it across the whole window, under the sidebar's glass and under the notch, and keeps its content
+/// clear of this inset. [right] is the same for the other side, where there is only a notch or a bar.
 class SideInset extends InheritedWidget {
-  const SideInset({super.key, required this.left, required super.child});
+  const SideInset({
+    super.key,
+    required this.left,
+    this.right = 0,
+    required super.child,
+  });
 
   final double left;
+  final double right;
 
-  static double of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<SideInset>()?.left ?? 0;
+  static SideInset? _of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<SideInset>();
+
+  static double of(BuildContext context) => _of(context)?.left ?? 0;
+
+  /// What a page pads itself by at the two sides, to leave the rail and the notch clear.
+  static EdgeInsets paddingOf(BuildContext context) {
+    final inset = _of(context);
+    return EdgeInsets.only(left: inset?.left ?? 0, right: inset?.right ?? 0);
+  }
 
   @override
-  bool updateShouldNotify(SideInset old) => left != old.left;
+  bool updateShouldNotify(SideInset old) =>
+      left != old.left || right != old.right;
 }
 
 /// Keeps the first page of a tab to a readable width in a big window, in the middle of what the sidebar leaves, so that
@@ -26,7 +42,7 @@ class PageWidth extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(left: SideInset.of(context)),
+    padding: SideInset.paddingOf(context),
     child: Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(

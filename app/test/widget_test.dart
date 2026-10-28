@@ -1761,6 +1761,50 @@ void main() {
     },
   );
 
+  testWidgets('a song that autoplay lined up has a spark where a person\'s picture would be', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester, listen: false);
+    backend.emit(
+      StateEvent(
+        RoomSnapshot(
+          room: 'ABC234',
+          you: 'me',
+          phase: 'playing',
+          index: 0,
+          members: const [Member(id: 'me', name: 'Anna', ready: true)],
+          queue: [
+            const QueueEntry(
+              id: 'q0',
+              videoId: 'video0',
+              title: 'Mine',
+              artist: 'Artist 0',
+              durMs: 200000,
+              addedBy: 'me',
+            ),
+            const QueueEntry(
+              id: 'q1',
+              videoId: 'video1',
+              title: 'Found',
+              artist: 'Artist 1',
+              durMs: 200000,
+              addedBy: 'me',
+              auto: true,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('Listen'));
+    await tester.pump(const Duration(milliseconds: 100));
+    // The artist is said whole, with no word beside it; the spark is on the cover
+    expect(find.text('Artist 1'), findsOneWidget);
+    expect(find.text('Artist 1 · Autoplay'), findsNothing);
+    expect(find.byType(AutoplayBadge), findsOneWidget);
+    expect(find.byType(MemberAvatar), findsOneWidget);
+  });
+
   testWidgets('a new song slides in but the ones already there do not', (
     tester,
   ) async {

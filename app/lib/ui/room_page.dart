@@ -239,14 +239,14 @@ class _RoomPageState extends State<RoomPage> {
     child: child,
   );
 
-  /// Autoplay is said in words; the person who added a song is the small picture on its cover.
-  String _byline(QueueEntry entry) =>
-      entry.auto ? '${entry.artist} · ${S.autoplay}' : entry.artist;
+  /// The artist, whole: who added the song is the small picture on its cover.
+  String _byline(QueueEntry entry) => entry.artist;
 
-  /// Who added the song, small enough to see at a glance down the list, whatever the length of the artist's name. Nothing
-  /// for a song lined up by autoplay (no member picked it) or by somebody who has left.
+  /// Who added the song, small enough to see at a glance down the list, whatever the length of the artist's name: the
+  /// person's picture, or a spark for a song that autoplay lined up (no member picked it). Nothing for a song added by
+  /// somebody who has left.
   Widget? _badge(RoomSnapshot snapshot, QueueEntry entry) {
-    if (entry.auto) return null;
+    if (entry.auto) return const AutoplayBadge();
     final member = snapshot.members
         .where((m) => m.id == entry.addedBy)
         .firstOrNull;

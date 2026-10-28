@@ -135,6 +135,10 @@ class RoomController extends ChangeNotifier {
   /// Goes up each time the person touches a notice of the chat of the room they are in: the chat is what they want.
   final ValueNotifier<int> chatRequests = ValueNotifier(0);
 
+  /// The chat is on the screen. There is one chat at a time: a touch on a notice (or ten at once, from the notices
+  /// the phone gathered into one) while it is shown asks for nothing more.
+  bool chatSheetShown = false;
+
   NotificationInfo _noticeInfo = const NotificationInfo();
 
   /// Whether, and how, the person is told of the chat while the app is away.

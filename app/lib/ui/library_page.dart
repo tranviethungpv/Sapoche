@@ -727,7 +727,7 @@ class _FolderPage extends StatelessWidget {
           mesh: true,
         ),
         Padding(
-          padding: EdgeInsets.only(left: SideInset.of(context)),
+          padding: SideInset.paddingOf(context),
           child: Scaffold(
             appBar: AppBar(leading: const RoundBackButton()),
             body: LayoutBuilder(
@@ -1333,7 +1333,7 @@ class _TrackList extends StatelessWidget {
               mesh: true,
             ),
             Padding(
-              padding: EdgeInsets.only(left: SideInset.of(context)),
+              padding: SideInset.paddingOf(context),
               child: Scaffold(
                 appBar: AppBar(leading: const RoundBackButton()),
                 body: LayoutBuilder(

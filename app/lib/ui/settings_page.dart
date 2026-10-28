@@ -44,7 +44,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AmbientBackdrop(
     child: Padding(
-      padding: EdgeInsets.only(left: SideInset.of(context)),
+      padding: SideInset.paddingOf(context),
       child: const Scaffold(body: SettingsPage()),
     ),
   );
@@ -1309,7 +1309,7 @@ class _SubPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AmbientBackdrop(
     child: Padding(
-      padding: EdgeInsets.only(left: SideInset.of(context)),
+      padding: SideInset.paddingOf(context),
       child: Scaffold(
         body: _SettingsList(title: title, children: children),
       ),
