@@ -42,13 +42,15 @@
 <body>
   <div id="boot"><i></i></div>
   <script>
-    // A link like https://host/#key=SECRET hands the room key to the app and is taken out of the address before the app
-    // starts, so that the key stays out of the history and out of what is sent to other sites
+    // A link like https://host/#key=SECRET hands the group key to the app and is taken out of the address before the app
+    // starts, so that the key stays out of the history and out of what is sent to other sites. The rest after the #
+    // (the secret of an encrypted chat, k=) stays for the app to read.
     (function () {
       var found = /[#&]key=([^&]+)/.exec(location.hash);
       if (!found) return;
       try { sessionStorage.setItem('sapoche.setupKey', decodeURIComponent(found[1])); } catch (e) {}
-      history.replaceState(null, '', location.pathname + location.search);
+      var rest = location.hash.slice(1).split('&').filter(function (part) { return part.indexOf('key=') !== 0; }).join('&');
+      history.replaceState(null, '', location.pathname + location.search + (rest ? '#' + rest : ''));
     })();
   </script>
   <script>

@@ -136,8 +136,10 @@ class _StartRoomState extends State<_StartRoom> {
     }
   }
 
-  Future<void> _create() =>
-      _enter(() => widget.room.createRoom(_name.text), stayOpen: true);
+  Future<void> _create({bool withSongs = false}) => _enter(
+    () => widget.room.createRoom(_name.text, withSongs: withSongs),
+    stayOpen: true,
+  );
 
   Future<void> _join(String code) =>
       _enter(() => widget.room.join(code, _name.text));
@@ -195,10 +197,22 @@ class _StartRoomState extends State<_StartRoom> {
           Text(_error!, style: theme.bodySmall?.copyWith(color: p.error)),
         ],
         const SizedBox(height: 14),
-        FilledButton(
-          onPressed: _busy ? null : _create,
-          child: Text(S.createRoom),
-        ),
+        // While a song plays, the room starts with it and what comes after it; an empty room is the other way
+        if (widget.room.songsForNewRoom.isNotEmpty) ...[
+          FilledButton(
+            onPressed: _busy ? null : () => _create(withSongs: true),
+            child: Text(S.createRoomWithSong),
+          ),
+          const SizedBox(height: 10),
+          ElevatedButton(
+            onPressed: _busy ? null : _create,
+            child: Text(S.createEmptyRoom),
+          ),
+        ] else
+          FilledButton(
+            onPressed: _busy ? null : _create,
+            child: Text(S.createRoom),
+          ),
         const SizedBox(height: 10),
         ElevatedButton(
           onPressed: _busy ? null : _joinTyped,

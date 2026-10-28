@@ -480,6 +480,32 @@ void main() {
     expect(find.text('Recent rooms'), findsNothing);
   });
 
+  testWidgets(
+    'while a song plays, a room can start with it or start empty',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester, listen: false);
+      backend.emit(StateEvent(sampleRoom(local: true)));
+      backend.emit(
+        const PositionEvent(
+          PlayerPosition(playing: true, positionMs: 30000, durationMs: 200000),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('Room'));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Create a room with this song'), findsOneWidget);
+      expect(find.text('Empty room'), findsOneWidget);
+      expect(find.text('Create a room'), findsNothing);
+      await tester.ensureVisible(find.text('Create a room with this song'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('Create a room with this song'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(backend.calls, contains('createRoom Anna'));
+      // No room comes in this test: the wait for it gives up
+      await tester.pump(const Duration(seconds: 16));
+    },
+  );
+
   testWidgets('a name is needed before starting a room', (tester) async {
     final (backend, _) = await pumpApp(tester);
     backend.emit(const StateEvent(RoomSnapshot()));

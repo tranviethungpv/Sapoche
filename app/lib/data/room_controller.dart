@@ -193,6 +193,7 @@ class RoomController extends ChangeNotifier {
       // No small window then
     }
     await _refreshNotices();
+    await _readGroupKey();
     notifyListeners();
   }
 
@@ -771,13 +772,61 @@ class RoomController extends ChangeNotifier {
 
   // ------------------------------------------------------------------ room
 
-  /// Returns null on success, else a message for the user.
-  Future<String?> createRoom(String name) async {
+  /// The songs a room made now would start with: the one playing outside a room and those coming after it, as many as
+  /// a room holds and none from the phone's own files (the others do not have them). Empty unless a song plays here.
+  List<Track> get songsForNewRoom {
+    final current = _snapshot.current;
+    if (_snapshot.inRoom || !isPlaying || current == null || current.isLocal) {
+      return const [];
+    }
+    return [
+      current,
+      ..._snapshot.upNext.where((e) => !e.isLocal),
+    ].take(queueMax(inRoom: true)).toList();
+  }
+
+  /// Returns null on success, else a message for the user. With [withSongs] the room starts with [songsForNewRoom],
+  /// the first one from where it is now.
+  Future<String?> createRoom(String name, {bool withSongs = false}) async {
+    final songs = withSongs ? songsForNewRoom : const <Track>[];
+    final atMs = positionMs();
     try {
       await _backend.createRoom(name.trim());
-      return null;
     } on Object catch (e) {
       return _roomFailure(S.createFailed, e);
+    }
+    if (songs.isNotEmpty) unawaited(_startRoomWith(songs, atMs));
+    return null;
+  }
+
+  /// Puts [songs] on a room just made and plays the first from [atMs]: an idle room plays the first song it is given,
+  /// and a seek while it is still preparing is where it starts. Nothing more is tried if the room does not get there.
+  Future<void> _startRoomWith(List<Track> songs, int atMs) async {
+    if (!await _reach((s) => s.inRoom && s.you != null)) return;
+    await addMany(songs);
+    if (atMs < 1000) return;
+    if (!await _reach((s) => s.current?.videoId == songs.first.videoId)) {
+      return;
+    }
+    await _run(() => _backend.seek(atMs));
+  }
+
+  /// Waits until the state passes [test], for some seconds at most; false when it did not.
+  Future<bool> _reach(bool Function(RoomSnapshot snapshot) test) async {
+    if (test(_snapshot)) return true;
+    final reached = Completer<bool>();
+    void check() {
+      if (!reached.isCompleted && test(_snapshot)) reached.complete(true);
+    }
+
+    addListener(check);
+    try {
+      return await reached.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => false,
+      );
+    } finally {
+      removeListener(check);
     }
   }
 
@@ -806,6 +855,7 @@ class RoomController extends ChangeNotifier {
   Future<void> configure({String? server, String? key}) async {
     await _backend.configure(server: server, key: key);
     _profile = await _backend.profile();
+    await _readGroupKey();
     notifyListeners();
   }
 
@@ -817,11 +867,37 @@ class RoomController extends ChangeNotifier {
   /// Address that opens the app on this room from a chat message, or the app's own link when the
   /// server's address is not known. For a room whose chat is end-to-end encrypted it carries the secret that opens the
   /// chat, after a `#` so that the server never sees it.
+  /// It also carries the group key, so that somebody who never used Sapoche gets in with this one link in a browser.
   String inviteLink(String code) {
-    final base = _profile.server.isEmpty
-        ? 'sapoche://join/$code'
-        : '${_profile.server}/join/$code';
-    return _secretOf == code && _secret != null ? '$base#k=$_secret' : base;
+    final server = _profile.server;
+    final key = _groupKey ?? '';
+    final after = [
+      if (_secretOf == code && _secret != null) 'k=$_secret',
+      // Only on a link the browser can open: the app's own link goes to an app that has the key already
+      if (server.isNotEmpty && key.isNotEmpty) 'key=${Uri.encodeComponent(key)}',
+    ];
+    final base = server.isEmpty ? 'sapoche://join/$code' : '$server/join/$code';
+    return after.isEmpty ? base : '$base#${after.join('&')}';
+  }
+
+  /// The key the server asks for, read from the link that sets up another device ([setupLink]), which holds it.
+  String? _groupKey;
+
+  Future<void> _readGroupKey() async {
+    try {
+      final link = await _backend.setupLink();
+      if (link == null) {
+        _groupKey = null;
+        return;
+      }
+      // A phone's link is a setup link; the web's opens the web app with the key after a #
+      final fragment = Uri.tryParse(link)?.fragment ?? '';
+      _groupKey =
+          SetupLink.parse(link)?.key ??
+          (fragment.contains('=') ? Uri.splitQueryString(fragment)['key'] : null);
+    } on Object {
+      // Invitations then carry only the code, as they always did
+    }
   }
 
   /// The secret of the room this device is in, once it has it and the room's chat is end-to-end encrypted.

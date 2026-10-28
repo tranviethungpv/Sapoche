@@ -10,6 +10,7 @@ const TEXTS = {
     copy: "Copy code",
     copied: "Copied",
     help: "Not opening? Install Sapoche, then choose Room and enter this code.",
+    iphone: "On an iPhone the app is installed with SideStore. Without it, the browser plays just as well.",
   },
   vi: {
     title: "Vào phòng trên Sapoche",
@@ -19,6 +20,7 @@ const TEXTS = {
     copy: "Sao chép mã",
     copied: "Đã sao chép",
     help: "Không mở được? Hãy cài Sapoche, rồi chọn Phòng và nhập mã này.",
+    iphone: "Trên iPhone, app được cài qua SideStore. Chưa có thì nghe trên trình duyệt cũng được.",
   },
 };
 
@@ -66,7 +68,7 @@ export function joinPage(code: string, language: keyof typeof TEXTS = "en"): str
   <a class="open" href="${intent}">${t.open}</a>
   <a class="web" href="/?join=${code}">${t.web}</a>
   <button id="copy">${t.copy}</button>
-  <p>${t.help}</p>
+  <p id="help">${t.help}</p>
 </main>
 <script>
   document.getElementById("copy").onclick = function () {
@@ -76,11 +78,25 @@ export function joinPage(code: string, language: keyof typeof TEXTS = "en"): str
   // A room whose chat is end-to-end encrypted has its secret in the link after a #, which only this page can see: it is
   // handed on to the app and to the web app the same way, and goes nowhere else
   var secret = /[#&]k=([A-Za-z0-9_-]{43})(?:&|$)/.exec(location.hash);
+  // The group key may be there too, so that somebody who never used Sapoche gets in with this one link: only the web
+  // app is given it (the Android app has its own)
+  var key = /[#&]key=([^&]+)/.exec(location.hash);
+  var open = document.querySelector("a.open");
+  var web = document.querySelector("a.web");
   var intent = "${intent}";
   if (secret) {
     intent = intent.replace("#Intent", "?k=" + secret[1] + "#Intent");
-    document.querySelector("a.open").href = intent;
-    document.querySelector("a.web").href = "/?join=${code}#k=" + secret[1];
+    open.href = intent;
+  }
+  var fragment = [secret && "k=" + secret[1], key && "key=" + key[1]].filter(Boolean).join("&");
+  if (fragment) web.href = "/?join=${code}#" + fragment;
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    // No intent links on an iPhone, and the app comes from SideStore: the browser goes first
+    open.href = "sapoche://join/${code}" + (secret ? "?k=" + secret[1] : "");
+    open.className = "web";
+    web.className = "open";
+    web.parentNode.insertBefore(web, open);
+    document.getElementById("help").textContent = ${JSON.stringify(t.iphone)};
   }
   if (/Android/i.test(navigator.userAgent)) setTimeout(function () { location.href = intent; }, 300);
 </script>

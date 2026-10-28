@@ -22,6 +22,9 @@ abstract final class S {
     'Tên mọi người trong phòng sẽ thấy',
   );
   static String get createRoom => _t('Create a room', 'Tạo phòng');
+  static String get createRoomWithSong =>
+      _t('Create a room with this song', 'Tạo phòng với bài đang nghe');
+  static String get createEmptyRoom => _t('Empty room', 'Phòng trống');
   static String get joinRoom => _t('Join a room', 'Vào phòng');
   static String get roomCode => _t('Room code', 'Mã phòng');
   static String get join => _t('Join', 'Vào');

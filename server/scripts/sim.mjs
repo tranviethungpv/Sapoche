@@ -3,6 +3,7 @@
 // When the server has a ROOM_KEY, pass it in SAPOCHE_KEY (npm run sim:keyed does this against a local server).
 import { createHash, createPublicKey, createECDH, hkdfSync, createDecipheriv, verify } from "node:crypto";
 import { createServer } from "node:http";
+import vm from "node:vm";
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:8787";
 const WS_BASE = BASE.replace(/^http/, "ws");
@@ -777,6 +778,26 @@ async function inviteSection() {
   check("a Vietnamese browser gets the page in Vietnamese, still with the code", viHtml.includes('lang="vi"') && viHtml.includes("Bạn được mời") && viHtml.includes("ABCDEF"));
   check("English is the page for any other language, and the page varies by language", html.includes('lang="en"') && (await fetch(`${BASE}/join/abcdef`, { headers: { "Accept-Language": "de" } }).then((r) => r.text())).includes('lang="en"') && vi.headers.get("vary") === "Accept-Language");
   check("the invitation page only accepts a room code", (await fetch(`${BASE}/join/abc`)).status === 404);
+  // The script of the page, run against a made-up browser: where its two links go for a link with a secret and a key
+  const secret = "S".repeat(43);
+  const run = (userAgent) => {
+    const element = (className) => ({ className, href: "", textContent: "", parentNode: { insertBefore() {} } });
+    const links = { "a.open": element("open"), "a.web": element("web") };
+    const help = element("");
+    const script = html.slice(html.lastIndexOf("<script>") + 8, html.lastIndexOf("</script>"));
+    vm.runInNewContext(script, {
+      location: { hash: `#k=${secret}&key=gr%26up`, href: "" },
+      navigator: { userAgent },
+      document: { getElementById: (id) => (id === "help" ? help : { onclick: null }), querySelector: (q) => links[q] },
+      setTimeout() {},
+    });
+    return { open: links["a.open"], web: links["a.web"], help };
+  };
+  const android = run("Mozilla/5.0 (Linux; Android 17)");
+  check("the browser link of the page carries the secret and the group key on to the web app", android.web.href === `/?join=ABCDEF#k=${secret}&key=gr%26up`);
+  check("the app link carries the secret but never the group key", android.open.href.includes(`?k=${secret}#Intent`) && !android.open.href.includes("key="));
+  const iphone = run("Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X)");
+  check("an iPhone gets the browser first, the app's own scheme and a word on SideStore", iphone.web.className === "open" && iphone.open.href === `sapoche://join/ABCDEF?k=${secret}` && iphone.help.textContent.includes("SideStore"));
   const links = await (await fetch(`${BASE}/.well-known/assetlinks.json`)).json();
   check(
     "asset links name the app and its signing keys",

@@ -72,6 +72,64 @@ void main() {
     expect(backend.calls.last, 'remove q2');
   });
 
+  group('a room made from what is playing', () {
+    Future<void> playingAlone() async {
+      backend.emit(StateEvent(sampleRoom(local: true, index: 1)));
+      backend.emit(
+        const PositionEvent(
+          PlayerPosition(playing: true, positionMs: 42000, durationMs: 201000),
+        ),
+      );
+      await settle();
+    }
+
+    test('starts with the song and what comes after it, from where it was', () async {
+      await playingAlone();
+      expect(controller.songsForNewRoom.map((t) => t.videoId), ['video1', 'video2']);
+      expect(await controller.createRoom('Anna', withSongs: true), isNull);
+      expect(backend.calls.last, 'createRoom Anna');
+
+      // The room's first state: still empty
+      backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+      await settle();
+      expect(backend.calls.last, 'addMany video1,video2 next=false');
+
+      // The room plays the first song it was given, and is told where
+      backend.emit(StateEvent(sampleRoom(phase: 'preparing')));
+      await settle();
+      expect(backend.calls.where((c) => c.startsWith('seek')), isEmpty, reason: 'video0 is not the song');
+      backend.emit(
+        StateEvent(
+          RoomSnapshot(
+            room: 'ABC234',
+            you: 'me',
+            phase: 'preparing',
+            queue: [
+              for (final t in backend.lastAddedMany)
+                QueueEntry(id: 'q${t.videoId}', videoId: t.videoId, title: t.title, artist: t.artist, durMs: t.durMs, addedBy: 'me'),
+            ],
+          ),
+        ),
+      );
+      await settle();
+      expect(backend.calls.last, startsWith('seek 42'));
+    });
+
+    test('an empty room is still an empty room', () async {
+      await playingAlone();
+      expect(await controller.createRoom('Anna'), isNull);
+      backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+      await settle();
+      expect(backend.calls.last, 'createRoom Anna');
+    });
+
+    test('nothing is offered while nothing plays', () async {
+      backend.emit(StateEvent(sampleRoom(local: true, phase: 'paused')));
+      await settle();
+      expect(controller.songsForNewRoom, isEmpty);
+    });
+  });
+
   test('is ready once the first state arrives', () async {
     backend.emit(const StateEvent(RoomSnapshot()));
     await settle();
@@ -620,6 +678,29 @@ void main() {
       await withServer.start();
       expect(withServer.inviteLink('K2A5RF'), 'https://x.example/join/K2A5RF');
       withServer.dispose();
+    },
+  );
+
+  test(
+    'the invitation link carries the group key after a #, from a phone or a browser',
+    () async {
+      backend.profileValue = const Profile(
+        name: 'Anna',
+        server: 'https://x.example',
+      );
+      for (final setup in [
+        'sapoche://setup?server=https%3A%2F%2Fx.example&key=gr%26up',
+        'https://x.example/#key=gr%26up',
+      ]) {
+        backend.setupLinkValue = setup;
+        final inviting = RoomController(backend);
+        await inviting.start();
+        expect(
+          inviting.inviteLink('K2A5RF'),
+          'https://x.example/join/K2A5RF#key=gr%26up',
+        );
+        inviting.dispose();
+      }
     },
   );
 
