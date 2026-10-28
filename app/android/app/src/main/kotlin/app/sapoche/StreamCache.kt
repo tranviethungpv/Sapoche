@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
 import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException
@@ -114,6 +115,44 @@ class StreamCache(
         }
     }
 
+    private val warmLock = Any()
+    private var warmQueue: List<String> = emptyList()
+    private var warming = false
+
+    /**
+     * Resolves [videoIds] in the background, one at a time and in order, as a touch on the first of them is the likely
+     * next step: the touch then waits for the resolve that is running instead of starting its own, or finds the streams
+     * kept. One at a time because a lookup that runs beside others takes several times as long (nine at once took 6 to 9
+     * seconds each, against 2 to 4 alone). A newer list replaces what has not been started; a failure is only forgotten,
+     * and the touch tries again.
+     */
+    fun warm(videoIds: List<String>) {
+        synchronized(warmLock) {
+            warmQueue = videoIds
+            if (warming) return
+            warming = true
+        }
+        scope.launch {
+            try {
+                while (true) {
+                    val next = synchronized(warmLock) {
+                        warmQueue.firstOrNull().also { warmQueue = warmQueue.drop(1) }
+                    } ?: break
+                    if (entries[next]?.let(::isFresh) == true) continue
+                    try {
+                        shared(next).also { it.start() }.await()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        EventLog.d("resolve", "$next warm-up failed: ${e.javaClass.simpleName}")
+                    }
+                }
+            } finally {
+                synchronized(warmLock) { warming = false }
+            }
+        }
+    }
+
     /** Drops the cached URLs so the next [get] resolves again. */
     fun invalidate(videoId: String) {
         entries.remove(videoId)
@@ -127,11 +166,7 @@ class StreamCache(
      */
     private fun entry(videoId: String): Entry {
         entries[videoId]?.takeIf { isFresh(it) }?.let { return it }
-        val shared = resolving.computeIfAbsent(videoId) { id ->
-            // Started only once it is in the map, so that finishing at once cannot leave it there
-            scope.async(start = CoroutineStart.LAZY) { resolveValidated(id) }
-                .also { resolve -> resolve.invokeOnCompletion { resolving.remove(id, resolve) } }
-        }
+        val shared = shared(videoId)
         shared.start()
         return try {
             runBlocking { shared.await() }
@@ -140,6 +175,13 @@ class StreamCache(
         } catch (e: CancellationException) {
             throw InterruptedIOException("Waiting for $videoId was cancelled")
         }
+    }
+
+    /** The resolve of [videoId] that is running, or a new one, not started yet. */
+    private fun shared(videoId: String): Deferred<Entry> = resolving.computeIfAbsent(videoId) { id ->
+        // Started only once it is in the map, so that finishing at once cannot leave it there
+        scope.async(start = CoroutineStart.LAZY) { resolveValidated(id) }
+            .also { resolve -> resolve.invokeOnCompletion { resolving.remove(id, resolve) } }
     }
 
     private suspend fun resolveValidated(videoId: String): Entry {

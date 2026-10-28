@@ -91,7 +91,7 @@ void main() {
   testWidgets('what was heard, liked and suggested fills the shelves', (
     tester,
   ) async {
-    await openHome(
+    final backend = await openHome(
       tester,
       prepare: (b) {
         b.recentSongs = [heard(anna, plays: 5), heard(beck, plays: 2)];
@@ -111,6 +111,8 @@ void main() {
     );
     expect(find.text('Your music starts here'), findsNothing);
     expect(find.text('Quick picks'), findsOneWidget);
+    // The first quick picks are looked up ahead, once however often the page is drawn
+    expect(backend.warmed, hasLength(1));
     expect(find.text('Brand New'), findsOneWidget);
     expect(find.text('Listen again'), findsOneWidget);
     expect(find.text('Mixed for you'), findsOneWidget);

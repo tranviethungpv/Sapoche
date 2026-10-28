@@ -2154,6 +2154,11 @@ void main() {
       await tester.enterText(find.byType(TextField), 'alpha');
       await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pumpAndSettle();
+      expect(
+        backend.warmed,
+        contains('aaaaaaaaaaa'),
+        reason: 'the first songs found are looked up ahead',
+      );
 
       await tester.tap(find.byType(TrackMenu).first);
       await tester.pumpAndSettle();

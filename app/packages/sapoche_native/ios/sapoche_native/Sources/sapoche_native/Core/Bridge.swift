@@ -476,6 +476,10 @@ final class Bridge {
         case "lyrics":
             return MusicJson.lyrics(try await music.lyrics(videoId: string("videoId"), title: string("title"), artist: string("artist"),
                                                            durationSec: int64("durMs") / 1000))
+        case "warm":
+            // Songs likely to be touched soon: their streams are looked up ahead, unless they are on the phone already
+            await streams.warm((args["ids"] as? [String] ?? []).filter { !LocalMusic.isLocal($0) && files.file($0) == nil })
+            return nil
         case "suggest":
             return await suggest(string("query"))
         case "searchPlaylists":

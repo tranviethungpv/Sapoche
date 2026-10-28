@@ -14,6 +14,7 @@ import app.sapoche.core.TrackInfo
 import app.sapoche.core.YoutubeLinks
 import app.sapoche.sync.ChatCipher
 import app.sapoche.sync.ChatQuote
+import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.MissedReactions
 import app.sapoche.sync.Taste
 import app.sapoche.sync.TrackRef
@@ -494,6 +495,10 @@ class SapocheBridge(
                     call.argument<String>("artist").orEmpty(),
                     (call.argument<Number>("durMs") ?: 0).toLong() / 1000,
                 ),
+            )
+            // Songs likely to be touched soon: their streams are looked up ahead, unless they are on the phone already
+            "warm" -> SapocheApp.streams.warm(
+                call.argument<List<String>>("ids").orEmpty().filterNot { LocalMusic.isLocal(it) || SapocheApp.caches.isComplete(it) },
             )
             "suggest" -> return suggest(call.argument<String>("query").orEmpty())
             "searchPlaylists" -> return searchPlaylists(call.argument<String>("query").orEmpty())

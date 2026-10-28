@@ -371,6 +371,10 @@ abstract class Backend {
   /// What YouTube would complete [query] to; empty when it cannot say.
   Future<List<String>> suggest(String query);
 
+  /// Looks up the streams of [videoIds] ahead, as a touch on one of them is likely soon (the first songs of a list being
+  /// shown), so that it plays at once. Nothing for songs on the phone; a browser does nothing (its player finds them).
+  Future<void> warm(List<String> videoIds);
+
   /// Whether the music carries on with similar songs when the queue runs out.
   Future<void> setAutoplay(bool on);
 
@@ -934,6 +938,9 @@ class NativeBackend implements Backend {
   Future<List<String>> suggest(String query) async =>
       (await _call<List<Object?>>('suggest', {'query': query}) ?? const [])
           .cast<String>();
+
+  @override
+  Future<void> warm(List<String> videoIds) => _call('warm', {'ids': videoIds});
 
   @override
   Future<void> setAutoplay(bool on) => _call('setAutoplay', {'on': on});

@@ -429,6 +429,13 @@ class FakeBackend implements Backend {
     return suggestions;
   }
 
+  /// The songs looked up ahead, apart from [calls]: it comes along with what a test is about.
+  final warmed = <String>[];
+
+  @override
+  Future<void> warm(List<String> videoIds) async =>
+      warmed.add(videoIds.join(','));
+
   /// What the file the person "picks" holds; null stands for backing out.
   BackupCounts? backupCounts = const BackupCounts(liked: 2, playlists: 1);
 

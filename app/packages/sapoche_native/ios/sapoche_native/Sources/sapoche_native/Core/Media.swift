@@ -308,6 +308,27 @@ actor StreamCache {
         try await resolved(videoId).track
     }
 
+    private var warmQueue: [String] = []
+    private var warming = false
+
+    /// Resolves [videoIds] in the background, one at a time and in order, as a touch on the first of them is the likely
+    /// next step: the touch then waits for the resolve that is running instead of starting its own, or finds it kept.
+    /// One at a time because a lookup beside others takes several times as long. A newer list replaces what has not been
+    /// started; a failure is only forgotten, and the touch tries again.
+    func warm(_ videoIds: [String]) {
+        warmQueue = videoIds
+        if warming { return }
+        warming = true
+        Task { await warmLoop() }
+    }
+
+    private func warmLoop() async {
+        while !warmQueue.isEmpty {
+            _ = try? await resolved(warmQueue.removeFirst())
+        }
+        warming = false
+    }
+
     /// Drops the kept address so the next [audio] resolves again.
     func invalidate(_ videoId: String) {
         entries[videoId] = nil

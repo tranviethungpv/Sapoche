@@ -32,6 +32,10 @@ abstract class BackendDefaults implements Backend {
   @override
   Future<void> fillRadio(String videoId) async {}
 
+  /// The YouTube player of the page finds the streams itself.
+  @override
+  Future<void> warm(List<String> videoIds) async {}
+
   @override
   Future<void> setPlaybackSpeed(double speed) async {}
 

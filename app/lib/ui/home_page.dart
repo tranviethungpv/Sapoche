@@ -65,6 +65,9 @@ class _HomePageState extends State<HomePage> {
   /// The rows seen since the order was drawn: each counts once, however often it scrolls out of sight and back.
   final _seen = <String>{};
 
+  /// The quick picks whose streams were last looked up ahead, see [_warm].
+  String? _warmed;
+
   ShelfStats get _stats => AppScope.of(context).settings.shelves;
 
   @override
@@ -85,6 +88,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _touched(String id) => _stats.touched(_part, id);
+
+  /// The first quick picks are what a touch on this page most likely plays: their streams are looked up ahead, once for
+  /// each new set of them (the page is drawn again far more often than they change).
+  void _warm(List<Track> picks) {
+    final first = [for (final t in picks.take(3)) t.videoId].join(',');
+    if (first.isEmpty || first == _warmed) return;
+    _warmed = first;
+    AppScope.roomOf(context).warmUp(picks);
+  }
 
   Future<void> _refresh() async {
     await AppScope.of(context).library.refreshForYou();
@@ -113,6 +125,7 @@ class _HomePageState extends State<HomePage> {
             blocked: library.blocked,
             listens: library.listens,
           );
+          _warm(home.quickPicks);
           return LayoutBuilder(
             builder: (context, box) {
               // Mixes of the artists go across the top of a wide page, unless the mixes made for the person are

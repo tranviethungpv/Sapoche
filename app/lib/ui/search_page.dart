@@ -254,15 +254,19 @@ class _SearchPageState extends State<SearchPage> {
     String? more,
     String? tail,
     int youtubeLimit = 0,
-  }) => setState(() {
-    _top = top;
-    _items = items;
-    _more = more;
-    _tail = tail;
-    _youtubeLimit = youtubeLimit;
-    if (chips != null) _chips = chips;
-    _phase = _Phase.results;
-  });
+  }) {
+    setState(() {
+      _top = top;
+      _items = items;
+      _more = more;
+      _tail = tail;
+      _youtubeLimit = youtubeLimit;
+      if (chips != null) _chips = chips;
+      _phase = _Phase.results;
+    });
+    // A touch on one of the first songs is the likely next step
+    _room.warmUp([for (final item in [?top, ...items]) ?item.track]);
+  }
 
   /// An ordinary YouTube video, which is what the search of YouTube itself and a pasted link give.
   SearchItem _videoItem(Track track) => SearchItem(

@@ -20,6 +20,9 @@ int queueMax({required bool inRoom}) => inRoom ? 200 : 1000;
 /// How many songs the server takes from one `queue.addMany`; more are sent in several.
 const _serverAddMany = 100;
 
+/// How many songs of a list on the screen have their streams looked up ahead, see [RoomController.warmUp].
+const _warmCount = 3;
+
 /// `key=` in the address of a room, `#key=` in a setup link, `#k=` in an invitation.
 final _secretInLink = RegExp(r'([?&#](?:key|k)=)[^&#\s]+');
 
@@ -1150,6 +1153,17 @@ class RoomController extends ChangeNotifier {
       _run(() => _backend.setRepeat(_snapshot.repeat.next));
 
   // ------------------------------------------------------------------ search and settings
+
+  /// Looks up the streams of the first songs of [tracks], a list on the screen, so that a touch on one of them plays at
+  /// once instead of after the few seconds a lookup takes. The phone's own files need none.
+  void warmUp(List<Track> tracks) {
+    final ids = [
+      for (final t in tracks)
+        if (!t.isLocal) t.videoId,
+    ].take(_warmCount).toList();
+    if (ids.isNotEmpty) _backend.warm(ids).ignore();
+  }
+
 
   Future<List<Track>> search(
     String query, {

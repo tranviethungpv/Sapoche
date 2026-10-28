@@ -130,6 +130,15 @@ void main() {
     });
   });
 
+  test('the first songs of a list are looked up ahead, not the phone\'s own files', () async {
+    controller.warmUp([
+      const Track(videoId: 'local:1', title: 'Mine', artist: '', durMs: 1),
+      for (var i = 0; i < 5; i++)
+        Track(videoId: 'video$i', title: 'Song $i', artist: '', durMs: 1),
+    ]);
+    expect(backend.warmed, ['video0,video1,video2']);
+  });
+
   test('is ready once the first state arrives', () async {
     backend.emit(const StateEvent(RoomSnapshot()));
     await settle();
