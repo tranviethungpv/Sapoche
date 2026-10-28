@@ -257,7 +257,7 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     if (typeof raw !== "string" || raw.length > MAX_THEME_MESSAGE_CHARS) {
-      return this.fail(ws, "bad_message", `Message must be text of at most ${MAX_MESSAGE_CHARS} characters`);
+      return this.fail(ws, "bad_message", `Message must be text of at most ${MAX_THEME_MESSAGE_CHARS} characters`);
     }
     if (!this.allow(ws)) return this.fail(ws, "rate_limited", "Too many messages");
     this.touch(ws);

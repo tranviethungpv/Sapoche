@@ -225,15 +225,6 @@ class SapocheBridge(
         SapocheApp.group.value?.setVideoVisible(pictureShown || on)
     }
 
-    /**
-     * What the person called this phone in its settings ("Pixel 8"), or its model: the name offered in a room
-     * until they choose another, so that following an invitation does not begin with a question.
-     */
-    private fun defaultName(): String {
-        val named = runCatching { android.provider.Settings.Global.getString(activity.contentResolver, "device_name") }.getOrNull()
-        return (named?.trim()?.takeIf { it.isNotEmpty() } ?: Build.MODEL).take(MAX_NAME_CHARS)
-    }
-
     private val autoDownload get() = prefs.getBoolean(DownloadWorker.KEY_AUTO, false)
 
     /** On mobile data (or not knowing): songs are not fetched without asking. */
@@ -383,6 +374,8 @@ class SapocheBridge(
                 result.success(handle(call))
             } catch (e: NoRoomException) {
                 result.error("no_room", "Not in a room", null)
+            } catch (e: CodedException) {
+                result.error(e.code, e.message, null)
             } catch (e: Exception) {
                 EventLog.d("bridge", "${call.method} failed: ${e.javaClass.simpleName}: ${e.message}")
                 result.error("failed", e.message ?: e.javaClass.simpleName, null)
@@ -392,10 +385,14 @@ class SapocheBridge(
 
     private class NoRoomException : Exception()
 
+    /** A failure the UI has words for, by its [code] (`S.serverError` in Dart). */
+    private class CodedException(val code: String, message: String) : Exception(message)
+
     private suspend fun handle(call: MethodCall): Any? {
         when (call.method) {
             "profile" -> return mapOf(
-                "name" to (prefs.getString("room_name", null) ?: defaultName()),
+                // Only a name the person chose: the phone's own name would be shown to everybody in the room
+                "name" to prefs.getString("room_name", null),
                 "device" to Build.MODEL,
                 "trimMs" to prefs.getLong("trim_ms", 0L),
                 "videoHeight" to SapocheApp.videoMaxHeight,
@@ -858,6 +855,7 @@ class SapocheBridge(
             .apply { Config.authHeaders.forEach { (k, v) -> header(k, v) } }
             .build()
         http.newCall(request).execute().use {
+            if (it.code == 401) throw CodedException("key_refused", "The server turned the key down")
             check(it.isSuccessful) { "The server answered ${it.code}" }
             JSONObject(it.body.string()).getString("code")
         }
@@ -978,9 +976,6 @@ class SapocheBridge(
     private companion object {
         const val KEY_LOCAL_ENABLED = "local_enabled"
         const val POSITION_TICK_MS = 1_000L
-
-        /** The longest name the UI lets a person type. */
-        const val MAX_NAME_CHARS = 24
         const val SERVICE_START_TIMEOUT_MS = 10_000L
         const val SEARCH_LIMIT = 20
         const val SUGGESTION_LIMIT = 6

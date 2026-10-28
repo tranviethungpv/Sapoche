@@ -190,7 +190,8 @@ class RoomClient {
           _avatarSent = false;
           _pushSent = false;
           _set(Connection.connected);
-          log('connected to $_url');
+          // The address carries the key, which must never reach the log
+          log('connected to ${_url.scheme}://${_url.authority}${_url.path}');
           ws.send(Wire.join(clientId, name, create: _createOnJoin, app: appVersion));
           pinger = Job.launch((p) => _pingLoop(p, ws));
           onConnected();

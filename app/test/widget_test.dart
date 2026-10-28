@@ -70,6 +70,11 @@ void main() {
         await tester.tap(find.text('Add songs'));
         await tester.pumpAndSettle();
         expect(find.text('Find something to play'), findsOneWidget);
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).focusNode?.hasFocus,
+          isTrue,
+          reason: 'the keyboard is up at once',
+        );
       });
 
       testWidgets(
@@ -481,6 +486,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Room'));
     await tester.pumpAndSettle();
+    expect(
+      find.text('The name everyone in the room will see'),
+      findsOneWidget,
+      reason: 'the field says who sees the name, also once it is filled',
+    );
     await tester.enterText(find.byType(TextField), '');
     await tester.tap(find.text('Create a room'));
     await tester.pumpAndSettle();
@@ -516,6 +526,13 @@ void main() {
       expect(find.text('Scan to join'), findsOneWidget);
       expect(find.text('Copy link'), findsOneWidget);
       expect(find.byType(CustomPaint), findsWidgets);
+
+      // A screen reader reads the switch with what it is for
+      final semantics = tester.ensureSemantics();
+      final toggle = tester.getSemantics(find.byType(Switch).last);
+      expect(toggle, isSemantics(hasToggledState: true));
+      expect(toggle.label, startsWith('Guests can only add songs'));
+      semantics.dispose();
 
       await tester.tap(find.byType(Switch).last);
       await tester.pumpAndSettle();
@@ -1771,6 +1788,69 @@ void main() {
     await tester.tap(find.byType(MiniPlayer));
     await tester.pumpAndSettle();
     expect(find.byType(NowPlayingPage), findsOneWidget);
+  });
+
+  group('undoing an add', () {
+    const waiting = Track(
+      videoId: 'video2',
+      title: 'Song 2',
+      artist: 'Artist 2',
+      durMs: 202000,
+    );
+
+    Future<FakeBackend> addFromSearch(
+      WidgetTester tester,
+      GuestControl guestControl,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.searchResults = [waiting];
+      RoomSnapshot room(int songs) => sampleRoom(
+        songs: songs,
+        ownerId: 'b',
+        guestControl: guestControl,
+        members: const [
+          Member(id: 'me', name: 'Anna', ready: true),
+          Member(id: 'b', name: 'Binh', ready: true, owner: true),
+        ],
+      );
+      // Not queued yet, so that it can be added
+      backend.emit(StateEvent(room(1)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      backend.emit(const LibraryEvent());
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'song');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(TrackMenu).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add to queue'));
+      backend.emit(StateEvent(room(3)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Added to queue'), findsOneWidget);
+      return backend;
+    }
+
+    testWidgets('the toast takes the song back off the queue', (tester) async {
+      final backend = await addFromSearch(tester, GuestControl.all);
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      expect(backend.calls.last, 'remove q2');
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets(
+      'a guest who may only add songs is not offered to take one off',
+      (tester) async {
+        await addFromSearch(tester, GuestControl.add);
+        expect(find.text('Undo'), findsNothing);
+        await tester.pumpAndSettle();
+      },
+    );
   });
 
   group('the library', () {

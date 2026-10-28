@@ -6,7 +6,8 @@
 #   <version>.vi.txt (Vietnamese; shown when the app speaks Vietnamese). A line starting with "- " is a bullet, any
 #   other line is a heading. Lines given on the command line replace the English file.
 #   without --publish: builds into ~/sapoche-release-arm64-<version>.apk and writes the update files next to it
-#   with --publish:    also puts them in the private R2 bucket (needs `wrangler login`; the APK first, then
+#   with --publish:    first opens the APK on the emulator (app/tool/smoke.sh) and stops if it crashes; then
+#                      puts the files in the private R2 bucket (needs `wrangler login`; the APK first, then
 #                      latest.json, so a phone never reads news of a file that is not there yet; the file is
 #                      named sapoche-<version>.apk, and latest.json says so)
 #
@@ -87,6 +88,12 @@ PY
 echo "built $OUT ($SIZE bytes, sha256 $SHA)"
 
 if [ "$PUBLISH" = 1 ]; then
+  # A phone never goes back to a lower build number, so a release that crashes at launch must not leave this computer.
+  # The emulator runs x86_64 only, so the same code is built once more for it.
+  "$FLUTTER" build apk --release --target-platform android-x64
+  SMOKE_APK=$HOME/sapoche-release-x64-$NAME.apk
+  cp build/app/outputs/flutter-apk/app-release.apk "$SMOKE_APK"
+  "$APP/tool/smoke.sh" "$SMOKE_APK"
   cd "$SERVER"
   npx wrangler r2 object put "sapoche-releases/sapoche-$NAME.apk" --remote --file "$OUT" --content-type application/vnd.android.package-archive
   npx wrangler r2 object put "sapoche-releases/latest.json" --remote --file "$LATEST" --content-type application/json

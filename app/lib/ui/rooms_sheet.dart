@@ -179,7 +179,12 @@ class _StartRoomState extends State<_StartRoom> {
             }
           },
           maxLength: 24,
-          decoration: InputDecoration(hintText: S.yourName, counterText: ''),
+          // The label stays once a name is typed: it says who will see it
+          decoration: InputDecoration(
+            labelText: S.nameInRoom,
+            hintText: S.yourName,
+            counterText: '',
+          ),
           onChanged: (_) {
             if (_error != null) setState(() => _error = null);
           },
@@ -328,12 +333,8 @@ class _InRoom extends StatelessWidget {
               IconButton(
                 onPressed: () => _rename(context),
                 tooltip: S.roomName,
-                icon: Icon(
-                  snapshot.name == null
-                      ? Icons.add_rounded
-                      : Icons.edit_outlined,
-                  color: p.primary,
-                ),
+                // A pencil either way: a plus read as "add" a room, or a song
+                icon: Icon(Icons.edit_outlined, color: p.primary),
               ),
           ],
         ),
@@ -475,27 +476,31 @@ class _GuestControlCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
         border: Border.all(color: p.outlineSoft),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(S.guestsAddOnly, style: theme.titleMedium),
-                const SizedBox(height: 2),
-                Text(
-                  S.guestsAddOnlyHelp,
-                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                ),
-              ],
+      // A screen reader reads the switch together with what it is for
+      child: MergeSemantics(
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(S.guestsAddOnly, style: theme.titleMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    S.guestsAddOnlyHelp,
+                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Switch(
-            value: restricted,
-            onChanged: (on) =>
-                room.setGuestControl(on ? GuestControl.add : GuestControl.all),
-          ),
-        ],
+            Switch(
+              value: restricted,
+              onChanged: (on) => room.setGuestControl(
+                on ? GuestControl.add : GuestControl.all,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

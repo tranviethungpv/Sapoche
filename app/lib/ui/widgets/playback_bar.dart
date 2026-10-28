@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/room_controller.dart';
 import '../../format.dart';
+import '../../strings.dart';
 import '../../theme/theme.dart';
 import 'low_rate_timer.dart';
 
@@ -66,45 +67,56 @@ class _PlaybackBarState extends State<PlaybackBar> {
     final shownMs = (fraction * duration).round();
 
     final compact = widget.compact;
+    // A screen reader reads it as a slider and moves it ten seconds at a time
+    int step(int by) => (shownMs + by).clamp(0, duration);
     final bar = LayoutBuilder(
-      builder: (context, box) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragStart: (d) => setState(
-          () => _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
-        ),
-        onHorizontalDragUpdate: (d) => setState(
-          () => _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
-        ),
-        onHorizontalDragEnd: (_) => _finish(duration),
-        onHorizontalDragCancel: () => setState(() => _dragFraction = null),
-        onTapUp: (d) {
-          _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth);
-          _finish(duration);
-        },
-        child: SizedBox(
-          height: compact ? 20 : 28,
-          child: Center(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(
-                end: compact ? (dragging ? 6 : 4) : (dragging ? 10 : 5),
-              ),
-              duration: const Duration(milliseconds: 160),
-              curve: Curves.easeOut,
-              builder: (context, height, _) => ClipRRect(
-                borderRadius: BorderRadius.circular(height),
-                child: Stack(
-                  children: [
-                    Container(height: height, color: p.outline),
-                    FractionallySizedBox(
-                      widthFactor: fraction,
-                      child: Container(
-                        height: height,
-                        color: dragging
-                            ? p.primary
-                            : p.primary.withValues(alpha: 0.9),
+      builder: (context, box) => Semantics(
+        slider: true,
+        label: S.songPosition,
+        value: formatDuration(shownMs),
+        increasedValue: formatDuration(step(10000)),
+        decreasedValue: formatDuration(step(-10000)),
+        onIncrease: duration > 0 ? () => _c.seek(step(10000)) : null,
+        onDecrease: duration > 0 ? () => _c.seek(step(-10000)) : null,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragStart: (d) => setState(
+            () => _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
+          ),
+          onHorizontalDragUpdate: (d) => setState(
+            () => _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
+          ),
+          onHorizontalDragEnd: (_) => _finish(duration),
+          onHorizontalDragCancel: () => setState(() => _dragFraction = null),
+          onTapUp: (d) {
+            _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth);
+            _finish(duration);
+          },
+          child: SizedBox(
+            height: compact ? 20 : 28,
+            child: Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(
+                  end: compact ? (dragging ? 6 : 4) : (dragging ? 10 : 5),
+                ),
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                builder: (context, height, _) => ClipRRect(
+                  borderRadius: BorderRadius.circular(height),
+                  child: Stack(
+                    children: [
+                      Container(height: height, color: p.outline),
+                      FractionallySizedBox(
+                        widthFactor: fraction,
+                        child: Container(
+                          height: height,
+                          color: dragging
+                              ? p.primary
+                              : p.primary.withValues(alpha: 0.9),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

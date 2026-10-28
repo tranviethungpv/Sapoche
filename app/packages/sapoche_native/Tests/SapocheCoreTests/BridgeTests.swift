@@ -6,7 +6,6 @@ import FoundationNetworking
 
 @MainActor
 final class FakePlatform: PlatformServices {
-    var deviceName = "Test phone"
     var deviceModel = "iPhone"
     var isMetered = false
     let calm = StateFlow<Bool>(false)
@@ -318,7 +317,7 @@ final class BridgeTests: XCTestCase {
 
     func testTheProfileTellsWhatTheUIAsksFor() async throws {
         let profile = try await result("profile", as: [String: Any].self)
-        XCTAssertEqual(profile["name"] as? String, "Test phone")
+        XCTAssertNil(profile["name"], "the name of the phone is not offered to the room")
         XCTAssertEqual(profile["device"] as? String, "iPhone")
         XCTAssertEqual(profile["autoplay"] as? Bool, true)
         XCTAssertEqual(profile["configured"] as? Bool, false)

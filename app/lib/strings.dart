@@ -17,6 +17,10 @@ abstract final class S {
 
   // Welcome
   static String get yourName => _t('Your name', 'Tên của bạn');
+  static String get nameInRoom => _t(
+    'The name everyone in the room will see',
+    'Tên mọi người trong phòng sẽ thấy',
+  );
   static String get createRoom => _t('Create a room', 'Tạo phòng');
   static String get joinRoom => _t('Join a room', 'Vào phòng');
   static String get roomCode => _t('Room code', 'Mã phòng');
@@ -31,6 +35,10 @@ abstract final class S {
       _t('Could not connect to the room', 'Không kết nối được với phòng');
   static String get createFailed =>
       _t('Could not create a room', 'Không tạo được phòng');
+  static String get checkConnection => _t(
+    'Check the connection and try again.',
+    'Hãy kiểm tra kết nối rồi thử lại.',
+  );
 
   // Tabs
   static String get tabHome => _t('Home', 'Trang chủ');
@@ -180,6 +188,8 @@ abstract final class S {
     'Videos, songs, or a YouTube link',
     'Video, bài hát hoặc liên kết YouTube',
   );
+  static String get pasteLink => _t('Paste a link', 'Dán liên kết');
+  static String get clearSearch => _t('Clear search', 'Xóa nội dung tìm');
   static String get searchTop => _t('Top results', 'Hàng đầu');
   static String get topResult => _t('Top result', 'Kết quả hàng đầu');
   static String get searchYouTube => 'YouTube';
@@ -219,6 +229,7 @@ abstract final class S {
   static String get addedToQueue =>
       _t('Added to queue', 'Đã thêm vào hàng đợi');
   static String get willPlayNext => _t('Playing next', 'Sẽ phát tiếp theo');
+  static String get undo => _t('Undo', 'Hoàn tác');
   static String get alreadyInQueue =>
       _t('Already in the queue', 'Đã có trong hàng đợi');
   static String addedSkipped(int added, int skipped) => _t(
@@ -692,17 +703,17 @@ abstract final class S {
   static String get encryptionTitle =>
       _t('End-to-end encrypted chat', 'Chat mã hoá đầu cuối');
   static String get encryptionOffHelp => _t(
-    'Only people with the invitation link can read the chat. The server cannot.',
-    'Chỉ người có liên kết mời đọc được chat. Máy chủ cũng không đọc được.',
+    'Only people with the invitation link can read the messages. The server cannot. The photo behind the chat, the room name, the queue and profile pictures are not encrypted.',
+    'Chỉ người có liên kết mời đọc được tin nhắn. Máy chủ cũng không đọc được. Ảnh nền chat, tên phòng, hàng đợi và ảnh đại diện thì không được mã hoá.',
   );
   static String get encryptionOnHelp => _t(
-    'Only people with the invitation link can read the chat. The server cannot, and it cannot be turned off.',
-    'Chỉ người có liên kết mời đọc được chat. Máy chủ không đọc được, và không thể tắt.',
+    'Only people with the invitation link can read the messages. The server cannot, and it cannot be turned off. The photo behind the chat, the room name, the queue and profile pictures are not encrypted.',
+    'Chỉ người có liên kết mời đọc được tin nhắn. Máy chủ không đọc được, và không thể tắt. Ảnh nền chat, tên phòng, hàng đợi và ảnh đại diện thì không được mã hoá.',
   );
   static String get encryptionTurnOn => _t('Turn on', 'Bật');
   static String get encryptionConfirmBody => _t(
-    'The messages so far are deleted. Everyone needs the new invitation link to read the chat, and people who have not updated the app cannot stay in the room. This cannot be turned off.',
-    'Các tin nhắn đến giờ sẽ bị xoá. Mọi người cần liên kết mời mới để đọc chat, và ai chưa cập nhật app sẽ không ở lại phòng được. Không thể tắt lại.',
+    'Only the text of the messages is encrypted, not the photo behind the chat, the room name, the queue or profile pictures. The messages so far are deleted. Everyone needs the new invitation link to read the chat, and people who have not updated the app cannot stay in the room. This cannot be turned off.',
+    'Chỉ nội dung tin nhắn được mã hoá, không gồm ảnh nền chat, tên phòng, hàng đợi hay ảnh đại diện. Các tin nhắn đến giờ sẽ bị xoá. Mọi người cần liên kết mời mới để đọc chat, và ai chưa cập nhật app sẽ không ở lại phòng được. Không thể tắt lại.',
   );
   static String get encryptionTurnedOn => _t(
     'On. Send the new invitation link to everyone.',
@@ -823,6 +834,7 @@ abstract final class S {
   );
   static String get previousSong => _t('Previous', 'Bài trước');
   static String get nextSong => _t('Next', 'Bài sau');
+  static String get songPosition => _t('Song position', 'Vị trí trong bài');
   static String get back10 => _t('Back 10 seconds', 'Lùi 10 giây');
   static String get forward10 => _t('Forward 10 seconds', 'Tới 10 giây');
   static String seconds(int n) => _t('$n seconds', '$n giây');
@@ -1088,39 +1100,42 @@ abstract final class S {
       _t('The notes could not be read', 'Không đọc được ghi chú');
   static String get serverSection => _t('Server', 'Máy chủ');
   static String get serverAddress => _t('Address', 'Địa chỉ');
-  static String get serverKey => _t('Room key', 'Khoá phòng');
+  static String get serverKey => _t('Group key', 'Khoá nhóm');
   static String get webKeyTitle => _t(
-    'Enter the room key to start',
-    'Nhập khoá phòng để bắt đầu',
+    'Enter the group key to start',
+    'Nhập khoá nhóm để bắt đầu',
   );
   static String get webKeyHint => _t(
-    'Room key, or the link copied from the Android app',
-    'Khoá phòng, hoặc liên kết chép từ app Android',
+    'Group key, or the link copied from the Android app',
+    'Khoá nhóm, hoặc liên kết chép từ app Android',
   );
+  static String get webKeyMissing =>
+      _t('No group key yet', 'Chưa có khoá nhóm');
+  static String get webKeyEnter => _t('Enter', 'Nhập');
   static String get keyRefused => _t(
-    'The room key was not accepted. Check it in Settings > Server.',
-    'Khoá phòng không được chấp nhận. Hãy kiểm tra ở Cài đặt > Máy chủ.',
+    'The group key was not accepted. Check it in Settings > Server.',
+    'Khoá nhóm không được chấp nhận. Hãy kiểm tra ở Cài đặt > Máy chủ.',
   );
   static String get serverKeySet => _t('Set', 'Đã đặt');
   static String get serverKeyNotSet => _t('Not set', 'Chưa đặt');
   static String get serverHelp => _t(
-    'Where your Sapoche server is and the key it asks for. They stay on this phone and are not part of the app. Easiest: on a phone that already works, open Settings > Set up another phone, and point this phone’s camera at the code.',
-    'Địa chỉ máy chủ Sapoche của bạn và khoá nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng. Dễ nhất: trên máy đã dùng được, mở Cài đặt > Cài đặt cho máy khác, rồi đưa camera của máy này vào mã.',
+    'Where your Sapoche server is and the group key it asks for. They stay on this phone and are not part of the app. Easiest: on a phone that already works, open Settings > Set up another phone, and point this phone’s camera at the code.',
+    'Địa chỉ máy chủ Sapoche của bạn và khoá nhóm nó yêu cầu. Chúng chỉ nằm trên máy này, không nằm trong ứng dụng. Dễ nhất: trên máy đã dùng được, mở Cài đặt > Cài đặt cho máy khác, rồi đưa camera của máy này vào mã.',
   );
   static String get serverHelpWeb => _t(
-    'Where your Sapoche server is and the key it asks for. They stay in this browser: clearing the site’s data removes them.',
-    'Địa chỉ máy chủ Sapoche của bạn và khoá nó yêu cầu. Chúng chỉ nằm trong trình duyệt này: xoá dữ liệu của trang là mất.',
+    'Where your Sapoche server is and the group key it asks for. They stay in this browser: clearing the site’s data removes them.',
+    'Địa chỉ máy chủ Sapoche của bạn và khoá nhóm nó yêu cầu. Chúng chỉ nằm trong trình duyệt này: xoá dữ liệu của trang là mất.',
   );
   static String get setupAnother =>
       _t('Set up another phone', 'Cài đặt cho máy khác');
   static String get setupAnotherHelp => _t(
-    'Open the camera on the other phone and point it at this code, or copy the link and send it to yourself. It holds the server address and the room key: show it to nobody else.',
-    'Mở camera trên máy kia và đưa vào mã này, hoặc sao chép liên kết rồi gửi cho chính bạn. Mã chứa địa chỉ máy chủ và khoá phòng: đừng cho ai khác xem.',
+    'Open the camera on the other phone and point it at this code, or copy the link and send it to yourself. It holds the server address and the group key: show it to nobody else.',
+    'Mở camera trên máy kia và đưa vào mã này, hoặc sao chép liên kết rồi gửi cho chính bạn. Mã chứa địa chỉ máy chủ và khoá nhóm: đừng cho ai khác xem.',
   );
   static String get setupAnotherWeb => _t('Invite to the web app', 'Mời bạn dùng bản web');
   static String get setupAnotherWebHelp => _t(
-    'Whoever opens this link, or points a phone camera at this code, is in at once with no key to type. It holds the room key: send it only to people in your group.',
-    'Ai mở liên kết này, hoặc đưa camera điện thoại vào mã này, là vào thẳng và không phải gõ khoá. Liên kết chứa khoá phòng: chỉ gửi cho người trong nhóm của bạn.',
+    'Whoever opens this link, or points a phone camera at this code, is in at once with no key to type. It holds the group key: send it only to people in your group.',
+    'Ai mở liên kết này, hoặc đưa camera điện thoại vào mã này, là vào thẳng và không phải gõ khoá. Liên kết chứa khoá nhóm: chỉ gửi cho người trong nhóm của bạn.',
   );
   static String get setupCopy => _t('Copy link', 'Sao chép liên kết');
   static String get setupCopied => _t('Link copied', 'Đã sao chép liên kết');
@@ -1133,8 +1148,8 @@ abstract final class S {
   static String get setupUseTitle =>
       _t('Use this server?', 'Dùng máy chủ này?');
   static String setupUseBody(String host) => _t(
-    'Rooms will be made on $host, with the key from the link.',
-    'Phòng sẽ được tạo trên $host, với khoá trong liên kết.',
+    'Rooms will be made on $host, with the group key from the link.',
+    'Phòng sẽ được tạo trên $host, với khoá nhóm trong liên kết.',
   );
   static String get setupUse => _t('Use', 'Dùng');
   static String get setupBad => _t(
@@ -1143,8 +1158,8 @@ abstract final class S {
   );
   static String get setupDone => _t('Server set', 'Đã đặt máy chủ');
   static String get serverNotSet => _t(
-    'Enter the server address and key first (Settings > Server).',
-    'Hãy nhập địa chỉ máy chủ và khoá trước (Cài đặt > Máy chủ).',
+    'Enter the server address and group key first (Settings > Server).',
+    'Hãy nhập địa chỉ máy chủ và khoá nhóm trước (Cài đặt > Máy chủ).',
   );
   static String get updateVersion => _t('Version', 'Phiên bản');
   static String get updateUpToDate =>

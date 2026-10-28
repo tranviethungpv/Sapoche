@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../strings.dart';
 import '../../theme/theme.dart';
 
 /// Play or pause glyph that morphs between the two, with a spinner while the room is starting.
@@ -25,41 +26,47 @@ class PlayPauseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final glyphColor = filled ? p.onPrimary : p.text;
-    return SizedBox.square(
-      dimension: size,
-      child: Material(
-        color: filled ? p.primary : Colors.transparent,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onPressed,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                ),
-                child: Icon(
-                  playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  key: ValueKey(playing),
-                  size: size * 0.56,
-                  color: glyphColor,
-                ),
-              ),
-              if (starting)
-                SizedBox.square(
-                  dimension: size * 0.86,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: filled
-                        ? p.onPrimary.withValues(alpha: 0.7)
-                        : p.primary,
+    // A container of its own, or the screen reader merges it with the buttons around it
+    return Semantics(
+      container: true,
+      button: true,
+      label: playing ? S.pause : S.play,
+      child: SizedBox.square(
+        dimension: size,
+        child: Material(
+          color: filled ? p.primary : Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) => ScaleTransition(
+                    scale: animation,
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: Icon(
+                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    key: ValueKey(playing),
+                    size: size * 0.56,
+                    color: glyphColor,
                   ),
                 ),
-            ],
+                if (starting)
+                  SizedBox.square(
+                    dimension: size * 0.86,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: filled
+                          ? p.onPrimary.withValues(alpha: 0.7)
+                          : p.primary,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -84,6 +91,7 @@ class SkipButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       onPressed: onPressed,
+      tooltip: forward ? S.nextSong : S.previousSong,
       iconSize: size,
       icon: Icon(
         forward ? Icons.skip_next_rounded : Icons.skip_previous_rounded,

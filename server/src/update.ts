@@ -4,7 +4,9 @@
  * bucket: releases are put there from a computer with `app/tool/release.sh`.
  *
  * The bucket holds `latest.json` and one `sapoche-<version>.apk` per release (named in the `file` of
- * `latest.json`); old ones stay, so going back is a matter of publishing an older `latest.json`.
+ * `latest.json`); old ones stay. There is no going back: a phone only takes a higher build number and Android does
+ * not install a lower one over a higher one, so undoing a release means publishing a higher build number built from
+ * the old commit.
  */
 
 /** What `latest.json` must say; the app checks it again before installing. */

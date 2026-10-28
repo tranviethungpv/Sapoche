@@ -94,6 +94,31 @@ void main() {
     expect(fill.widthFactor, 0.25);
   });
 
+  testWidgets('a screen reader can name and move every control of the player', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final backend = await openPlayer(tester);
+    expect(find.bySemanticsLabel('Pause'), findsWidgets);
+    expect(find.byTooltip('Previous'), findsWidgets);
+    expect(find.byTooltip('Next'), findsWidgets);
+    final seek = find.bySemanticsLabel('Song position');
+    expect(
+      tester.getSemantics(seek),
+      isSemantics(
+        isSlider: true,
+        value: '0:04',
+        increasedValue: '0:14',
+        hasIncreaseAction: true,
+        hasDecreaseAction: true,
+      ),
+    );
+    tester.semantics.increase(find.semantics.byLabel('Song position'));
+    expect(backend.calls.last, startsWith('seek 14'), reason: 'ten seconds on');
+    await tester.pump(const Duration(seconds: 2));
+    semantics.dispose();
+  });
+
   testWidgets('the full player wears the theme of the app', (tester) async {
     await openPlayer(tester); // the app itself is in the light theme here
     expect(

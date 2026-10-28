@@ -53,7 +53,7 @@ String _state(int protocol, String members, {String you = 'me'}) =>
     '{"t":"state","serverNow":0,"you":"$you","protocol":$protocol,'
     '"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0},"members":$members}';
 
-RoomClient _client(_Room room, {String? appVersion}) => RoomClient(
+RoomClient _client(_Room room, {String? appVersion, String key = '', void Function(String)? log}) => RoomClient(
   baseUrl: Uri.parse('https://sapoche.example'),
   roomCode: 'ABC234',
   clientId: 'device-secret',
@@ -64,6 +64,8 @@ RoomClient _client(_Room room, {String? appVersion}) => RoomClient(
   opener: room.opener,
   create: false,
   appVersion: appVersion,
+  key: key,
+  log: log ?? (_) {},
 );
 
 Future<void> _settle() => Future<void>.delayed(const Duration(milliseconds: 50));
@@ -85,6 +87,15 @@ void main() {
     await _settle();
     expect(jsonDecode(bare.received.firstWhere((t) => t.contains('"join"'))), isNot(contains('app')));
     older.close();
+  });
+
+  test('the key in the address of the room never reaches the log', () async {
+    final lines = <String>[];
+    final client = _client(_Room(state: () => _state(17, '[]')), key: 's3cret', log: lines.add)..start();
+    await _settle();
+    expect(lines, contains('connected to wss://sapoche.example/room/ABC234'));
+    expect(lines.join('\n'), isNot(contains('s3cret')));
+    client.close();
   });
 
   test('pictures are shared and fetched once the server speaks protocol 8', () async {

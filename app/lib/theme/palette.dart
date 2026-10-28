@@ -68,11 +68,11 @@ class Palette {
     onPrimaryContainer: Color(0xFF7A1F3D),
     text: Color(0xFF22161A),
     textSecondary: Color(0xFF75606A),
-    textTertiary: Color(0xFF8F7B84),
+    textTertiary: Color(0xFF77656D),
     outline: Color(0xFFEBCFD8),
     outlineSoft: Color(0xFFF6E6EB),
     error: Color(0xFFB83A4B),
-    success: Color(0xFF4E8F72),
+    success: Color(0xFF3F745C),
   );
 
   static const dark = Palette._(

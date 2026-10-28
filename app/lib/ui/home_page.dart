@@ -531,41 +531,51 @@ class _RoomChipState extends State<_RoomChip> {
             ? S.tabRoom
             : S.rejoinChip;
         final color = inRoom ? p.onPrimary : p.text;
-        return Tooltip(
-          message: inRoom || last == null ? S.tabRoom : last.title,
-          child: Material(
-            color: inRoom ? p.primary : p.text.withValues(alpha: 0.14),
-            shape: const StadiumBorder(),
-            child: InkWell(
-              customBorder: const StadiumBorder(),
-              onTap: _busy ? null : _touch,
-              onLongPress: () => showRoomSheet(context),
-              child: SizedBox(
-                height: 40,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _busy
-                          ? SizedBox.square(
-                              dimension: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
+        // A container of its own, or the screen reader reads it as one with the greeting
+        return Semantics(
+          container: true,
+          button: true,
+          child: Tooltip(
+            message: inRoom || last == null ? S.tabRoom : last.title,
+            child: Material(
+              color: inRoom ? p.primary : p.text.withValues(alpha: 0.14),
+              shape: const StadiumBorder(),
+              child: InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: _busy ? null : _touch,
+                onLongPress: () => showRoomSheet(context),
+                child: SizedBox(
+                  height: 40,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _busy
+                            ? SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: color,
+                                ),
+                              )
+                            : Icon(
+                                Icons.groups_rounded,
+                                size: 18,
                                 color: color,
                               ),
-                            )
-                          : Icon(Icons.groups_rounded, size: 18, color: color),
-                      const SizedBox(width: 6),
-                      Text(
-                        label,
-                        maxLines: 1,
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: color,
-                          letterSpacing: inRoom ? 1.5 : 0,
+                        const SizedBox(width: 6),
+                        Text(
+                          label,
+                          maxLines: 1,
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: color,
+                                letterSpacing: inRoom ? 1.5 : 0,
+                              ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

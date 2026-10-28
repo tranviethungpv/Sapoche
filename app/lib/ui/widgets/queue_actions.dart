@@ -28,10 +28,19 @@ Future<void> queueTrack(
               ? S.willPlayNext
               : S.addedToQueue,
         ),
-        duration: const Duration(milliseconds: 1400),
+        action: queued ? null : undoAddAction(room, track),
+        // Long enough to reach the way back
+        duration: Duration(milliseconds: queued ? 1400 : 4000),
       ),
     );
 }
+
+/// The way back from putting [track] on the queue, for whoever may take songs off it: not a guest of a room where
+/// guests may only add songs.
+SnackBarAction? undoAddAction(RoomController room, Track track) =>
+    room.snapshot.canControl
+    ? SnackBarAction(label: S.undo, onPressed: () => room.undoAdd(track))
+    : null;
 
 /// Puts [tracks] on the queue (or next) and says how many went on: the ones already waiting there are left out.
 Future<void> queueTracks(

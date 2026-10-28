@@ -20,6 +20,7 @@ import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
 import 'widgets/player_backdrop.dart';
 import 'widgets/playlist_cover.dart';
+import 'widgets/queue_actions.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/text_dialog.dart';
 import 'widgets/track_menu.dart';
@@ -1223,11 +1224,11 @@ class _TrackList extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     final room = AppScope.roomOf(context);
 
-    void confirm(String text) {
+    void confirm(String text, {SnackBarAction? action}) {
       HapticFeedback.selectionClick();
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(text)));
+        ..showSnackBar(SnackBar(content: Text(text), action: action));
     }
 
     Future<void> add(Track track, {bool playNext = false}) async {
@@ -1242,7 +1243,10 @@ class _TrackList extends StatelessWidget {
       }
       await room.add(track, playNext: playNext);
       if (context.mounted) {
-        confirm(playNext ? S.willPlayNext : S.addedToQueue);
+        confirm(
+          playNext ? S.willPlayNext : S.addedToQueue,
+          action: undoAddAction(room, track),
+        );
       }
     }
 

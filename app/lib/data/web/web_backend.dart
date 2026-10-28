@@ -323,10 +323,9 @@ class WebBackend extends BackendDefaults {
       throw BackendException('failed', 'The server cannot be reached');
     }
     if (reply.statusCode < 200 || reply.statusCode >= 300) {
-      throw BackendException(
-        'failed',
-        reply.statusCode == 401 ? 'The server turned the key down' : 'The server answered ${reply.statusCode}',
-      );
+      throw reply.statusCode == 401
+          ? BackendException('key_refused', 'The server turned the key down')
+          : BackendException('failed', 'The server answered ${reply.statusCode}');
     }
     final code = (jsonDecode(reply.body) as Map<String, dynamic>)['code'] as String?;
     if (code == null) throw BackendException('failed', 'The server gave no room code');

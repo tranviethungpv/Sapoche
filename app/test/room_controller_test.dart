@@ -44,6 +44,34 @@ void main() {
     },
   );
 
+  test('the copied log never shows a key or the secret of a room', () async {
+    backend.logLines = [
+      'connected to wss://sapoche.example/room/ABC234?key=s3cret',
+      'opened https://sapoche.example/#key=s3cret',
+      'invite https://sapoche.example/join/ABC234#k=r00m&x=1',
+      'keyboard=on',
+    ];
+    final lines = (await controller.log()).join('\n');
+    expect(lines, isNot(contains('s3cret')));
+    expect(lines, isNot(contains('r00m')));
+    expect(lines, contains('/room/ABC234?key=…'));
+    expect(lines, contains('#k=…&x=1'));
+    expect(lines, contains('keyboard=on'));
+  });
+
+  test('undoing an add takes the song off where it waits, never the one playing', () async {
+    backend.emit(StateEvent(sampleRoom(index: 0)));
+    await settle();
+    await controller.undoAdd(
+      const Track(videoId: 'video0', title: 'Song 0', artist: 'Artist 0', durMs: 200000),
+    );
+    expect(backend.calls.where((c) => c.startsWith('remove')), isEmpty);
+    await controller.undoAdd(
+      const Track(videoId: 'video2', title: 'Song 2', artist: 'Artist 2', durMs: 202000),
+    );
+    expect(backend.calls.last, 'remove q2');
+  });
+
   test('is ready once the first state arrives', () async {
     backend.emit(const StateEvent(RoomSnapshot()));
     await settle();
@@ -249,11 +277,18 @@ void main() {
     expect(messages, ['Join a room first']);
   });
 
-  test('joining reports a failure to the caller', () async {
-    backend.failWith = BackendException('failed', 'server answered 401');
+  test('joining reports a failure to the caller, in words and not as an exception', () async {
+    backend.failWith = BackendException('failed', 'java.net.UnknownHostException: sapoche.example');
     final error = await controller.join(' abc234 ', ' Anna ');
-    expect(error, contains('Could not connect'));
+    expect(error, 'Could not connect to the room. Check the connection and try again.');
     expect(backend.calls.last, 'join ABC234 Anna');
+  });
+
+  test('a room that cannot be made says why when the server says it', () async {
+    backend.failWith = BackendException('key_refused', 'The server turned the key down');
+    expect(await controller.createRoom('Anna'), startsWith('The group key was not accepted'));
+    backend.failWith = StateError('Bad state: something');
+    expect(await controller.createRoom('Anna'), 'Could not create a room. Check the connection and try again.');
   });
 
   test('creating a room trims the name', () async {

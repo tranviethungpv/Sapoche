@@ -81,8 +81,6 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
 
     // ------------------------------------------------------------------ PlatformServices
 
-    var deviceName: String { UIDevice.current.name }
-
     var deviceModel: String { UIDevice.current.model }
 
     var isMetered: Bool { metered }

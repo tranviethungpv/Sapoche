@@ -271,8 +271,9 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
 
   var _askedForKey = false;
 
-  /// A browser that was never given the room key can do nothing: search, Home and rooms all need it. The person is asked
-  /// for it once, the first time, and the page loads again with it. (Phones have it built in or are set up by a link.)
+  /// A browser that was never given the group key can do nothing: search, Home and rooms all need it. The person is
+  /// asked for it once, the first time; after that a band at the top of the page asks again. The page loads again with
+  /// the key. (Phones have it built in or are set up by a link.)
   Future<void> _askForKey() async {
     final room = _watched;
     if (!kIsWeb ||
@@ -283,6 +284,10 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
       return;
     }
     _askedForKey = true;
+    await _enterKey(room);
+  }
+
+  Future<void> _enterKey(RoomController room) async {
     final typed = await showTextDialog(
       context,
       title: S.webKeyTitle,
@@ -469,7 +474,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
             const HomePage(),
             SearchPage(focusNode: _searchFocus),
             LibraryPage(requests: _libraryRequests),
-            RoomPage(onAddSongs: () => _select(1)),
+            RoomPage(onAddSongs: _search),
           ].indexed)
             TickerMode(
               enabled: i == _tab,
@@ -490,17 +495,31 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
       body: SafeArea(
         top: false,
         bottom: false,
-        child: layout == ShellLayout.bars
-            ? pages
-            : _Side(
-                layout: layout,
-                controller: controller,
-                index: _tab,
-                onSelect: _select,
-                onSearch: _search,
-                onLibrary: _openLibrary,
-                child: pages,
+        child: Column(
+          children: [
+            // Until the browser has the group key, the way to give it stays in sight
+            if (kIsWeb)
+              ListenableBuilder(
+                listenable: controller,
+                builder: (context, _) => controller.profile.hasKey
+                    ? const SizedBox.shrink()
+                    : _KeyBand(onEnter: () => _enterKey(controller)),
               ),
+            Expanded(
+              child: layout == ShellLayout.bars
+                  ? pages
+                  : _Side(
+                      layout: layout,
+                      controller: controller,
+                      index: _tab,
+                      onSelect: _select,
+                      onSearch: _search,
+                      onLibrary: _openLibrary,
+                      child: pages,
+                    ),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: layout == ShellLayout.bars
           ? _Bars(
@@ -1307,5 +1326,34 @@ abstract final class TabNavigation {
   static Future<T?> push<T>(BuildContext context, Route<T> route) {
     _closePlayer?.call();
     return (_active?.call() ?? Navigator.of(context)).push(route);
+  }
+}
+
+/// Across the top of the web app while the browser has no group key: says so, and asks for it again.
+class _KeyBand extends StatelessWidget {
+  const _KeyBand({required this.onEnter});
+
+  final VoidCallback onEnter;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Material(
+      color: p.primaryContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+          child: Row(
+            children: [
+              Icon(Icons.key_rounded, size: 20, color: p.primary),
+              const SizedBox(width: 10),
+              Expanded(child: Text(S.webKeyMissing)),
+              TextButton(onPressed: onEnter, child: Text(S.webKeyEnter)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

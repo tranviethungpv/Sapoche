@@ -77,6 +77,17 @@ void main() {
     },
   );
 
+  testWidgets('a screen reader reads the room button apart from the greeting', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await openHome(tester);
+    final chip = tester.getSemantics(find.text('Room'));
+    expect(chip, isSemantics(isButton: true, hasTapAction: true));
+    expect(chip.label, isNot(contains('Good')));
+    semantics.dispose();
+  });
+
   testWidgets('what was heard, liked and suggested fills the shelves', (
     tester,
   ) async {

@@ -6,8 +6,6 @@ import FoundationNetworking
 /// What the phone itself has to offer that the rest does not know how to get.
 @MainActor
 protocol PlatformServices: AnyObject {
-    /// What the person called this phone in its settings, or its model.
-    var deviceName: String { get }
     var deviceModel: String { get }
 
     /// On mobile data (or not knowing): songs are not fetched without asking.
@@ -390,12 +388,14 @@ final class Bridge {
 
         switch method {
         case "profile":
-            let name = prefs.string(Self.keyRoomName) ?? String(platform.deviceName.prefix(Self.maxNameChars))
-            return [
-                "name": name, "device": platform.deviceModel, "trimMs": controller.trimMs, "videoHeight": videoHeight,
+            var profile: [String: Any] = [
+                "device": platform.deviceModel, "trimMs": controller.trimMs, "videoHeight": videoHeight,
                 "server": settings.server, "autoplay": controller.autoplayOn, "configured": settings.isSet, "key": !settings.key.isEmpty,
                 "audioQuality": audioQuality.rawValue,
-            ] as [String: Any]
+            ]
+            // Only a name the person chose: the phone's own name would be shown to everybody in the room
+            if let name = prefs.string(Self.keyRoomName) { profile["name"] = name }
+            return profile
         case "configure":
             // What is left out stays as it was
             var config = settings
@@ -784,7 +784,9 @@ final class Bridge {
         config.authHeaders.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         let reply = try await http.send(request)
         guard (200..<300).contains(reply.status) else {
-            throw BridgeError(code: "failed", message: reply.status == 401 ? "The server turned the key down" : "The server answered \(reply.status)")
+            throw reply.status == 401
+                ? BridgeError(code: "key_refused", message: "The server turned the key down")
+                : BridgeError(code: "failed", message: "The server answered \(reply.status)")
         }
         guard let code = JSON.parse(data: reply.data)?.at("code").string else { throw BridgeError(code: "failed", message: "The server gave no room code") }
         return code
@@ -903,8 +905,6 @@ final class Bridge {
     private static let keyRoomName = "room_name"
     private static let defaultCacheMb: Int64 = 256
 
-    /// The longest name the UI lets a person type.
-    private static let maxNameChars = 24
     private static let positionTickMs: Int64 = 1000
     private static let searchLimit = 20
     private static let suggestionLimit = 6

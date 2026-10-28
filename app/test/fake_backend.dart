@@ -862,8 +862,10 @@ class FakeBackend implements Backend {
   Future<void> react(Reaction reaction, int count) =>
       _record('react ${reaction.wire} $count');
 
+  List<String> logLines = ['line one', 'line two'];
+
   @override
-  Future<List<String>> log() async => ['line one', 'line two'];
+  Future<List<String>> log() async => logLines;
 
   @override
   Future<void> note(String line) async {}

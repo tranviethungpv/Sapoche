@@ -20,6 +20,9 @@ int queueMax({required bool inRoom}) => inRoom ? 200 : 1000;
 /// How many songs the server takes from one `queue.addMany`; more are sent in several.
 const _serverAddMany = 100;
 
+/// `key=` in the address of a room, `#key=` in a setup link, `#k=` in an invitation.
+final _secretInLink = RegExp(r'([?&#](?:key|k)=)[^&#\s]+');
+
 /// Something another member did that moved this device: worth a snackbar, sometimes with a way out.
 class Notice {
   const Notice(
@@ -773,12 +776,8 @@ class RoomController extends ChangeNotifier {
     try {
       await _backend.createRoom(name.trim());
       return null;
-    } on BackendException catch (e) {
-      return e.code == 'not_configured'
-          ? S.serverNotSet
-          : '${S.createFailed}: $e';
     } on Object catch (e) {
-      return '${S.createFailed}: $e';
+      return _roomFailure(S.createFailed, e);
     }
   }
 
@@ -786,13 +785,21 @@ class RoomController extends ChangeNotifier {
     try {
       await _backend.join(code.trim().toUpperCase(), name.trim());
       return null;
-    } on BackendException catch (e) {
-      return e.code == 'not_configured'
-          ? S.serverNotSet
-          : '${S.joinFailed}: $e';
     } on Object catch (e) {
-      return '${S.joinFailed}: $e';
+      return _roomFailure(S.joinFailed, e);
     }
+  }
+
+  /// What the person is told when a room could not be made or joined: words they can act on, never the exception
+  /// itself, which goes to the log instead.
+  String _roomFailure(String failed, Object error) {
+    if (error is BackendException) {
+      if (error.code == 'not_configured') return S.serverNotSet;
+      final known = S.serverError(error.code);
+      if (known != null) return known;
+    }
+    _backend.note('room failed: $error').ignore();
+    return '$failed. ${S.checkConnection}';
   }
 
   /// Where the room server is and its key; what is left out stays as it was.
@@ -976,6 +983,15 @@ class RoomController extends ChangeNotifier {
 
   Future<void> remove(QueueEntry entry) =>
       _run(() => _backend.remove(entry.id));
+
+  /// Takes [track] off the queue again just after it was put there: the last place it waits, never the song playing.
+  Future<void> undoAdd(Track track) async {
+    final entry = _snapshot.queue
+        .skip(_snapshot.index + 1)
+        .where((e) => e.videoId == track.videoId)
+        .lastOrNull;
+    if (entry != null) await remove(entry);
+  }
   Future<void> move(QueueEntry entry, int toIndex) =>
       _run(() => _backend.move(entry.id, toIndex));
   Future<void> clearQueue() => _run(_backend.clear);
@@ -1154,7 +1170,12 @@ class RoomController extends ChangeNotifier {
 
   Future<void> setVideoQuality(int height) =>
       _run(() => _backend.setVideoQuality(height));
-  Future<List<String>> log() => _backend.log();
+  /// The diary of the native side, as Settings copies it; a key or the secret of a room in any link of it is hidden,
+  /// whichever side wrote the line.
+  Future<List<String>> log() async => [
+    for (final line in await _backend.log())
+      line.replaceAllMapped(_secretInLink, (m) => '${m[1]}…'),
+  ];
 
   /// Turns the notices of the chat on or off. Called from a touch: the system's leave can only be asked for from one.
   Future<void> setNotifications(bool on) => _run(() async {

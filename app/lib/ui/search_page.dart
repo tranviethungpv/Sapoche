@@ -520,6 +520,7 @@ class _SearchPageState extends State<SearchPage> {
                   ),
                   suffixIcon: _field.text.isEmpty
                       ? IconButton(
+                          tooltip: S.pasteLink,
                           icon: Icon(
                             Icons.content_paste_rounded,
                             color: context.palette.textTertiary,
@@ -527,6 +528,7 @@ class _SearchPageState extends State<SearchPage> {
                           onPressed: _paste,
                         )
                       : IconButton(
+                          tooltip: S.clearSearch,
                           icon: Icon(
                             Icons.cancel_rounded,
                             color: context.palette.textTertiary,
