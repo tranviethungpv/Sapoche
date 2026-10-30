@@ -6,6 +6,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -50,10 +51,12 @@ function seedRelease(persistTo) {
   rmSync(join(persistTo, "v3", "r2"), { recursive: true, force: true });
   const dir = mkdtempSync(join(tmpdir(), "sapoche-release-"));
   const apk = randomBytes(5000);
-  const latest = { versionCode: 9, versionName: "9.9.9", sha256: createHash("sha256").update(apk).digest("hex"), size: apk.length, file: "sapoche-9.9.9.apk", notes: "test" };
+  const gz = gzipSync(apk);
+  const latest = { versionCode: 9, versionName: "9.9.9", sha256: createHash("sha256").update(apk).digest("hex"), size: apk.length, file: "sapoche-9.9.9.apk", gzFile: "sapoche-9.9.9.apk.gz", gzSize: gz.length, notes: "test" };
   writeFileSync(join(dir, "sapoche-9.9.9.apk"), apk);
+  writeFileSync(join(dir, "sapoche-9.9.9.apk.gz"), gz);
   writeFileSync(join(dir, "latest.json"), JSON.stringify(latest));
-  for (const [key, file] of [["sapoche-9.9.9.apk", "sapoche-9.9.9.apk"], ["latest.json", "latest.json"]]) {
+  for (const [key, file] of [["sapoche-9.9.9.apk", "sapoche-9.9.9.apk"], ["sapoche-9.9.9.apk.gz", "sapoche-9.9.9.apk.gz"], ["latest.json", "latest.json"]]) {
     execFileSync("npx", ["wrangler", "r2", "object", "put", `sapoche-releases/${key}`, "--local", "--persist-to", persistTo, "--file", join(dir, file)], { stdio: "ignore" });
   }
   return { apk, latest };

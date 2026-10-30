@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../data/calm.dart';
 import '../../theme/theme.dart';
 
 /// Placeholder rows shown while search results load: same shape as a track row, with a light
@@ -18,10 +19,27 @@ class _SkeletonListState extends State<SkeletonList>
   late final AnimationController _sweep = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1400),
-  )..repeat();
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _pace();
+    Calm.on.addListener(_pace);
+  }
+
+  /// The light stands still while the effects are lightened: a mask repainted every frame is what these rows cost.
+  void _pace() {
+    if (Calm.on.value) {
+      _sweep.stop();
+    } else {
+      _sweep.repeat();
+    }
+  }
 
   @override
   void dispose() {
+    Calm.on.removeListener(_pace);
     _sweep.dispose();
     super.dispose();
   }

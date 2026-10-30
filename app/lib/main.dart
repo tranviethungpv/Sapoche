@@ -4,6 +4,7 @@ import 'app.dart';
 import 'data/app_settings.dart';
 import 'data/backend.dart';
 import 'data/backend_factory.dart';
+import 'data/calm.dart';
 import 'data/library_controller.dart';
 import 'data/music_controller.dart';
 import 'data/recent_rooms.dart';
@@ -18,7 +19,12 @@ import 'ui/widgets/cached_cover.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Flutter keeps up to 100 MB of decoded pictures; covers are small and a phone has better uses for the memory
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 48 << 20;
+  // (half of that where the effects are lightened: a weak phone has the least memory to spare)
+  void sizeImageCache() =>
+      PaintingBinding.instance.imageCache.maximumSizeBytes =
+          (Calm.light.value ? 24 : 48) << 20;
+  sizeImageCache();
+  Calm.light.addListener(sizeImageCache);
   final Backend backend = await createBackend();
   // Before the first cover is asked for; without the folder the covers are only fetched
   CoverFiles.useFolder(

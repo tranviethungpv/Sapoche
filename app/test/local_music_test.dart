@@ -105,7 +105,7 @@ void main() {
 
     setUp(() async {
       backend = FakeBackend();
-      library = LibraryController(backend);
+      library = LibraryController(backend, quiet: Duration.zero);
       await library.start();
     });
 

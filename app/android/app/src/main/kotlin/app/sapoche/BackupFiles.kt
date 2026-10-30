@@ -6,6 +6,8 @@ import android.net.Uri
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,7 +47,7 @@ class BackupFiles(private val activity: Activity, private val library: LibrarySt
         ) ?: return null
         val text = withContext(Dispatchers.IO) {
             val input = activity.contentResolver.openInputStream(uri) ?: error("Could not read the file")
-            val bytes = input.use { it.readNBytes(MAX_BYTES + 1) }
+            val bytes = input.use { it.readUpTo(MAX_BYTES + 1) }
             if (bytes.size > MAX_BYTES) throw LibraryBackup.FormatException("Too big to be a Sapoche backup")
             String(bytes)
         }
@@ -64,6 +66,18 @@ class BackupFiles(private val activity: Activity, private val library: LibrarySt
         waiting = answer
         activity.startActivityForResult(intent, REQUEST)
         return answer.await()
+    }
+
+    /** At most [limit] bytes (`readNBytes` needs Android 13). */
+    private fun InputStream.readUpTo(limit: Int): ByteArray {
+        val out = ByteArrayOutputStream()
+        val chunk = ByteArray(8192)
+        while (out.size() < limit) {
+            val n = read(chunk, 0, minOf(chunk.size, limit - out.size()))
+            if (n < 0) break
+            out.write(chunk, 0, n)
+        }
+        return out.toByteArray()
     }
 
     companion object {

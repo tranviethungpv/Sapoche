@@ -17,11 +17,14 @@ export interface LatestRelease {
   size: number;
   /** Name of the apk in the bucket; left out by the first versions, whose files are `app-<versionCode>.apk`. */
   file?: string;
+  /** The same apk gzipped, and its size: a phone that knows these fields fetches it instead (about a third less). */
+  gzFile?: string;
+  gzSize?: number;
   notes?: string;
 }
 
 /** A release file by its name, or the legacy `app-<versionCode>.apk` that apps up to 1.3.1 ask for. */
-export const UPDATE_ROUTE = /^\/update\/(latest\.json|sapoche-[0-9A-Za-z.-]{1,40}\.apk|app-\d{1,9}\.apk)$/;
+export const UPDATE_ROUTE = /^\/update\/(latest\.json|sapoche-[0-9A-Za-z.-]{1,40}\.apk(?:\.gz)?|app-\d{1,9}\.apk)$/;
 const LEGACY = /^app-(\d+)\.apk$/;
 
 /** Serves one of the two kinds of file, with `Range` so that an interrupted download can go on. */
@@ -54,7 +57,9 @@ export async function serveUpdate(request: Request, env: Env, name: string): Pro
   // The answer about which version is newest must never be a stale one
   headers.set("Cache-Control", name === "latest.json" ? "no-cache" : "private, max-age=3600");
   if (name === "latest.json") headers.set("Content-Type", "application/json; charset=utf-8");
-  else headers.set("Content-Type", "application/vnd.android.package-archive");
+  // The .gz is a file of its own, not the apk sent with a Content-Encoding: the app unpacks it, so a resumed
+  // download (Range) counts bytes of the gzipped file and no proxy on the way may decide to unpack it
+  else headers.set("Content-Type", name.endsWith(".gz") ? "application/gzip" : "application/vnd.android.package-archive");
 
   // The conditional request matched: there is no body to send
   if (!("body" in object)) return new Response(null, { status: 304, headers });

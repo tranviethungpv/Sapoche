@@ -61,7 +61,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
   final recents = await RecentRooms.load();
   final searches = await RecentSearches.load();
   final room = RoomController(backend, recents: recents);
-  final library = LibraryController(backend);
+  final library = LibraryController(backend, quiet: Duration.zero);
   final settings = await AppSettings.load(shelfRandom: SteadyRandom());
   await tester.pumpWidget(
     SapocheApp(

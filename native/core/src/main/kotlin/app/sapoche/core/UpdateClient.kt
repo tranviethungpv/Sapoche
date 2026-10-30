@@ -18,6 +18,7 @@ import java.io.IOException
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPInputStream
 
 /** One release of the app as the server describes it (`latest.json`). */
 data class Release(
@@ -32,6 +33,9 @@ data class Release(
     val notesVi: String = "",
     /** The notes of the last few versions, newest first: what a phone several versions behind has missed. */
     val history: List<ReleaseNote> = emptyList(),
+    /** The same apk gzipped (a third smaller to fetch), and its size; empty when the server has none. */
+    val gzFile: String = "",
+    val gzSize: Long = 0,
 ) {
     fun isNewerThan(installedCode: Long) = versionCode > installedCode
 
@@ -83,11 +87,19 @@ class UpdateClient(
     /**
      * Downloads [release] into [file], going on from what an earlier try left there. The result is only
      * kept when it has the announced size and checksum; a wrong file is deleted rather than offered for install.
+     * The gzipped copy is fetched when the server has one and unpacked here; if that fails the plain file is fetched.
      */
     suspend fun download(release: Release, file: File, onProgress: (Long) -> Unit = {}) = withContext(Dispatchers.IO) {
         file.parentFile?.mkdirs()
         if (file.length() > release.size) file.delete()
-        if (file.length() < release.size) fetch(release, file, onProgress)
+        if (file.length() < release.size && release.gzFile.isNotEmpty() && release.gzSize > 0) {
+            try {
+                fetchGzipped(release, file, onProgress)
+            } catch (e: IOException) {
+                file.delete()
+            }
+        }
+        if (file.length() < release.size) fetch(release.file, file, release.size, onProgress)
         if (file.length() != release.size || sha256(file) != release.sha256) {
             file.delete()
             throw IOException("the downloaded file does not match the release")
@@ -95,14 +107,35 @@ class UpdateClient(
         onProgress(release.size)
     }
 
-    private suspend fun fetch(release: Release, file: File, onProgress: (Long) -> Unit) {
+    /** The gzipped copy goes next to [file], is unpacked into it and removed; progress counts in bytes of the apk. */
+    private suspend fun fetchGzipped(release: Release, file: File, onProgress: (Long) -> Unit) {
+        val gz = File(file.path + ".gz")
+        if (gz.length() > release.gzSize) gz.delete()
+        if (gz.length() < release.gzSize) {
+            fetch(release.gzFile, gz, release.gzSize) { done -> onProgress(done * release.size / release.gzSize) }
+        }
+        if (gz.length() != release.gzSize) {
+            gz.delete()
+            throw IOException("the gzipped file is not the announced size")
+        }
+        try {
+            GZIPInputStream(gz.inputStream(), BUFFER).use { input -> file.outputStream().use { input.copyTo(it, BUFFER) } }
+        } catch (e: IOException) {
+            file.delete()
+            throw e
+        } finally {
+            gz.delete()
+        }
+    }
+
+    private suspend fun fetch(name: String, file: File, size: Long, onProgress: (Long) -> Unit) {
         val have = file.length()
-        val call = request(release.file) { if (have > 0) header("Range", "bytes=$have-") }
+        val call = request(name) { if (have > 0) header("Range", "bytes=$have-") }
         client.newCall(call).execute().use { response ->
             // 200 to a Range request: the server started over, so the old part is of no use
             val resumed = response.code == 206 && have > 0
             if (response.code == 416) file.delete()
-            if (response.code == 404) throw IOException("release ${release.versionCode} is not on the server")
+            if (response.code == 404) throw IOException("$name is not on the server")
             if (!response.isSuccessful) throw IOException("download: HTTP ${response.code}")
             RandomAccessFile(file, "rw").use { out ->
                 if (resumed) out.seek(have) else out.setLength(0)
@@ -117,7 +150,7 @@ class UpdateClient(
                     out.write(buffer, 0, n)
                     done += n
                     // About a hundred reports in all, not one per buffer
-                    if (done - lastReport >= release.size / 100) {
+                    if (done - lastReport >= size / 100) {
                         lastReport = done
                         onProgress(done)
                     }
@@ -154,6 +187,8 @@ class UpdateClient(
                         entry["notesVi"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                     )
                 },
+                gzFile = json["gzFile"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                gzSize = json["gzSize"]?.jsonPrimitive?.long ?: 0,
                 file = json["file"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: "app-${json["versionCode"]?.jsonPrimitive?.long}.apk",
             )
         }

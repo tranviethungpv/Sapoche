@@ -1,0 +1,5 @@
+Nhẹ hơn, nhỏ hơn, mượt hơn
+- App nhỏ hơn một phần ba khi tải và cập nhật: bản cập nhật được tải ở dạng nén, khoảng 13 MB thay vì 33 MB.
+- Máy cũ mở app nhanh hơn nhiều, và trang Chủ không còn khựng khi kéo xuống để làm mới hay khi mở danh sách dài.
+- Công tắc "Hiệu ứng nhẹ" mới ở Cài đặt > Giao diện: thanh đặc thay cho kính mờ, nền player đứng yên và ít hiệu ứng hơn. Máy ít bộ nhớ mặc định bật.
+- Sửa lỗi văng khi khôi phục bản sao lưu trên một số bản Android.

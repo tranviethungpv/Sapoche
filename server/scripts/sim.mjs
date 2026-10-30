@@ -2,6 +2,7 @@
 // Usage: node scripts/sim.mjs [baseUrl]   (default http://127.0.0.1:8787)
 // When the server has a ROOM_KEY, pass it in SAPOCHE_KEY (npm run sim:keyed does this against a local server).
 import { createHash, createPublicKey, createECDH, hkdfSync, createDecipheriv, verify } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { createServer } from "node:http";
 import vm from "node:vm";
 
@@ -505,6 +506,13 @@ async function updateSection({ apk, latest }) {
   check("a download that broke off goes on from where it was", rest.status === 206 && tail.equals(bytes.subarray(1000)) && rest.headers.get("content-range") === `bytes 1000-${bytes.length - 1}/${bytes.length}`, `${rest.status} ${rest.headers.get("content-range")}`);
   const middle = await fetch(url("sapoche-9.9.9.apk"), { headers: { ...keyHeaders, Range: "bytes=10-19" } });
   check("a slice of the middle comes as asked", middle.status === 206 && Buffer.from(await middle.arrayBuffer()).equals(bytes.subarray(10, 20)));
+  // The gzipped copy is a file of its own: bytes as stored, no Content-Encoding, ranges over the gzipped bytes
+  const gzWhole = await fetch(url("sapoche-9.9.9.apk.gz"), { headers: keyHeaders });
+  const gzBytes = Buffer.from(await gzWhole.arrayBuffer());
+  check("the gzipped apk comes whole, unpacked by the app and not by the connection", gzWhole.status === 200 && gzBytes.length === body.gzSize && gunzipSync(gzBytes).equals(bytes) && !gzWhole.headers.get("content-encoding") && gzWhole.headers.get("content-type") === "application/gzip", `${gzWhole.status} ${gzWhole.headers.get("content-encoding")}`);
+  const gzRest = await fetch(url("sapoche-9.9.9.apk.gz"), { headers: { ...keyHeaders, Range: "bytes=100-" } });
+  check("and goes on from where it broke off", gzRest.status === 206 && Buffer.from(await gzRest.arrayBuffer()).equals(gzBytes.subarray(100)));
+  if (KEY) check("the gzipped apk is refused without the key", (await fetch(url("sapoche-9.9.9.apk.gz"))).status === 401);
   const head = await fetch(url("sapoche-9.9.9.apk"), { method: "HEAD", headers: keyHeaders });
   check("HEAD gives the size without the file", head.status === 200 && head.headers.get("content-length") === String(bytes.length));
   check("a release that was never published is not found", (await fetch(url("sapoche-10.0.0.apk"), { headers: keyHeaders })).status === 404);

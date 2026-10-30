@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.os.Build
 import android.provider.Settings
+import androidx.core.content.pm.PackageInfoCompat
 import app.sapoche.core.Release
 import app.sapoche.core.ReleaseNote
 import app.sapoche.core.UpdateClient
@@ -57,7 +58,7 @@ class Updater(
 
     init {
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
-        installedCode = info.longVersionCode
+        installedCode = PackageInfoCompat.getLongVersionCode(info)
         installedName = info.versionName.orEmpty()
         // What an earlier update left behind is of no use once that version (or a later one) is installed
         dir.listFiles()?.forEach { file ->
@@ -139,9 +140,12 @@ class Updater(
         }
     }
 
+    /** Before Android 8 there is no per-app switch: an app may install whatever the one system setting allows. */
+    private fun mayInstall() = Build.VERSION.SDK_INT < 26 || context.packageManager.canRequestPackageInstalls()
+
     /** The person may have allowed installs on the system page and come back: the file is ready to install again. */
     fun refreshPermission() {
-        if (flow.value.phase == UpdateState.Phase.NEEDS_PERMISSION && context.packageManager.canRequestPackageInstalls()) {
+        if (flow.value.phase == UpdateState.Phase.NEEDS_PERMISSION && mayInstall()) {
             flow.value = flow.value.copy(phase = UpdateState.Phase.READY)
         }
     }
@@ -162,8 +166,8 @@ class Updater(
         val state = flow.value
         val release = state.release ?: return true
         val file = part(release)
-        EventLog.d("update", "install asked: ${release.versionName}, may install: ${context.packageManager.canRequestPackageInstalls()}")
-        if (!context.packageManager.canRequestPackageInstalls()) {
+        EventLog.d("update", "install asked: ${release.versionName}, may install: ${mayInstall()}")
+        if (!mayInstall()) {
             flow.value = state.copy(phase = UpdateState.Phase.NEEDS_PERMISSION)
             return false
         }
@@ -194,7 +198,7 @@ class Updater(
         val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else 0
         val archive = pm.getPackageArchiveInfo(file.path, flags) ?: return "download"
         if (archive.packageName != context.packageName) return "package"
-        if (archive.longVersionCode <= installedCode) return "old"
+        if (PackageInfoCompat.getLongVersionCode(archive) <= installedCode) return "old"
         if (Build.VERSION.SDK_INT >= 28) {
             val mine = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo
             val theirs = archive.signingInfo
@@ -261,6 +265,8 @@ class Updater(
                 ).toString(),
             )
             .putString("update_file", release.file)
+            .putString("update_gz_file", release.gzFile)
+            .putLong("update_gz_size", release.gzSize)
             .apply()
     }
 
@@ -282,6 +288,8 @@ class Updater(
                     ReleaseNote(entry.getString("version"), entry.optString("notes"), entry.optString("notesVi"))
                 }
             }.getOrDefault(emptyList()),
+            prefs.getString("update_gz_file", "").orEmpty(),
+            prefs.getLong("update_gz_size", 0),
         )
     }
 

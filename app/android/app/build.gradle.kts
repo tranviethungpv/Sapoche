@@ -31,6 +31,12 @@ android {
         buildConfig = true
     }
 
+    // minSdk is below what some calls need (`readNBytes`, `getLongVersionCode`): a crash only older phones show
+    lint {
+        checkOnly += "NewApi"
+        abortOnError = true
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "app.sapoche"
@@ -69,10 +75,10 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
-            // Not shrunk: NewPipeExtractor reaches parts of itself by name, and a rule missed by R8 would
-            // only show up as a broken search on a phone. The size difference is about ten megabytes.
-            isMinifyEnabled = false
+            // NewPipeExtractor and Rhino reach parts of themselves by name: proguard-rules.pro keeps them whole, and shrinks the rest
+            isMinifyEnabled = true
             isShrinkResources = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }

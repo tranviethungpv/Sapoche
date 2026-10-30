@@ -924,6 +924,11 @@ abstract final class S {
   static String get themeSystem => _t('System', 'Theo hệ thống');
   static String get themeLight => _t('Light', 'Sáng');
   static String get themeDark => _t('Dark', 'Tối');
+  static String get lightEffects => _t('Light effects', 'Hiệu ứng nhẹ');
+  static String get lightEffectsHelp => _t(
+    'For older phones: the bars are solid instead of frosted glass, the player background stands still, loading rows do not shimmer and less memory is kept for pictures. Phones with little memory start with this on.',
+    'Cho máy cũ: thanh dưới đặc thay vì kính mờ, nền player đứng yên, hàng chờ tải không lấp lánh và dành ít bộ nhớ hơn cho ảnh. Máy ít bộ nhớ mặc định bật.',
+  );
   static String get languageLabel => _t('Language', 'Ngôn ngữ');
   static String get languageSystem => _t('System', 'Theo hệ thống');
   static String get languageHelp => _t(

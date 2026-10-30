@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'calm.dart';
 import 'shelf_stats.dart';
 
 /// Preferences that only concern how the app looks on this phone.
@@ -13,7 +14,9 @@ class AppSettings extends ChangeNotifier {
     : _themeMode = _read(_prefs),
       _language = _prefs.getString(_languageKey),
       _avatar = _readAvatar(_prefs),
-      shelves = ShelfStats(_prefs, random: shelfRandom);
+      shelves = ShelfStats(_prefs, random: shelfRandom) {
+    Calm.chosen = _prefs.getBool(_lightEffectsKey);
+  }
 
   final SharedPreferences _prefs;
 
@@ -33,6 +36,20 @@ class AppSettings extends ChangeNotifier {
     if (mode == _themeMode) return;
     _themeMode = mode;
     _prefs.setString(_key, mode.name);
+    notifyListeners();
+  }
+
+  /// Whether the person turned "Light effects" on or off; null while they have not chosen, when a weak phone has it on
+  /// and the others off ([Calm.light] is what is in force).
+  bool? get lightEffects => _prefs.getBool(_lightEffectsKey);
+
+  set lightEffects(bool? value) {
+    if (value == null) {
+      _prefs.remove(_lightEffectsKey);
+    } else {
+      _prefs.setBool(_lightEffectsKey, value);
+    }
+    Calm.chosen = value;
     notifyListeners();
   }
 
@@ -91,6 +108,7 @@ class AppSettings extends ChangeNotifier {
   static const _noticeOfferedKey = 'noticeOfferedAt';
   static const _key = 'theme_mode';
   static const _languageKey = 'language';
+  static const _lightEffectsKey = 'light_effects';
 
   static ThemeMode _read(SharedPreferences prefs) =>
       ThemeMode.values.asNameMap()[prefs.getString(_key)] ?? ThemeMode.system;

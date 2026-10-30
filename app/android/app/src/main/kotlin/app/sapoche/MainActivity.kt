@@ -1,13 +1,26 @@
 package app.sapoche
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterShellArgs
 
 class MainActivity : FlutterActivity() {
 
     private var bridge: SapocheBridge? = null
+
+    /**
+     * Impeller needs Vulkan 1.1; without it it draws with OpenGL ES, and there the first frame compiles its pipelines for
+     * half a second with the UI thread waiting (measured on a phone-sized emulator: the app opens in 0.75 s with Skia,
+     * 1.2 s with Impeller). Those phones use Skia, which is still in the engine.
+     */
+    override fun getFlutterShellArgs(): FlutterShellArgs = super.getFlutterShellArgs().also { args ->
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION, VULKAN_1_1)) {
+            args.add("--enable-impeller=false")
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -73,5 +86,10 @@ class MainActivity : FlutterActivity() {
         bridge?.dispose()
         bridge = null
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    private companion object {
+        /** `FEATURE_VULKAN_HARDWARE_VERSION` encodes 1.1 as (1 shl 22) or (1 shl 12). */
+        const val VULKAN_1_1 = 0x401000
     }
 }

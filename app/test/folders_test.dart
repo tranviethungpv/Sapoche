@@ -25,7 +25,7 @@ void main() {
 
     setUp(() {
       backend = FakeBackend();
-      library = LibraryController(backend);
+      library = LibraryController(backend, quiet: Duration.zero);
     });
 
     tearDown(() => library.dispose());

@@ -1,0 +1,5 @@
+Lighter, smaller, smoother
+- The app is a third smaller to download and update: the update is fetched compressed, about 13 MB instead of 33.
+- Older phones open the app much faster, and the Home page no longer stutters when you pull it down to refresh or open a long list.
+- New "Light effects" switch in Settings > Appearance: solid bars instead of frosted glass, a still player background and fewer animations. Phones with little memory start with it on.
+- Fixes a crash when restoring a backup on some Android versions.

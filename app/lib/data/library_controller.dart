@@ -10,10 +10,17 @@ import 'song_key.dart';
 /// The songs a person keeps: the ones they liked, what they heard, and their playlists. The truth is kept on the native side
 /// (the playback service writes the history); this holds a copy for the screens and updates it when told.
 class LibraryController extends ChangeNotifier {
-  LibraryController(this._backend);
+  /// [quiet]: the news of the library that comes by itself is read at most once in this long; zero reads each at once (what a test wants).
+  LibraryController(
+    this._backend, {
+    this.quiet = const Duration(seconds: 1),
+  });
 
   final Backend _backend;
+  final Duration quiet;
   StreamSubscription<BackendEvent>? _subscription;
+  Timer? _quiet;
+  bool _pulling = false;
 
   /// Every song liked, as it was: a song and its video can both be there.
   List<Track> _liked = const [];
@@ -120,9 +127,22 @@ class LibraryController extends ChangeNotifier {
   Stream<String> get messages => _messages.stream;
 
   Future<void> start() async {
-    _subscription = _backend.events
-        .where((e) => e is LibraryEvent)
-        .listen((_) => refresh());
+    // What changes by itself comes in bursts (a fetch of suggestions writes one seed after another and says so each time,
+    // and every read builds the home page again): it is read at most once in [quiet]. What the person does is read at
+    // once, by [_change].
+    _subscription = _backend.events.where((e) => e is LibraryEvent).listen((_) {
+      // A pull to refresh writes the suggestions itself and reads them when it is done
+      if (_pulling) return;
+      if (quiet == Duration.zero) {
+        refresh();
+        return;
+      }
+      // The first news of a burst starts the wait and the rest is read with it: a refresh at most once in [quiet]
+      _quiet ??= Timer(quiet, () {
+        _quiet = null;
+        refresh();
+      });
+    });
     await refresh();
   }
 
@@ -245,7 +265,13 @@ class LibraryController extends ChangeNotifier {
   /// Reads the mix for this time of day, which may have to fetch a list: it must not hold the other lists back.
   Future<void> _refreshContext() async {
     try {
-      _context = await _backend.contextMix();
+      final next = await _backend.contextMix();
+      // Most often it is what it was, and the pages built from it would be built again for nothing
+      if (next.bucket == _context.bucket &&
+          listEquals(next.tracks, _context.tracks)) {
+        return;
+      }
+      _context = next;
       notifyListeners();
     } on Object {
       // The shelf stays as it was
@@ -372,6 +398,7 @@ class LibraryController extends ChangeNotifier {
 
   /// Fetches the suggestions again, for a pull to refresh. Gives back false when that failed.
   Future<bool> refreshForYou() async {
+    _pulling = true;
     try {
       _forYou = await _backend.refreshSuggestions();
       _seedLists = await _backend.seedLists();
@@ -381,6 +408,8 @@ class LibraryController extends ChangeNotifier {
       return true;
     } on Object {
       return false;
+    } finally {
+      _pulling = false;
     }
   }
 
@@ -514,6 +543,7 @@ class LibraryController extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    _quiet?.cancel();
     _messages.close();
     localSongs.dispose();
     super.dispose();

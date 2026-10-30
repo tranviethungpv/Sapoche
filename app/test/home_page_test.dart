@@ -191,6 +191,29 @@ void main() {
     expect(find.text('Because you listened to Hello'), findsOneWidget);
   });
 
+  testWidgets('a page on another tab is not made again, and is when it is back', (
+    tester,
+  ) async {
+    final backend = await openHome(
+      tester,
+      prepare: (b) {
+        b.recentSongs = [heard(anna, plays: 5)];
+        b.forYouSongs = [song('newaaaaaaaa', 'Brand New', 'Fresh')];
+      },
+    );
+    expect(find.text('Brand New'), findsOneWidget);
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+    // News of the library while another tab is in front: the home page keeps what it was
+    backend.forYouSongs = [song('freshaaaaaa', 'Fresher', 'Fresh')];
+    backend.emit(const LibraryEvent());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Home'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fresher'), findsOneWidget);
+    expect(find.text('Brand New'), findsNothing);
+  });
+
   testWidgets('Listen again leaves out the song that is playing', (
     tester,
   ) async {

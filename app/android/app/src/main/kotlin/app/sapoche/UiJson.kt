@@ -68,8 +68,8 @@ object UiJson {
             .toString()
     }
 
-    /** The phone is warm or saving power ([on]): the screen should move less. */
-    fun calm(on: Boolean): String = JSONObject().put("type", "calm").put("on", on).toString()
+    /** The phone is warm or saving power ([on]): the screen should move less. [weak]: it has little memory. */
+    fun calm(on: Boolean, weak: Boolean = false): String = JSONObject().put("type", "calm").put("on", on).put("weak", weak).toString()
 
     /** The volume of the music, 0 to 1. */
     fun volume(level: Float): String = JSONObject().put("type", "volume").put("level", level.toDouble()).toString()

@@ -71,6 +71,20 @@ class _HomePageState extends State<HomePage> {
 
   ShelfStats get _stats => AppScope.of(context).settings.shelves;
 
+  /// What the page was last made from (compared by identity: the library hands out a new list when it changed a list)
+  /// and the page that came of it.
+  List<Object?>? _madeFrom;
+  Widget? _made;
+
+  bool _sameAs(List<Object?> from) {
+    final then = _madeFrom;
+    if (then == null || then.length != from.length) return false;
+    for (var i = 0; i < from.length; i++) {
+      if (!identical(then[i], from[i]) && then[i] != from[i]) return false;
+    }
+    return true;
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -100,9 +114,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _refresh() async {
-    await AppScope.of(context).library.refreshForYou();
-    // Pulling the page down asks for a fresh look, and the rows are drawn again too
-    if (mounted) setState(_sample);
+    final library = AppScope.of(context).library;
+    // Pulling the page down asks for a fresh look, and the rows are drawn again too: the order is drawn before the news
+    // of the library, so that the page is built once for both (it costs about 100 ms each time)
+    _sample();
+    if (!await library.refreshForYou() && mounted) setState(() {});
   }
 
   @override
@@ -115,6 +131,31 @@ class _HomePageState extends State<HomePage> {
       child: ListenableBuilder(
         listenable: library,
         builder: (context, _) {
+          // Making the page is the costliest thing the news of the library starts (about 100 ms on a slow phone, with a
+          // few hundred songs), and news comes often: while the page is covered or on another tab it keeps what it was
+          // made as, and when it is in front again it is made anew only if what it is made from has changed
+          final from = <Object?>[
+            library.recent,
+            library.liked,
+            library.forYou,
+            library.seedLists,
+            library.discover,
+            library.context,
+            library.blocked,
+            library.listens,
+            library.downloads,
+            library.playlists,
+            library.localStatus,
+            _order,
+            S.current,
+            DateTime.now().hour,
+          ];
+          final made = _made;
+          if (made != null &&
+              (!TickerMode.valuesOf(context).enabled || _sameAs(from))) {
+            return made;
+          }
+          _madeFrom = from;
           final home = buildHome(
             recent: library.recent,
             liked: library.liked,
@@ -127,7 +168,7 @@ class _HomePageState extends State<HomePage> {
             listens: library.listens,
           );
           _warm(home.quickPicks);
-          return LayoutBuilder(
+          return _made = LayoutBuilder(
             builder: (context, box) {
               // Mixes of the artists go across the top of a wide page, unless the mixes made for the person are
               // already there

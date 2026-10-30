@@ -9,6 +9,7 @@ import okio.Buffer
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.util.zip.GZIPOutputStream
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -26,6 +27,7 @@ class UpdateClientTest {
 
     /** What the server does with a request for the apk; the tests swap it. */
     private var serveApk: (RecordedRequest) -> MockResponse = ::honest
+    private var serveGz: (RecordedRequest) -> MockResponse = { MockResponse.Builder().code(404).build() }
     private var latestBody: String? = null
     private val seen = mutableListOf<RecordedRequest>()
 
@@ -54,6 +56,7 @@ class UpdateClientTest {
                     return when (request.url.encodedPath) {
                         "/update/latest.json" -> latestBody?.let { MockResponse.Builder().body(it).build() } ?: MockResponse.Builder().code(404).build()
                         "/update/sapoche-1.3.0.apk", "/update/app-7.apk" -> serveApk(request)
+                        "/update/sapoche-1.3.0.apk.gz" -> serveGz(request)
                         else -> MockResponse.Builder().code(404).build()
                     }
                 }
@@ -198,5 +201,61 @@ class UpdateClientTest {
     fun `a release missing from the server is reported`() = runTest {
         serveApk = { MockResponse.Builder().code(404).build() }
         assertFailsWith<IOException> { client().download(release(), File(dir, "p")) }
+    }
+
+    private val gz: ByteArray = java.io.ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(apk) } }.toByteArray()
+
+    private fun gzRelease() = release().copy(gzFile = "sapoche-1.3.0.apk.gz", gzSize = gz.size.toLong())
+
+    /** The gzipped copy as the real server serves it: the whole file, or the part a Range asks for. */
+    private fun honestGz(request: RecordedRequest): MockResponse {
+        val from = request.headers["Range"]?.removePrefix("bytes=")?.removeSuffix("-")?.toInt()
+        return if (from == null) MockResponse.Builder().code(200).body(Buffer().write(gz)).build()
+        else MockResponse.Builder().code(206).body(Buffer().write(gz, from, gz.size - from)).build()
+    }
+
+    @Test
+    fun `the gzipped copy is fetched and unpacked when the server has one`() = runTest {
+        serveGz = ::honestGz
+        val target = File(dir, "app-7.apk.part")
+        val progress = mutableListOf<Long>()
+        client().download(gzRelease(), target) { progress += it }
+        assertTrue(target.readBytes().contentEquals(apk))
+        assertTrue(seen.none { it.url.encodedPath.endsWith(".apk") })
+        assertFalse(File(dir, "app-7.apk.part.gz").exists())
+        assertEquals(apk.size.toLong(), progress.last())
+        assertTrue(gz.size < apk.size)
+    }
+
+    @Test
+    fun `a gzipped download that broke off goes on from where it stopped`() = runTest {
+        serveGz = ::honestGz
+        val target = File(dir, "app-7.apk.part")
+        File(dir, "app-7.apk.part.gz").writeBytes(gz.copyOf(gz.size / 2))
+        client().download(gzRelease(), target)
+        assertTrue(target.readBytes().contentEquals(apk))
+        assertEquals("bytes=${gz.size / 2}-", seen.last { it.url.encodedPath.endsWith(".gz") }.headers["Range"])
+    }
+
+    @Test
+    fun `a gzipped copy that is missing or broken falls back to the plain file`() = runTest {
+        // missing from the server
+        client().download(gzRelease(), File(dir, "app-7.apk.part"))
+        assertTrue(File(dir, "app-7.apk.part").readBytes().contentEquals(apk))
+        // announced size right, content not gzip
+        File(dir, "app-7.apk.part").delete()
+        serveGz = { MockResponse.Builder().code(200).body(Buffer().write(ByteArray(gz.size) { 9 })).build() }
+        client().download(gzRelease(), File(dir, "app-7.apk.part"))
+        assertTrue(File(dir, "app-7.apk.part").readBytes().contentEquals(apk))
+        assertFalse(File(dir, "app-7.apk.part.gz").exists())
+    }
+
+    @Test
+    fun `the gz fields of latest json are read and are optional`() = runTest {
+        val plain = """{"versionCode":7,"versionName":"1.3.0","sha256":"ab","size":9,"file":"sapoche-1.3.0.apk"}"""
+        assertEquals("", UpdateClient.parse(plain).gzFile)
+        val withGz = UpdateClient.parse("""{"versionCode":7,"versionName":"1.3.0","sha256":"ab","size":9,"gzFile":"x.apk.gz","gzSize":5}""")
+        assertEquals("x.apk.gz", withGz.gzFile)
+        assertEquals(5L, withGz.gzSize)
     }
 }

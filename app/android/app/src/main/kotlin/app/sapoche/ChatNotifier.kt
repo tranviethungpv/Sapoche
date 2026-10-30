@@ -10,6 +10,7 @@ import android.os.Build
 import app.sapoche.sync.ChatNotice
 import app.sapoche.sync.ChatNotices
 import org.json.JSONObject
+import kotlin.concurrent.thread
 
 /**
  * Tells the person of the chat while the app is not in front: a notification for a message, an answer to one of theirs,
@@ -24,11 +25,15 @@ class ChatNotifier(private val context: Context) {
     private val lines = HashMap<String, ArrayDeque<String>>()
 
     init {
+        // The call goes to the system and took about 60 ms of the start of the app (measured), which nobody waits for:
+        // the channel only has to be there before the first notification and before the system asks for leave to post
         if (Build.VERSION.SDK_INT >= 26) {
-            manager.createNotificationChannel(
-                // Both languages: the name is kept by the system, which cannot follow the app's language
-                NotificationChannel(CHANNEL, "Chat · Tin nhắn", NotificationManager.IMPORTANCE_DEFAULT),
-            )
+            thread(name = "chat-channel", isDaemon = true) {
+                manager.createNotificationChannel(
+                    // Both languages: the name is kept by the system, which cannot follow the app's language
+                    NotificationChannel(CHANNEL, "Chat · Tin nhắn", NotificationManager.IMPORTANCE_DEFAULT),
+                )
+            }
         }
     }
 

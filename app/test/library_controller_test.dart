@@ -1,3 +1,4 @@
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/library_controller.dart';
@@ -14,7 +15,7 @@ void main() {
 
   setUp(() {
     backend = FakeBackend();
-    library = LibraryController(backend);
+    library = LibraryController(backend, quiet: Duration.zero);
   });
 
   tearDown(() => library.dispose());
@@ -378,6 +379,39 @@ void main() {
         video.videoId,
         _a.videoId,
       ]);
+    });
+  });
+
+  group('news that comes by itself', () {
+    test('is read once for a burst, not once for each piece of it', () {
+      fakeAsync((async) {
+        final slow = LibraryController(backend);
+        slow.start();
+        async.flushMicrotasks();
+        final before = backend.calls.where((c) => c == 'liked').length;
+        for (var i = 0; i < 8; i++) {
+          backend.emit(const LibraryEvent());
+          async.elapse(const Duration(milliseconds: 200));
+        }
+        async.elapse(const Duration(seconds: 3));
+        final reads = backend.calls.where((c) => c == 'liked').length - before;
+        // 8 events in 1.6 s: the first starts a wait of a second, and what comes in it goes with it
+        expect(reads, lessThanOrEqualTo(3));
+        expect(reads, greaterThanOrEqualTo(1));
+        slow.dispose();
+      });
+    });
+
+    test('is not read in the middle of a pull to refresh, which reads the suggestions itself', () async {
+      final slow = LibraryController(backend, quiet: const Duration(milliseconds: 20));
+      await slow.start();
+      final before = backend.calls.where((c) => c == 'liked').length;
+      final pull = slow.refreshForYou();
+      backend.emit(const LibraryEvent());
+      await pull;
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(backend.calls.where((c) => c == 'liked').length, before);
+      slow.dispose();
     });
   });
 }

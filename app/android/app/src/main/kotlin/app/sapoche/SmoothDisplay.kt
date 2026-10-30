@@ -2,6 +2,7 @@ package app.sapoche
 
 import android.app.Activity
 import android.os.Build
+import android.view.Display
 import android.view.Surface
 import android.view.SurfaceView
 import android.view.View
@@ -24,10 +25,14 @@ class SmoothDisplay(private val activity: Activity) {
     /** As the UI names them: "free", "steady" or "fast". */
     private var pace = "free"
 
+    @Suppress("DEPRECATION")
+    private val display: Display?
+        get() = if (Build.VERSION.SDK_INT >= 30) activity.display else activity.windowManager.defaultDisplay
+
     /** The fastest rate of the display's modes that keep the screen's size. */
     private val fastest: Float
         get() {
-            val display = activity.display ?: return 0f
+            val display = display ?: return 0f
             val mode = display.mode
             return display.supportedModes
                 .filter { it.physicalWidth == mode.physicalWidth && it.physicalHeight == mode.physicalHeight }
@@ -37,7 +42,7 @@ class SmoothDisplay(private val activity: Activity) {
     /** The display's normal rate: the fastest of its modes up to 60 Hz that keep the screen's size. */
     private val normal: Float
         get() {
-            val display = activity.display ?: return 0f
+            val display = display ?: return 0f
             val mode = display.mode
             return display.supportedModes
                 .filter { it.physicalWidth == mode.physicalWidth && it.physicalHeight == mode.physicalHeight }

@@ -111,7 +111,7 @@ class SapocheBridge(
             }
         }
         // The screen slows its small moving parts down while the phone is warm
-        scope.launch { SapocheApp.heat.calm.collect { if (visible) emit(UiJson.calm(it)) } }
+        scope.launch { SapocheApp.heat.calm.collect { if (visible) emit(UiJson.calm(it, SapocheApp.heat.weak)) } }
         scope.launch { outputs.current.collect { if (visible) emit(UiJson.output(it)) } }
         scope.launch { outputs.volume.collect { if (visible) emit(UiJson.volume(it)) } }
         // Progress of an update is only sent while somebody looks; the UI is brought up to date when it returns
@@ -199,7 +199,7 @@ class SapocheBridge(
             }
             ensureService()
             display.reapply()
-            emit(UiJson.calm(SapocheApp.heat.calm.value))
+            emit(UiJson.calm(SapocheApp.heat.calm.value, SapocheApp.heat.weak))
             outputs.refresh()
             emit(UiJson.output(outputs.current.value))
             emit(UiJson.volume(outputs.volume.value))
@@ -273,7 +273,7 @@ class SapocheBridge(
             emit(UiJson.openChat(it))
         }
         emit(UiJson.update(SapocheApp.updater.state.value))
-        emit(UiJson.calm(SapocheApp.heat.calm.value))
+        emit(UiJson.calm(SapocheApp.heat.calm.value, SapocheApp.heat.weak))
         emit(UiJson.output(outputs.current.value))
         emit(UiJson.volume(outputs.volume.value))
         observing?.cancel()

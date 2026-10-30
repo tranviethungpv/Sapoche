@@ -98,10 +98,12 @@ class ReactionEvent extends BackendEvent {
   final bool late;
 }
 
-/// The phone became warm or went into battery saver ([on]), or stopped being so.
+/// The phone became warm or went into battery saver ([on]), or stopped being so. [weak]: the phone has little memory,
+/// which the native side says along with this (Android; a platform that does not leaves it false).
 class CalmEvent extends BackendEvent {
-  const CalmEvent(this.on);
+  const CalmEvent(this.on, {this.weak = false});
   final bool on;
+  final bool weak;
 }
 
 /// The sound is now played to another place: headphones, a Bluetooth speaker, the phone itself.
@@ -501,7 +503,7 @@ class NativeBackend implements Backend {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
       'library' => const LibraryEvent(),
       'update' => UpdateEvent(UpdateInfo.fromJson(json)),
-      'calm' => CalmEvent(json['on'] as bool),
+      'calm' => CalmEvent(json['on'] as bool, weak: json['weak'] == true),
       'pip' => PipEvent(json['on'] as bool),
       'output' => OutputEvent(AudioOutput.fromJson(json)),
       'volume' => VolumeEvent((json['level'] as num).toDouble()),

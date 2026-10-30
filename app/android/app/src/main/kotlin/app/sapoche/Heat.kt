@@ -1,5 +1,6 @@
 package app.sapoche
 
+import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -24,6 +25,14 @@ class Heat(private val context: Context) {
     /** True while the phone is warm or in battery saver. */
     val calm: StateFlow<Boolean> get() = calmFlow
 
+    /**
+     * A phone with little memory (3 GB or less, or one Android itself calls low-RAM): the screen starts with its
+     * costlier effects off. Told to the screen along with [calm].
+     */
+    val weak: Boolean = context.getSystemService(ActivityManager::class.java).let { manager ->
+        manager.isLowRamDevice || ActivityManager.MemoryInfo().also { manager.getMemoryInfo(it) }.totalMem <= WEAK_BYTES
+    }
+
     init {
         if (Build.VERSION.SDK_INT >= 29) {
             power.addThermalStatusListener(context.mainExecutor) { update() }
@@ -45,5 +54,10 @@ class Heat(private val context: Context) {
     private fun read(): Boolean {
         val warm = Build.VERSION.SDK_INT >= 29 && power.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
         return warm || power.isPowerSaveMode
+    }
+
+    private companion object {
+        /** What a "3 GB" phone reports is a little below 3 GiB; one with 4 GB reports about 3.7. */
+        const val WEAK_BYTES = 3L shl 30
     }
 }

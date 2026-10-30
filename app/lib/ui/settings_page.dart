@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/browser_storage.dart';
+import '../data/calm.dart';
 import '../data/library_controller.dart';
 import '../data/models.dart';
 import '../data/room_controller.dart';
@@ -308,6 +309,23 @@ class _SettingsPageState extends State<SettingsPage> {
                   onTap: () => model.settings.themeMode = mode,
                 ),
             ],
+          ),
+        ),
+      ],
+    ),
+    _Group(
+      footer: S.lightEffectsHelp,
+      children: [
+        ValueListenableBuilder(
+          valueListenable: Calm.light,
+          builder: (context, light, _) => Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              key: const ValueKey('light-effects'),
+              title: Text(S.lightEffects),
+              value: light,
+              onChanged: (value) => model.settings.lightEffects = value,
+            ),
           ),
         ),
       ],
