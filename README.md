@@ -1,12 +1,61 @@
-# Sapoche
+<p align="center">
+  <img src="docs/images/logo.png" alt="Sapoche" width="120" height="120">
+</p>
 
-Listen to YouTube music together, in sync, wherever you are.
+<h1 align="center">Sapoche</h1>
 
-An Android and iPhone app for a small group of friends. Every phone fetches the audio stream by itself, on the device; a free server (Cloudflare Workers) only keeps the rooms and the sync clock. It never holds any music.
+<p align="center">
+  <strong>Listen to YouTube music together, in sync, wherever you are.</strong><br>
+  A free music app for a small group of friends: Android, iPhone, tablets and the web.
+</p>
+
+<p align="center">
+  <img alt="Android" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="iOS" src="https://img.shields.io/badge/iOS-iPhone-000000?logo=apple&logoColor=white">
+  <img alt="Web" src="https://img.shields.io/badge/Web-Flutter-02569B?logo=flutter&logoColor=white">
+  <img alt="Cost" src="https://img.shields.io/badge/running%20cost-%240-C4456B">
+</p>
+
+<p align="center">
+  <img src="docs/images/hero.webp" alt="Sapoche on a phone and a tablet, playing MAKING MY WAY, and a room with two devices listening" width="100%">
+</p>
+
+Every phone fetches the audio stream by itself, on the device; a free server (Cloudflare Workers) only keeps the rooms and the sync clock. It never holds any music.
 
 > **This is a vibe-coded project.** Almost all of the code, tests and documentation were written by an AI coding assistant (Claude Code), directed by a person who describes what they want, tries it on real phones and decides what stays. It is a personal hobby project: expect rough edges, read the code before you trust it, and do not treat it as production software.
 
-## What it does
+## Highlights
+
+- **One beat, many devices.** Create a room or join one with a code, a QR code or a link. Everybody hears the same song at the same moment, and anyone can add songs and steer playback (the owner can limit guests to adding songs).
+- **A player that keeps playing.** Background playback and lock-screen controls come first: the stream is fetched on each device, so it keeps going with the screen off.
+- **Music that knows you.** A home page with a mix for each kind of music you play, moods, charts, the latest from your artists and something new, learned from what you hear, like and skip, on the phone only.
+- **Made for phones and tablets.** A bottom bar on a phone, a side bar and two-column pages on a tablet, light and dark themes, and an accent colour of your own (Settings > Appearance).
+- **Talk while you listen.** Chat in the room with replies and reactions, with an optional end-to-end encryption, and a look of its own for each room.
+- **Your music, your rules.** Search YouTube and YouTube Music, a personal queue, playlists, downloads, the music files already on the phone, lyrics that follow the song, a sleep timer and a choice of sound quality.
+
+<p align="center">
+  <img src="docs/images/phones.webp" alt="Home, search, the player in the dark theme and the player in the light theme on a phone" width="100%">
+</p>
+
+## In a room
+
+Everyone in a room sees who is there, who added each song and what comes next, on a phone as well as on a tablet.
+
+<p align="center">
+  <img src="docs/images/room.webp" alt="A room with two people listening, shown on a tablet and on a phone at the same time" width="100%">
+</p>
+
+## On a tablet
+
+On a wide screen the app gives the pages two halves and moves the tabs to a side bar. Pick the colour of the whole app from eight shades, or mix your own.
+
+<p align="center">
+  <img src="docs/images/tablets.webp" alt="An artist page and the settings with the choice of an accent colour, on a tablet" width="100%">
+</p>
+
+<sub>The screenshots were taken on a Sharp phone and an Android tablet emulator, playing <em>MAKING MY WAY</em> by Sơn Tùng M-TP. The song and its cover art belong to their owners; they are shown only to give the app something real to play.</sub>
+
+## Everything it does
 
 - Plays music like an ordinary player: search, a personal queue, background playback, lock-screen controls.
 - Rooms: create a room or join one with a code; everybody hears the same song at the same moment, and anyone can add songs and steer playback (the room owner can limit guests to adding songs).
