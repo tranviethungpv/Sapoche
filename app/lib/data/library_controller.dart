@@ -11,13 +11,22 @@ import 'song_key.dart';
 /// (the playback service writes the history); this holds a copy for the screens and updates it when told.
 class LibraryController extends ChangeNotifier {
   /// [quiet]: the news of the library that comes by itself is read at most once in this long; zero reads each at once (what a test wants).
-  LibraryController(
-    this._backend, {
-    this.quiet = const Duration(seconds: 1),
-  });
+  LibraryController(this._backend, {this.quiet = const Duration(seconds: 1)});
 
   final Backend _backend;
   final Duration quiet;
+
+  /// Counts the times the library told it had changed: a page that is not showing can keep what it drew until this is
+  /// not what it was.
+  int get revision => _revision;
+  int _revision = 0;
+
+  @override
+  void notifyListeners() {
+    _revision++;
+    super.notifyListeners();
+  }
+
   StreamSubscription<BackendEvent>? _subscription;
   Timer? _quiet;
   bool _pulling = false;
@@ -147,12 +156,26 @@ class LibraryController extends ChangeNotifier {
   }
 
   /// Reads both lists again. Failures leave what is shown as it was.
+  ///
+  /// What is read is mostly what it was: the lists that are the same are kept as they are (not swapped for equal ones),
+  /// and the screens are told only if something differs. A read used to make the home page work out all its rows
+  /// again every time, and the pile of new songs it made was what the phone stopped to clear away.
   Future<void> refresh() async {
     try {
       final liked = await _backend.liked();
-      final recent = await _backend.recent();
-      // Only the mixes of a taste need them: without them the rest of the library is still shown
-      final listens = await _backend.listens().catchError((_) => _listens);
+      final recentRaw = await _backend.recent();
+      final recentChanged = !_same(_recentRaw, recentRaw, _sameEntry);
+      // Only the mixes of a taste need them: without them the rest of the library is still shown. They are the longest
+      // list there is and only grow with what is heard, which the history of the songs tells of
+      final listens = recentChanged || !_listensRead
+          ? await _backend
+                .listens()
+                .then((l) {
+                  _listensRead = true;
+                  return l;
+                })
+                .catchError((_) => _listens)
+          : _listens;
       final playlists = await _backend.playlists();
       // Folders only group the playlists: without them the playlists are still all there
       final folders = await _backend.folders().catchError((_) => _folders);
@@ -175,28 +198,116 @@ class LibraryController extends ChangeNotifier {
           items[id] = await _backend.playlistTracks(id);
         }
       }
-      _setLiked(liked);
-      _recent = _oncePerSong(recent);
-      _listens = listens;
-      _playlists = playlists;
-      _folders = folders;
-      _forYou = forYou;
-      _seedLists = seedLists;
-      _discover = discover;
-      _blocked = blocked;
-      _downloads = downloads;
-      _downloadStates = {for (final d in downloads) d.track.videoId: d.state};
-      _localStatus = localStatus;
+      var changed = false;
+      if (!_same(_liked, liked, _sameTrack)) {
+        _setLiked(liked);
+        changed = true;
+      }
+      if (recentChanged) {
+        _recentRaw = recentRaw;
+        _recent = _oncePerSong(recentRaw);
+        changed = true;
+      }
+      if (!_same(_listens, listens, _sameEntry)) {
+        _listens = listens;
+        changed = true;
+      }
+      if (!_same(_playlists, playlists, _samePlaylist)) {
+        _playlists = playlists;
+        changed = true;
+      }
+      if (!_same(
+        _folders,
+        folders,
+        (a, b) => a.id == b.id && a.name == b.name,
+      )) {
+        _folders = folders;
+        changed = true;
+      }
+      if (!_same(_forYou, forYou, _sameTrack)) {
+        _forYou = forYou;
+        changed = true;
+      }
+      if (!_same(_seedLists, seedLists, _sameSeedList)) {
+        _seedLists = seedLists;
+        changed = true;
+      }
+      if (!_same(_discover, discover, _sameTrack)) {
+        _discover = discover;
+        changed = true;
+      }
+      if (!_same(_blocked, blocked, _sameBlocked)) {
+        _blocked = blocked;
+        changed = true;
+      }
+      if (!_same(_downloads, downloads, _sameDownload)) {
+        _downloads = downloads;
+        _downloadStates = {for (final d in downloads) d.track.videoId: d.state};
+        changed = true;
+      }
+      if (localStatus != _localStatus) {
+        _localStatus = localStatus;
+        changed = true;
+      }
       if (!listEquals(local, localSongs.value)) localSongs.value = local;
-      _items
-        ..clear()
-        ..addAll(items);
-      notifyListeners();
+      if (!_sameItems(items)) {
+        _items
+          ..clear()
+          ..addAll(items);
+        changed = true;
+      }
+      if (changed) notifyListeners();
       unawaited(_refreshContext());
     } on Object {
       // Nothing to show is better than an error on every screen
     }
   }
+
+  List<HistoryEntry> _recentRaw = const [];
+  bool _listensRead = false;
+
+  /// Whether [a] and [b] hold the same things, by [same].
+  static bool _same<T>(List<T> a, List<T> b, bool Function(T, T) same) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!same(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  static bool _sameTrack(Track a, Track b) =>
+      a.videoId == b.videoId &&
+      a.title == b.title &&
+      a.artist == b.artist &&
+      a.thumb == b.thumb &&
+      a.durMs == b.durMs;
+
+  static bool _sameEntry(HistoryEntry a, HistoryEntry b) =>
+      a.at == b.at && a.plays == b.plays && _sameTrack(a.track, b.track);
+
+  static bool _samePlaylist(SavedPlaylist a, SavedPlaylist b) =>
+      a.id == b.id &&
+      a.name == b.name &&
+      a.count == b.count &&
+      a.folderId == b.folderId &&
+      listEquals(a.thumbs, b.thumbs);
+
+  static bool _sameSeedList(SeedList a, SeedList b) =>
+      a.seed == b.seed && _same(a.tracks, b.tracks, _sameTrack);
+
+  static bool _sameBlocked(BlockedItem a, BlockedItem b) =>
+      a.kind == b.kind && a.key == b.key && a.label == b.label;
+
+  static bool _sameDownload(DownloadEntry a, DownloadEntry b) =>
+      a.state == b.state && a.bytes == b.bytes && _sameTrack(a.track, b.track);
+
+  bool _sameItems(Map<int, List<Track>> items) =>
+      items.length == _items.length &&
+      items.entries.every(
+        (e) =>
+            _items[e.key] != null && _same(_items[e.key]!, e.value, _sameTrack),
+      );
 
   /// The list of the music on this phone is on show (or not any more): while it is, it is kept up to date.
   Future<void> watchLocal(bool on) async {

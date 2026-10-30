@@ -22,11 +22,19 @@ String _plain(String text) =>
     text.toLowerCase().replaceAll(_punctuation, ' ').trim();
 
 /// The first artist of a credit like "A, B & C" without "- Topic", "VEVO" or "Official", in plain letters.
+///
+/// Asked for the same few thousand credits over and over (every list that is ranked or filtered), and made with
+/// four regular expressions, so the last ones are kept like the keys of [songKey].
 String mainArtist(String credit) {
+  final kept = _artists.remove(credit);
+  if (kept != null) return _artists[credit] = kept;
+  if (_artists.length >= 4000) _artists.remove(_artists.keys.first);
   var text = credit.trim().replaceFirst(_channelSuffix, '');
   text = text.split(_artistSplit).first.replaceFirst(_channelSuffix, '');
-  return _plain(text);
+  return _artists[credit] = _plain(text);
 }
+
+final _artists = <String, String>{};
 
 /// The first artist of a credit as it is written, without "- Topic", "VEVO" or "Official": for showing a name.
 String displayArtist(String credit) {

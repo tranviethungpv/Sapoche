@@ -214,6 +214,26 @@ void main() {
     expect(find.text('Brand New'), findsNothing);
   });
 
+  testWidgets('the library page keeps what it was while another tab is in front, and is drawn anew when back', (
+    tester,
+  ) async {
+    final backend = await openHome(
+      tester,
+      prepare: (b) => b.likedSongs = [anna],
+    );
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 song'), findsWidgets);
+    await tester.tap(find.text('Home'));
+    await tester.pumpAndSettle();
+    backend.likedSongs = [anna, beck];
+    backend.emit(const LibraryEvent());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 songs'), findsWidgets);
+  });
+
   testWidgets('Listen again leaves out the song that is playing', (
     tester,
   ) async {

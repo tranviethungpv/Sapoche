@@ -403,7 +403,10 @@ void main() {
     });
 
     test('is not read in the middle of a pull to refresh, which reads the suggestions itself', () async {
-      final slow = LibraryController(backend, quiet: const Duration(milliseconds: 20));
+      final slow = LibraryController(
+        backend,
+        quiet: const Duration(milliseconds: 20),
+      );
       await slow.start();
       final before = backend.calls.where((c) => c == 'liked').length;
       final pull = slow.refreshForYou();
@@ -412,6 +415,48 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 60));
       expect(backend.calls.where((c) => c == 'liked').length, before);
       slow.dispose();
+    });
+  });
+
+  group('a read of what is the same', () {
+    test('tells nobody and keeps the lists it had', () async {
+      backend.likedSongs = [_a, _b];
+      backend.recentSongs = [
+        HistoryEntry(track: _a, at: DateTime(2026), plays: 2),
+      ];
+      await library.start();
+      final liked = library.liked;
+      final recent = library.recent;
+      var told = 0;
+      library.addListener(() => told++);
+      await library.refresh();
+      await library.refresh();
+      expect(told, 0);
+      expect(identical(library.liked, liked), isTrue);
+      expect(identical(library.recent, recent), isTrue);
+    });
+
+    test('tells once what changed, and reads the long list of listens only when the history changed', () async {
+      backend.recentSongs = [
+        HistoryEntry(track: _a, at: DateTime(2026), plays: 1),
+      ];
+      await library.start();
+      int listenReads() => backend.calls.where((c) => c == 'listens').length;
+      final before = listenReads();
+      await library.refresh();
+      expect(listenReads(), before);
+      var told = 0;
+      library.addListener(() => told++);
+      backend.recentSongs = [
+        HistoryEntry(track: _a, at: DateTime(2026), plays: 2),
+      ];
+      await library.refresh();
+      expect(told, 1);
+      expect(listenReads(), before + 1);
+      backend.likedSongs = [_b];
+      await library.refresh();
+      expect(told, 2);
+      expect(library.liked.single.videoId, _b.videoId);
     });
   });
 }

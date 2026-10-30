@@ -1,0 +1,3 @@
+Trang Chủ mượt hơn
+- Kéo xuống để làm mới trang Chủ không còn khựng, vuốt trang Chủ ngay sau khi mở app cũng vậy.
+- Trang Chủ và Thư viện không còn bị vẽ lại vô ích khi bạn đang ở tab khác, nhờ vậy cũng đỡ tốn pin.

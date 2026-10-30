@@ -1,0 +1,3 @@
+A smoother Home page
+- Pulling down to refresh on Home no longer stutters, and neither does scrolling it right after the app opens.
+- Home and Library are no longer drawn again for nothing while you are on another tab, which also saves battery.

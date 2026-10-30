@@ -79,6 +79,9 @@ class _Folder extends _Open {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
+  Widget? _made;
+  (int, String)? _madeAt;
+
   @override
   void initState() {
     super.initState();
@@ -126,7 +129,18 @@ class _LibraryPageState extends State<LibraryPage> {
       bottom: false,
       child: ListenableBuilder(
         listenable: library,
-        builder: (context, _) => _Overview(library: library, onOpen: _show),
+        builder: (context, _) {
+          // Drawing the page costs most of 100 ms on a slow phone with a few hundred songs, and the library tells of
+          // changes often: while the tab is not showing (or a list is open over it) the page waits, and when it shows
+          // again it is drawn anew only if the library or the language changed
+          final now = (library.revision, S.current);
+          if (_made != null &&
+              (!TickerMode.valuesOf(context).enabled || now == _madeAt)) {
+            return _made!;
+          }
+          _madeAt = now;
+          return _made = _Overview(library: library, onOpen: _show);
+        },
       ),
     );
   }
