@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../data/app_settings.dart';
 import '../data/browser_storage.dart';
 import '../data/calm.dart';
 import '../data/library_controller.dart';
@@ -15,7 +16,10 @@ import '../data/update_controller.dart';
 import '../data/update_info.dart';
 import '../format.dart';
 import '../strings.dart';
+import '../theme/accents.dart';
+import '../theme/palette.dart';
 import '../theme/theme.dart';
+import 'accent_picker_sheet.dart';
 import 'home_shell.dart';
 import 'player/video_controls.dart';
 import 'scope.dart';
@@ -310,6 +314,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
             ],
           ),
+        ),
+      ],
+    ),
+    _Group(
+      title: S.accentColor,
+      footer: S.accentHelp,
+      children: [
+        ListenableBuilder(
+          listenable: model.settings,
+          builder: (context, _) => _AccentSwatches(settings: model.settings),
         ),
       ],
     ),
@@ -1660,6 +1674,136 @@ class _TrimRowState extends State<_TrimRow> {
           ),
         );
       },
+    );
+  }
+}
+
+/// The colours the app can wear: the presets, then a circle that opens the picker for a colour of the person's own.
+class _AccentSwatches extends StatelessWidget {
+  const _AccentSwatches({required this.settings});
+
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final chosen = settings.accent ?? Palette.pinkAccent;
+    final preset = accentPresetId(chosen);
+    final swatches = [
+      for (final (id, color) in accentPresets)
+        _Swatch(
+          key: ValueKey('accent-$id'),
+          label: S.accentName(id),
+          color: color,
+          selected: preset == id,
+          // Pink is the default, so it is stored as nothing
+          onTap: () => settings.accent = id == 'pink' ? null : color,
+        ),
+      _Swatch(
+        key: const ValueKey('accent-custom'),
+        label: S.accentCustom,
+        color: preset == null ? chosen : null,
+        selected: preset == null,
+        onTap: () async {
+          final picked = await showAccentPicker(context, chosen);
+          if (picked != null) settings.accent = picked;
+        },
+      ),
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          // As many rows as the width needs, then as many circles in each as share them evenly (9 are 5 and 4, not
+          // 6 and 3), every circle in the middle of a cell of the same width so that nothing is left over at one side
+          final fit = (box.maxWidth / (_Swatch.size + 8)).floor().clamp(
+            1,
+            swatches.length,
+          );
+          final rows = (swatches.length / fit).ceil();
+          final columns = (swatches.length / rows).ceil();
+          final cell = (box.maxWidth / columns).floorToDouble();
+          return Wrap(
+            runSpacing: 8,
+            children: [
+              for (final swatch in swatches)
+                SizedBox(
+                  width: cell,
+                  child: Center(child: swatch),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// One round colour; without [color] it shows the whole spectrum, for the picker.
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    super.key,
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color? color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  static const size = 44.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      onTap: onTap,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: size,
+          height: size,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? p.text : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+              gradient: color == null
+                  ? SweepGradient(
+                      colors: [
+                        for (var h = 0; h <= 360; h += 60)
+                          HSVColor.fromAHSV(
+                            1,
+                            h.toDouble(),
+                            0.85,
+                            0.95,
+                          ).toColor(),
+                      ],
+                    )
+                  : null,
+            ),
+            child: selected
+                ? const Icon(Icons.check_rounded, color: Colors.white, size: 20)
+                : color == null
+                ? const Icon(Icons.add_rounded, color: Colors.white, size: 20)
+                : null,
+          ),
+        ),
+      ),
     );
   }
 }

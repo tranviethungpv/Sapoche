@@ -1,0 +1,3 @@
+Pick your own colour
+- Settings > Appearance > Accent colour: choose pink, red, orange, green, teal, blue, purple or graphite for the whole app.
+- Want a shade of your own? Mix it with the colour picker. Words stay easy to read in light and dark whatever you pick.

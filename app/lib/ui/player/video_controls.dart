@@ -605,7 +605,9 @@ class _VideoFullScreenState extends State<VideoFullScreen> {
   Widget build(BuildContext context) {
     final current = _c.snapshot.current;
     return Theme(
-      data: buildTheme(Palette.dark),
+      data: buildTheme(
+        Palette.forAccent(context.palette.accent, Brightness.dark),
+      ),
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light,
         child: Scaffold(

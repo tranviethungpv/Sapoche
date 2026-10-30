@@ -158,18 +158,14 @@ ThemeData buildTheme(Palette p) {
           const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: p.brightness == Brightness.light
-          ? const Color(0xFFFFF7F9)
-          : const Color(0xFF241A1F),
+      backgroundColor: p.dialog,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       titleTextStyle: text.titleLarge,
       contentTextStyle: text.bodyMedium?.copyWith(color: p.textSecondary),
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: p.brightness == Brightness.light
-          ? const Color(0xFFFFF7F9)
-          : const Color(0xFF211820),
+      backgroundColor: p.sheet,
       surfaceTintColor: Colors.transparent,
       showDragHandle: true,
       dragHandleColor: p.outline,
@@ -199,14 +195,8 @@ ThemeData buildTheme(Palette p) {
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: p.brightness == Brightness.light
-          ? const Color(0xFF3A2A31)
-          : const Color(0xFFF7EDF0),
-      contentTextStyle: text.bodyMedium?.copyWith(
-        color: p.brightness == Brightness.light
-            ? const Color(0xFFFFF3F7)
-            : const Color(0xFF22161A),
-      ),
+      backgroundColor: p.snack,
+      contentTextStyle: text.bodyMedium?.copyWith(color: p.onSnack),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
     sliderTheme: SliderThemeData(

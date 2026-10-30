@@ -81,8 +81,12 @@ class _SapocheAppState extends State<SapocheApp> {
               },
             ),
             themeMode: model.settings.themeMode,
-            theme: buildTheme(Palette.light),
-            darkTheme: buildTheme(Palette.dark),
+            theme: buildTheme(
+              Palette.forAccent(model.settings.accent, Brightness.light),
+            ),
+            darkTheme: buildTheme(
+              Palette.forAccent(model.settings.accent, Brightness.dark),
+            ),
             // Null: the phone decides (and a change in the phone's settings arrives here too)
             locale: chosen == null ? null : ui.Locale(chosen),
             supportedLocales: [for (final code in S.languages) ui.Locale(code)],

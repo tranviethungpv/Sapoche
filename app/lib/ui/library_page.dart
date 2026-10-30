@@ -374,9 +374,7 @@ class _Overview extends StatelessWidget {
                   style: roundButtonStyle(context, size: 40),
                   icon: Icon(Icons.add_rounded, color: p.text),
                   tooltip: S.newPlaylist,
-                  color: p.brightness == Brightness.light
-                      ? const Color(0xFFFFF7F9)
-                      : const Color(0xFF2B1F25),
+                  color: p.menu,
                   surfaceTintColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -696,9 +694,7 @@ class _MoreButton extends StatelessWidget {
         color: round ? null : p.textTertiary,
       ),
       style: round ? roundButtonStyle(context) : null,
-      color: p.brightness == Brightness.light
-          ? const Color(0xFFFFF7F9)
-          : const Color(0xFF2B1F25),
+      color: p.menu,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       onSelected: (run) => run(),

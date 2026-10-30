@@ -32,9 +32,7 @@ class TrackMenu extends StatelessWidget {
       key: RowMenuKey.maybeOf(context),
       useRootNavigator: true,
       icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
-      color: p.brightness == Brightness.light
-          ? const Color(0xFFFFF7F9)
-          : const Color(0xFF2B1F25),
+      color: p.menu,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       onSelected: (value) => switch (value) {

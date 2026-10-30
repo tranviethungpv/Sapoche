@@ -39,6 +39,22 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The colour the person picked for the app; null keeps the pink it was designed in.
+  Color? get accent {
+    final value = _prefs.getInt(_accentKey);
+    return value == null ? null : Color(value);
+  }
+
+  set accent(Color? color) {
+    if (color == accent) return;
+    if (color == null) {
+      _prefs.remove(_accentKey);
+    } else {
+      _prefs.setInt(_accentKey, color.toARGB32());
+    }
+    notifyListeners();
+  }
+
   /// Whether the person turned "Light effects" on or off; null while they have not chosen, when a weak phone has it on
   /// and the others off ([Calm.light] is what is in force).
   bool? get lightEffects => _prefs.getBool(_lightEffectsKey);
@@ -109,6 +125,7 @@ class AppSettings extends ChangeNotifier {
   static const _key = 'theme_mode';
   static const _languageKey = 'language';
   static const _lightEffectsKey = 'light_effects';
+  static const _accentKey = 'accent';
 
   static ThemeMode _read(SharedPreferences prefs) =>
       ThemeMode.values.asNameMap()[prefs.getString(_key)] ?? ThemeMode.system;

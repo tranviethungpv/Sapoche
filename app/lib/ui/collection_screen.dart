@@ -392,9 +392,7 @@ class _ContentState extends State<_Content> {
                       )
                     : const Icon(Icons.more_horiz_rounded),
                 style: roundButtonStyle(context),
-                color: p.brightness == Brightness.light
-                    ? const Color(0xFFFFF7F9)
-                    : const Color(0xFF2B1F25),
+                color: p.menu,
                 surfaceTintColor: Colors.transparent,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),

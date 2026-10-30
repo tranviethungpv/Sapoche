@@ -1,0 +1,3 @@
+Chọn màu theo ý bạn
+- Cài đặt > Giao diện > Màu chủ đạo: chọn hồng, đỏ, cam, lá, ngọc, dương, tím hay than chì cho cả app.
+- Muốn một sắc riêng? Tự mix bằng bộ chọn màu. Chữ vẫn dễ đọc ở cả giao diện sáng và tối, dù bạn chọn màu nào.

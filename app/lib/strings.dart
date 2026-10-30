@@ -924,6 +924,26 @@ abstract final class S {
   static String get themeSystem => _t('System', 'Theo hệ thống');
   static String get themeLight => _t('Light', 'Sáng');
   static String get themeDark => _t('Dark', 'Tối');
+  static String get accentColor => _t('Accent colour', 'Màu chủ đạo');
+  static String get accentCustom => _t('Custom', 'Tùy chỉnh');
+  static String get accentHue => _t('Hue', 'Sắc màu');
+  static String get accentSaturation => _t('Saturation', 'Độ đậm');
+  static String get accentBrightness => _t('Brightness', 'Độ sáng');
+  static String get accentUse => _t('Use this colour', 'Dùng màu này');
+  static String get accentHelp => _t(
+    'Shades are adjusted so words stay easy to read. The icon of the app keeps its colour.',
+    'Sắc màu được chỉnh để chữ luôn dễ đọc. Biểu tượng app giữ nguyên màu.',
+  );
+  static String accentName(String id) => switch (id) {
+    'pink' => _t('Pink', 'Hồng'),
+    'red' => _t('Red', 'Đỏ'),
+    'orange' => _t('Orange', 'Cam'),
+    'green' => _t('Green', 'Lá'),
+    'teal' => _t('Teal', 'Ngọc'),
+    'blue' => _t('Blue', 'Dương'),
+    'purple' => _t('Purple', 'Tím'),
+    _ => _t('Graphite', 'Than chì'),
+  };
   static String get lightEffects => _t('Light effects', 'Hiệu ứng nhẹ');
   static String get lightEffectsHelp => _t(
     'For older phones: the bars are solid instead of frosted glass, the player background stands still, loading rows do not shimmer and less memory is kept for pictures. Phones with little memory start with this on.',
