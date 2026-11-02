@@ -2,6 +2,7 @@
 """Puts files on the GitHub release of a version of this repository, making the release when it is not there yet.
 
 usage: github_release.py <tag> <notes file> <file>...
+       github_release.py --check       is there a token that can write to the releases? (makes and deletes a draft)
 
 The token is read from $SAPOCHE_GITHUB_TOKEN_FILE (default ~/.config/sapoche/github-token): a fine-grained token with
 "Contents: read and write" on this one repository, in a file only its owner can read. It is never printed. Without the
@@ -47,13 +48,29 @@ def call(method: str, url: str, token: str, body=None, raw: bytes | None = None,
         sys.exit(f"{method} {url.split('?')[0]} failed: {error.code} {error.read().decode()[:300]}")
 
 
-def main() -> None:
-    tag, notes_file, *files = sys.argv[1:]
+def read_token(what: str) -> str:
     token_file = os.path.expanduser(os.environ.get("SAPOCHE_GITHUB_TOKEN_FILE", "~/.config/sapoche/github-token"))
     if not os.path.exists(token_file):
-        print(f"no GitHub token at {token_file}: the files are NOT put on the release of {tag}", file=sys.stderr)
+        print(f"no GitHub token at {token_file}: {what}", file=sys.stderr)
         sys.exit(3)
-    token = open(token_file).read().strip()
+    return open(token_file).read().strip()
+
+
+def check() -> None:
+    """Finds out before a release is built whether it can be put on GitHub: a draft is the one thing that tests writing without leaving a tag."""
+    token = read_token("a release could not be put on GitHub")
+    repo = repository()
+    draft = call("POST", f"{API}/repos/{repo}/releases", token,
+                 {"tag_name": "token-check", "name": "token check", "body": "", "draft": True})
+    call("DELETE", f"{API}/repos/{repo}/releases/{draft['id']}", token)
+    print(f"the token can write the releases of {repo}")
+
+
+def main() -> None:
+    if sys.argv[1:] == ["--check"]:
+        return check()
+    tag, notes_file, *files = sys.argv[1:]
+    token = read_token(f"the files are NOT put on the release of {tag}")
     repo = repository()
     notes = open(notes_file, encoding="utf-8").read().strip()
     version = tag.lstrip("v")
