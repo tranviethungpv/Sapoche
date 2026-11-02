@@ -85,7 +85,18 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
-        <!-- The widget of the home screen that shows what plays -->
+        <!-- The widgets of the home screen: what plays (three sizes), who listens (two) and quick play (two) -->
+        <receiver
+            android:name=".NowPlayingSmallWidget"
+            android:exported="false"
+            android:label="@string/widget_np_small_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/now_playing_small_widget" />
+        </receiver>
         <receiver
             android:name=".NowPlayingWidget"
             android:exported="false"
@@ -96,6 +107,17 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/now_playing_widget" />
+        </receiver>
+        <receiver
+            android:name=".NowPlayingLargeWidget"
+            android:exported="false"
+            android:label="@string/widget_np_large_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/now_playing_large_widget" />
         </receiver>
         <receiver
             android:name=".RoomsWidget"
@@ -109,6 +131,17 @@
                 android:resource="@xml/rooms_widget" />
         </receiver>
         <receiver
+            android:name=".RoomsSmallWidget"
+            android:exported="false"
+            android:label="@string/widget_rooms_small_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/rooms_small_widget" />
+        </receiver>
+        <receiver
             android:name=".QuickWidget"
             android:exported="false"
             android:label="@string/widget_quick_label">
@@ -118,6 +151,17 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/quick_widget" />
+        </receiver>
+        <receiver
+            android:name=".QuickGridWidget"
+            android:exported="false"
+            android:label="@string/widget_quick_grid_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_grid_widget" />
         </receiver>
         <!-- What a touch on a widget does without opening the app -->
         <receiver android:name=".WidgetActions" android:exported="false" />

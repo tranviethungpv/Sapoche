@@ -74,37 +74,54 @@ data class WidgetState(
     }
 }
 
+/** The three sizes of the widget that shows what plays; each is a widget of its own in the launcher's list. */
+enum class NowPlayingSize(val layout: Int, val defaultWidthDp: Int, val defaultHeightDp: Int) {
+    SMALL(R.layout.widget_np_small, 150, 150),
+    MEDIUM(R.layout.widget_np_medium, 320, 130),
+    LARGE(R.layout.widget_np_large, 320, 320),
+}
+
 /**
- * The widget of the home screen that shows what plays, with play, pause and skip. Its buttons are media buttons sent to
- * the same receiver a headset uses, so in a room they act on the room, and a guest who may not skip gets no skip.
+ * The widgets of the home screen that show what plays, with play, pause and skip. Their buttons are media buttons sent to the
+ * same receiver a headset uses, so in a room they act on the room, and a guest who may not skip gets no skip.
  */
-class NowPlayingWidget : AppWidgetProvider() {
+open class NowPlayingProvider(private val size: NowPlayingSize) : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        Widgets.render(context, manager, ids)
+        Widgets.render(context, manager, size, ids)
     }
 
     override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, newOptions: Bundle) {
-        Widgets.render(context, manager, intArrayOf(id))
+        Widgets.render(context, manager, size, intArrayOf(id))
     }
 }
+
+/** 4×2: the cover, the song, the buttons and the time. The widget of the first versions, so the ones already placed are this. */
+class NowPlayingWidget : NowPlayingProvider(NowPlayingSize.MEDIUM)
+
+/** 2×2: the cover filling the square, the song over it, one button. */
+class NowPlayingSmallWidget : NowPlayingProvider(NowPlayingSize.SMALL)
+
+/** 4×4: the medium widget with the next songs under it. */
+class NowPlayingLargeWidget : NowPlayingProvider(NowPlayingSize.LARGE)
 
 @UnstableApi
 object Widgets {
     private const val PREFS = "sapoche"
     private const val KEY_STATE = "widget_state"
     const val COVER = "widget_cover.png"
+    const val BLUR = "widget_blur.png"
     const val FACES = "widget_faces.png"
     fun nextCover(row: Int) = "widget_next$row.png"
     fun adderFile(row: Int) = "widget_by$row.png"
 
     const val NEXT_ROWS = 3
 
-    /** A widget narrower than this (dp) shows the cover with the title over it, not the cover beside the buttons. */
-    private const val MEDIUM_FROM_DP = 200
-
-    /** A widget at least this tall (dp) lists what comes next under the song. */
-    private const val LARGE_FROM_DP = 250
+    private val PROVIDERS = listOf(
+        NowPlayingWidget::class.java to NowPlayingSize.MEDIUM,
+        NowPlayingSmallWidget::class.java to NowPlayingSize.SMALL,
+        NowPlayingLargeWidget::class.java to NowPlayingSize.LARGE,
+    )
 
     private val ROWS = listOf(
         intArrayOf(R.id.widget_row1, R.id.widget_row1_cover, R.id.widget_row1_title, R.id.widget_row1_artist, R.id.widget_row1_by),
@@ -112,11 +129,18 @@ object Widgets {
         intArrayOf(R.id.widget_row3, R.id.widget_row3_cover, R.id.widget_row3_title, R.id.widget_row3_artist, R.id.widget_row3_by),
     )
 
-    private fun ids(context: Context): IntArray =
-        AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, NowPlayingWidget::class.java))
+    private fun ids(context: Context, provider: Class<*>): IntArray =
+        AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, provider))
 
     /** Whether a widget that follows the song and the room is on a home screen. */
-    fun hasWidgets(context: Context): Boolean = ids(context).isNotEmpty() || RoomsWidget.hasWidgets(context)
+    fun hasWidgets(context: Context): Boolean =
+        PROVIDERS.any { ids(context, it.first).isNotEmpty() } || RoomsWidgets.hasWidgets(context)
+
+    /**
+     * Sets the size of a text in dp, not sp: a widget has a fixed room and a phone set to large letters would push the words
+     * out of it (cut at the edge); the person's size of letters is for the app's own pages.
+     */
+    fun fixedSize(views: RemoteViews, id: Int, dp: Float) = views.setTextViewTextSize(id, android.util.TypedValue.COMPLEX_UNIT_DIP, dp)
 
     /** Words in the language of the app, which is not always the one of the system. */
     fun text(vi: String, en: String) = if (SapocheApp.language.value == "vi") vi else en
@@ -129,11 +153,14 @@ object Widgets {
 
     /** Draws what is shown now on every widget; the [pictures] (by file name) are kept for the next time. */
     fun update(context: Context, state: WidgetState, pictures: Map<String, Bitmap> = emptyMap()) {
-        val ids = ids(context)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_STATE, state.toJson()).apply()
         for ((name, bitmap) in pictures) File(context.filesDir, name).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 90, it) }
-        if (ids.isNotEmpty()) render(context, AppWidgetManager.getInstance(context), ids)
-        RoomsWidget.redraw(context)
+        val manager = AppWidgetManager.getInstance(context)
+        for ((provider, size) in PROVIDERS) {
+            val ids = ids(context, provider)
+            if (ids.isNotEmpty()) render(context, manager, size, ids)
+        }
+        RoomsWidgets.redraw(context)
     }
 
     /** The cover as the widget shows it: square, small, with rounded corners. */
@@ -175,7 +202,7 @@ object Widgets {
         return out
     }
 
-    /** Several faces side by side, each overlapping the one before; [ring] is the colour of the widget behind them. */
+    /** Several faces side by side, each overlapping the one before; [ring] is the colour round each of them. */
     fun faces(list: List<Bitmap>, ring: Int, sizePx: Int = 72): Bitmap {
         if (list.isEmpty()) return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
         val step = sizePx * 3 / 4
@@ -191,55 +218,59 @@ object Widgets {
         return out
     }
 
-    fun render(context: Context, manager: AppWidgetManager, ids: IntArray) {
+    fun render(context: Context, manager: AppWidgetManager, size: NowPlayingSize, ids: IntArray) {
         val state = state(context)
         for (id in ids) {
             val options = manager.getAppWidgetOptions(id)
-            val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, MEDIUM_FROM_DP)
-            val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
-            manager.updateAppWidget(id, views(context, state, width, height))
+            val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0).takeIf { it > 0 } ?: size.defaultWidthDp
+            val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0).takeIf { it > 0 } ?: size.defaultHeightDp
+            manager.updateAppWidget(id, views(context, state, size, width, height))
         }
     }
 
-    /** One widget of [widthDp] by [heightDp] showing [state]: small, medium or large by its size. */
-    fun views(context: Context, state: WidgetState, widthDp: Int, heightDp: Int): RemoteViews {
+    /** One widget of [widthDp] by [heightDp] showing [state]. */
+    fun views(context: Context, state: WidgetState, size: NowPlayingSize, widthDp: Int, heightDp: Int): RemoteViews {
         val cover = picture(context, COVER)
+        val tiny = picture(context, BLUR)
+        val accent = WidgetArt.accent(tiny)
         val faces = picture(context, FACES)
         val idle = state.title.isEmpty()
-        val small = widthDp < MEDIUM_FROM_DP
-        val large = !small && heightDp >= LARGE_FROM_DP
-        val layout = when {
-            small -> R.layout.widget_now_playing_small
-            large -> R.layout.widget_now_playing_large
-            else -> R.layout.widget_now_playing_medium
-        }
-        val views = RemoteViews(context.packageName, layout)
+        val views = RemoteViews(context.packageName, size.layout)
+        val art = if (size == NowPlayingSize.SMALL) WidgetArt.cover(widthDp, heightDp, cover, accent) else WidgetArt.background(widthDp, heightDp, tiny, accent)
+        views.setImageViewBitmap(R.id.widget_bg, art)
+        val small = size == NowPlayingSize.SMALL
+        fixedSize(views, R.id.widget_title, if (small) 15f else 17f)
+        fixedSize(views, R.id.widget_artist, if (small) 12f else 13f)
         views.setTextViewText(R.id.widget_title, if (idle) "Sapoche" else state.title)
         views.setTextViewText(R.id.widget_artist, if (idle) text("Chưa phát gì", "Nothing playing") else state.artist)
-        if (cover != null) views.setImageViewBitmap(R.id.widget_cover, cover) else views.setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher)
         views.setImageViewResource(R.id.widget_play, if (state.playing) R.drawable.ic_widget_pause else R.drawable.ic_widget_play)
         views.setOnClickPendingIntent(R.id.widget_play, key(context, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
         views.setOnClickPendingIntent(R.id.widget_root, openApp(context))
-        if (!small) {
-            views.setOnClickPendingIntent(R.id.widget_prev, key(context, KeyEvent.KEYCODE_MEDIA_PREVIOUS))
-            views.setOnClickPendingIntent(R.id.widget_next, key(context, KeyEvent.KEYCODE_MEDIA_NEXT))
-            views.setTextViewText(R.id.widget_room, state.room.orEmpty())
-            views.setViewVisibility(R.id.widget_room_line, if (state.room != null) View.VISIBLE else View.GONE)
-            val showFaces = state.room != null && faces != null && state.crew.isNotEmpty()
-            views.setViewVisibility(R.id.widget_faces, if (showFaces) View.VISIBLE else View.GONE)
-            if (showFaces) views.setImageViewBitmap(R.id.widget_faces, faces)
-        }
-        if (large) renderNext(context, views, state)
+        if (size == NowPlayingSize.SMALL) return views
+
+        if (cover != null) views.setImageViewBitmap(R.id.widget_cover, cover) else views.setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher)
+        views.setOnClickPendingIntent(R.id.widget_prev, key(context, KeyEvent.KEYCODE_MEDIA_PREVIOUS))
+        views.setOnClickPendingIntent(R.id.widget_next, key(context, KeyEvent.KEYCODE_MEDIA_NEXT))
+        fixedSize(views, R.id.widget_room, 11f)
+        views.setTextViewText(R.id.widget_room, state.room.orEmpty())
+        views.setViewVisibility(R.id.widget_room_line, if (state.room != null) View.VISIBLE else View.GONE)
+        val showFaces = state.room != null && faces != null && state.crew.isNotEmpty()
+        views.setViewVisibility(R.id.widget_faces, if (showFaces) View.VISIBLE else View.GONE)
+        if (showFaces) views.setImageViewBitmap(R.id.widget_faces, faces)
+        if (size == NowPlayingSize.LARGE) renderNext(context, views, state)
         return views
     }
 
     private fun renderNext(context: Context, views: RemoteViews, state: WidgetState) {
+        fixedSize(views, R.id.widget_next_header, 11f)
         views.setTextViewText(R.id.widget_next_header, text("Tiếp theo", "Up next"))
         views.setViewVisibility(R.id.widget_next_list, if (state.next.isEmpty()) View.GONE else View.VISIBLE)
         ROWS.forEachIndexed { i, (row, cover, title, artist, by) ->
             val item = state.next.getOrNull(i)
             views.setViewVisibility(row, if (item == null) View.GONE else View.VISIBLE)
             if (item == null) return@forEachIndexed
+            fixedSize(views, title, 14f)
+            fixedSize(views, artist, 12f)
             views.setTextViewText(title, item.title)
             views.setTextViewText(artist, item.artist)
             val thumb = picture(context, nextCover(i))

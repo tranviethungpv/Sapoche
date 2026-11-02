@@ -427,7 +427,7 @@ class PlaybackService : MediaLibraryService() {
         if (state != widgetState) {
             widgetState = state
             Widgets.update(this, state)
-            if (leftRoom) RoomsWidget.refresh(this)
+            if (leftRoom) RoomsWidgets.refresh(this)
         }
         val art = meta.artworkUri?.toString()
         val thumbs = view.let { v -> (if (v.roomCode != null) v.snapshot.state?.queue.orEmpty() else v.local.queue).associateBy { it.id } }
@@ -436,7 +436,7 @@ class PlaybackService : MediaLibraryService() {
         widgetPictures = made
         val names = view.snapshot.members.associate { it.id to it.name }
         val avatars = group.picturesSeen().associate { it.id to it.data }
-        val ring = getColor(R.color.widget_bg)
+        val ring = 0xFFFFFFFF.toInt()
         scope.launch(Dispatchers.IO) {
             fun load(url: String?) = url?.let { runCatching { covers.loadBitmap(android.net.Uri.parse(it)).get() }.getOrNull() }
             fun face(id: String): Bitmap {
@@ -446,7 +446,10 @@ class PlaybackService : MediaLibraryService() {
                 return Widgets.face(id, names[id].orEmpty(), picture)
             }
             val pictures = mutableMapOf<String, Bitmap>()
-            load(art)?.let { pictures[Widgets.COVER] = Widgets.rounded(it) }
+            load(art)?.let {
+                pictures[Widgets.COVER] = Widgets.rounded(it)
+                pictures[Widgets.BLUR] = WidgetArt.tiny(it)
+            }
             next.forEachIndexed { i, row ->
                 load(thumbs[row.id]?.thumb)?.let { pictures[Widgets.nextCover(i)] = Widgets.rounded(it, 96, 12f) }
                 row.by?.let { pictures[Widgets.adderFile(i)] = face(it) }

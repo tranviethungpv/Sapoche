@@ -1,9 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="widget_now_playing_label">Sapoche</string>
-    <string name="widget_now_playing_description">Bài đang phát, kèm nút phát, dừng và chuyển bài.</string>
+    <string name="widget_now_playing_label">Sapoche · Đang phát</string>
+    <string name="widget_np_small_label">Sapoche · Đang phát (nhỏ)</string>
+    <string name="widget_np_large_label">Sapoche · Đang phát (lớn)</string>
     <string name="widget_rooms_label">Sapoche · Phòng</string>
+    <string name="widget_rooms_small_label">Sapoche · Phòng (nhỏ)</string>
     <string name="widget_quick_label">Sapoche · Nghe nhanh</string>
+    <string name="widget_quick_grid_label">Sapoche · Nghe nhanh (lưới)</string>
+    <string name="widget_now_playing_description">Bài đang phát, kèm nút phát, dừng và chuyển bài.</string>
+    <string name="widget_np_small_description">Bìa bài đang phát, kèm nút phát.</string>
+    <string name="widget_np_large_description">Bài đang phát và các bài kế tiếp.</string>
     <string name="widget_rooms_description">Bạn bè đang nghe ở phòng, và lối vào phòng.</string>
-    <string name="widget_quick_description">Bài thích, mix gợi ý, tải về và một playlist: chạm một cái là phát.</string>
+    <string name="widget_rooms_small_description">Ai đang nghe ở phòng và lối vào, trong một ô vuông.</string>
+    <string name="widget_quick_description">Bài đã thích, mix gợi ý, tải về và playlist mới nhất: chạm một cái là phát.</string>
+    <string name="widget_quick_grid_description">Bốn danh sách nghe nhanh trong một ô vuông: chạm một cái là phát.</string>
 </resources>

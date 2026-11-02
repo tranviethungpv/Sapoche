@@ -1,9 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="widget_now_playing_label">Sapoche</string>
-    <string name="widget_now_playing_description">What plays now, with play, pause and skip.</string>
+    <string name="widget_now_playing_label">Sapoche · Now playing</string>
+    <string name="widget_np_small_label">Sapoche · Now playing (small)</string>
+    <string name="widget_np_large_label">Sapoche · Now playing (large)</string>
     <string name="widget_rooms_label">Sapoche · Rooms</string>
+    <string name="widget_rooms_small_label">Sapoche · Rooms (small)</string>
     <string name="widget_quick_label">Sapoche · Quick play</string>
+    <string name="widget_quick_grid_label">Sapoche · Quick play (grid)</string>
+    <string name="widget_now_playing_description">What plays now, with play, pause and skip.</string>
+    <string name="widget_np_small_description">The cover of what plays, with a play button.</string>
+    <string name="widget_np_large_description">What plays now, and the songs that come next.</string>
     <string name="widget_rooms_description">Friends who listen in a room, and a way in.</string>
-    <string name="widget_quick_description">Your liked songs, a mix, downloads and a playlist: one touch plays.</string>
+    <string name="widget_rooms_small_description">Who listens in a room, and a way in, in a square.</string>
+    <string name="widget_quick_description">Your liked songs, a mix for you, downloads and your latest playlist: one touch plays.</string>
+    <string name="widget_quick_grid_description">The four quick lists as a square: one touch plays.</string>
 </resources>
