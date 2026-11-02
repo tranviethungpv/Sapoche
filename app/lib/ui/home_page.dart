@@ -24,7 +24,7 @@ import 'settings_page.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/cached_cover.dart';
-import 'widgets/end_clamped_physics.dart';
+import 'widgets/kept_alive.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
 import 'widgets/playlist_cover.dart';
@@ -181,18 +181,17 @@ class _HomePageState extends State<HomePage> {
                 onRefresh: _refresh,
                 edgeOffset: top,
                 child: ListView(
-                  physics: const EndClampedPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.only(
                     top: top,
                     bottom: HomeShell.bottomInsetOf(context),
                   ),
                   children: [
                     const _Header(),
-                    const _FriendsListening(),
+                    // Rows that are empty until the network answers are kept, see [KeptAlive]
+                    const KeptAlive(child: _FriendsListening()),
                     if (home.isEmpty) const _Welcome(),
-                    HomeChips(personal: _personalChips(home)),
+                    KeptAlive(child: HomeChips(personal: _personalChips(home))),
                     QuickAccess(tiles: _quickTiles(context, library, home)),
                     MadeForYou(mixes: home.dailyMixes),
                     if (heroes > 0)
@@ -375,9 +374,11 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
             ),
-      'releases': LatestReleasesShelf(
-        artists: home.mixes.take(8).toList(),
-        frame: (shelf) => _frame('releases', shelf),
+      'releases': KeptAlive(
+        child: LatestReleasesShelf(
+          artists: home.mixes.take(8).toList(),
+          frame: (shelf) => _frame('releases', shelf),
+        ),
       ),
       'discover': home.discover.isEmpty
           ? null
@@ -398,12 +399,18 @@ class _HomePageState extends State<HomePage> {
             ),
       'similar': home.topSeed == null
           ? null
-          : _SimilarArtists(
-              seed: home.topSeed!,
-              frame: (shelf) => _frame('similar', shelf),
+          : KeptAlive(
+              child: _SimilarArtists(
+                seed: home.topSeed!,
+                frame: (shelf) => _frame('similar', shelf),
+              ),
             ),
-      'charts': ChartsShelves(frame: (shelf) => _frame('charts', shelf)),
-      'trending': _Trending(frame: (shelf) => _frame('trending', shelf)),
+      'charts': KeptAlive(
+        child: ChartsShelves(frame: (shelf) => _frame('charts', shelf)),
+      ),
+      'trending': KeptAlive(
+        child: _Trending(frame: (shelf) => _frame('trending', shelf)),
+      ),
     };
   }
 

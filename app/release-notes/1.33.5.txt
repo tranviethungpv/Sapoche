@@ -1,0 +1,4 @@
+The Home page no longer jerks when you scroll back up
+- Android and iPhone: the Home page no longer jumps in the middle of a long scroll back up. Rows that wait for the network used to be dropped and built again on the way back, and then grew in one step above what you were looking at. They now keep their place.
+- iPhone: the Home page bounces at its bottom again, as it did before 1.33.4.
+- Android: the large Now playing widget keeps the player and the next songs together and centred, with no wide gap between them and no empty band below.

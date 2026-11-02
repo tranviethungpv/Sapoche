@@ -1,0 +1,4 @@
+Trang Chủ không còn giật khi cuộn ngược lên
+- Android và iPhone: trang Chủ không còn nhảy giữa chừng khi cuộn ngược lên một đoạn dài. Các hàng phải chờ mạng trước đây bị bỏ đi rồi dựng lại trên đường quay về, rồi dài ra một phát phía trên chỗ bạn đang nhìn. Nay chúng giữ nguyên chỗ.
+- iPhone: trang Chủ lại nảy ở đáy như trước bản 1.33.4.
+- Android: widget Đang phát cỡ lớn giữ player và các bài kế tiếp sát nhau và căn giữa, không còn khoảng cách xa giữa hai phần hay dải trống ở dưới.
