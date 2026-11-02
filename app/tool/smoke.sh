@@ -7,7 +7,7 @@
 #   The APK must hold x86_64 code: the emulator cannot load the arm64 libflutter.so of the published APK, so
 #   release.sh builds an x86_64 one from the same commit for this.
 #   SMOKE_DEVICE (default emulator-5580) must be an emulator, never a phone: the app's data on it may be wiped.
-#   When it is not running, the AVD SMOKE_AVD (default sapoche_test, see docs/ops/devices.md) is started and stopped
+#   When it is not running, the AVD SMOKE_AVD (default sapoche_test) is started and stopped
 #   again at the end.
 set -euo pipefail
 

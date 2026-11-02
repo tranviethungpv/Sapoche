@@ -434,7 +434,7 @@ class WebBackend extends BackendDefaults {
   Future<void> note(String line) async => _note('ui: $line');
 
   /// Seeking in a frame of the YouTube player costs a few hundred milliseconds, so a drift smaller than that is not
-  /// worth a seek; measured on the first real rooms, see docs/WEB.md.
+  /// worth a seek; measured on the first real rooms.
   static const _seekThresholdMs = 600;
 
   Future<int?> Function() _probeAuth(String code) => () async {

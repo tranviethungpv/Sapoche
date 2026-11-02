@@ -31,7 +31,7 @@ import kotlin.test.assertTrue
  * Bars: each phone within 40 ms of the room once settled (the drift controller's own dead band; Jellyfin SyncPlay
  * only starts correcting at 60 ms). Two phones may then be up to 80 ms apart by design; the spread between them is held
  * to 60 ms at the 95th percentile (at about 40 ms two speakers in one room start to sound like an echo, so a tighter
- * dead band is the knob if that matters). A newcomer in step within 5 seconds (docs/PLAN.md), no gap at a natural
+ * dead band is the knob if that matters). A newcomer in step within 5 seconds, no gap at a natural
  * change of song. Everything runs on virtual time with fixed seeds, so the numbers are the same on every run; each
  * scenario prints them with a [sim] prefix.
  */
