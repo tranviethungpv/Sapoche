@@ -126,7 +126,8 @@ if [ "$PUBLISH" = 1 ]; then
     for apk in "$OUT" "$PUBLIC_APK"; do
       found=0
       for dex in $(unzip -Z1 "$apk" 'classes*.dex'); do
-        unzip -p "$apk" "$dex" | grep -aqF -- "$KEY" && found=1
+        # Not grep -q: it stops at the first match, unzip then dies of SIGPIPE and pipefail calls the whole line a failure
+        unzip -p "$apk" "$dex" | grep -aF -- "$KEY" >/dev/null && found=1
       done
       [ "$apk" = "$OUT" ] && [ "$found" = 0 ] && { echo "the check for the key does not find it in the APK that has it: it cannot be trusted"; exit 1; }
       [ "$apk" = "$PUBLIC_APK" ] && [ "$found" = 1 ] && { echo "the key is inside the APK made for GitHub: not published"; exit 1; }
