@@ -40,6 +40,9 @@ final class NowPlaying {
         widgets.start(sources: widgetSources) { [weak self] command in self?.widgetCommand(command) }
     }
 
+    /// What the widgets show of the library (the latest playlist) follows its changes.
+    func libraryChanged() { widgets.libraryChanged() }
+
     /// A button of a widget, of the lock screen or of Control Center: it does what the buttons of the lock screen do.
     private func widgetCommand(_ command: WidgetCommand) {
         EventLog.d("session", "\(command.text) asked from a widget")

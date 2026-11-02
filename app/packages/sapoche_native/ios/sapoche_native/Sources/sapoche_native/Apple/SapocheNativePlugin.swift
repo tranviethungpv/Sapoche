@@ -76,7 +76,10 @@ final class SapocheRuntime {
             let language = { prefs.string("language") ?? "en" }
             store = try LibraryStore(
                 path: support.appendingPathComponent("library.db").path,
-                onChange: { Task { @MainActor in SapocheRuntime.shared.bridge.libraryChanged() } },
+                onChange: { Task { @MainActor in
+                    SapocheRuntime.shared.bridge.libraryChanged()
+                    SapocheRuntime.shared.nowPlaying.libraryChanged()
+                } },
                 untitled: { language() == "vi" ? "Chưa đặt tên" : "Untitled" }
             )
         } catch {

@@ -129,12 +129,13 @@ struct NowPlayingView: View {
     private var medium: some View {
         HStack(spacing: 14) {
             cover(104)
+            // The words sit on the progress bar, not at the top of the column: the space left over goes above them
             VStack(alignment: .leading, spacing: 3) {
+                Spacer(minLength: 0)
                 Text(title).font(.system(size: 16, weight: .bold)).lineLimit(1)
                 Text(subtitle).font(.system(size: 13)).foregroundStyle(Color.softWhite).lineLimit(1)
                 roomLine
-                Spacer(minLength: 2)
-                progress
+                progress.padding(.top, 7)
                 HStack {
                     skip(PreviousIntent(), "backward.fill")
                     Spacer()
