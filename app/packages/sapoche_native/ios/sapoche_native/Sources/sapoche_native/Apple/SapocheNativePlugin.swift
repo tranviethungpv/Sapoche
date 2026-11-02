@@ -116,9 +116,25 @@ final class SapocheRuntime {
                         music: feed, suggestions: suggestions, media: media, files: files, downloader: downloader, http: http,
                         libraryOpened: libraryOpened)
         let bridge = bridge
-        nowPlaying = NowPlaying(controller: controller, engine: engine, localCover: { id in
-            try? await bridge.handle("localCover", ["videoId": id]) as? Data
-        })
+        nowPlaying = NowPlaying(
+            controller: controller, engine: engine,
+            localCover: { id in try? await bridge.handle("localCover", ["videoId": id]) as? Data },
+            widgetSources: WidgetSources(
+                language: { prefs.string("language") ?? "en" },
+                // The list is kept by the app's screens (Flutter's preferences), which the widgets only read
+                recentRooms: { UserDefaults.standard.string(forKey: "flutter.recent_rooms") },
+                roomInfo: { code in try? await bridge.handle("roomInfo", ["code": code]) as? [String: Any] },
+                latestPlaylist: { (try? await store.playlists().first).map { WidgetSnapshot.QuickPlaylist(id: $0.id, name: $0.name) } }
+            ),
+            quickTracks: { list, playlist in
+                switch list {
+                case .liked: return ((try? await store.liked()) ?? []).map(\.track)
+                case .mix: return (try? await suggestions.forYou()) ?? []
+                case .downloads: return ((try? await store.downloads()) ?? []).filter { $0.state == LibraryStore.done }.map(\.track)
+                case .playlist: return (try? await store.playlistTracks(playlist)) ?? []
+                }
+            }
+        )
     }
 
     /// Where the picture of a song is drawn for Flutter.

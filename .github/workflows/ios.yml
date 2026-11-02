@@ -59,6 +59,24 @@ jobs:
           messages=$( (grep -E "error:|Error:|error |❌|Cycle|failed|Failed|Command .* failed" build.log | sort -u | head -50; echo "--- the last lines of the log ---"; tail -45 build.log) | cut -c1-400 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
           echo "::error title=Build errors::${messages}"
 
+      # SideStore finds the App Groups a copy asks for in the entitlements inside its signature (not in the Info.plist), and a
+      # build with `--no-codesign` has none: the app and its widgets would never share a folder. They are signed ad hoc here,
+      # inside out, only to carry the entitlements; SideStore signs again with the owner's Apple ID and gives the group its name.
+      - name: Put the App Group into the signatures
+        run: |
+          set -euo pipefail
+          app=build/ios/iphoneos/Runner.app
+          if [ -d "$app/Frameworks" ]; then
+            find "$app/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -exec codesign --force --sign - {} \;
+          fi
+          codesign --force --sign - --entitlements ios/SapocheWidgets/SapocheWidgets.entitlements "$app/PlugIns/SapocheWidgets.appex"
+          codesign --force --sign - --entitlements ios/Runner/Runner.entitlements "$app"
+          for target in "$app" "$app/PlugIns/SapocheWidgets.appex"; do
+            found=$(codesign -d --entitlements :- "$target" 2>&1)
+            echo "$found"
+            grep -q 'group.app.sapoche.sapoche' <<<"$found" || { echo "::error::no App Group in the signature of $target"; exit 1; }
+          done
+
       - name: Package the unsigned IPA
         run: |
           rm -rf Payload sapoche-unsigned.ipa

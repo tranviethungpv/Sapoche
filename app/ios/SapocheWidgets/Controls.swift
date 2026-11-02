@@ -10,11 +10,11 @@ struct PlayPauseControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: Self.kind) {
             ControlWidgetButton(action: PlayPauseIntent()) {
-                Label("Play or pause", systemImage: "playpause.fill")
+                Label(Language.t("Phát hoặc dừng", "Play or pause"), systemImage: "playpause.fill")
             }
         }
-        .displayName("Play or pause")
-        .description("Plays or pauses Sapoche.")
+        .displayName(LocalizedStringResource(stringLiteral: Language.t("Phát hoặc dừng", "Play or pause")))
+        .description(LocalizedStringResource(stringLiteral: Language.t("Phát hoặc dừng Sapoche.", "Plays or pauses Sapoche.")))
     }
 }
 
@@ -26,10 +26,10 @@ struct OpenRoomControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: Self.kind) {
             ControlWidgetButton(action: OpenRoomIntent(code: WidgetStorage.shared()?.read()?.roomCode)) {
-                Label("Open the room", systemImage: "person.2.fill")
+                Label(Language.t("Mở phòng", "Open the room"), systemImage: "person.2.fill")
             }
         }
-        .displayName("Open the room")
-        .description("Opens Sapoche on your room.")
+        .displayName(LocalizedStringResource(stringLiteral: Language.t("Mở phòng", "Open the room")))
+        .description(LocalizedStringResource(stringLiteral: Language.t("Mở Sapoche ở phòng của bạn.", "Opens Sapoche on your room.")))
     }
 }

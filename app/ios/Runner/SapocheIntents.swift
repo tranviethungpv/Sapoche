@@ -51,6 +51,50 @@ struct PreviousIntent: AudioPlaybackIntent {
     }
 }
 
+/// A touch on a song of the queue shown by the large widget: the player jumps to it.
+@available(iOS 17.0, *)
+struct JumpIntent: AudioPlaybackIntent {
+    static let title: LocalizedStringResource = "Play this song"
+
+    @Parameter(title: "Song")
+    var itemId: String
+
+    init() {}
+
+    init(itemId: String) {
+        self.itemId = itemId
+    }
+
+    func perform() async throws -> some IntentResult {
+        SapocheCommand.send("jump:\(itemId)")
+        return .result()
+    }
+}
+
+/// A tile of the quick widget: `liked`, `mix`, `downloads`, or `playlist` with the playlist's id.
+@available(iOS 17.0, *)
+struct QuickPlayIntent: AudioPlaybackIntent {
+    static let title: LocalizedStringResource = "Play a list"
+
+    @Parameter(title: "List")
+    var list: String
+
+    @Parameter(title: "Playlist")
+    var playlist: Int
+
+    init() {}
+
+    init(list: String, playlist: Int = 0) {
+        self.list = list
+        self.playlist = playlist
+    }
+
+    func perform() async throws -> some IntentResult {
+        SapocheCommand.send(list == "playlist" ? "quick:playlist:\(playlist)" : "quick:\(list)")
+        return .result()
+    }
+}
+
 /// Opens the app, on the room this device is in when there is one.
 @available(iOS 17.0, *)
 struct OpenRoomIntent: AppIntent {

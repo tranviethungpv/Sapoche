@@ -25,12 +25,19 @@ final class NowPlaying {
     /// The widgets, the lock screen accessories, Control Center and the Live Activity of the room.
     private let widgets = WidgetBridge()
 
-    init(controller: GroupController, engine: PlayerEngine, localCover: @escaping (String) async -> Data? = { _ in nil }) {
+    /// The songs of a list of the quick widget: liked, a mix, downloads or a playlist (by its id).
+    private let quickTracks: (WidgetCommand.QuickList, Int64) async -> [TrackRef]
+
+    init(
+        controller: GroupController, engine: PlayerEngine, localCover: @escaping (String) async -> Data? = { _ in nil },
+        widgetSources: WidgetSources, quickTracks: @escaping (WidgetCommand.QuickList, Int64) async -> [TrackRef]
+    ) {
         self.controller = controller
         self.engine = engine
         self.localCover = localCover
+        self.quickTracks = quickTracks
         connectButtons()
-        widgets.start { [weak self] command in self?.widgetCommand(command) }
+        widgets.start(sources: widgetSources) { [weak self] command in self?.widgetCommand(command) }
     }
 
     /// A button of a widget, of the lock screen or of Control Center: it does what the buttons of the lock screen do.
@@ -43,7 +50,29 @@ final class NowPlaying {
             if mayMoveRoom() { controller.requestNext() }
         case .previous:
             if mayMoveRoom() { controller.requestPrev() }
+        case .jump(let itemId):
+            if mayMoveRoom() { controller.requestJump(itemId) }
+        case .quick(let list, let playlist):
+            Task { await playQuick(list, playlist: playlist) }
         }
+    }
+
+    /// A tile of the quick widget: the list replaces the personal queue and plays. In a room the songs are the room's to pick.
+    private func playQuick(_ list: WidgetCommand.QuickList, playlist: Int64) async {
+        if controller.view.value.roomCode != nil {
+            EventLog.d("widget", "quick list \(list.rawValue) not played: this device is in a room")
+            return
+        }
+        let tracks = await quickTracks(list, playlist)
+        var seen = Set<String>()
+        let songs = tracks.filter { seen.insert($0.videoId).inserted }.prefix(LocalSession.maxQueue)
+        guard !songs.isEmpty else {
+            EventLog.d("widget", "quick list \(list.rawValue) has no songs")
+            return
+        }
+        EventLog.d("widget", "quick list \(list.rawValue): \(songs.count) songs")
+        controller.requestClearQueue()
+        controller.requestAddMany(Array(songs), playNext: false)
     }
 
     // ------------------------------------------------------------------ buttons
@@ -175,7 +204,7 @@ final class NowPlaying {
         let names = Dictionary(view.snapshot.members.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         let listening = view.snapshot.members.filter { !$0.away }
         let next = queue.dropFirst(index + 1).prefix(WidgetSnapshot.nextRows).map {
-            WidgetSnapshot.Row(title: $0.title, artist: $0.artist, by: inRoom ? names[$0.addedBy] : nil)
+            WidgetSnapshot.Row(title: $0.title, artist: $0.artist, by: inRoom ? names[$0.addedBy] : nil, id: $0.id)
         }
         let started = info.map { Date().addingTimeInterval(-Double($0.positionMs) / 1000) }
         let snapshot = WidgetSnapshot(

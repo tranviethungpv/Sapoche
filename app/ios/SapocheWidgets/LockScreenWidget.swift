@@ -10,8 +10,8 @@ struct LockScreenWidget: Widget {
             LockScreenView(entry: entry)
                 .containerBackground(for: .widget) { Color.clear }
         }
-        .configurationDisplayName("Now playing")
-        .description("The song that plays, on the lock screen.")
+        .configurationDisplayName(Language.t("Đang phát", "Now playing"))
+        .description(Language.t("Bài đang phát, ngay trên màn khoá.", "The song that plays, on the lock screen."))
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
 }
@@ -57,7 +57,7 @@ struct LockScreenView: View {
     private var rectangular: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(shown.isIdle ? "Sapoche" : shown.title).font(.headline).lineLimit(1).widgetAccentable()
-            Text(shown.isIdle ? "Nothing playing" : shown.artist).font(.caption).lineLimit(1)
+            Text(shown.isIdle ? entry.t("Chưa phát gì", "Nothing playing") : shown.artist).font(.caption).lineLimit(1)
             if let room = shown.room {
                 Text(room).font(.caption2).lineLimit(1).foregroundStyle(.secondary)
             }
