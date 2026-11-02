@@ -16,6 +16,17 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		EC9AB3A1AAF0DF5EF64359C2 /* SapocheWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3963BDAF9E683E2503B7314 /* SapocheWidgets.swift */; };
+		8F86B946F2079CF33CF4AA2C /* Provider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228BC0336218921C3DBD52EF /* Provider.swift */; };
+		A8BFA72D607F55948945B6C8 /* NowPlayingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF921B683722279ED45F55A /* NowPlayingWidget.swift */; };
+		38B45AFC714E6C65B552F92A /* LockScreenWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6291F4F7875DA12A9F4C9453 /* LockScreenWidget.swift */; };
+		27455DCC36858EC0847432CE /* Controls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7383D1721F4B4B8AC54AD17D /* Controls.swift */; };
+		7BE908795AB5030F261521E6 /* RoomLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52E86EC8AA2C6D4259FB1D39 /* RoomLiveActivity.swift */; };
+		86FC9F27A0F1B61A0C6A32FF /* SapocheIntents.swift (widgets) in Sources */ = {isa = PBXBuildFile; fileRef = AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift (widgets) */; };
+		951A0C3A1A4AA9E49BE782B7 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */; };
+		75E954190E18EC3CF90FF315 /* RoomActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E6139693BDF91752C3DAFC6 /* RoomActivityAttributes.swift */; };
+		285A9349391ACD28E6E10884 /* SapocheIntents.swift (runner) in Sources */ = {isa = PBXBuildFile; fileRef = AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift (runner) */; };
+		0EF5578BDC9BB7697F2EEBD2 /* SapocheWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D553F93CAF9A594E5B09E287 /* SapocheWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,6 +36,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
+		};
+		3F26CFA2773EB53BD4CBFB2F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C5E8094161264BA19F1AF21F;
+			remoteInfo = SapocheWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -37,6 +55,17 @@
 			files = (
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D2DE64BAB9C8058CDBCE5D34 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0EF5578BDC9BB7697F2EEBD2 /* SapocheWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -59,6 +88,19 @@
 		97C146FD1CF9000F007C117D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A3963BDAF9E683E2503B7314 /* SapocheWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SapocheWidgets.swift; sourceTree = "<group>"; };
+		228BC0336218921C3DBD52EF /* Provider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Provider.swift; sourceTree = "<group>"; };
+		9FF921B683722279ED45F55A /* NowPlayingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingWidget.swift; sourceTree = "<group>"; };
+		6291F4F7875DA12A9F4C9453 /* LockScreenWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenWidget.swift; sourceTree = "<group>"; };
+		7383D1721F4B4B8AC54AD17D /* Controls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Controls.swift; sourceTree = "<group>"; };
+		52E86EC8AA2C6D4259FB1D39 /* RoomLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomLiveActivity.swift; sourceTree = "<group>"; };
+		0A8865E3716D899A83EA88FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		2C563CDE86A53B94650D7324 /* SapocheWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SapocheWidgets.entitlements; sourceTree = "<group>"; };
+		3EAED26DED0108E6C2F0DC8A /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
+		AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SapocheIntents.swift; sourceTree = "<group>"; };
+		30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetSnapshot.swift; path = ../packages/sapoche_native/ios/sapoche_native/Sources/sapoche_native/Core/WidgetSnapshot.swift; sourceTree = "<group>"; };
+		6E6139693BDF91752C3DAFC6 /* RoomActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoomActivityAttributes.swift; path = ../packages/sapoche_native/ios/sapoche_native/Sources/sapoche_native/Apple/RoomActivityAttributes.swift; sourceTree = "<group>"; };
+		D553F93CAF9A594E5B09E287 /* SapocheWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SapocheWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +109,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ED2366D739862869838A301C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,6 +149,8 @@
 				97C146F01CF9000F007C117D /* Runner */,
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
+				F83E2878C8FA1DDC33111742 /* SapocheWidgets */,
+				EA66CD12767469BCE78D040A /* Shared with the widgets */,
 			);
 			sourceTree = "<group>";
 		};
@@ -108,6 +159,7 @@
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
+				D553F93CAF9A594E5B09E287 /* SapocheWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -124,8 +176,34 @@
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
+				AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift */,
+				3EAED26DED0108E6C2F0DC8A /* Runner.entitlements */,
 			);
 			path = Runner;
+			sourceTree = "<group>";
+		};
+		F83E2878C8FA1DDC33111742 /* SapocheWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				A3963BDAF9E683E2503B7314 /* SapocheWidgets.swift */,
+				228BC0336218921C3DBD52EF /* Provider.swift */,
+				9FF921B683722279ED45F55A /* NowPlayingWidget.swift */,
+				6291F4F7875DA12A9F4C9453 /* LockScreenWidget.swift */,
+				7383D1721F4B4B8AC54AD17D /* Controls.swift */,
+				52E86EC8AA2C6D4259FB1D39 /* RoomLiveActivity.swift */,
+				0A8865E3716D899A83EA88FD /* Info.plist */,
+				2C563CDE86A53B94650D7324 /* SapocheWidgets.entitlements */,
+			);
+			path = SapocheWidgets;
+			sourceTree = "<group>";
+		};
+		EA66CD12767469BCE78D040A /* Shared with the widgets */ = {
+			isa = PBXGroup;
+			children = (
+				30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */,
+				6E6139693BDF91752C3DAFC6 /* RoomActivityAttributes.swift */,
+			);
+			name = "Shared with the widgets";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -157,11 +235,13 @@
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
+				D2DE64BAB9C8058CDBCE5D34 /* Embed Foundation Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				0E4A0B38BBAF4DF15CC3F139 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -170,6 +250,23 @@
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
 			productType = "com.apple.product-type.application";
+		};
+		C5E8094161264BA19F1AF21F /* SapocheWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A23983E7B3DD1722348522F1 /* Build configuration list for PBXNativeTarget "SapocheWidgets" */;
+			buildPhases = (
+				06250DE2B592229EA2F28EEA /* Sources */,
+				ED2366D739862869838A301C /* Frameworks */,
+				9AA5185721A6383D1E45331D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SapocheWidgets;
+			productName = SapocheWidgets;
+			productReference = D553F93CAF9A594E5B09E287 /* SapocheWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -184,6 +281,9 @@
 					331C8080294A63A400263BE5 = {
 						CreatedOnToolsVersion = 14.0;
 						TestTargetID = 97C146ED1CF9000F007C117D;
+					};
+					C5E8094161264BA19F1AF21F = {
+						CreatedOnToolsVersion = 15.0;
 					};
 					97C146ED1CF9000F007C117D = {
 						CreatedOnToolsVersion = 7.3.1;
@@ -209,6 +309,7 @@
 			targets = (
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
+				C5E8094161264BA19F1AF21F /* SapocheWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -229,6 +330,13 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AA5185721A6383D1E45331D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -281,9 +389,26 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				285A9349391ACD28E6E10884,
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		06250DE2B592229EA2F28EEA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EC9AB3A1AAF0DF5EF64359C2,
+				8F86B946F2079CF33CF4AA2C,
+				A8BFA72D607F55948945B6C8,
+				38B45AFC714E6C65B552F92A,
+				27455DCC36858EC0847432CE,
+				7BE908795AB5030F261521E6,
+				86FC9F27A0F1B61A0C6A32FF,
+				951A0C3A1A4AA9E49BE782B7,
+				75E954190E18EC3CF90FF315,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -294,6 +419,11 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		0E4A0B38BBAF4DF15CC3F139 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C5E8094161264BA19F1AF21F /* SapocheWidgets */;
+			targetProxy = 3F26CFA2773EB53BD4CBFB2F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -376,6 +506,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
@@ -557,6 +688,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
@@ -579,6 +711,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
@@ -593,6 +726,77 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
+		};
+		F032B72B90231AD4E97708BA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = SapocheWidgets/SapocheWidgets.entitlements;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SapocheWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.sapoche.sapoche.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		6BD8940956275B2B442B458C /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = SapocheWidgets/SapocheWidgets.entitlements;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SapocheWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.sapoche.sapoche.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		94CE1422B8CBF58F09303AA3 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = SapocheWidgets/SapocheWidgets.entitlements;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SapocheWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.sapoche.sapoche.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Profile;
 		};
 /* End XCBuildConfiguration section */
 
@@ -623,6 +827,16 @@
 				97C147061CF9000F007C117D /* Debug */,
 				97C147071CF9000F007C117D /* Release */,
 				249021D4217E4FDB00AE95B9 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A23983E7B3DD1722348522F1 /* Build configuration list for PBXNativeTarget "SapocheWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F032B72B90231AD4E97708BA /* Debug */,
+				6BD8940956275B2B442B458C /* Release */,
+				94CE1422B8CBF58F09303AA3 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

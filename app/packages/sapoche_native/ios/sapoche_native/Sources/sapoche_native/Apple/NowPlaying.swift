@@ -22,11 +22,28 @@ final class NowPlaying {
     /// player changes twice a second (its drift), and each of those woke the lock screen for nothing, screen off or on.
     private var given: (signature: String, positionMs: Int64, at: TimeInterval)?
 
+    /// The widgets, the lock screen accessories, Control Center and the Live Activity of the room.
+    private let widgets = WidgetBridge()
+
     init(controller: GroupController, engine: PlayerEngine, localCover: @escaping (String) async -> Data? = { _ in nil }) {
         self.controller = controller
         self.engine = engine
         self.localCover = localCover
         connectButtons()
+        widgets.start { [weak self] command in self?.widgetCommand(command) }
+    }
+
+    /// A button of a widget, of the lock screen or of Control Center: it does what the buttons of the lock screen do.
+    private func widgetCommand(_ command: WidgetCommand) {
+        EventLog.d("session", "\(command.rawValue) asked from a widget")
+        switch command {
+        case .playPause:
+            if engine.wantsSound { controller.pauseFromOutside() } else { controller.requestPlay() }
+        case .next:
+            if mayMoveRoom() { controller.requestNext() }
+        case .previous:
+            if mayMoveRoom() { controller.requestPrev() }
+        }
     }
 
     // ------------------------------------------------------------------ buttons
@@ -116,6 +133,7 @@ final class NowPlaying {
             shownVideoId = nil
             artwork = nil
             given = nil
+            publishWidgets(item: nil, info: nil)
             return
         }
         let info = engine.playerInfo()
@@ -125,6 +143,7 @@ final class NowPlaying {
             loadArtwork(item)
         }
         let duration = info.durationMs > 0 ? info.durationMs : item.durMs
+        publishWidgets(item: item, info: info, duration: duration)
         let signature = "\(item.videoId)|\(item.title)|\(item.artist)|\(info.playing)|\(duration)|\(artwork != nil)"
         let now = ProcessInfo.processInfo.systemUptime
         if let given, given.signature == signature {
@@ -144,6 +163,44 @@ final class NowPlaying {
         center.nowPlayingInfo = fields
         // Read by the system besides the rate, when it decides what a car or a watch shows the song as doing
         center.playbackState = info.playing ? .playing : .paused
+    }
+
+    /// Hands what plays to the widgets and, in a room, to its Live Activity; they draw it themselves from then on.
+    private func publishWidgets(item: QueueItem?, info: PlayerInfo?, duration: Int64 = 0) {
+        let view = controller.view.value
+        let inRoom = view.roomCode != nil
+        let state = view.snapshot.state
+        let queue = inRoom ? (state?.queue ?? []) : view.local.queue
+        let index = inRoom ? (state?.index ?? 0) : view.local.index
+        let names = Dictionary(view.snapshot.members.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let listening = view.snapshot.members.filter { !$0.away }
+        let next = queue.dropFirst(index + 1).prefix(WidgetSnapshot.nextRows).map {
+            WidgetSnapshot.Row(title: $0.title, artist: $0.artist, by: inRoom ? names[$0.addedBy] : nil)
+        }
+        let started = info.map { Date().addingTimeInterval(-Double($0.positionMs) / 1000) }
+        let snapshot = WidgetSnapshot(
+            title: item?.title ?? "", artist: item?.artist ?? "", playing: info?.playing ?? false,
+            room: view.roomCode.map { "\(state?.name ?? $0) · \(listening.count)" }, roomCode: view.roomCode,
+            crew: inRoom ? listening.prefix(3).map(\.name) : [], next: Array(next), canSteer: view.snapshot.canSteer,
+            startedAt: started, endsAt: duration > 0 ? started?.addingTimeInterval(Double(duration) / 1000) : nil
+        )
+        let address = item?.thumb
+        widgets.publish(snapshot, coverFor: address, cover: address.flatMap { artworkCache[$0] }.flatMap(Self.thumbnail))
+        widgets.updateRoomActivity(
+            room: view.roomCode.map { (name: state?.name ?? $0, code: $0) }, snapshot: snapshot, members: listening.count
+        )
+    }
+
+    /// A small JPEG of a cover for the widgets, which have little memory to draw with.
+    private static func thumbnail(_ image: UIImage) -> Data? {
+        let side: CGFloat = 320
+        let scale = min(1, side / max(image.size.width, image.size.height))
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).jpegData(withCompressionQuality: 0.75) { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
     }
 
     /// The song the queue is on while the player has nothing loaded (after a restart), so the lock screen is not blank.
