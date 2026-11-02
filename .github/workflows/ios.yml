@@ -80,8 +80,8 @@ jobs:
           retention-days: 90
 
   # A tag `v1.33.0` makes a release of this repository: the IPA, and `source.json`, a source that SideStore can be given
-  # (https://github.com/<owner>/<repo>/releases/latest/download/source.json) to list and update Sapoche. The notes are the
-  # message of the (annotated) tag. The app asks for the latest release to know a newer version is out.
+  # (https://github.com/<owner>/<repo>/releases/latest/download/source.json) to list and update Sapoche. The notes are
+  # app/release-notes/<version>.txt. The app asks for the latest release to know a newer version is out.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: ipa
@@ -90,8 +90,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-tags: true
       - uses: actions/download-artifact@v4
         with:
           name: sapoche-ios-unsigned
@@ -106,7 +104,7 @@ jobs:
           mv sapoche-unsigned.ipa "sapoche-${version}.ipa"
           size=$(stat -c %s "sapoche-${version}.ipa")
           repo="${GITHUB_REPOSITORY}"
-          git for-each-ref --format='%(contents)' "refs/tags/${TAG}" > notes.txt
+          cp "app/release-notes/${version}.txt" notes.txt
           python3 - "$version" "$build" "$size" "$repo" <<'PY'
           import json, sys, datetime
           version, build, size, repo = sys.argv[1:5]
