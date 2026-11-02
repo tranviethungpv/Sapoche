@@ -56,7 +56,7 @@ jobs:
       - name: Say what the compiler complained about
         if: failure()
         run: |
-          messages=$(grep -E "error:|Error:|error " build.log | sort -u | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          messages=$( (grep -E "error:|Error:|error |❌|Cycle|failed|Failed|Command .* failed" build.log | sort -u | head -50; echo "--- the last lines of the log ---"; tail -45 build.log) | cut -c1-400 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
           echo "::error title=Build errors::${messages}"
 
       - name: Package the unsigned IPA
