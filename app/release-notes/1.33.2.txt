@@ -1,0 +1,3 @@
+A better Now playing widget on Android
+- Android: the medium Now playing widget is better balanced. The cover is smaller, the title and artist sit right above the buttons, and in a taller space everything grows to fill it instead of leaving empty bands.
+- Android: the Previous and Next buttons on the widget work again, and wake the player if it had stopped.

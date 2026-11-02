@@ -1,0 +1,3 @@
+Widget Đang phát trên Android đẹp hơn
+- Android: widget Đang phát cỡ vừa cân đối hơn. Ảnh bìa nhỏ lại, tên bài và ca sĩ nằm sát hàng nút, và khi ô widget cao hơn thì mọi thứ lớn theo cho đầy ô thay vì để trống phía trên và dưới.
+- Android: nút Trước và Sau trên widget chạy lại được, và đánh thức trình phát nếu nó đã tắt.
