@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 18;
 
 export interface QueueItem {
   id: string;
@@ -58,6 +58,8 @@ export interface RoomState {
   theme?: string;
   /** Fingerprint (8 hexadecimal digits) of the picture behind the chat, which is fetched with `avatar.get` for `room:bg`. Protocol 16. */
   bg?: string;
+  /** The picture behind the chat is sealed (the room is end-to-end encrypted); kept apart from the clients' view. Protocol 18. */
+  bgSealed?: true;
   /** Client id of the owner; absent while nobody owns the room (it is empty, or predates owners). */
   ownerId?: string;
   guestControl: GuestControl;
@@ -91,6 +93,11 @@ export interface ChatMessage {
   ct?: string;
   /** The start of the words, sealed apart, so that a notice can show them without the whole message. Protocol 15. */
   pv?: string;
+  /**
+   * What the message carries besides words (a song, pictures, a sticker): an object with a kind `k` that the server does
+   * not read further. In a room with end-to-end encryption it is inside [ct]. Protocol 18.
+   */
+  x?: Record<string, unknown>;
   /** The message this one answers, as it was when the answer was written. Protocol 12. */
   re?: ChatQuote;
   /** Reactions to this message, by the public id of each member who gave one; the value is a name of [REACTIONS] or an emoji. Protocol 12. */
@@ -169,7 +176,7 @@ export type ClientMessage =
   | { t: "kick"; id: string }
   | { t: "room.name"; name: string }
   /** The look of the chat for the whole room; restricted like the name. Protocol 16. */
-  | { t: "room.theme"; theme: string; bg?: string | null }
+  | { t: "room.theme"; theme: string; bg?: string | null; bgs?: string | null }
   /** Owner only. */
   | { t: "room.settings"; guestControl: GuestControl }
   /** [rtt] is the best round trip the device measured; the room schedules starts from the slowest. Absent from older apps. */
@@ -235,7 +242,9 @@ export type ClientMessage =
   | { t: "advanced"; epoch: number; itemId: string; startedAt: number }
   | { t: "report"; epoch: number; posMs: number; bufferMs: number }
   /** A chat message to everybody; [cid] is the device's own id for it, sent back with it; [reply] the number of the message it answers (protocol 12). Protocol 10. */
-  | { t: "chat"; text?: string; cid?: string; reply?: number; ct?: string; pv?: string }
+  | { t: "chat"; text?: string; cid?: string; reply?: number; ct?: string; pv?: string; x?: Record<string, unknown> }
+  /** Asks for tickets to put [files] (their sizes in bytes, once encrypted) in the room's bucket; answered with `media.ticket`. [id] comes back with it. Protocol 18. */
+  | { t: "media.put"; files: { n: number }[]; id?: string }
   /** A reaction, [n] times in a row (1 when absent): one of the names in [REACTIONS], or an emoji. Not kept. Protocol 10. */
   | { t: "react"; e: string; n?: number }
   /** This member's reaction to the chat message [id]: a name of [REACTIONS] or an emoji, null takes it away. Protocol 12. */
@@ -264,7 +273,9 @@ export type ServerMessage =
    */
   | { t: "autoplay.fill"; epoch: number; videoId: string; title: string }
   /** The picture of [id] ([av] is its fingerprint); both are absent when that member has none. */
-  | { t: "avatar"; id: string; av?: string; data?: string }
+  | { t: "avatar"; id: string; av?: string; data?: string; sealed?: true }
+  /** One ticket per file asked for, in the same order: put the file at [url] (a path of this server) with [token] added as `token`. Protocol 18. */
+  | { t: "media.ticket"; id?: string; tickets: { m: string; url: string; token: string }[] }
   /** A new chat message, sent to everybody including its sender. Protocol 10. */
   | { t: "chat"; msg: ChatMessage }
   /** The room's last chat messages, oldest first, sent to a device right after the state it gets on joining. Protocol 10. [receipts] since 12. */
@@ -280,4 +291,4 @@ export type ServerMessage =
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */
-export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder" | "theme"> & { theme: string };
+export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder" | "theme" | "bgSealed"> & { theme: string };

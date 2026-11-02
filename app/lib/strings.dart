@@ -712,17 +712,17 @@ abstract final class S {
   static String get encryptionTitle =>
       _t('End-to-end encrypted chat', 'Chat mã hoá đầu cuối');
   static String get encryptionOffHelp => _t(
-    'Only people with the invitation link can read the messages. The server cannot. The photo behind the chat, the room name, the queue and profile pictures are not encrypted.',
-    'Chỉ người có liên kết mời đọc được tin nhắn. Máy chủ cũng không đọc được. Ảnh nền chat, tên phòng, hàng đợi và ảnh đại diện thì không được mã hoá.',
+    'Only people with the invitation link can read the messages. The server cannot, nor the pictures and the photo behind the chat. The room name, the queue and profile pictures are not encrypted.',
+    'Chỉ người có liên kết mời đọc được tin nhắn. Máy chủ cũng không đọc được, kể cả ảnh gửi trong chat và ảnh nền chat. Tên phòng, hàng đợi và ảnh đại diện thì không được mã hoá.',
   );
   static String get encryptionOnHelp => _t(
-    'Only people with the invitation link can read the messages. The server cannot, and it cannot be turned off. The photo behind the chat, the room name, the queue and profile pictures are not encrypted.',
-    'Chỉ người có liên kết mời đọc được tin nhắn. Máy chủ không đọc được, và không thể tắt. Ảnh nền chat, tên phòng, hàng đợi và ảnh đại diện thì không được mã hoá.',
+    'Only people with the invitation link can read the messages. The server cannot, nor the pictures and the photo behind the chat, and it cannot be turned off. The room name, the queue and profile pictures are not encrypted.',
+    'Chỉ người có liên kết mời đọc được tin nhắn. Máy chủ không đọc được, kể cả ảnh gửi trong chat và ảnh nền chat, và không thể tắt. Tên phòng, hàng đợi và ảnh đại diện thì không được mã hoá.',
   );
   static String get encryptionTurnOn => _t('Turn on', 'Bật');
   static String get encryptionConfirmBody => _t(
-    'Only the text of the messages is encrypted, not the photo behind the chat, the room name, the queue or profile pictures. The messages so far are deleted. Everyone needs the new invitation link to read the chat, and people who have not updated the app cannot stay in the room. This cannot be turned off.',
-    'Chỉ nội dung tin nhắn được mã hoá, không gồm ảnh nền chat, tên phòng, hàng đợi hay ảnh đại diện. Các tin nhắn đến giờ sẽ bị xoá. Mọi người cần liên kết mời mới để đọc chat, và ai chưa cập nhật app sẽ không ở lại phòng được. Không thể tắt lại.',
+    'The messages, the pictures sent in the chat and the photo behind the chat are encrypted, not the room name, the queue or profile pictures. The messages so far are deleted. Everyone needs the new invitation link to read the chat, and people who have not updated the app cannot stay in the room. This cannot be turned off.',
+    'Tin nhắn, ảnh gửi trong chat và ảnh nền chat được mã hoá, không gồm tên phòng, hàng đợi hay ảnh đại diện. Các tin nhắn đến giờ sẽ bị xoá. Mọi người cần liên kết mời mới để đọc chat, và ai chưa cập nhật app sẽ không ở lại phòng được. Không thể tắt lại.',
   );
   static String get encryptionTurnedOn => _t(
     'On. Send the new invitation link to everyone.',
@@ -755,6 +755,112 @@ abstract final class S {
   static String get chatNotSent =>
       _t('Not sent · tap to try again', 'Chưa gửi được · chạm để thử lại');
   static String get chatReply => _t('Reply', 'Trả lời');
+  static String chatPhotoText(int count) => count == 1
+      ? _t('📷 Photo', '📷 Ảnh')
+      : _t('📷 $count photos', '📷 $count ảnh');
+  static String get chatPhotosFull => _t(
+    'This room is out of space for pictures',
+    'Phòng tạm hết chỗ cho ảnh',
+  );
+  static String chatPhotoTooLarge(String name) => _t(
+    '$name is too large to send (animated pictures can be 3 MB at most)',
+    '$name quá lớn để gửi (ảnh động tối đa 3 MB)',
+  );
+  static String chatPhotoUnreadable(String name) => _t(
+    '$name is not a picture that can be sent',
+    '$name không phải ảnh có thể gửi',
+  );
+  static String get chatAddPhoto => _t('Add photos', 'Thêm ảnh');
+  static String get chatAddSong => _t('Send a song', 'Gửi bài hát');
+  static String get chatAddSticker => _t('Stickers', 'Nhãn dán');
+  static String get chatKeyboard => _t('Keyboard', 'Bàn phím');
+  static String get chatAttachMore => _t('More', 'Thêm');
+  static String get stickerSearchHint =>
+      _t('Search stickers', 'Tìm nhãn dán');
+  static String get stickerSearchClear => _t('Clear', 'Xóa chữ');
+  static String get stickerRecent => _t('Recent', 'Gần đây');
+  static String get stickerRecentEmpty => _t(
+    'The stickers you send show up here',
+    'Nhãn dán bạn đã gửi sẽ hiện ở đây',
+  );
+  static String get stickerNoMatch =>
+      _t('No stickers match', 'Không có nhãn dán phù hợp');
+  static String get stickerNone => _t(
+    'No sticker packs yet. Open the store to add some.',
+    'Chưa có bộ nhãn dán nào. Mở cửa hàng để thêm.',
+  );
+  static String get stickerStore => _t('Sticker store', 'Cửa hàng nhãn dán');
+  static String get stickerAddPack => _t('Add', 'Thêm');
+  static String get stickerRemovePack => _t('Remove', 'Gỡ');
+  static String get stickerDownload => _t('Download', 'Tải về');
+  static String get stickerNotDownloaded =>
+      _t('Not downloaded yet', 'Chưa tải về');
+  static String stickerDownloading(int percent) =>
+      _t('Downloading $percent%', 'Đang tải $percent%');
+  static String stickerCount(int count) =>
+      _t('$count stickers', '$count nhãn dán');
+  static String get stickerStoreEmpty => _t(
+    'The sticker store is not open right now',
+    'Cửa hàng nhãn dán chưa mở được',
+  );
+  static String get stickerStoreEmptyBody => _t(
+    'Check your connection and try again.',
+    'Hãy kiểm tra kết nối rồi thử lại.',
+  );
+  static String stickerCredit(String name, String by, String license) => _t(
+    'Art: $name by $by · $license',
+    'Hình: $name của $by · $license',
+  );
+  static String get stickerLicenses =>
+      _t('Open-source licenses', 'Giấy phép mã nguồn mở');
+  static String get chatSongSearchHint =>
+      _t('Search for a song', 'Tìm một bài hát');
+  static String get chatSongNoResults =>
+      _t('No songs found', 'Không tìm thấy bài hát');
+  static String get chatSongSearchFailed => _t(
+    'Could not search. Check your connection.',
+    'Không tìm được. Hãy kiểm tra kết nối.',
+  );
+  static String get chatSongEmpty => _t(
+    'Search for a song to send to the room',
+    'Tìm một bài hát để gửi vào phòng',
+  );
+  static String get chatSongDrop =>
+      _t('Do not send the song', 'Không gửi bài hát');
+  static String get chatSongPlayNow => _t('Play now', 'Phát ngay');
+  static String get chatSongPlaying => _t('Now playing', 'Đang phát');
+  static String get chatSongQueued => _t('In the queue', 'Trong hàng đợi');
+  static String get songSendToChat =>
+      _t('Send to room chat', 'Gửi vào chat phòng');
+  static String get songSentToChat =>
+      _t('Sent to the chat', 'Đã gửi vào chat');
+  static String get photoGallery => _t('Photo library', 'Thư viện ảnh');
+  static String get photoCamera => _t('Camera', 'Máy ảnh');
+  static String get photoPreparing =>
+      _t('Preparing photos…', 'Đang chuẩn bị ảnh…');
+  static String get photoCaptionHint =>
+      _t('Add a caption…', 'Thêm chú thích…');
+  static String get photoRemove => _t('Remove photo', 'Bỏ ảnh này');
+  static String get photoReorderHint =>
+      _t('Hold a photo and drag to reorder', 'Giữ và kéo ảnh để đổi thứ tự');
+  static String photoCount(int count) => count == 1
+      ? _t('1 photo', '1 ảnh')
+      : _t('$count photos', '$count ảnh');
+  static String get photoSave => _t('Save photo', 'Lưu ảnh');
+  static String get photoSaveAll => _t('Save all photos', 'Lưu tất cả ảnh');
+  static String get photoSaved => _t('Photo saved', 'Đã lưu ảnh');
+  static String photosSaved(int count) => count == 1
+      ? photoSaved
+      : _t('$count photos saved', 'Đã lưu $count ảnh');
+  static String get photoSaveFailed =>
+      _t('Could not save the photo', 'Không lưu được ảnh');
+  static String get photoSaveDenied => _t(
+    'Allow access to your photos to save pictures',
+    'Hãy cho phép truy cập ảnh để lưu ảnh',
+  );
+  static String get photoLoadFailed =>
+      _t('This photo could not be loaded', 'Không tải được ảnh này');
+  static String get chatCancelSend => _t('Cancel sending', 'Hủy gửi');
   static String chatReplyingTo(String name) => _t(
     'Replying to ${name.isEmpty ? someone : name}',
     'Đang trả lời ${name.isEmpty ? someone : name}',

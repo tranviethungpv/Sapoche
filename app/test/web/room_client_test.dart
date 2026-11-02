@@ -106,7 +106,7 @@ void main() {
     );
     final heard = <(String, String?, String?)>[];
     final client = _client(room);
-    client.onAvatar = (id, av, data) => heard.add((id, av, data));
+    client.onAvatar = (id, av, data, _) => heard.add((id, av, data));
     client.setAvatar('TUlORQ==');
     client.start();
     await _settle();
@@ -143,7 +143,7 @@ void main() {
     final room = _Room(state: () => _state(8, members(',"av":"aaaa0001"')));
     final heard = <(String, String?, String?)>[];
     final client = _client(room);
-    client.onAvatar = (id, av, data) => heard.add((id, av, data));
+    client.onAvatar = (id, av, data, _) => heard.add((id, av, data));
     client.start();
     await _settle();
     expect(room.get('you'), hasLength(1));

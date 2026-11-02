@@ -8,6 +8,7 @@ import '../scope.dart';
 import 'download_actions.dart';
 import 'not_interested.dart';
 import 'playlist_picker.dart';
+import 'queue_actions.dart';
 import 'track_tile.dart';
 
 /// The "more" menu of a song row: play it next, queue it, like it.
@@ -39,6 +40,7 @@ class TrackMenu extends StatelessWidget {
         'next' => onPlayNext(),
         'like' => library.toggleLike(track),
         'playlist' => showAddToPlaylist(context, [track]),
+        'chat' => sendTrackToChat(context, track),
         'download' => startDownload(context, [track]),
         'undownload' => library.removeDownload(track.videoId),
         'blocked' => showNotInterested(context, track),
@@ -48,6 +50,9 @@ class TrackMenu extends StatelessWidget {
         PopupMenuItem(value: 'next', child: Text(S.playNext)),
         PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
         PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
+        // Only where the room has a chat to send it to
+        if (canSendToChat(AppScope.roomOf(context), track))
+          PopupMenuItem(value: 'chat', child: Text(S.songSendToChat)),
         // A file on this phone is not downloaded, and has no YouTube artist to be tired of; a browser downloads nothing
         if (!track.isLocal && !kIsWeb)
           ...switch (library.downloadState(track.videoId)) {

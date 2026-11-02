@@ -1,0 +1,8 @@
+Pictures, songs and stickers in the room chat
+- Send pictures: pick up to 10 from your library (or take one) and they go as one stack in the chat, like Messenger. Tap the stack to open the album, then swipe through each picture, zoom, and save it to your photos. GIFs stay moving. Pictures are encrypted on your phone before they leave it, so the server only ever holds scrambled files.
+- Send a song: the new note button lets you search a song (or pick the one playing, a liked one, or one you heard lately) and drops a card in the chat. Anyone can play it now, add it to the queue, or like it from the card. Every song menu also has "Send to room chat".
+- Stickers: the smiley button opens a sticker tray with an animated pack and a 3D pack, a search box and recents. Tap a sticker to send it, hold it to see it big. The sticker store lists the packs and what each one weighs.
+- One to three emoji on their own are now drawn big, with no bubble.
+- In a room with end-to-end encryption, the picture behind the chat is now encrypted too (it used to be the one thing the server could see). A picture set before the room was encrypted is removed when encryption is turned on, and the colours stay.
+- The text boxes of the chat give the buttons room: while you type, they fold into one small arrow.
+- Pictures and songs need the server of this release, which is already running. Older apps still see a short text in place of a picture, a song or a sticker.

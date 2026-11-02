@@ -87,6 +87,73 @@ void main() {
     expect(await ChatCipher.openMessage(secret, room, ChatMessage(id: 7, by: 'a1', name: '', text: 'plain', at: 5)), isNull);
   });
 
+  test(
+    'what a message carries besides words is sealed with it and comes back',
+    () async {
+      final song = {'k': 'song', 'v': 'bNp9pn0ni3I', 'ti': 'A song'};
+      final sealed = await ChatCipher.sealMessage(
+        secret,
+        room,
+        'a1',
+        '🎵 A song',
+        null,
+        song,
+      );
+      final read = await ChatCipher.openMessage(
+        secret,
+        room,
+        ChatMessage(
+          id: 7,
+          by: 'a1',
+          name: 'Ann',
+          text: '',
+          at: 5,
+          ct: sealed.ct,
+          pv: sealed.pv,
+        ),
+      );
+      expect(read!.text, '🎵 A song');
+      expect(read.x, song);
+      final plain = await ChatCipher.sealMessage(
+        secret,
+        room,
+        'a1',
+        'hi',
+        null,
+      );
+      expect(
+        (await ChatCipher.openMessage(
+          secret,
+          room,
+          ChatMessage(
+            id: 8,
+            by: 'a1',
+            name: 'Ann',
+            text: '',
+            at: 5,
+            ct: plain.ct,
+          ),
+        ))!.x,
+        isNull,
+      );
+    },
+  );
+
+  test('the picture behind a sealed chat is sealed for the room and cannot pass for a message', () async {
+    final jpeg = List<int>.generate(300, (i) => (i * 7) & 255);
+    final envelope = await ChatCipher.sealBackground(secret, room, jpeg);
+    expect(await ChatCipher.openBackground(secret, room, envelope), jpeg);
+    expect(await ChatCipher.openBackground(secret, 'XYZ789', envelope), isNull);
+    expect(
+      await ChatCipher.openBackground(ChatCipher.newSecret(), room, envelope),
+      isNull,
+    );
+    expect(
+      await ChatCipher.open(secret, room, 'b9f77f9b6e1bf750', envelope),
+      isNull,
+    );
+  });
+
   test('a preview is cut to 120 characters', () async {
     final sealed = await ChatCipher.sealMessage(secret, room, 'a1', 'é' * 300, null);
     expect(utf8.decode((await ChatCipher.open(secret, room, 'a1', sealed.pv, preview: true))!), 'é' * 120);

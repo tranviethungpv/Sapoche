@@ -7,6 +7,7 @@ import android.net.Network
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Base64
 import android.view.Surface
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -32,6 +33,7 @@ import app.sapoche.sync.SleepTimer
 import app.sapoche.sync.TrackRef
 import app.sapoche.sync.ServerMessage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,6 +50,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonObject
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -124,6 +128,9 @@ class GroupController(
 
     private val _notices = MutableSharedFlow<Notice>(extraBufferCapacity = 8)
     val notices: SharedFlow<Notice> = _notices.asSharedFlow()
+
+    /** Callers of [mediaTickets] waiting for the room's answer, by the id of their request. */
+    private val ticketWaiters = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<ServerMessage>>()
 
     /** A member's picture, as base64; [data] is null when they have none (any more). */
     data class Avatar(val id: String, val data: String?)
@@ -219,6 +226,11 @@ class GroupController(
         return SapocheApp.roomKeys.get(code)?.let(ChatCipher::encodeSecret)
     }
 
+    private fun openBackground(room: String, envelope: String): String? {
+        val secret = SapocheApp.roomKeys.get(room) ?: return null
+        return ChatCipher.openBackground(secret, room, envelope)?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+    }
+
     /** Asks the room for the messages older than number [before]; false when there is no connection to ask on. */
     fun loadOlderChat(before: Long): Boolean = client?.send(Protocol.chatBefore(before)) ?: false
 
@@ -229,15 +241,15 @@ class GroupController(
     val reactions: SharedFlow<Reaction> = _reactions.asSharedFlow()
 
     /** Sends a chat message, as an answer to message number [reply] when it has one; false when there is no connection to send it on. */
-    fun sendChat(text: String, cid: String, reply: Long? = null, quote: ChatQuote? = null): Boolean {
+    fun sendChat(text: String, cid: String, reply: Long? = null, quote: ChatQuote? = null, extra: JsonObject? = null): Boolean {
         val sender = client ?: return false
         val code = roomCode ?: return false
         val snapshot = session?.snapshot?.value
-        if (snapshot?.state?.enc != true) return sender.send(Protocol.chat(text, cid, reply))
-        // A sealed room: the words go sealed, with what they answer inside; without the secret there is nothing to send
+        if (snapshot?.state?.enc != true) return sender.send(Protocol.chat(text, cid, reply, extra))
+        // A sealed room: the words go sealed, with what they answer and what they carry inside; without the secret there is nothing to send
         val secret = SapocheApp.roomKeys.get(code) ?: return false
         val you = snapshot.you ?: return false
-        val (ct, pv) = ChatCipher.sealMessage(secret, code, you, text, quote)
+        val (ct, pv) = ChatCipher.sealMessage(secret, code, you, text, quote, extra)
         return sender.send(Protocol.chatSealed(ct, pv, cid, reply))
     }
 
@@ -437,10 +449,15 @@ class GroupController(
         newClient.onMessage = {
             if (it is ServerMessage.Error) _errors.tryEmit(it)
             if (it is ServerMessage.AutoplayFill) fillRoom(it)
+            if (it is ServerMessage.MediaTicket) ticketWaiters[it.id]?.complete(it)
+            // An error of the pictures is the answer to the one request that waits for it
+            if (it is ServerMessage.Error && it.code.startsWith("media_")) ticketWaiters.values.firstOrNull()?.complete(it)
             onChat(code.uppercase(), it)
             newSession.onMessage(it)
         }
-        newClient.onAvatar = { memberId, _, data ->
+        newClient.onAvatar = { memberId, _, received, sealed ->
+            // The picture behind a sealed chat is opened here, so the screen gets a JPEG as ever; without the secret there is none
+            val data = if (!sealed || received == null) received else openBackground(code, received)
             if (data == null) pictures.remove(memberId) else pictures[memberId] = data
             _avatars.tryEmit(Avatar(memberId, data))
         }
@@ -790,7 +807,31 @@ class GroupController(
     // Only meaningful in a room
     fun requestKick(memberId: String) = send(Protocol.kick(memberId))
     fun requestRoomName(name: String) = send(Protocol.roomName(name))
-    fun requestRoomTheme(theme: String, bg: String?) = send(Protocol.roomTheme(theme, bg))
+    fun requestRoomTheme(theme: String, bg: String?): Boolean {
+        val code = roomCode ?: return false
+        if (session?.snapshot?.value?.state?.enc != true) return send(Protocol.roomTheme(theme, bg))
+        // A sealed room keeps the picture sealed: without the secret there is nothing to send, and a clear one is not taken
+        val secret = SapocheApp.roomKeys.get(code) ?: return false
+        val sealed = bg?.let { ChatCipher.sealBackground(secret, code, Base64.decode(it, Base64.DEFAULT)) }
+        return send(Protocol.roomTheme(theme, sealed, sealed = true))
+    }
+
+    /** Tickets for [sizes] files, or the code of the error the room answered with (`media_full`, ...) or `offline`. */
+    suspend fun mediaTickets(sizes: List<Long>): Map<String, Any?> {
+        val id = java.util.UUID.randomUUID().toString()
+        val answer = CompletableDeferred<ServerMessage>()
+        ticketWaiters[id] = answer
+        try {
+            if (client?.send(Protocol.mediaPut(sizes, id)) != true) return mapOf("error" to "offline")
+            return when (val message = withTimeoutOrNull(TICKET_WAIT_MS) { answer.await() }) {
+                is ServerMessage.MediaTicket -> mapOf("tickets" to message.tickets.map { mapOf("m" to it.m, "url" to it.url, "token" to it.token) })
+                is ServerMessage.Error -> mapOf("error" to message.code)
+                else -> mapOf("error" to "offline")
+            }
+        } finally {
+            ticketWaiters.remove(id)
+        }
+    }
     fun requestRoomSettings(guestControl: String) = send(Protocol.roomSettings(guestControl))
     fun requestRoomAutoplay(on: Boolean) = send(Protocol.autoplay(on))
 
@@ -938,5 +979,7 @@ class GroupController(
 
         /** The chat messages kept, as many as the room keeps. */
         const val CHAT_KEPT = 100
+        /** How long a request for tickets waits for the room. */
+        const val TICKET_WAIT_MS = 15_000L
     }
 }

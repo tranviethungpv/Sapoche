@@ -42,8 +42,11 @@ class FakeBackend implements Backend {
   @override
   Future<String?> setupLink() async => setupLinkValue;
 
+  /// The folder the app may keep files in; null where there is none.
+  String? cacheDir;
+
   @override
-  Future<String?> cacheFolder() async => null;
+  Future<String?> cacheFolder() async => cacheDir;
 
   @override
   Future<String> createRoom(String name) async {
@@ -829,11 +832,57 @@ class FakeBackend implements Backend {
   bool chatConnected = true;
 
   @override
-  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote}) async {
+  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote, Map<String, Object?>? extra}) async {
     await _record(reply == null ? 'sendChat $text' : 'sendChat $text reply $reply');
     lastChatCid = cid;
     lastQuote = quote;
+    lastExtra = extra;
     return chatConnected;
+  }
+
+  /// What the last message sent carried besides words.
+  Map<String, Object?>? lastExtra;
+
+  /// What the room answers to a request for tickets; null refuses with `media_full`.
+  MediaTickets Function(List<int> sizes)? ticketsFor;
+
+  /// The files put with [uploadMedia], by ticket id, and the files [downloadMedia] gives back, by file id.
+  final uploaded = <String, Uint8List>{};
+  final mediaFiles = <String, Uint8List>{};
+
+  @override
+  Future<MediaTickets> mediaTickets(List<int> sizes) async {
+    await _record('mediaTickets ${sizes.join(',')}');
+    return ticketsFor?.call(sizes) ??
+        MediaTickets.granted([
+          for (var i = 0; i < sizes.length; i++)
+            MediaTicket(
+              m: 'file${'$i'.padLeft(17, '0')}',
+              url: '/media/ABC234/file$i?n=${sizes[i]}&e=9',
+              token: 'tok$i',
+            ),
+        ]);
+  }
+
+  @override
+  Future<bool> uploadMedia(MediaTicket ticket, Uint8List bytes) async {
+    await _record('uploadMedia ${ticket.m}');
+    if (!(await onUpload?.call(ticket) ?? true)) return false;
+    uploaded[ticket.m] = bytes;
+    return true;
+  }
+
+  /// Runs while a file is put up, to hold it back or to make it fail (false).
+  Future<bool> Function(MediaTicket ticket)? onUpload;
+
+  /// Holds [downloadMedia] back, to have several callers wait for the same file.
+  Future<void> Function(String m)? onDownload;
+
+  @override
+  Future<Uint8List?> downloadMedia(String room, String m) async {
+    await _record('downloadMedia $m');
+    await onDownload?.call(m);
+    return mediaFiles[m];
   }
 
   /// The quote that went with the last message sent, as a sealed room needs it.

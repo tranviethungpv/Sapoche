@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -394,11 +395,26 @@ class WebBackend extends BackendDefaults {
     client.onMessage = (message) {
       if (message is ErrorMessage) _events.add(ErrorEvent(ServerError(message.code, message.message)));
       if (message is AutoplayFillMessage) _fillRoom(message);
+      if (message is MediaTicketMessage) {
+        _ticketWaiters.remove(message.id)?.complete(MediaTickets.granted(message.tickets));
+      }
+      // An error of the pictures is the answer to the one request that waits for it
+      if (message is ErrorMessage &&
+          message.code.startsWith('media_') &&
+          _ticketWaiters.isNotEmpty) {
+        _ticketWaiters
+            .remove(_ticketWaiters.keys.first)
+            ?.complete(MediaTickets.refused(message.code));
+      }
       _onChat(code, message);
       session.onMessage(message);
     };
     client.onConnected = session.onReconnected;
-    client.onAvatar = (id, _, data) => _events.add(AvatarEvent(id, data == null ? null : base64Decode(data)));
+    client.onAvatar = (id, _, data, sealed) {
+      if (!sealed || data == null) return _events.add(AvatarEvent(id, data == null ? null : base64Decode(data)));
+      // The picture behind a sealed chat is opened here, so the screen gets a JPEG as ever; without the secret there is none
+      _openBackground(code, data).then((jpeg) => _events.add(AvatarEvent(id, jpeg))).ignore();
+    };
     client.setAvatar(_avatar);
     client.onConnection = (c) {
       _connection = c;
@@ -500,7 +516,84 @@ class WebBackend extends BackendDefaults {
   @override
   Future<void> setRoomTheme(String theme, {String? background}) async {
     _inRoom();
-    _send(Wire.roomTheme(theme, background));
+    final room = _roomCode;
+    if (_session?.snapshot.state?.enc != true || room == null) {
+      _send(Wire.roomTheme(theme, background));
+      return;
+    }
+    // A sealed room keeps the picture sealed: without the secret there is nothing to send, and a clear one is not taken
+    final secret = ChatCipher.decodeSecret(_secrets[room] ?? '');
+    if (secret == null) return;
+    final sealed = background == null
+        ? null
+        : await ChatCipher.sealBackground(
+            secret,
+            room,
+            base64Decode(background),
+          );
+    _send(Wire.roomTheme(theme, sealed, sealed: true));
+  }
+
+  Future<Uint8List?> _openBackground(String room, String envelope) async {
+    final secret = ChatCipher.decodeSecret(_secrets[room.toUpperCase()] ?? '');
+    return secret == null
+        ? null
+        : ChatCipher.openBackground(secret, room, envelope);
+  }
+
+  /// Callers of [mediaTickets] waiting for the room's answer, by the id of their request.
+  final _ticketWaiters = <String, Completer<MediaTickets>>{};
+
+  @override
+  Future<MediaTickets> mediaTickets(List<int> sizes) async {
+    _inRoom();
+    final id =
+        '${DateTime.now().microsecondsSinceEpoch}-${_ticketWaiters.length}';
+    final answer = _ticketWaiters[id] = Completer<MediaTickets>();
+    if (!_send(Wire.mediaPut(sizes, id))) {
+      _ticketWaiters.remove(id);
+      return const MediaTickets.refused('offline');
+    }
+    return answer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        _ticketWaiters.remove(id);
+        return const MediaTickets.refused('offline');
+      },
+    );
+  }
+
+  @override
+  Future<bool> uploadMedia(MediaTicket ticket, Uint8List bytes) async {
+    // Only the path of a ticket: this must not be a way to send the key of the group to another address
+    if (!ticket.url.startsWith('/media/') || _server.isEmpty) return false;
+    try {
+      final reply = await _http.put(
+        Uri.parse('$_server${ticket.url}&token=${ticket.token}'),
+        headers: {..._authHeaders, 'Content-Type': 'application/octet-stream'},
+        body: bytes,
+      );
+      return reply.statusCode >= 200 && reply.statusCode < 300;
+    } on Object {
+      return false;
+    }
+  }
+
+  @override
+  Future<Uint8List?> downloadMedia(String room, String m) async {
+    final code = room.trim().toUpperCase();
+    if (!RegExp(r'^[A-Z0-9]{6}$').hasMatch(code) || !RegExp(r'^[A-Za-z0-9_-]{22}$').hasMatch(m) || _server.isEmpty) {
+      return null;
+    }
+    try {
+      final reply = await _http.get(
+        Uri.parse('$_server/media/$code/$m'),
+        headers: _authHeaders,
+      );
+      return reply.statusCode == 200 ? reply.bodyBytes : null;
+    } on Object {
+      return null;
+    }
   }
 
   @override
@@ -775,16 +868,23 @@ class WebBackend extends BackendDefaults {
   // ------------------------------------------------------------------ chat and reactions
 
   @override
-  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote}) async {
+  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote, Map<String, Object?>? extra}) async {
     _inRoom();
     final group = _session?.snapshot;
-    if (group?.state?.enc != true) return _send(Wire.chat(text, cid, reply: reply));
-    // A sealed room: the words go sealed, with what they answer inside; without the secret there is nothing to send
+    if (group?.state?.enc != true) return _send(Wire.chat(text, cid, reply: reply, x: extra));
+    // A sealed room: the words go sealed, with what they answer and what they carry inside; without the secret there is nothing to send
     final room = _roomCode;
     final secret = room == null ? null : ChatCipher.decodeSecret(_secrets[room] ?? '');
     final you = group?.you;
     if (room == null || secret == null || you == null) return false;
-    final sealed = await ChatCipher.sealMessage(secret, room, you, text, quote);
+    final sealed = await ChatCipher.sealMessage(
+      secret,
+      room,
+      you,
+      text,
+      quote,
+      extra,
+    );
     return _send(Wire.chatSealed(sealed.ct, sealed.pv, cid, reply: reply));
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../data/chat_extra.dart';
 import '../../data/models.dart';
 import '../../data/room_controller.dart';
 import '../../strings.dart';
@@ -32,6 +33,26 @@ Future<void> queueTrack(
         action: undo,
         // Long enough to reach the way back
         duration: Duration(milliseconds: undo == null ? 1400 : 4000),
+      ),
+    );
+}
+
+/// Whether the menu of a song offers to send [track] to the chat: in a room that has one, and for a song of YouTube.
+bool canSendToChat(RoomController room, Track track) =>
+    room.hasChat && SongExtra.isVideoId(track.videoId);
+
+/// Sends [track] to the room's chat as a card of the song, and says so.
+void sendTrackToChat(BuildContext context, Track track) {
+  final room = AppScope.roomOf(context);
+  final messenger = ScaffoldMessenger.of(context);
+  if (!room.sendSong(track)) return;
+  HapticFeedback.selectionClick();
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(S.songSentToChat),
+        duration: const Duration(milliseconds: 1400),
       ),
     );
 }

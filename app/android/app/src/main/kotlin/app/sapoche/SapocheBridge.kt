@@ -48,6 +48,8 @@ import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import org.json.JSONObject
 import java.io.IOException
 
@@ -804,8 +806,21 @@ class SapocheBridge(
                             call.argument<String>("cid").orEmpty(),
                             call.argument<Number>("reply")?.toLong(),
                             quote,
+                            // What the message carries besides words, as JSON: native only passes it on, or seals it
+                            call.argument<String>("extra")?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() },
                         )
                     }
+                    "mediaTickets" -> {
+                        requireRoom(group)
+                        return group.mediaTickets(call.argument<List<Number>>("sizes").orEmpty().map { it.toLong() })
+                    }
+                    "uploadMedia" -> return MediaHttp.put(
+                        http,
+                        call.argument<String>("url").orEmpty(),
+                        call.argument<String>("token").orEmpty(),
+                        call.argument<ByteArray>("bytes") ?: return false,
+                    )
+                    "downloadMedia" -> return MediaHttp.get(http, call.argument<String>("room").orEmpty(), call.argument<String>("m").orEmpty())
                     "enableEncryption" -> {
                         requireRoom(group)
                         return group.enableEncryption()

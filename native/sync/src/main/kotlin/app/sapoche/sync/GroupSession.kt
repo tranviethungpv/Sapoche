@@ -212,7 +212,7 @@ class GroupSession(
                 is ServerMessage.Pause -> onPause(message)
                 is ServerMessage.Advance -> onAdvance(message)
                 is ServerMessage.Pong -> Unit // consumed by the connection layer
-                is ServerMessage.Avatar -> Unit // consumed by the connection layer too
+                is ServerMessage.Avatar, is ServerMessage.MediaTicket -> Unit // consumed by the connection layer and the controller
                 is ServerMessage.AutoplayFill -> Unit // answered by the controller, which can look for songs
                 is ServerMessage.Chat, is ServerMessage.ChatHistory, is ServerMessage.ChatPage, is ServerMessage.ChatUpdate, is ServerMessage.ChatReceipts, is ServerMessage.React -> Unit // shown by the controller
                 is ServerMessage.Error -> log("server error ${message.code}: ${message.message}")

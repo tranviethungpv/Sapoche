@@ -1,0 +1,8 @@
+Ảnh, bài hát và sticker trong chat phòng
+- Gửi ảnh: chọn tới 10 ảnh trong thư viện (hoặc chụp một ảnh), ảnh gửi đi thành một chồng trong chat như Messenger. Chạm vào chồng để mở album, rồi vuốt xem từng ảnh, phóng to và lưu vào thư viện ảnh. GIF vẫn chuyển động. Ảnh được mã hoá ngay trên điện thoại trước khi gửi, nên máy chủ chỉ giữ những tệp đã bị xáo trộn.
+- Gửi bài hát: nút nốt nhạc mới cho bạn tìm một bài (hoặc chọn bài đang phát, bài đã thích, bài vừa nghe) rồi thả một thẻ vào chat. Ai cũng phát ngay, thêm vào hàng đợi hoặc thả tim được từ chính thẻ. Menu của mọi bài hát cũng có "Gửi vào chat phòng".
+- Sticker: nút mặt cười mở khay sticker với một gói động và một gói 3D, ô tìm kiếm và mục gần đây. Chạm một sticker để gửi, giữ để xem to. Kho sticker liệt kê các gói và dung lượng từng gói.
+- Một đến ba emoji đứng riêng nay được vẽ to, không có bong bóng.
+- Ở phòng có mã hoá đầu cuối, ảnh nền chat nay cũng được mã hoá (trước đây là thứ duy nhất máy chủ nhìn thấy được). Ảnh nền đặt trước khi phòng bật mã hoá sẽ bị xoá khi bật, màu vẫn giữ.
+- Các nút ở ô nhập chat nhường chỗ cho ô gõ: khi đang gõ, chúng gập lại thành một mũi tên nhỏ.
+- Ảnh và bài hát cần máy chủ của bản này, hiện đã chạy sẵn. App cũ vẫn thấy một dòng chữ ngắn thay cho ảnh, bài hát hay sticker.

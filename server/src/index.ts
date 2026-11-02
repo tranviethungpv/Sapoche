@@ -1,10 +1,11 @@
 import { ASSET_LINKS, joinPage, pageLanguage } from "./join-page";
 import { PROTOCOL_VERSION } from "./protocol";
+import { MEDIA_ROUTE, MediaLedger, serveMedia } from "./media";
 import { Room } from "./room";
 import { serveUpdate, UPDATE_ROUTE } from "./update";
 import { serveYoutube, YOUTUBE_ROUTE } from "./youtube";
 
-export { Room };
+export { MediaLedger, Room };
 
 // No 0/O/1/I/L: room codes are read out loud and typed on phones
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -43,7 +44,7 @@ async function authorized(request: Request, url: URL, env: Env): Promise<boolean
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     // Open on purpose: lets a phone tell "server down" from "wrong key"
@@ -69,8 +70,9 @@ export default {
     const pushKey = url.pathname === "/push/key";
     const update = url.pathname.match(UPDATE_ROUTE);
     const youtube = url.pathname.match(YOUTUBE_ROUTE);
+    const media = url.pathname.match(MEDIA_ROUTE);
     const isRoomRoute = url.pathname === "/rooms" || ROOM_ROUTE.test(url.pathname);
-    if ((isRoomRoute || update || youtube || pushKey) && !(await authorized(request, url, env))) {
+    if ((isRoomRoute || update || youtube || media || pushKey) && !(await authorized(request, url, env))) {
       return new Response("Unauthorized", { status: 401 });
     }
 
@@ -78,6 +80,7 @@ export default {
     if (pushKey) return env.VAPID_PUBLIC ? Response.json({ key: env.VAPID_PUBLIC }) : new Response("Not found", { status: 404 });
     if (update) return serveUpdate(request, env, update[1]);
     if (youtube) return serveYoutube(request, youtube[1]);
+    if (media) return serveMedia(request, env, ctx, media[1], media[2]);
 
     // Room codes are only a namespace: the Durable Object is created lazily on first connection
     if (request.method === "POST" && url.pathname === "/rooms") {

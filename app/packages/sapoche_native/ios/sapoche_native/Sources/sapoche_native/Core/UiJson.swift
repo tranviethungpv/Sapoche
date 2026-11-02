@@ -78,7 +78,7 @@ enum UiJson {
                 var quote: Any = NSNull()
                 if let re = message.re { quote = ["id": re.id, "by": re.by, "name": re.name, "text": re.text] as [String: Any] }
                 return ["id": message.id, "by": message.by, "name": message.name, "text": message.text, "at": message.at,
-                        "cid": message.cid ?? NSNull(), "re": quote, "rx": message.rx, "locked": message.locked]
+                        "cid": message.cid ?? NSNull(), "re": quote, "rx": message.rx, "x": message.x ?? NSNull(), "locked": message.locked]
             },
             "receipts": chat.receipts.map { table in
                 table.mapValues { ["d": $0.d, "r": $0.r] as [String: Any] } as [String: Any]

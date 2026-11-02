@@ -2,6 +2,18 @@ interface Env {
   ROOMS: DurableObjectNamespace<import("./room").Room>;
   /** Private bucket with the app's releases; see update.ts. Not set where no bucket is bound. */
   RELEASES?: R2Bucket;
+  /** Private bucket with the pictures sent in chat, encrypted by the sender; see media.ts. Not set where no bucket is bound. */
+  MEDIA?: R2Bucket;
+  /** Counts what the pictures of all rooms take together. */
+  LEDGER: DurableObjectNamespace<import("./media").MediaLedger>;
+  /** Secret that signs the tickets to put a picture in the bucket: `wrangler secret put MEDIA_SIGN`. Without it the server takes no pictures. */
+  MEDIA_SIGN?: string;
+  /** Limits of the pictures (bytes, count, milliseconds) the tests shorten: a file, a room, the account, files a member asks for in a day, a ticket's life. */
+  MEDIA_FILE_MAX?: string;
+  MEDIA_ROOM_MAX?: string;
+  MEDIA_ACCOUNT_MAX?: string;
+  MEDIA_PER_DAY?: string;
+  MEDIA_TICKET_MS?: string;
   /**
    * Shared secret every client must present, set with `wrangler secret put ROOM_KEY`. When it is not
    * set (local development) the server is open.

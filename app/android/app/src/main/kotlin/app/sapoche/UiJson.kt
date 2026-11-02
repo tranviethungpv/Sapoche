@@ -175,6 +175,8 @@ object UiJson {
                         } ?: JSONObject.NULL,
                     )
                     .put("rx", JSONObject(it.rx))
+                    // What the message carries besides words, as the JSON text the screen reads
+                    .put("x", it.x?.toString() ?: JSONObject.NULL)
                     .put("locked", it.locked)
             }),
         )

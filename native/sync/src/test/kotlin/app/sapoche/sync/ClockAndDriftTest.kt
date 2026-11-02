@@ -1,5 +1,8 @@
 package app.sapoche.sync
 
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -187,14 +190,37 @@ class ProtocolTest {
 
     @Test
     fun `builds the join with and without the create flag`() {
-        assertEquals("""{"t":"join","clientId":"c","name":"N","caps":["e2ee"]}""", Protocol.join("c", "N"))
-        assertEquals("""{"t":"join","clientId":"c","name":"N","create":true,"caps":["e2ee"]}""", Protocol.join("c", "N", create = true))
-        assertEquals("""{"t":"join","clientId":"c","name":"N","create":false,"caps":["e2ee"]}""", Protocol.join("c", "N", create = false))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","caps":["e2ee","bgseal"]}""", Protocol.join("c", "N"))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","create":true,"caps":["e2ee","bgseal"]}""", Protocol.join("c", "N", create = true))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","create":false,"caps":["e2ee","bgseal"]}""", Protocol.join("c", "N", create = false))
+    }
+
+    @Test
+    fun `sends what a message carries, asks for tickets for pictures and reads them`() {
+        val song = buildJsonObject { put("k", "song"); put("v", "bNp9pn0ni3I") }
+        assertEquals("""{"t":"chat","text":"hi","cid":"c1","x":{"k":"song","v":"bNp9pn0ni3I"}}""", Protocol.chat("hi", "c1", x = song))
+        assertEquals("""{"t":"chat","text":"hi","cid":"c1"}""", Protocol.chat("hi", "c1"))
+        assertEquals("""{"t":"media.put","id":"r1","files":[{"n":1500},{"n":900}]}""", Protocol.mediaPut(listOf(1500L, 900L), "r1"))
+        val ticket = Protocol.parse("""{"t":"media.ticket","id":"r1","tickets":[{"m":"abcdefghijklmnopqrstuv","url":"/media/ABC234/abcdefghijklmnopqrstuv?n=1500&e=9","token":"tok"}]}""")
+        assertEquals("r1", (ticket as ServerMessage.MediaTicket).id)
+        assertEquals("tok", ticket.tickets.single().token)
+        val message = Protocol.parse("""{"t":"chat","msg":{"id":3,"by":"a","name":"A","text":"📷 Photo","at":1,"x":{"k":"album","items":[]}}}""")
+        assertEquals("album", ((message as ServerMessage.Chat).msg.x?.get("k") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `the picture behind the chat goes in the clear or sealed, and comes back marked`() {
+        assertEquals("""{"t":"room.theme","theme":"ocean","bg":"AAAA"}""", Protocol.roomTheme("ocean", "AAAA"))
+        assertEquals("""{"t":"room.theme","theme":"ocean","bgs":"AQE"}""", Protocol.roomTheme("ocean", "AQE", sealed = true))
+        assertEquals("""{"t":"room.theme","theme":"ocean","bgs":null}""", Protocol.roomTheme("ocean", null, sealed = true))
+        val avatar = Protocol.parse("""{"t":"avatar","id":"room:bg","av":"3fa9c01e","data":"AQE","sealed":true}""") as ServerMessage.Avatar
+        assertTrue(avatar.sealed)
+        assertFalse((Protocol.parse("""{"t":"avatar","id":"a1","av":"x","data":"y"}""") as ServerMessage.Avatar).sealed)
     }
 
     @Test
     fun `tells the room the version of the app, and reads the version of the others`() {
-        assertEquals("""{"t":"join","clientId":"c","name":"N","caps":["e2ee"],"app":"1.26.0"}""", Protocol.join("c", "N", app = "1.26.0"))
+        assertEquals("""{"t":"join","clientId":"c","name":"N","caps":["e2ee","bgseal"],"app":"1.26.0"}""", Protocol.join("c", "N", app = "1.26.0"))
         val msg = Protocol.parse("""{"t":"members","members":[{"id":"a","name":"A","ready":true,"app":"1.25.0"},{"id":"b","name":"B","ready":true}]}""")
         val members = (msg as ServerMessage.Members).members
         assertEquals("1.25.0", members[0].app)

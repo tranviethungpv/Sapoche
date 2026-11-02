@@ -91,6 +91,27 @@ final class ChatCipherTests: XCTestCase {
         XCTAssertNil(ChatCipher.openMessage(secret: secret, room: "ABC234", message: plain))
     }
 
+    func testWhatAMessageCarriesBesidesWordsIsSealedWithItAndComesBack() throws {
+        let secret = ChatCipher.newSecret()
+        let song: [String: Any] = ["k": "song", "v": "bNp9pn0ni3I", "ti": "A song"]
+        let sealed = try XCTUnwrap(ChatCipher.sealMessage(secret: secret, room: "ABC234", by: "a1", text: "🎵 A song", quote: nil, x: song))
+        let read = try XCTUnwrap(ChatCipher.openMessage(secret: secret, room: "ABC234", message: ChatMessage(id: 7, by: "a1", name: "Ann", text: "", at: 5, ct: sealed.ct, pv: sealed.pv)))
+        XCTAssertEqual(read.text, "🎵 A song")
+        XCTAssertEqual(JSON.parse(read.x ?? "")?["v"].string, "bNp9pn0ni3I")
+        let plain = try XCTUnwrap(ChatCipher.sealMessage(secret: secret, room: "ABC234", by: "a1", text: "hi", quote: nil))
+        XCTAssertNil(try XCTUnwrap(ChatCipher.openMessage(secret: secret, room: "ABC234", message: ChatMessage(id: 8, by: "a1", name: "Ann", text: "", at: 5, ct: plain.ct))).x)
+    }
+
+    func testThePictureBehindASealedChatIsSealedForTheRoomAndCannotPassForAMessage() throws {
+        let secret = ChatCipher.newSecret()
+        let jpeg = Data((0..<300).map { UInt8(truncatingIfNeeded: $0 * 7) })
+        let envelope = try XCTUnwrap(ChatCipher.sealBackground(secret: secret, room: "ABC234", jpeg: jpeg))
+        XCTAssertEqual(ChatCipher.openBackground(secret: secret, room: "ABC234", envelope: envelope), jpeg)
+        XCTAssertNil(ChatCipher.openBackground(secret: secret, room: "XYZ789", envelope: envelope))
+        XCTAssertNil(ChatCipher.openBackground(secret: ChatCipher.newSecret(), room: "ABC234", envelope: envelope))
+        XCTAssertNil(ChatCipher.open(secret: secret, room: "ABC234", by: "b9f77f9b6e1bf750", envelope: envelope))
+    }
+
     func testAPreviewIsCutTo120Characters() throws {
         let secret = ChatCipher.newSecret()
         let sealed = try XCTUnwrap(ChatCipher.sealMessage(secret: secret, room: "ABC234", by: "a1", text: String(repeating: "é", count: 300), quote: nil))

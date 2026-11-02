@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sapoche/app.dart';
 import 'package:sapoche/data/backend.dart';
@@ -10,9 +12,11 @@ import 'package:sapoche/data/app_settings.dart';
 import 'package:sapoche/data/library_controller.dart';
 import 'package:sapoche/data/music_controller.dart';
 import 'package:sapoche/data/photo_picker.dart';
+import 'package:sapoche/data/photo_save.dart';
 import 'package:sapoche/data/recent_rooms.dart';
 import 'package:sapoche/data/recent_searches.dart';
 import 'package:sapoche/data/room_controller.dart';
+import 'package:sapoche/data/sticker_store.dart';
 import 'package:sapoche/strings.dart';
 import 'package:sapoche/data/update_controller.dart';
 import 'package:sapoche/ui/scope.dart';
@@ -35,6 +39,15 @@ Future<(FakeBackend, RoomController)> pumpApp(
 
   /// Stands in for the picker of the photo behind a chat.
   WallpaperPicker? wallpaperPicker,
+
+  /// Stands in for the picker of the photos to send in the chat.
+  ChatPhotoPicker? chatPhotoPicker,
+
+  /// Stands in for saving a picture to the gallery.
+  PhotoSaver? photoSaver,
+
+  /// The sticker packs; by default a server that has none, so that no test reaches for the network.
+  StickerStore? stickers,
 
   /// Whether the phone can show the picture in a small window.
   bool pipSupported = true,
@@ -73,8 +86,18 @@ Future<(FakeBackend, RoomController)> pumpApp(
         searches: searches,
         music: MusicController(backend),
         update: UpdateController(backend),
+        stickers:
+            stickers ??
+            StickerStore(
+              prefs: await SharedPreferences.getInstance(),
+              server: () => 'https://stickers.test',
+              client: MockClient((_) async => http.Response('', 404)),
+            ),
         photoPicker: photoPicker ?? () async => null,
         wallpaperPicker: wallpaperPicker ?? () async => null,
+        chatPhotoPicker: chatPhotoPicker ?? (_) async => const [],
+        photoSaver:
+            photoSaver ?? (_, _, _) async => PhotoSaveResult.saved,
       ),
     ),
   );

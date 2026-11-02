@@ -32,6 +32,7 @@ The server is reachable at `https://<worker-name>.<account>.workers.dev` (WebSoc
 ```bash
 npx wrangler login        # once, opens the browser
 npx wrangler r2 bucket create sapoche-releases   # once; the bucket must exist before deploying
+npx wrangler r2 bucket create sapoche-media      # once; pictures sent in chat (see below)
 npm run deploy
 node scripts/sim.mjs https://<worker-name>.<account>.workers.dev   # test against the real server
 ```
@@ -55,6 +56,18 @@ sapoche.serverUrl=https://<worker-name>.<account>.workers.dev
 ```
 
 Changing the key means building and reinstalling the app for the whole group. The key is inside the APK, so it only keeps strangers out, not people in the group.
+
+## Pictures in chat
+
+Pictures a member sends are encrypted on their device with a key that only travels in the chat message, and the Worker only moves opaque bytes between the devices and the private bucket `sapoche-media` (`src/media.ts`). The server takes tickets from a room (`media.put`), and a ticket is a signature, so it needs a secret of its own; without it (or without the bucket) the server simply takes no pictures.
+
+```bash
+openssl rand -hex 32 | tr -d '\n' | npx wrangler secret put MEDIA_SIGN
+# files expire by themselves a little after the chat messages that show them (the room also deletes them earlier)
+npx wrangler r2 bucket lifecycle add sapoche-media expire-chat chat/ --expire-days 181
+```
+
+The limits are in `src/media.ts` (3 MB a file, 10 files a message, 100 files a day for a member, 1 GB a room, 7 GB for everything; the free plan of R2 is 10 GB, 3 of which are left to the releases) and can be changed with the variables `MEDIA_FILE_MAX`, `MEDIA_ROOM_MAX`, `MEDIA_ACCOUNT_MAX`, `MEDIA_PER_DAY`. The running total of all rooms is kept by the Durable Object `MediaLedger`.
 
 ## Operations
 

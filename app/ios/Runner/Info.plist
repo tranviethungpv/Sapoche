@@ -65,7 +65,11 @@
 		</dict>
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Choose a picture of yourself to show in Sapoche.</string>
+	<string>Choose pictures to show or send in Sapoche.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save pictures from a chat to your photos.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a picture to send in a chat.</string>
 	<!-- The folder of the app shows in the Files app (On My iPhone > Sapoche): music is copied there to play it -->
 	<key>UIFileSharingEnabled</key>
 	<true/>

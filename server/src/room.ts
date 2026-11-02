@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { MEDIA_ALBUM_MAX, mediaKey, mediaLimits, newMediaId, signTicket } from "./media";
 import { PROTOCOL_VERSION, REACTIONS, isEmoji } from "./protocol";
 import { sendWebPush, readSubscription } from "./push";
 import type { VapidKeys, WebPushSubscription } from "./push";
@@ -64,6 +65,8 @@ const MAX_MESSAGE_CHARS = 32_768;
 /** The one message that may be longer: `room.theme` with the picture behind the chat. Protocol 16. */
 const MAX_THEME_MESSAGE_CHARS = 98_304;
 const MAX_BACKGROUND_CHARS = 90_000;
+/** A sealed picture is the same JPEG plus the nonce and the tag, in base64url. */
+const MAX_SEALED_BACKGROUND_CHARS = MAX_BACKGROUND_CHARS + 400;
 /** What the picture behind the chat is asked for as (`avatar.get`): no member's public id looks like it. */
 const BACKGROUND_ID = "room:bg";
 const BACKGROUND_KEY = "background";
@@ -103,7 +106,13 @@ const PUSH_FRESH_MS = 12 * 60 * 60 * 1000;
 /** A notice shows this many characters of the message it is about. */
 const PUSH_PREVIEW_CHARS = 120;
 /** The most a sealed message and a sealed preview take, in characters of base64: 500 characters of any script fit. */
-const MAX_SEALED_CHARS = 4096;
+const MAX_SEALED_CHARS = 16_384;
+/** What a message may carry besides words (`x`), as JSON; it holds a song, the small views of 10 pictures, or a sticker. */
+const MAX_EXTRA_CHARS = 12_000;
+/** What kind of thing the extra is: a short lower case word. */
+const EXTRA_KIND = /^[a-z]{1,8}$/;
+/** Files are let go this long after the oldest message that can still show them: a file is put before the message that has it. */
+const MEDIA_SLACK_MS = 15 * 60 * 1000;
 const MAX_SEALED_PREVIEW_CHARS = 600;
 /** What a sealed message is made of: base64url. */
 const SEALED = /^[A-Za-z0-9_-]+$/;
@@ -147,6 +156,8 @@ interface Attachment {
   rtt?: number;
   /** The app can read and write sealed chat (it said "e2ee" when joining). */
   e2ee?: boolean;
+  /** The app can read the sealed picture behind the chat (it said "bgseal" when joining). */
+  bgseal?: boolean;
   /** The version of the app, as it said when joining. */
   app?: string;
 }
@@ -235,6 +246,8 @@ export class Room extends DurableObject<Env> {
       this.s = { ...defaultState(), ...rest };
       this.created = true;
       await this.migrateIds();
+      // The picture behind the chat of a sealed room is sealed too: one kept in the clear from before is let go
+      if (this.s.enc && this.s.bg && !this.s.bgSealed) await this.dropBackground();
       // A room saved with the single alarm it had before: carry that alarm's time over
       const at = await ctx.storage.getAlarm();
       if (at && (alarm === "barrier" || alarm === "end" || alarm === "gc")) this.s.alarms[alarm] = at;
@@ -314,14 +327,15 @@ export class Room extends DurableObject<Env> {
       case "bye": return this.onBye(ws, me);
       case "kick": return this.onKick(ws, me, msg.id);
       case "room.name": return this.onRoomName(msg.name);
-      case "room.theme": return this.onRoomTheme(msg.theme, msg.bg);
+      case "room.theme": return this.onRoomTheme(msg.theme, msg.bg, msg.bgs);
       case "room.settings": return this.onRoomSettings(ws, me, msg.guestControl);
       case "resync": return this.onResync(ws, me);
       case "ready": return this.onReady(me.id, msg.epoch);
       case "resolveFailed": return this.onResolveFailed(me.id, msg.epoch);
       case "ended": return this.onEnded(msg.epoch);
       case "advanced": return this.onAdvanced(msg.epoch, msg.itemId, msg.startedAt);
-      case "chat": return this.onChat(me, msg.text, msg.cid, msg.reply, msg.ct, msg.pv);
+      case "chat": return this.onChat(me, msg.text, msg.cid, msg.reply, msg.ct, msg.pv, msg.x);
+      case "media.put": return this.onMediaPut(ws, me, msg.files, msg.id);
       case "room.encrypt": return this.onRoomEncrypt(ws, me);
       case "chat.react": return this.onChatReact(me, msg.id, msg.e);
       case "chat.before": return this.onChatBefore(ws, msg.id, msg.n);
@@ -373,6 +387,7 @@ export class Room extends DurableObject<Env> {
       return;
     }
     const e2ee = Array.isArray(msg.caps) && msg.caps.includes("e2ee");
+    const bgseal = Array.isArray(msg.caps) && msg.caps.includes("bgseal");
     if (this.s.enc && !e2ee) {
       this.fail(ws, "needs_update", "This room is end-to-end encrypted: update the app to be in it");
       ws.close(CLOSE_NEEDS_UPDATE, "needs update");
@@ -388,7 +403,7 @@ export class Room extends DurableObject<Env> {
     // Shown to the other members, so only something that looks like a version is kept
     const app = typeof msg.app === "string" && /^\d{1,4}(\.\d{1,4}){0,3}$/.test(msg.app) ? msg.app : undefined;
     ws.serializeAttachment(
-      { clientId, id, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av, e2ee, app } satisfies Attachment,
+      { clientId, id, name, lastSeen: now, solo: before?.solo ?? false, joinedAt: before?.joinedAt ?? now, av, e2ee, bgseal, app } satisfies Attachment,
     );
 
     // The first to arrive owns a room that has no owner; the room now exists and someone is in it
@@ -450,7 +465,7 @@ export class Room extends DurableObject<Env> {
    * Keeps a chat message and hands it to everybody, its sender too. A message with no text is ignored. [reply] is the
    * number of the message it answers; one the room no longer has is left out and the text goes on its own.
    */
-  private async onChat(me: Attachment, text: unknown, cid: unknown, reply: unknown, ct?: unknown, pv?: unknown): Promise<void> {
+  private async onChat(me: Attachment, text: unknown, cid: unknown, reply: unknown, ct?: unknown, pv?: unknown, x?: unknown): Promise<void> {
     const sealed = this.s.enc === true;
     let clean = "";
     if (sealed) {
@@ -473,12 +488,14 @@ export class Room extends DurableObject<Env> {
       ...(typeof cid === "string" && cid ? { cid: cid.slice(0, 40) } : {}),
       // A sealed message carries what it answers inside; the room has no words to quote
       ...(quoted && !sealed ? { re: quote(quoted) } : {}),
+      // A sealed message has its extra inside the seal; the room cannot tell what it is
+      ...(!sealed && extra(x) ? { x: x as Record<string, unknown> } : {}),
       ...(sealed ? { ct: ct as string, ...(typeof pv === "string" ? { pv } : {}) } : {}),
     };
     this.chat.push(msg);
     if (this.chat.length > CHAT_KEPT) this.chat.splice(0, this.chat.length - CHAT_KEPT);
     this.saveChatMessage(msg);
-    this.pruneChat(false);
+    if (this.pruneChat(false)) await this.pruneMedia();
     // Writing a message is looking at the chat up to it: the others learn it with their next receipt
     this.receipts[me.id] = { d: msg.id, r: msg.id };
     this.pruneReceipts();
@@ -499,6 +516,9 @@ export class Room extends DurableObject<Env> {
     this.chat = [];
     this.receipts = {};
     await this.ctx.storage.put(RECEIPTS_KEY, this.receipts);
+    await this.pruneMedia(true);
+    // A picture behind the chat sent in the clear goes with the rest; the look keeps its colours
+    if (this.s.bg) await this.dropBackground();
     await this.save();
     for (const other of this.ctx.getWebSockets()) {
       const att = other.deserializeAttachment() as Attachment | null;
@@ -542,7 +562,13 @@ export class Room extends DurableObject<Env> {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, author TEXT NOT NULL, name TEXT NOT NULL, text TEXT NOT NULL, cid TEXT, re TEXT, rx TEXT, ct TEXT, pv TEXT)",
     );
+    // Added with protocol 18; a room made before it has the table without it
+    if (!sql.exec("PRAGMA table_info(messages)").toArray().some((column) => column.name === "x")) {
+      sql.exec("ALTER TABLE messages ADD COLUMN x TEXT");
+    }
     sql.exec("CREATE INDEX IF NOT EXISTS messages_at ON messages (at)");
+    // The files of the room's chat that were given out: when, how many bytes, and to whom
+    sql.exec("CREATE TABLE IF NOT EXISTS media (m TEXT PRIMARY KEY, at INTEGER NOT NULL, n INTEGER NOT NULL, by TEXT NOT NULL)");
     const legacy = await this.ctx.storage.get<ChatMessage[]>(CHAT_KEY);
     if (legacy) {
       this.ctx.storage.transactionSync(() => {
@@ -563,6 +589,7 @@ export class Room extends DurableObject<Env> {
       ...(row.cid ? { cid: row.cid as string } : {}),
       ...(row.ct ? { ct: row.ct as string } : {}),
       ...(row.pv ? { pv: row.pv as string } : {}),
+      ...(row.x ? { x: JSON.parse(row.x as string) as Record<string, unknown> } : {}),
       ...(row.re ? { re: JSON.parse(row.re as string) as ChatQuote } : {}),
       ...(row.rx ? { rx: JSON.parse(row.rx as string) as Record<string, string> } : {}),
     }));
@@ -570,7 +597,7 @@ export class Room extends DurableObject<Env> {
 
   private saveChatMessage(msg: ChatMessage): void {
     this.ctx.storage.sql.exec(
-      "INSERT OR REPLACE INTO messages (id, at, author, name, text, cid, re, rx, ct, pv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO messages (id, at, author, name, text, cid, re, rx, ct, pv, x) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       msg.id,
       msg.at,
       msg.by,
@@ -581,6 +608,7 @@ export class Room extends DurableObject<Env> {
       msg.rx ? JSON.stringify(msg.rx) : null,
       msg.ct ?? null,
       msg.pv ?? null,
+      msg.x ? JSON.stringify(msg.x) : null,
     );
   }
 
@@ -610,9 +638,9 @@ export class Room extends DurableObject<Env> {
    * Lets go of the messages older than the room keeps, and of those beyond the most it keeps. The latest message always
    * stays (the numbers go on from it) unless [all]: the room is being closed.
    */
-  private pruneChat(all: boolean): void {
+  private pruneChat(all: boolean): boolean {
     const now = Date.now();
-    if (!all && now - this.prunedAt < millis(this.env.CHAT_PRUNE_MS, CHAT_PRUNE_EVERY_MS)) return;
+    if (!all && now - this.prunedAt < millis(this.env.CHAT_PRUNE_MS, CHAT_PRUNE_EVERY_MS)) return false;
     this.prunedAt = now;
     const sql = this.ctx.storage.sql;
     const newest = all ? Number.MAX_SAFE_INTEGER : (this.chat.at(-1)?.id ?? 0);
@@ -622,6 +650,59 @@ export class Room extends DurableObject<Env> {
     if (last !== undefined) sql.exec("DELETE FROM messages WHERE id <= ?", last - most);
     const first = sql.exec("SELECT MIN(id) AS id FROM messages").one().id as number | null;
     this.chat = this.chat.filter((m) => first !== null && m.id >= first);
+    return true;
+  }
+
+  // ------------------------------------------------------------------ the files of the chat
+
+  /** Gives out tickets to put files in the bucket, if the room, the member and the account have space for them. */
+  private async onMediaPut(ws: WebSocket, me: Attachment, files: unknown, id: unknown): Promise<void> {
+    const { MEDIA, MEDIA_SIGN } = this.env;
+    const room = this.ctx.id.name?.toUpperCase();
+    if (!MEDIA || !MEDIA_SIGN || !room) return this.fail(ws, "media_unavailable", "This server takes no pictures");
+    const limits = mediaLimits(this.env);
+    if (!Array.isArray(files) || files.length < 1 || files.length > MEDIA_ALBUM_MAX) return this.fail(ws, "bad_message", "media.put needs 1 to 10 files");
+    const sizes = files.map((file) => (file as { n?: unknown } | null)?.n);
+    if (!sizes.every((n): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= limits.file)) {
+      return this.fail(ws, "media_too_big", "A file is too big");
+    }
+    const sql = this.ctx.storage.sql;
+    const now = Date.now();
+    const today = sql.exec("SELECT COUNT(*) AS c FROM media WHERE by = ? AND at > ?", me.id, now - 24 * 60 * 60 * 1000).one().c as number;
+    if (today + sizes.length > limits.perDay) return this.fail(ws, "media_limit", "Too many files today");
+    const total = sizes.reduce((sum, n) => sum + n, 0);
+    const held = sql.exec("SELECT COALESCE(SUM(n), 0) AS n FROM media").one().n as number;
+    if (held + total > limits.room) return this.fail(ws, "media_full", "The room has no space left for pictures");
+    const ledger = this.env.LEDGER.get(this.env.LEDGER.idFromName("account"));
+    if (!(await ledger.reserve(total, limits.account))) return this.fail(ws, "media_full", "The room has no space left for pictures");
+
+    const expires = now + limits.ticketMs;
+    const tickets = await Promise.all(
+      sizes.map(async (n) => {
+        const m = newMediaId();
+        sql.exec("INSERT INTO media (m, at, n, by) VALUES (?, ?, ?, ?)", m, now, n, me.id);
+        return { m, url: `/media/${room}/${m}?n=${n}&e=${expires}`, token: await signTicket(this.env, room, m, n, expires) };
+      }),
+    );
+    this.send(ws, { t: "media.ticket", ...(typeof id === "string" ? { id: id.slice(0, 40) } : {}), tickets });
+  }
+
+  /**
+   * Lets go of the files no message can show any more: those given out before the oldest message the room keeps (or
+   * all of them, when the chat was wiped), from the bucket and from the ledger of the account.
+   */
+  private async pruneMedia(all = false): Promise<void> {
+    const sql = this.ctx.storage.sql;
+    const oldest = sql.exec("SELECT MIN(at) AS at FROM messages").one().at as number | null;
+    const before = all ? Number.MAX_SAFE_INTEGER : Math.min(oldest ?? Date.now(), Date.now()) - MEDIA_SLACK_MS;
+    const gone = sql.exec("SELECT m, n FROM media WHERE at < ?", before).toArray();
+    const room = this.ctx.id.name?.toUpperCase();
+    if (gone.length === 0 || !room) return;
+    if (this.env.MEDIA) {
+      for (let i = 0; i < gone.length; i += 1000) await this.env.MEDIA.delete(gone.slice(i, i + 1000).map((row) => mediaKey(room, row.m as string)));
+    }
+    sql.exec("DELETE FROM media WHERE at < ?", before);
+    await this.env.LEDGER.get(this.env.LEDGER.idFromName("account")).release(gone.reduce((sum, row) => sum + (row.n as number), 0));
   }
 
   // ------------------------------------------------------------------ notices to devices that are away
@@ -768,7 +849,11 @@ export class Room extends DurableObject<Env> {
     if (id === BACKGROUND_ID) {
       const picture = await this.ctx.storage.get<string>(BACKGROUND_KEY);
       if (picture === undefined || !this.s.bg) return this.send(ws, { t: "avatar", id });
-      return this.send(ws, { t: "avatar", id, av: this.s.bg, data: picture });
+      if (!this.s.bgSealed) return this.send(ws, { t: "avatar", id, av: this.s.bg, data: picture });
+      // A sealed picture goes only to an app that can open it: the others keep the colours of the look
+      const att = ws.deserializeAttachment() as Attachment | null;
+      if (!att?.bgseal) return this.send(ws, { t: "avatar", id });
+      return this.send(ws, { t: "avatar", id, av: this.s.bg, data: picture, sealed: true });
     }
     const data = await this.ctx.storage.get<string>(AVATAR_PREFIX + id);
     const owner = this.members().find((m) => m.id === id);
@@ -830,10 +915,18 @@ export class Room extends DurableObject<Env> {
     this.broadcastState();
   }
 
-  /** A theme with, if the message says so, the picture behind the chat: a string sets it, null takes it away, absent leaves it. */
-  private async onRoomTheme(theme: unknown, bg: unknown): Promise<void> {
+  /**
+   * A theme with, if the message says so, the picture behind the chat: a string sets it, null takes it away, absent
+   * leaves it. A room with end-to-end encryption takes the picture sealed (`bgs`) and not in the clear (`bg`).
+   */
+  private async onRoomTheme(theme: unknown, bgClear: unknown, bgSealed: unknown): Promise<void> {
     if (typeof theme !== "string" || !THEME_NAME.test(theme)) return;
-    if (bg !== undefined && bg !== null && (typeof bg !== "string" || bg.length > MAX_BACKGROUND_CHARS || !BASE64.test(bg))) return;
+    if (bgClear !== undefined && bgClear !== null && (typeof bgClear !== "string" || bgClear.length > MAX_BACKGROUND_CHARS || !BASE64.test(bgClear))) return;
+    if (bgSealed !== undefined && bgSealed !== null && (typeof bgSealed !== "string" || bgSealed.length > MAX_SEALED_BACKGROUND_CHARS || !SEALED.test(bgSealed))) return;
+    const sealed = this.s.enc === true;
+    // Of the two, the one the room can take: a sealed room never keeps a picture it could read
+    const [wanted, other] = sealed ? [bgSealed, bgClear] : [bgClear, bgSealed];
+    const bg = typeof wanted === "string" ? wanted : wanted === null || other === null ? null : undefined;
     let changed = false;
     const clean = theme === "default" ? undefined : theme;
     if (clean !== this.s.theme) {
@@ -842,20 +935,28 @@ export class Room extends DurableObject<Env> {
       changed = true;
     }
     if (bg === null && this.s.bg) {
-      delete this.s.bg;
-      await this.ctx.storage.delete(BACKGROUND_KEY);
+      await this.dropBackground();
       changed = true;
     } else if (typeof bg === "string") {
       const fp = await fingerprint(bg);
       if (fp !== this.s.bg) {
         await this.ctx.storage.put(BACKGROUND_KEY, bg);
         this.s.bg = fp;
+        if (sealed) this.s.bgSealed = true;
+        else delete this.s.bgSealed;
         changed = true;
       }
     }
     if (!changed) return;
     await this.save();
     this.broadcastState();
+  }
+
+  /** Lets go of the picture behind the chat; the look keeps its name and colours. */
+  private async dropBackground(): Promise<void> {
+    delete this.s.bg;
+    delete this.s.bgSealed;
+    await this.ctx.storage.delete(BACKGROUND_KEY);
   }
 
   private async onRoomSettings(ws: WebSocket, me: Attachment, guestControl: GuestControl): Promise<void> {
@@ -1343,16 +1444,19 @@ export class Room extends DurableObject<Env> {
       const last = this.chat.at(-1);
       if (last) {
         // The songs and the settings are over, but the room itself stays for as long as its chat does
-        const { name, enc, theme, bg } = this.s;
+        const { name, enc, theme, bg, bgSealed } = this.s;
         this.s = defaultState();
         if (name) this.s.name = name;
         if (theme) this.s.theme = theme;
         if (bg) this.s.bg = bg;
+        if (bgSealed) this.s.bgSealed = bgSealed;
         if (enc) this.s.enc = enc;
+        await this.pruneMedia();
         this.s.alarms.gc = last.at + this.chatKeepMs();
         await this.armAlarm();
         return;
       }
+      await this.pruneMedia(true);
       this.s = defaultState();
       this.chat = [];
       this.receipts = {};
@@ -1482,7 +1586,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private publicState(): PublicState {
-    const { readyIds: _r, failedIds: _f, alarms: _a, shuffleOrder: _o, ...rest } = this.s;
+    const { readyIds: _r, failedIds: _f, alarms: _a, shuffleOrder: _o, bgSealed: _s, ...rest } = this.s;
     return { ...rest, theme: rest.theme ?? "default" };
   }
 
@@ -1581,6 +1685,13 @@ async function fingerprint(text: string): Promise<string> {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** Whether [x] is something a message may carry besides words: an object of a kind, not too big. */
+function extra(x: unknown): boolean {
+  if (typeof x !== "object" || x === null || Array.isArray(x)) return false;
+  const kind = (x as { k?: unknown }).k;
+  return typeof kind === "string" && EXTRA_KIND.test(kind) && JSON.stringify(x).length <= MAX_EXTRA_CHARS;
 }
 
 /** What a reply carries of the message it answers. */

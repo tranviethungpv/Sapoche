@@ -497,7 +497,7 @@ final class RoomClientTests: XCTestCase {
     func testPicturesAreSharedAndFetchedOnceTheServerSpeaksProtocolEight() async {
         let client = client(create: false)
         var heard: [String] = []
-        client.onAvatar = { id, av, data in heard.append("\(id) \(av ?? "-") \(data ?? "-")") }
+        client.onAvatar = { id, av, data, _ in heard.append("\(id) \(av ?? "-") \(data ?? "-")") }
         client.setAvatar("TUlORQ==")
         client.start()
         await time.settle()
@@ -534,9 +534,9 @@ final class RoomClientTests: XCTestCase {
 
 final class WireTests: XCTestCase {
     func testAPictureAndItsFingerprintAreRead() {
-        guard case let .avatar(id, av, data)? = Wire.parse(#"{"t":"avatar","id":"u","av":"abcd1234","data":"UElDVA=="}"#) else { return XCTFail("not a picture") }
+        guard case let .avatar(id, av, data, _)? = Wire.parse(#"{"t":"avatar","id":"u","av":"abcd1234","data":"UElDVA=="}"#) else { return XCTFail("not a picture") }
         XCTAssertEqual([id, av, data], ["u", "abcd1234", "UElDVA=="])
-        guard case let .avatar(_, none, noData)? = Wire.parse(#"{"t":"avatar","id":"u"}"#) else { return XCTFail("not a picture") }
+        guard case let .avatar(_, none, noData, _)? = Wire.parse(#"{"t":"avatar","id":"u"}"#) else { return XCTFail("not a picture") }
         XCTAssertNil(none)
         XCTAssertNil(noData)
         guard case let .members(members)? = Wire.parse(#"{"t":"members","members":[{"id":"u","name":"U","ready":true,"av":"abcd1234"},{"id":"v","name":"V","ready":true}]}"#) else { return XCTFail("not members") }
@@ -724,6 +724,33 @@ final class WireTests: XCTestCase {
         XCTAssertTrue(object(Wire.roomTheme("c-1e88e5-d81b60", bg: nil))["bg"] is NSNull, "a null takes the picture away")
         XCTAssertEqual(object(Wire.roomTheme("ocean", bg: "QUJD"))["bg"] as? String, "QUJD")
         XCTAssertEqual(object(Wire.bye())["t"] as? String, "bye")
+    }
+
+    func testWhatAMessageCarriesPicturesAndTheSealedBackgroundAreSentAndRead() {
+        func object(_ text: String) -> [String: Any] { JSON.parse(text)?.object ?? [:] }
+        XCTAssertEqual(object(Wire.join(clientId: "me", name: "Me"))["caps"] as? [String], ["e2ee", "bgseal"])
+        let song: [String: Any] = ["k": "song", "v": "bNp9pn0ni3I"]
+        XCTAssertEqual((object(Wire.chat("hi", cid: "c1", x: song))["x"] as? [String: Any])?["k"] as? String, "song")
+        XCTAssertNil(object(Wire.chat("hi", cid: "c1"))["x"])
+        let put = object(Wire.mediaPut([1500, 900], id: "r1"))
+        XCTAssertEqual(put["t"] as? String, "media.put")
+        XCTAssertEqual(put["id"] as? String, "r1")
+        XCTAssertEqual((put["files"] as? [[String: Any]])?.compactMap { $0["n"] as? Int }, [1500, 900])
+        XCTAssertEqual(object(Wire.roomTheme("ocean", bg: "AQE", sealed: true))["bgs"] as? String, "AQE")
+        XCTAssertNil(object(Wire.roomTheme("ocean", bg: "AQE", sealed: true))["bg"])
+        XCTAssertTrue(object(Wire.roomTheme("ocean", bg: nil, sealed: true))["bgs"] is NSNull)
+
+        guard case let .mediaTicket(id, tickets)? = Wire.parse(#"{"t":"media.ticket","id":"r1","tickets":[{"m":"abcdefghijklmnopqrstuv","url":"/media/ABC234/abcdefghijklmnopqrstuv?n=1500&e=9","token":"tok"}]}"#)
+        else { return XCTFail("not tickets") }
+        XCTAssertEqual(id, "r1")
+        XCTAssertEqual(tickets, [MediaTicket(m: "abcdefghijklmnopqrstuv", url: "/media/ABC234/abcdefghijklmnopqrstuv?n=1500&e=9", token: "tok")])
+        guard case let .chat(message)? = Wire.parse(#"{"t":"chat","msg":{"id":3,"by":"a","name":"A","text":"📷 Photo","at":1,"x":{"k":"album","items":[]}}}"#)
+        else { return XCTFail("not a message") }
+        XCTAssertEqual(JSON.parse(message.x ?? "")?["k"].string, "album")
+        guard case let .avatar(_, _, data, sealed)? = Wire.parse(#"{"t":"avatar","id":"room:bg","av":"3fa9c01e","data":"AQE","sealed":true}"#)
+        else { return XCTFail("not a picture") }
+        XCTAssertEqual(data, "AQE")
+        XCTAssertTrue(sealed)
     }
 }
 

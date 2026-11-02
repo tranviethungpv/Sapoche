@@ -56,7 +56,7 @@ class RoomClient(
     var onConnected: () -> Unit = {}
 
     /** A member's picture arrived ([av] is its fingerprint), or with no [data] they took it away. */
-    var onAvatar: (id: String, av: String?, data: String?) -> Unit = { _, _, _ -> }
+    var onAvatar: (id: String, av: String?, data: String?, sealed: Boolean) -> Unit = { _, _, _, _ -> }
 
     private val url = baseUrl.trimEnd('/').replaceFirst("http", "ws") + "/room/" + roomCode.uppercase()
 
@@ -172,7 +172,7 @@ class RoomClient(
                         is ServerMessage.Avatar -> {
                             if (msg.id == Protocol.BACKGROUND_ID) knownBackground = msg.av
                             else if (msg.av != null) known[msg.id] = msg.av else known.remove(msg.id)
-                            onAvatar(msg.id, msg.av, msg.data)
+                            onAvatar(msg.id, msg.av, msg.data, msg.sealed)
                         }
                         else -> {
                             if (msg is ServerMessage.State && createOnJoin == true) createOnJoin = false
@@ -242,7 +242,7 @@ class RoomClient(
     private fun wantBackground(bg: String?) {
         if (serverProtocol < THEME_PROTOCOL || bg == knownBackground) return
         knownBackground = bg
-        if (bg == null) onAvatar(Protocol.BACKGROUND_ID, null, null) else socket?.send(Protocol.avatarGet(Protocol.BACKGROUND_ID))
+        if (bg == null) onAvatar(Protocol.BACKGROUND_ID, null, null, false) else socket?.send(Protocol.avatarGet(Protocol.BACKGROUND_ID))
     }
 
     /** Asks for the pictures of members whose picture changed since it was last fetched, and forgets those who are gone. */
@@ -253,7 +253,7 @@ class RoomClient(
             if (member.id == clientId || member.id == you) continue
             if (member.av == null) {
                 // They had one and took it away
-                if (known.remove(member.id) != null) onAvatar(member.id, null, null)
+                if (known.remove(member.id) != null) onAvatar(member.id, null, null, false)
             } else if (known[member.id] != member.av) {
                 known[member.id] = member.av
                 socket?.send(Protocol.avatarGet(member.id))

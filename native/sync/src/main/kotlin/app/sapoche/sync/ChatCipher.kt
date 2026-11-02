@@ -24,7 +24,7 @@ import kotlinx.serialization.json.put
  * (`e2ee_vectors.json`).
  *
  * A sealed message is base64url of: version (1), epoch (1), nonce (12), ciphertext and tag. What is sealed is JSON,
- * `{"t": text, "q": the quote of the message answered}`, padded with spaces to a multiple of 64 bytes so that its length
+ * `{"t": text, "q": the quote of the message answered, "x": what it carries besides words}`, padded with spaces to a multiple of 64 bytes so that its length
  * says little. The preview, for a notice, is the first 120 characters sealed apart.
  */
 object ChatCipher {
@@ -107,10 +107,21 @@ object ChatCipher {
             null
         }
 
+    /** Stands where the sender goes in the associated data of the sealed picture behind the chat: no member's public id looks like it. */
+    private const val BACKGROUND = "bg"
+
+    /** The bytes of the JPEG behind the chat of [room], sealed. [nonce] is only given by the tests. */
+    fun sealBackground(secret: ByteArray, room: String, jpeg: ByteArray, nonce: ByteArray = ByteArray(NONCE_BYTES).also(random::nextBytes)): String =
+        seal(secret, room, BACKGROUND, jpeg, nonce = nonce)
+
+    /** The JPEG that [envelope] holds; null when it is not from this room's secret or intact. */
+    fun openBackground(secret: ByteArray, room: String, envelope: String): ByteArray? = open(secret, room, BACKGROUND, envelope)
+
     /** The sealed words of a message by [by], with the quote of what it answers inside, and the sealed preview. */
-    fun sealMessage(secret: ByteArray, room: String, by: String, text: String, quote: ChatQuote?): Pair<String, String> {
+    fun sealMessage(secret: ByteArray, room: String, by: String, text: String, quote: ChatQuote?, x: JsonObject? = null): Pair<String, String> {
         val body = buildJsonObject {
             put("t", text)
+            if (x != null) put("x", x)
             if (quote != null) {
                 put("q", buildJsonObject {
                     put("id", quote.id)
@@ -142,7 +153,7 @@ object ChatCipher {
                     it["text"]?.jsonPrimitive?.contentOrNull ?: return null,
                 )
             }
-            message.copy(text = obj["t"]?.jsonPrimitive?.contentOrNull ?: return null, re = quote, locked = false)
+            message.copy(text = obj["t"]?.jsonPrimitive?.contentOrNull ?: return null, re = quote, x = obj["x"] as? JsonObject, locked = false)
         } catch (_: Exception) {
             null
         }

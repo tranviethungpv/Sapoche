@@ -236,7 +236,7 @@ class RoomClientTest {
         }
         accept(greeting)
         val c = client(create = false)
-        c.onAvatar = { id, av, data -> heard += Triple(id, av, data) }
+        c.onAvatar = { id, av, data, _ -> heard += Triple(id, av, data) }
         c.setAvatar("TUlORQ==")
         c.start()
         assertTrue(waitFor { heard.isNotEmpty() })

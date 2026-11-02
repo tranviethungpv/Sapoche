@@ -189,6 +189,13 @@ struct Member: Equatable {
 }
 
 /// A chat message as the room keeps it. [name] is the sender's name when it was sent; [cid] is the id the sending device gave it.
+/// A ticket to put one file in the room's bucket: its id [m], the path [url] to put it at (with `token` added to it), and the [token].
+struct MediaTicket: Equatable {
+    var m: String
+    var url: String
+    var token: String
+}
+
 struct ChatMessage: Equatable {
     var id: Int64
     var by: String
@@ -205,11 +212,14 @@ struct ChatMessage: Equatable {
     var ct: String?
     /// The start of the words sealed apart, for a notice. Protocol 15.
     var pv: String?
+    /// What the message carries besides words (a song, pictures, a sticker), as the JSON text of an object with a kind `k`.
+    /// Inside the seal in a sealed room. Protocol 18.
+    var x: String?
     /// Set by the app, not the room: a sealed message that this device has no secret to read, or one that does not open with it.
     var locked = false
 
     init(id: Int64, by: String, name: String, text: String, at: Int64, cid: String? = nil, re: ChatQuote? = nil, rx: [String: String] = [:],
-         ct: String? = nil, pv: String? = nil) {
+         ct: String? = nil, pv: String? = nil, x: String? = nil) {
         self.id = id
         self.by = by
         self.name = name
@@ -220,6 +230,7 @@ struct ChatMessage: Equatable {
         self.rx = rx
         self.ct = ct
         self.pv = pv
+        self.x = x
     }
 
     init?(_ json: JSON) {
@@ -230,7 +241,7 @@ struct ChatMessage: Equatable {
             if let e = JSON(reaction).string { rx[member] = e }
         }
         self.init(id: id, by: by, name: name, text: text, at: at, cid: json["cid"].string, re: ChatQuote(json["re"]), rx: rx,
-                  ct: json["ct"].string, pv: json["pv"].string)
+                  ct: json["ct"].string, pv: json["pv"].string, x: json["x"].object.map { JSONText.encode($0) })
     }
 }
 
@@ -283,7 +294,9 @@ enum ServerMessage: Equatable {
     /// The room's queue ran out and this device is asked to find songs like [videoId] and send them with `Wire.queueAddMany`.
     case autoplayFill(epoch: Int64, videoId: String, title: String)
     /// The picture of member [id] as base64, with its fingerprint [av]; both are nil when the member has none.
-    case avatar(id: String, av: String?, data: String?)
+    case avatar(id: String, av: String?, data: String?, sealed: Bool)
+    /// The answer to `Wire.mediaPut`: one ticket per file, in order, and the [id] the request had. Protocol 18.
+    case mediaTicket(id: String?, tickets: [MediaTicket])
     /// A new chat message, this device's own included. Protocol 10.
     case chat(ChatMessage)
     /// The room's last chat messages, oldest first, sent right after the state on joining. [more]: it keeps older ones. Protocol 10.
@@ -336,7 +349,13 @@ enum Wire {
             return .autoplayFill(epoch: epoch, videoId: videoId, title: title)
         case "avatar":
             guard let id = json["id"].string else { return nil }
-            return .avatar(id: id, av: json["av"].string, data: json["data"].string)
+            return .avatar(id: id, av: json["av"].string, data: json["data"].string, sealed: json["sealed"].bool ?? false)
+        case "media.ticket":
+            let tickets = json["tickets"].array.compactMap { ticket -> MediaTicket? in
+                guard let m = ticket["m"].string, let url = ticket["url"].string, let token = ticket["token"].string else { return nil }
+                return MediaTicket(m: m, url: url, token: token)
+            }
+            return .mediaTicket(id: json["id"].string, tickets: tickets)
         case "chat":
             guard let message = ChatMessage(json["msg"]) else { return nil }
             return .chat(message)
@@ -370,7 +389,8 @@ enum Wire {
         // Shown to the other members in this person's profile. Protocol 17
         if let app { optional["app"] = app }
         // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15
-        return msg("join", ["clientId": clientId, "name": name, "caps": ["e2ee"]], optional: optional)
+        // "bgseal": it opens the sealed picture behind a sealed chat. Protocol 18
+        return msg("join", ["clientId": clientId, "name": name, "caps": ["e2ee", "bgseal"]], optional: optional)
     }
 
     /// Owner only: turns on end-to-end encryption of the chat, for good; the chat so far is deleted. Protocol 15.
@@ -394,8 +414,14 @@ enum Wire {
 
     /// The look of the chat for the whole room, `default` taking it away, with the picture behind it as base64 of a
     /// JPEG (nil takes it away). Protocol 16.
-    static func roomTheme(_ theme: String, bg: String?) -> String {
-        msg("room.theme", ["theme": theme, "bg": bg ?? NSNull()])
+    /// In a sealed room [sealed] is true and the picture is the envelope of `ChatCipher.sealBackground`, sent as `bgs`.
+    static func roomTheme(_ theme: String, bg: String?, sealed: Bool = false) -> String {
+        msg("room.theme", ["theme": theme, sealed ? "bgs" : "bg": bg ?? NSNull()])
+    }
+
+    /// Asks for tickets to put files of [sizes] bytes (once encrypted) in the room's bucket; [id] comes back with the answer. Protocol 18.
+    static func mediaPut(_ sizes: [Int64], id: String) -> String {
+        msg("media.put", ["id": id, "files": sizes.map { ["n": $0] }])
     }
 
     /// Owner only: `all` or `add`.
@@ -413,8 +439,11 @@ enum Wire {
 
     /// A chat message to the room; [cid] comes back with it, so this device knows it arrived. [reply] is the number of
     /// the message it answers (protocol 12). Protocol 10.
-    static func chat(_ text: String, cid: String, reply: Int64? = nil) -> String {
-        msg("chat", ["text": text, "cid": cid], optional: reply.map { ["reply": $0] })
+    static func chat(_ text: String, cid: String, reply: Int64? = nil, x: [String: Any]? = nil) -> String {
+        var optional: [String: Any] = [:]
+        if let reply { optional["reply"] = reply }
+        if let x { optional["x"] = x }
+        return msg("chat", ["text": text, "cid": cid], optional: optional)
     }
 
     /// This member's reaction to the chat message [id]: a name of the room's reactions or an emoji; nil takes it away. Protocol 12.

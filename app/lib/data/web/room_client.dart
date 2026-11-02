@@ -64,7 +64,12 @@ class RoomClient {
 
   /// A member's picture arrived ([av] is its fingerprint, [data] the picture as base64), or with no [data] they took it
   /// away.
-  void Function(String id, String? av, String? data) onAvatar = (_, _, _) {};
+  void Function(String id, String? av, String? data, bool sealed) onAvatar = (
+    _,
+    _,
+    _,
+    _,
+  ) {};
   void Function(Connection connection) onConnection = (_) {};
 
   Connection _connection = Connection.connecting;
@@ -253,7 +258,7 @@ class RoomClient {
         } else {
           _known.remove(msg.id);
         }
-        onAvatar(msg.id, av, msg.data);
+        onAvatar(msg.id, av, msg.data, msg.sealed);
       case StateMessage():
         if (_createOnJoin == true) _createOnJoin = false;
         _you = msg.you;
@@ -291,7 +296,7 @@ class RoomClient {
     if (_serverProtocol < _themeProtocol || bg == _knownBackground) return;
     _knownBackground = bg;
     if (bg == null) {
-      onAvatar(Wire.backgroundId, null, null);
+      onAvatar(Wire.backgroundId, null, null, false);
     } else {
       send(Wire.avatarGet(Wire.backgroundId));
     }
@@ -307,7 +312,7 @@ class RoomClient {
       final av = member.av;
       if (av == null) {
         // They had one and took it away
-        if (_known.remove(member.id) != null) onAvatar(member.id, null, null);
+        if (_known.remove(member.id) != null) onAvatar(member.id, null, null, false);
       } else if (_known[member.id] != av) {
         _known[member.id] = av;
         send(Wire.avatarGet(member.id));

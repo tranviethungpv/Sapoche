@@ -198,10 +198,25 @@ class AutoplayFillMessage extends ServerMessage {
 }
 
 class AvatarMessage extends ServerMessage {
-  const AvatarMessage({required this.id, this.av, this.data});
+  const AvatarMessage({
+    required this.id,
+    this.av,
+    this.data,
+    this.sealed = false,
+  });
   final String id;
   final String? av;
   final String? data;
+
+  /// [data] is the sealed picture behind a sealed chat. Protocol 18.
+  final bool sealed;
+}
+
+/// The answer to [Wire.mediaPut]: one ticket per file, in order, and the [id] the request had. Protocol 18.
+class MediaTicketMessage extends ServerMessage {
+  const MediaTicketMessage({this.id, required this.tickets});
+  final String? id;
+  final List<MediaTicket> tickets;
 }
 
 class ChatMessageReceived extends ServerMessage {
@@ -306,6 +321,14 @@ ServerMessage? parseServerMessage(String text) {
         id: obj['id'] as String,
         av: obj['av'] as String?,
         data: obj['data'] as String?,
+        sealed: obj['sealed'] == true,
+      ),
+      'media.ticket' => MediaTicketMessage(
+        id: obj['id'] as String?,
+        tickets: [
+          for (final t in obj['tickets'] as List<dynamic>)
+            MediaTicket.fromJson(t as Map<String, dynamic>),
+        ],
       ),
       'chat' => ChatMessageReceived(
         ChatMessage.fromJson(obj['msg'] as Map<String, dynamic>),
@@ -374,7 +397,8 @@ abstract final class Wire {
   static String join(String clientId, String name, {bool? create, String? app}) =>
       // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15.
       // The version is shown to the other members in this person's profile. Protocol 17
-      _msg('join', {'clientId': clientId, 'name': name, 'create': ?create, 'caps': ['e2ee'], 'app': ?app});
+      // "bgseal": it opens the sealed picture behind a sealed chat. Protocol 18
+      _msg('join', {'clientId': clientId, 'name': name, 'create': ?create, 'caps': ['e2ee', 'bgseal'], 'app': ?app});
 
   /// Owner only: turns on end-to-end encryption of the chat, for good; the chat so far is deleted. Protocol 15.
   static String roomEncrypt() => _msg('room.encrypt');
@@ -393,8 +417,19 @@ abstract final class Wire {
 
   /// The look of the chat for the whole room, `default` taking it away, with the picture behind it as base64 of a JPEG
   /// (null takes it away). Protocol 16.
-  static String roomTheme(String theme, String? bg) =>
-      _msg('room.theme', {'theme': theme, 'bg': bg});
+  ///
+  /// In a sealed room [sealed] is true and [bg] is the envelope of `ChatCipher.sealBackground`, sent as `bgs`.
+  static String roomTheme(String theme, String? bg, {bool sealed = false}) =>
+      _msg('room.theme', {'theme': theme, sealed ? 'bgs' : 'bg': bg});
+
+  /// Asks for tickets to put files of [sizes] bytes (once encrypted) in the room's bucket; [id] comes back with the
+  /// answer. Protocol 18.
+  static String mediaPut(List<int> sizes, String id) => _msg('media.put', {
+    'id': id,
+    'files': [
+      for (final n in sizes) {'n': n},
+    ],
+  });
   static String roomSettings(String guestControl) =>
       _msg('room.settings', {'guestControl': guestControl});
 
@@ -411,8 +446,12 @@ abstract final class Wire {
       _msg('push.set', {'sub': sub, 'room': room, 'until': ?until, if (!preview) 'preview': false, 'lang': ?lang});
   static String pushClear() => _msg('push.clear');
 
-  static String chat(String text, String cid, {int? reply}) =>
-      _msg('chat', {'text': text, 'cid': cid, 'reply': ?reply});
+  static String chat(
+    String text,
+    String cid, {
+    int? reply,
+    Map<String, Object?>? x,
+  }) => _msg('chat', {'text': text, 'cid': cid, 'reply': ?reply, 'x': ?x});
   static String chatReact(int id, String? e) =>
       _msg('chat.react', {'id': id, 'e': e});
   static String chatBefore(int id, {int? n}) =>

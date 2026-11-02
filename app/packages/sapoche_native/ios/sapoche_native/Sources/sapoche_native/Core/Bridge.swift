@@ -720,7 +720,17 @@ final class Bridge {
                let name = q["name"] as? String, let text = q["text"] as? String {
                 quote = ChatQuote(id: id, by: by, name: name, text: text)
             }
-            return controller.sendChat(string("text"), cid: string("cid"), reply: args["reply"] == nil ? nil : int64("reply"), quote: quote)
+            // What the message carries besides words, as JSON: native only passes it on, or seals it
+            let extra = (args["extra"] as? String).flatMap { JSON.parse($0)?.object }
+            return controller.sendChat(string("text"), cid: string("cid"), reply: args["reply"] == nil ? nil : int64("reply"), quote: quote, extra: extra)
+        case "mediaTickets":
+            try requireRoom()
+            return await controller.mediaTickets(sizes: (args["sizes"] as? [Any] ?? []).compactMap { JSON($0).int64 })
+        case "uploadMedia":
+            guard let bytes = args["bytes"] as? Data else { return false }
+            return await uploadMedia(url: string("url"), token: string("token"), bytes: bytes)
+        case "downloadMedia":
+            return await downloadMedia(room: string("room"), m: string("m"))
         case "enableEncryption":
             try requireRoom()
             return controller.enableEncryption()
@@ -782,6 +792,36 @@ final class Bridge {
             "playing": json.at("playing").bool ?? false, "title": json.at("title").string ?? NSNull(),
             "who": json.at("who").array.compactMap { $0.string },
         ]
+    }
+
+    /// Puts [bytes] at [url] (a path the room gave with its ticket) using the ticket's [token]; false if the server did not take them.
+    private func uploadMedia(url: String, token: String, bytes: Data) async -> Bool {
+        let config = settings
+        // Only the path of a ticket: this must not be a way to send the key of the group to another address
+        guard url.hasPrefix("/media/"), config.isSet, let address = URL(string: "\(config.server)\(url)&token=\(token)") else { return false }
+        var request = URLRequest(url: address)
+        request.httpMethod = "PUT"
+        request.httpBody = bytes
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        config.authHeaders.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        guard let reply = try? await http.send(request) else { return false }
+        return (200..<300).contains(reply.status)
+    }
+
+    /// The file [m] of room [room]; nil when there is none or it cannot be fetched.
+    private func downloadMedia(room: String, m: String) async -> Data? {
+        let code = room.trimmingCharacters(in: .whitespaces).uppercased()
+        let config = settings
+        guard Self.inviteCode(code), Self.mediaId(m), config.isSet, let address = URL(string: "\(config.server)/media/\(code)/\(m)") else { return nil }
+        var request = URLRequest(url: address)
+        config.authHeaders.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        guard let reply = try? await http.send(request), (200..<300).contains(reply.status) else { return nil }
+        return reply.data
+    }
+
+    /// What the id of a file looks like: 16 random bytes as base64url.
+    private static func mediaId(_ text: String) -> Bool {
+        text.count == 22 && text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
     }
 
     /// Whether the server answers, which protocol it speaks and whether it takes the key; nothing it is asked changes anything.

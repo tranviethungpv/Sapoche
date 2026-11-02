@@ -1,20 +1,35 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/chat_extra.dart';
+import '../data/chat_media.dart';
 import '../data/models.dart';
+import '../data/photo_picker.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
 import '../theme/palette.dart';
 import '../theme/theme.dart';
+import 'chat_emoji.dart';
 import 'chat_look.dart';
+import 'chat_song_picker.dart';
 import 'chat_theme_sheet.dart';
 import 'member_profile_sheet.dart';
+import 'photo_actions.dart';
+import 'photo_preview_sheet.dart';
 import 'rooms_sheet.dart' show pasteInviteSecret;
 import 'scope.dart';
+import 'sticker_store_page.dart';
+import 'sticker_tray.dart';
+import 'widgets/album_bubble.dart';
+import 'widgets/album_image.dart';
+import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
+import 'widgets/chat_song_card.dart';
 import 'widgets/reactions.dart';
+import 'widgets/sticker_image.dart';
 
 /// The room's chat, over whatever is shown: messages, the reactions, and a field to write in.
 Future<void> showChatSheet(BuildContext context) async {
@@ -103,12 +118,29 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   /// The message whose time is shown (a touch on a message shows it, another touch hides it).
   Object? _timeShownOf;
 
+  /// Photos picked and being made ready to send.
+  bool _preparing = false;
+
+  /// The song picked to go with the next message, shown above the field.
+  Track? _song;
+
+  /// The stickers are shown in the place of the keyboard.
+  bool _trayOpen = false;
+
+  /// The tallest the keyboard has been, which the tray takes as its height.
+  double _lastKeyboard = 0;
+
+  /// The buttons to add things are opened out although there are words in the field.
+  bool _attachOpen = false;
+
   RoomController get _c => widget.controller;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _focus.addListener(_focusChanged);
+    _field.addListener(_fieldChanged);
     // After this frame: what it changes is shown by buttons being built along with the sheet
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _c.setChatOpen(true);
@@ -125,21 +157,80 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _c.setChatOpen(false);
+    _field.removeListener(_fieldChanged);
     _field.dispose();
     _focus.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
+  /// The keyboard coming up takes the place of the stickers.
+  void _focusChanged() {
+    if (_focus.hasFocus && _trayOpen) setState(() => _trayOpen = false);
+  }
+
+  /// With nothing written the buttons to add things are all there again.
+  void _fieldChanged() {
+    if (_attachOpen && _field.text.isEmpty) setState(() => _attachOpen = false);
+  }
+
+  /// The sticker button: the stickers in the place of the keyboard, and the keyboard back when it is touched again.
+  void _toggleTray() {
+    if (_trayOpen) {
+      setState(() => _trayOpen = false);
+      _focus.requestFocus();
+    } else {
+      FocusManager.instance.primaryFocus?.unfocus();
+      setState(() => _trayOpen = true);
+    }
+  }
+
+  /// A sticker was touched: it goes at once, as an answer to the quote if there is one, and the tray stays open.
+  void _sendSticker(StickerExtra sticker) {
+    final reply = _replyTo;
+    AppScope.of(context).stickers.use(sticker);
+    if (reply != null) setState(() => _replyTo = null);
+    _c
+        .sendChat(
+          sticker.emoji.isEmpty ? '🙂' : sticker.emoji,
+          reply: reply,
+          extra: sticker.toJson(),
+        )
+        .ignore();
+    _scrollToNewest();
+  }
+
   void _send() {
     final text = _field.text;
-    if (text.trim().isEmpty) return;
+    final song = _song;
+    if (text.trim().isEmpty && song == null) return;
     final reply = _replyTo;
     _field.clear();
-    setState(() => _replyTo = null);
-    _c.sendChat(text, reply: reply);
+    setState(() {
+      _replyTo = null;
+      _song = null;
+    });
+    if (song == null) {
+      _c.sendChat(text, reply: reply);
+    } else {
+      // The song is a card of its own, which answers the quote; what was written follows as a message by itself
+      _c.sendSong(song, reply: reply);
+      if (text.trim().isNotEmpty) _c.sendChat(text);
+    }
     // The keyboard stays up for the next one, as it does in the chats of the phone
     _focus.requestFocus();
+    _scrollToNewest();
+  }
+
+  /// The song button: a sheet to pick a song from, which is then shown above the field until it is sent.
+  Future<void> _pickSong() async {
+    final song = await showSongPicker(context);
+    if (song == null || !mounted) return;
+    setState(() => _song = song);
+    _focus.requestFocus();
+  }
+
+  void _scrollToNewest() {
     if (_scroll.hasClients && _scroll.offset > 0) {
       _scroll.animateTo(
         0,
@@ -147,6 +238,67 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
         curve: Curves.easeOut,
       );
     }
+  }
+
+  /// The photo button: from the photo library, or the camera where the phone has one.
+  Future<void> _pickPhotos() async {
+    final source = await _choosePhotoSource();
+    if (source == null || !mounted) return;
+    final picked = await AppScope.of(context).chatPhotoPicker(source);
+    if (picked.isEmpty || !mounted) return;
+    await _addPhotos(picked);
+  }
+
+  Future<PhotoSource?> _choosePhotoSource() {
+    if (!chatCameraAvailable) return Future.value(PhotoSource.gallery);
+    return showModalBottomSheet<PhotoSource>(
+      context: context,
+      useRootNavigator: true,
+      builder: (_) => const _PhotoSourceSheet(),
+    );
+  }
+
+  /// A picture from the keyboard (a GIF or a sticker of Gboard) is sent like the ones picked.
+  void _pasted(KeyboardInsertedContent content) {
+    final bytes = content.data;
+    if (bytes == null || bytes.isEmpty) return;
+    _addPhotos([PickedPhoto(bytes, content.uri.split('/').last)]);
+  }
+
+  /// Makes [picked] ready, shows what is left of them for the person to look over, and sends it as one message.
+  Future<void> _addPhotos(List<PickedPhoto> picked) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    setState(() => _preparing = true);
+    final PrepareResult result;
+    try {
+      result = await ChatMedia.prepare(picked);
+    } finally {
+      if (mounted) setState(() => _preparing = false);
+    }
+    if (!mounted) return;
+    if (result.refused.isNotEmpty) {
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            result.refused
+                .map(
+                  (error) => switch (error) {
+                    PhotoTooLarge() => S.chatPhotoTooLarge(error.name),
+                    PhotoUnreadable() => S.chatPhotoUnreadable(error.name),
+                  },
+                )
+                .join('\n'),
+          ),
+        ),
+      );
+    }
+    if (result.photos.isEmpty) return;
+    final draft = await showPhotoPreview(context, result.photos);
+    if (draft == null || !mounted) return;
+    final reply = _replyTo;
+    setState(() => _replyTo = null);
+    _c.sendAlbum(draft.photos, caption: draft.caption, reply: reply);
+    _scrollToNewest();
   }
 
   void _replyToMessage(ChatMessage message) {
@@ -170,13 +322,26 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
     return LayoutBuilder(
       builder: (context, box) {
         final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+        _lastKeyboard = max(_lastKeyboard, keyboard);
+        // The stickers are as tall as the keyboard was; the field of their search brings the keyboard up under a
+        // smaller tray, which leaves the chat what it needs to be laid out
+        final tray = !_trayOpen
+            ? 0.0
+            : keyboard > 0
+            ? min(_lastKeyboard, max(150.0, box.maxHeight - keyboard - 340))
+            : min(
+                _lastKeyboard > 0 ? _lastKeyboard : 300.0,
+                box.maxHeight * 0.6,
+              );
         return Padding(
           // Above the keyboard while it is up
           padding: EdgeInsets.only(bottom: keyboard),
           child: SizedBox(
-            // Most of the screen, and with the keyboard up all that is left above it
-            height: min(box.maxHeight * 0.85, box.maxHeight - keyboard),
-            child: _themed(context, p, theme),
+            // Most of the screen, and with the keyboard (or the stickers) up all that is left above it
+            height:
+                min(box.maxHeight * 0.85, box.maxHeight - keyboard - tray) +
+                tray,
+            child: _themed(context, p, theme, tray),
           ),
         );
       },
@@ -184,7 +349,12 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   }
 
   /// The sheet in the look of the room's theme: its background fades from the sheet's own colour into the theme's.
-  Widget _themed(BuildContext context, Palette p, TextTheme theme) {
+  Widget _themed(
+    BuildContext context,
+    Palette p,
+    TextTheme theme,
+    double tray,
+  ) {
     final sheet = Theme.of(context).bottomSheetTheme.backgroundColor ?? p.base;
     return ListenableBuilder(
       listenable: _c,
@@ -197,12 +367,12 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
             child: look == null
                 ? ColoredBox(
                     color: sheet,
-                    child: _sheet(context, p, theme, look),
+                    child: _sheet(context, p, theme, look, tray),
                   )
                 : ChatBackdrop(
                     look: look,
                     sheet: sheet,
-                    child: _sheet(context, p, theme, look),
+                    child: _sheet(context, p, theme, look, tray),
                   ),
           ),
         );
@@ -215,6 +385,7 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
     Palette p,
     TextTheme theme,
     ChatLook? look,
+    double tray,
   ) {
     return SafeArea(
       top: false,
@@ -305,6 +476,7 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                       _c.chat,
                       _c.receipts,
                       _c.chatHasOlder,
+                      _c.albumUploads,
                     ]),
                     builder: (context, _) =>
                         _c.snapshot.encrypted && !_c.snapshot.encryptionKey
@@ -344,14 +516,35 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                 onCancel: () => setState(() => _replyTo = null),
               ),
             ),
+          if (_song case final song?)
+            TextFieldTapRegion(
+              child: _SongBanner(
+                song: song,
+                onCancel: () => setState(() => _song = null),
+              ),
+            ),
           // Without the key of a sealed chat there is nothing to write, and the others could not read it
           _UnlessLocked(
             controller: _c,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
+              padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  ValueListenableBuilder(
+                    valueListenable: _field,
+                    builder: (context, value, _) => _AttachButtons(
+                      color: look?.accent ?? p.primary,
+                      preparing: _preparing,
+                      // Words in the field make room for it: the buttons fold into one
+                      collapsed: value.text.isNotEmpty && !_attachOpen,
+                      stickers: _trayOpen,
+                      onExpand: () => setState(() => _attachOpen = true),
+                      onPhoto: _pickPhotos,
+                      onSong: _pickSong,
+                      onSticker: _toggleTray,
+                    ),
+                  ),
                   Expanded(
                     child: TextField(
                       key: const ValueKey('chat-field'),
@@ -362,6 +555,24 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                       maxLength: RoomController.maxChatChars,
                       textCapitalization: TextCapitalization.sentences,
                       textInputAction: TextInputAction.send,
+                      // The keyboard takes the place of the stickers
+                      onTap: () {
+                        if (_trayOpen) setState(() => _trayOpen = false);
+                      },
+                      // Gboard offers GIFs and stickers to put in the field; only Android has it
+                      contentInsertionConfiguration:
+                          !kIsWeb &&
+                              defaultTargetPlatform == TargetPlatform.android
+                          ? ContentInsertionConfiguration(
+                              onContentInserted: _pasted,
+                              allowedMimeTypes: const [
+                                'image/jpeg',
+                                'image/png',
+                                'image/gif',
+                                'image/webp',
+                              ],
+                            )
+                          : null,
                       // Handled here, so that the keyboard's Send key does not put the keyboard away as well
                       onEditingComplete: _send,
                       // A touch anywhere else puts the keyboard away: its return key makes a new line
@@ -400,11 +611,13 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                     child: ValueListenableBuilder(
                       valueListenable: _field,
                       builder: (context, value, _) => IconButton(
-                        onPressed: value.text.trim().isEmpty ? null : _send,
+                        onPressed: value.text.trim().isEmpty && _song == null
+                            ? null
+                            : _send,
                         tooltip: S.chatSend,
                         icon: Icon(
                           Icons.send_rounded,
-                          color: value.text.trim().isEmpty
+                          color: value.text.trim().isEmpty && _song == null
                               ? p.textTertiary
                               : look?.accent ?? p.primary,
                         ),
@@ -415,6 +628,15 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
               ),
             ),
           ),
+          if (tray > 0)
+            SizedBox(
+              height: tray,
+              child: StickerTray(
+                accent: look?.accent ?? p.primary,
+                onSend: _sendSticker,
+                onOpenStore: () => showStickerStore(context),
+              ),
+            ),
         ],
       ),
     );
@@ -436,6 +658,129 @@ class _UnlessLocked extends StatelessWidget {
         ? const SizedBox.shrink()
         : child,
   );
+}
+
+/// The buttons at the left of the field that add something to the message: photos, a song, a sticker. A new kind is one
+/// more callback and one more button below. While words are written they fold into one button ([collapsed]), which opens
+/// them out again, so that the field is wider.
+class _AttachButtons extends StatelessWidget {
+  const _AttachButtons({
+    required this.color,
+    required this.preparing,
+    required this.collapsed,
+    required this.stickers,
+    required this.onExpand,
+    required this.onPhoto,
+    required this.onSong,
+    required this.onSticker,
+  });
+
+  final Color color;
+
+  /// Photos picked are being made ready: the button waits.
+  final bool preparing;
+  final bool collapsed;
+
+  /// The stickers are open, so their button offers the keyboard.
+  final bool stickers;
+  final VoidCallback onExpand;
+  final VoidCallback onPhoto;
+  final VoidCallback onSong;
+  final VoidCallback onSticker;
+
+  @override
+  Widget build(BuildContext context) {
+    // Part of the field as far as a touch outside it goes: adding must not put the keyboard away
+    return TextFieldTapRegion(
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 150),
+        alignment: Alignment.centerLeft,
+        child: collapsed && !preparing
+            ? IconButton(
+                key: const ValueKey('chat-attach-more'),
+                onPressed: onExpand,
+                tooltip: S.chatAttachMore,
+                icon: Icon(Icons.chevron_right_rounded, color: color),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (preparing)
+                    Tooltip(
+                      message: S.photoPreparing,
+                      child: const SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              key: ValueKey('chat-photo-preparing'),
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      key: const ValueKey('chat-add-photo'),
+                      onPressed: onPhoto,
+                      tooltip: S.chatAddPhoto,
+                      icon: Icon(Icons.photo_outlined, color: color),
+                    ),
+                  IconButton(
+                    key: const ValueKey('chat-add-song'),
+                    onPressed: onSong,
+                    tooltip: S.chatAddSong,
+                    icon: Icon(Icons.music_note_rounded, color: color),
+                  ),
+                  IconButton(
+                    key: const ValueKey('chat-add-sticker'),
+                    onPressed: onSticker,
+                    tooltip: stickers ? S.chatKeyboard : S.chatAddSticker,
+                    icon: Icon(
+                      stickers
+                          ? Icons.keyboard_alt_outlined
+                          : Icons.emoji_emotions_outlined,
+                      color: color,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+/// Where the photos come from, on a phone that has a camera.
+class _PhotoSourceSheet extends StatelessWidget {
+  const _PhotoSourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            key: const ValueKey('photo-source-gallery'),
+            leading: Icon(Icons.photo_library_outlined, color: p.primary),
+            title: Text(S.photoGallery),
+            onTap: () => Navigator.of(context).pop(PhotoSource.gallery),
+          ),
+          ListTile(
+            key: const ValueKey('photo-source-camera'),
+            leading: Icon(Icons.photo_camera_outlined, color: p.primary),
+            title: Text(S.photoCamera),
+            onTap: () => Navigator.of(context).pop(PhotoSource.camera),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// In a chat that is end-to-end encrypted, on a device that has not the key of the room: how to get it.
@@ -544,6 +889,62 @@ class _ReplyBanner extends StatelessWidget {
 }
 
 enum _Mute { hour, eightHours, tomorrow, always, off }
+
+/// Above the field: the song picked to be sent, and the way to drop it.
+class _SongBanner extends StatelessWidget {
+  const _SongBanner({required this.song, required this.onCancel});
+
+  final Track song;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Container(
+      key: const ValueKey('chat-song-banner'),
+      margin: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+      padding: const EdgeInsets.fromLTRB(6, 6, 0, 6),
+      decoration: BoxDecoration(
+        color: p.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Artwork(url: song.thumb, size: 40, radius: 8),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  song.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.titleSmall,
+                ),
+                if (song.artist.isNotEmpty)
+                  Text(
+                    song.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('chat-song-banner-drop'),
+            onPressed: onCancel,
+            tooltip: S.chatSongDrop,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.close_rounded, size: 20, color: p.textTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Keeps the notices of this room quiet for a while, or turns them back on.
 class _MuteButton extends StatelessWidget {
@@ -702,6 +1103,9 @@ class _EmptyChat extends StatelessWidget {
     );
   }
 }
+
+/// The side of a sticker in a message.
+const _stickerSize = 128.0;
 
 /// Messages of one person this close together share one name and one picture.
 const _groupGap = Duration(minutes: 3);
@@ -869,52 +1273,182 @@ class _Bubble extends StatelessWidget {
     const avatarSize = 28.0;
     final look = ChatLookScope.of(context);
     final ink = mine ? look?.mineInk ?? p.onPrimary : p.text;
-    final bubble = Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.sizeOf(context).width * 0.72,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: look != null
-            ? (mine ? null : look.theirs)
-            : mine
-            ? p.primary
-            : p.primary.withValues(alpha: 0.1),
-        gradient: look != null && mine ? look.mine : null,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (message.reply case final quote?)
-            _Quote(
-              quote: quote,
-              own: quote.by == controller.snapshot.you,
-              onBubbleOfMine: mine,
-            ),
-          message.locked
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.lock_outline_rounded, size: 14, color: ink),
-                    const SizedBox(width: 6),
-                    Text(
-                      S.chatLocked,
-                      style: theme.bodyMedium?.copyWith(
-                        color: ink.withValues(alpha: 0.8),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                )
-              : Text(
-                  message.text,
-                  style: theme.bodyMedium?.copyWith(color: ink),
-                ),
-        ],
-      ),
+    // Pictures: the room's album once it has the message, the previews kept meanwhile
+    final extra = message.locked ? null : ChatExtra.of(message);
+    final album = extra is AlbumExtra ? extra : null;
+    final song = extra is SongExtra ? extra : null;
+    final sticker = extra is StickerExtra ? extra : null;
+    // The emoji that stands in for a sticker is not drawn big as well
+    final bigEmoji = message.locked || sticker != null
+        ? null
+        : emojiOnly(message.text);
+    final upload = album != null || message.cid == null
+        ? null
+        : controller.albumUploads.value[message.cid];
+    final caption = album?.caption ?? upload?.caption;
+    final quote = message.reply == null
+        ? null
+        : _Quote(
+            quote: message.reply!,
+            own: message.reply!.by == controller.snapshot.you,
+            onBubbleOfMine: mine,
+          );
+    BoxDecoration decoration() => BoxDecoration(
+      color: look != null
+          ? (mine ? null : look.theirs)
+          : mine
+          ? p.primary
+          : p.primary.withValues(alpha: 0.1),
+      gradient: look != null && mine ? look.mine : null,
+      borderRadius: BorderRadius.circular(18),
     );
+    final maxWidth = BoxConstraints(
+      maxWidth: MediaQuery.sizeOf(context).width * 0.72,
+    );
+    // Pictures are drawn with no bubble; their words, and the quote of an answer, keep one
+    final pictures = album == null && upload == null
+        ? null
+        : Column(
+            crossAxisAlignment: mine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (quote != null)
+                Container(
+                  constraints: maxWidth,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+                  decoration: decoration(),
+                  child: quote,
+                ),
+              AlbumBubble(
+                controller: controller,
+                message: message,
+                album: album,
+                upload: upload,
+                when: _whenText(
+                  context,
+                  DateTime.fromMillisecondsSinceEpoch(message.at),
+                ),
+              ),
+              if (caption != null && caption.isNotEmpty)
+                Container(
+                  constraints: maxWidth,
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: decoration(),
+                  child: Text(
+                    caption,
+                    style: theme.bodyMedium?.copyWith(color: ink),
+                  ),
+                ),
+            ],
+          );
+    // A song is a card of its own; the quote of an answer keeps a bubble
+    final card = song == null
+        ? null
+        : Column(
+            crossAxisAlignment: mine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (quote != null)
+                Container(
+                  constraints: maxWidth,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+                  decoration: decoration(),
+                  child: quote,
+                ),
+              ChatSongCard(controller: controller, song: song),
+            ],
+          );
+    // A sticker is drawn with no bubble; the quote of an answer keeps a small one
+    final stickerView = sticker == null
+        ? null
+        : Column(
+            crossAxisAlignment: mine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (quote != null)
+                Container(
+                  constraints: maxWidth,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+                  decoration: decoration(),
+                  child: quote,
+                ),
+              StickerImage(
+                key: const ValueKey('chat-sticker'),
+                pack: sticker.pack,
+                id: sticker.sticker,
+                emoji: sticker.emoji,
+                size: _stickerSize,
+              ),
+            ],
+          );
+    // One to three emoji and nothing else are drawn big, with no bubble; the quote of an answer keeps a small one
+    final words = bigEmoji != null
+        ? Column(
+            crossAxisAlignment: mine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (quote != null)
+                Container(
+                  constraints: maxWidth,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+                  decoration: decoration(),
+                  child: quote,
+                ),
+              Text(
+                message.text.trim(),
+                key: const ValueKey('chat-big-emoji'),
+                style: TextStyle(fontSize: bigEmojiSize(bigEmoji), height: 1.2),
+              ),
+            ],
+          )
+        : Container(
+            constraints: maxWidth,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: decoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ?quote,
+                message.locked
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.lock_outline_rounded,
+                            size: 14,
+                            color: ink,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            S.chatLocked,
+                            style: theme.bodyMedium?.copyWith(
+                              color: ink.withValues(alpha: 0.8),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        message.text,
+                        style: theme.bodyMedium?.copyWith(color: ink),
+                      ),
+              ],
+            ),
+          );
+    final bubble = pictures ?? card ?? stickerView ?? words;
     final reactions = message.reactions;
     final side = mine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     return Padding(
@@ -973,7 +1507,10 @@ class _Bubble extends StatelessWidget {
                             message,
                             onReply,
                           ),
-                    child: Opacity(opacity: sent ? 1 : 0.6, child: bubble),
+                    child: Opacity(
+                      opacity: sent || pictures != null ? 1 : 0.6,
+                      child: bubble,
+                    ),
                   ),
                 ),
               ],
@@ -1011,7 +1548,9 @@ class _Bubble extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(top: 2, right: 4),
                 child: Text(
-                  S.chatNotSent,
+                  upload?.error == 'media_full'
+                      ? S.chatPhotosFull
+                      : S.chatNotSent,
                   style: theme.labelSmall?.copyWith(color: p.error),
                 ),
               ),
@@ -1329,6 +1868,11 @@ class _MessageMenu extends StatelessWidget {
       orElse: () => message,
     );
     final mineGiven = current.reactions[you];
+    final extra = ChatExtra.of(current);
+    // Pictures that the room does not have yet can only be taken back
+    final unsent = message.cid == null
+        ? null
+        : controller.albumUploads.value[message.cid];
     void give(Reaction reaction) {
       controller.reactToMessage(
         current,
@@ -1395,17 +1939,40 @@ class _MessageMenu extends StatelessWidget {
                   onReply();
                 },
               ),
-            ListTile(
-              key: const ValueKey('message-copy'),
-              leading: Icon(Icons.copy_rounded, color: p.primary),
-              title: Text(S.chatCopy),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: message.text));
-                Navigator.of(context).pop();
-                ScaffoldMessenger.maybeOf(context)
-                    ?.showSnackBar(SnackBar(content: Text(S.chatCopied)));
-              },
-            ),
+            if (extra is AlbumExtra)
+              ListTile(
+                key: const ValueKey('message-save-all'),
+                leading: Icon(Icons.download_rounded, color: p.primary),
+                title: Text(S.photoSaveAll),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  savePhotos(context, controller, [
+                    for (final item in extra.items) AlbumSlot.item(item),
+                  ]);
+                },
+              )
+            else if (unsent != null)
+              ListTile(
+                key: const ValueKey('message-cancel-send'),
+                leading: Icon(Icons.close_rounded, color: p.primary),
+                title: Text(S.chatCancelSend),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  controller.discardChat(message);
+                },
+              )
+            else
+              ListTile(
+                key: const ValueKey('message-copy'),
+                leading: Icon(Icons.copy_rounded, color: p.primary),
+                title: Text(S.chatCopy),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: message.text));
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.maybeOf(context)
+                      ?.showSnackBar(SnackBar(content: Text(S.chatCopied)));
+                },
+              ),
             if (current.reactions.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),

@@ -26,7 +26,7 @@ final class MemorySecrets: RoomSecretStore {
 /// another member's name. Mirrors ChatCipher.kt and `chat_cipher.dart`; the three read the same vectors (`e2ee_vectors.json`).
 ///
 /// A sealed message is base64url of: version (1), epoch (1), nonce (12), ciphertext and tag. What is sealed is JSON,
-/// `{"t": text, "q": the quote of the message answered}`, padded with spaces to a multiple of 64 bytes so that its length
+/// `{"t": text, "q": the quote of the message answered, "x": what it carries besides words}`, padded with spaces to a multiple of 64 bytes so that its length
 /// says little. The preview, for a notice, is the first 120 characters sealed apart.
 enum ChatCipher {
     private static let label = "sapoche-chat-v1"
@@ -98,9 +98,23 @@ enum ChatCipher {
         }
     }
 
+    /// Stands where the sender goes in the associated data of the sealed picture behind the chat: no member's public id looks like it.
+    private static let background = "bg"
+
+    /// The bytes of the JPEG behind the chat of [room], sealed. [nonce] is only given by the tests.
+    static func sealBackground(secret: Data, room: String, jpeg: Data, nonce: Data? = nil) -> String? {
+        seal(secret: secret, room: room, by: background, plaintext: jpeg, nonce: nonce)
+    }
+
+    /// The JPEG that [envelope] holds; nil when it is not from this room's secret or intact.
+    static func openBackground(secret: Data, room: String, envelope: String) -> Data? {
+        open(secret: secret, room: room, by: background, envelope: envelope)
+    }
+
     /// The sealed words of a message by [by], with the quote of what it answers inside, and the sealed preview.
-    static func sealMessage(secret: Data, room: String, by: String, text: String, quote: ChatQuote?) -> (ct: String, pv: String)? {
+    static func sealMessage(secret: Data, room: String, by: String, text: String, quote: ChatQuote?, x: [String: Any]? = nil) -> (ct: String, pv: String)? {
         var body: [String: Any] = ["t": text]
+        if let x { body["x"] = x }
         if let quote { body["q"] = ["id": quote.id, "by": quote.by, "name": quote.name, "text": quote.text] as [String: Any] }
         guard var bytes = try? JSONSerialization.data(withJSONObject: body, options: [.withoutEscapingSlashes]) else { return nil }
         bytes.append(Data(repeating: 0x20, count: (pad - bytes.count % pad) % pad))
@@ -118,6 +132,7 @@ enum ChatCipher {
         var opened = message
         opened.text = text
         opened.re = ChatQuote(json["q"])
+        opened.x = json["x"].object.map { JSONText.encode($0) }
         opened.locked = false
         return opened
     }

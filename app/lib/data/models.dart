@@ -1,6 +1,8 @@
 /// Plain data the UI works with. The JSON keys are a contract with UiJson.kt on the native side.
 library;
 
+import 'dart:convert';
+
 import 'song_key.dart';
 
 /// A song found by search or a pasted link, not yet in the room's queue.
@@ -632,6 +634,7 @@ class ChatMessage {
     this.locked = false,
     this.ct,
     this.pv,
+    this.x,
   });
 
   /// The room's number for it, one more with every message.
@@ -665,8 +668,16 @@ class ChatMessage {
   final String? ct;
   final String? pv;
 
+  /// What the message carries besides words (a song, pictures, a sticker): an object with a kind `k`; null for plain words.
+  /// The words in [text] stand in for it where the kind is not known.
+  final Map<String, dynamic>? x;
+
   /// The same message with its sealed words read.
-  ChatMessage sealedAs({required String text, ChatQuote? reply}) => ChatMessage(
+  ChatMessage sealedAs({
+    required String text,
+    ChatQuote? reply,
+    Map<String, dynamic>? x,
+  }) => ChatMessage(
     id: id,
     by: by,
     name: name,
@@ -676,6 +687,7 @@ class ChatMessage {
     delivery: delivery,
     reply: reply,
     reactions: reactions,
+    x: x,
   );
 
   /// The same message as one that cannot be read.
@@ -702,6 +714,7 @@ class ChatMessage {
     reply: reply,
     reactions: reactions,
     locked: locked,
+    x: x,
   );
 
   /// The same message with [member]'s reaction to it set, or ([reaction] null) taken away.
@@ -720,6 +733,7 @@ class ChatMessage {
       member: ?reaction,
     },
     locked: locked,
+    x: x,
   );
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -739,7 +753,57 @@ class ChatMessage {
     locked: json['locked'] as bool? ?? false,
     ct: json['ct'] as String?,
     pv: json['pv'] as String?,
+    x: _extra(json['x']),
   );
+
+  /// The extra of a message as the native side hands it (JSON text) or the web wire (an object); null when it is neither.
+  static Map<String, dynamic>? _extra(Object? raw) {
+    try {
+      final value = raw is String ? jsonDecode(raw) : raw;
+      return value is Map<String, dynamic> && value['k'] is String
+          ? value
+          : null;
+    } on FormatException {
+      return null;
+    }
+  }
+}
+
+/// A ticket to put one file in the room's bucket: its id [m], the path [url] of this server to put it at, and the [token]
+/// that goes with it.
+class MediaTicket {
+  const MediaTicket({required this.m, required this.url, required this.token});
+
+  final String m;
+  final String url;
+  final String token;
+
+  factory MediaTicket.fromJson(Map<Object?, Object?> json) => MediaTicket(
+    m: json['m'] as String,
+    url: json['url'] as String,
+    token: json['token'] as String,
+  );
+}
+
+/// The room's answer to a request for tickets: one for each file in order, or the [error] it gave (`media_full`,
+/// `media_limit`, `media_too_big`, `media_unavailable`, or `offline` when nobody answered).
+class MediaTickets {
+  const MediaTickets.granted(this.tickets) : error = null;
+  const MediaTickets.refused(String this.error) : tickets = const [];
+
+  final List<MediaTicket> tickets;
+  final String? error;
+
+  bool get granted => error == null;
+
+  factory MediaTickets.fromMap(Map<Object?, Object?> map) {
+    final error = map['error'] as String?;
+    if (error != null) return MediaTickets.refused(error);
+    return MediaTickets.granted([
+      for (final t in map['tickets'] as List<Object?>? ?? const [])
+        MediaTicket.fromJson(t as Map<Object?, Object?>),
+    ]);
+  }
 }
 
 /// What a reply shows of the message it answers.

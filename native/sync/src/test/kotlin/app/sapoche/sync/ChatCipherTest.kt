@@ -5,7 +5,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -84,6 +87,32 @@ class ChatCipherTest {
         // Not sealed, or sealed for somebody else: nothing to read
         assertNull(ChatCipher.openMessage(secret, room, arrived.copy(by = "other")))
         assertNull(ChatCipher.openMessage(secret, room, arrived.copy(ct = null)))
+    }
+
+    @Test
+    fun `what a message carries besides words is sealed with it and comes back`() {
+        val song = buildJsonObject {
+            put("k", "song")
+            put("v", "bNp9pn0ni3I")
+            put("ti", "A song")
+        }
+        val (ct, pv) = ChatCipher.sealMessage(secret, room, "a1", "🎵 A song", null, song)
+        val read = assertNotNull(ChatCipher.openMessage(secret, room, ChatMessage(7, "a1", "Ann", "", 5, ct = ct, pv = pv)))
+        assertEquals(song, read.x)
+        assertEquals("🎵 A song", read.text)
+        val plain = assertNotNull(ChatCipher.openMessage(secret, room, ChatMessage(8, "a1", "Ann", "", 5, ct = ChatCipher.sealMessage(secret, room, "a1", "hi", null).first)))
+        assertNull(plain.x)
+    }
+
+    @Test
+    fun `the picture behind a sealed chat is sealed for the room and cannot pass for a message`() {
+        val jpeg = ByteArray(300) { (it * 7).toByte() }
+        val envelope = ChatCipher.sealBackground(secret, room, jpeg)
+        assertContentEquals(jpeg, ChatCipher.openBackground(secret, room, envelope))
+        assertNull(ChatCipher.openBackground(secret, "XYZ789", envelope))
+        assertNull(ChatCipher.openBackground(ChatCipher.newSecret(), room, envelope))
+        // A message of this room whose sender is called "bg" is not it, and the picture is no message of any member
+        assertNull(ChatCipher.open(secret, room, "b9f77f9b6e1bf750", envelope))
     }
 
     @Test

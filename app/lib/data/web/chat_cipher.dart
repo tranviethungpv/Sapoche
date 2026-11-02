@@ -14,7 +14,7 @@ import '../models.dart';
 /// (`native/sync/src/test/resources/e2ee_vectors.json`). In a browser the work is the browser's own (WebCrypto).
 ///
 /// A sealed message is base64url of: version (1), epoch (1), nonce (12), ciphertext and tag. What is sealed is JSON,
-/// `{"t": text, "q": the quote of the message answered}`, padded with spaces to a multiple of 64 bytes so that its length
+/// `{"t": text, "q": the quote of the message answered, "x": what it carries besides words}`, padded with spaces to a multiple of 64 bytes so that its length
 /// says little. The preview, for a notice, is the first 120 characters sealed apart.
 class ChatCipher {
   const ChatCipher._();
@@ -101,17 +101,38 @@ class ChatCipher {
     }
   }
 
+  /// Stands where the sender goes in the associated data of the sealed picture behind the chat: no member's public id
+  /// looks like it.
+  static const _background = 'bg';
+
+  /// The bytes of the JPEG behind the chat of [room], sealed. [nonce] is only given by the tests.
+  static Future<String> sealBackground(
+    List<int> secret,
+    String room,
+    List<int> jpeg, {
+    List<int>? nonce,
+  }) => seal(secret, room, _background, jpeg, nonce: nonce);
+
+  /// The JPEG that [envelope] holds; null when it is not from this room's secret or intact.
+  static Future<Uint8List?> openBackground(
+    List<int> secret,
+    String room,
+    String envelope,
+  ) => open(secret, room, _background, envelope);
+
   /// The sealed words of a message by [by], with the quote of what it answers inside, and the sealed preview.
   static Future<({String ct, String pv})> sealMessage(
     List<int> secret,
     String room,
     String by,
     String text,
-    ChatQuote? quote,
-  ) async {
+    ChatQuote? quote, [
+    Map<String, Object?>? x,
+  ]) async {
     final body = utf8.encode(
       jsonEncode({
         't': text,
+        'x': ?x,
         if (quote != null) 'q': {'id': quote.id, 'by': quote.by, 'name': quote.name, 'text': quote.text},
       }),
     );
@@ -133,7 +154,11 @@ class ChatCipher {
     try {
       final json = jsonDecode(utf8.decode(body)) as Map<String, dynamic>;
       final q = json['q'] as Map<String, dynamic>?;
-      return message.sealedAs(text: json['t'] as String, reply: q == null ? null : ChatQuote.fromJson(q));
+      return message.sealedAs(
+        text: json['t'] as String,
+        reply: q == null ? null : ChatQuote.fromJson(q),
+        x: json['x'] is Map<String, dynamic> ? json['x'] as Map<String, dynamic> : null,
+      );
     } on Object {
       return null;
     }

@@ -151,6 +151,9 @@ final class GroupController {
     /// The latest picture of each member, for a screen that comes back after pictures arrived.
     private var pictures: [String: String] = [:]
 
+    /// Callers of `mediaTickets` waiting for the room's answer, by the id of their request.
+    private var ticketWaiters: [String: CheckedContinuation<[String: Any], Never>] = [:]
+
     func picturesSeen() -> [Avatar] {
         pictures.map { Avatar(id: $0.key, data: $0.value) }
     }
@@ -242,13 +245,13 @@ final class GroupController {
     let reactions = SharedFlow<Reaction>()
 
     /// Sends a chat message, as an answer to message number [reply] when it has one; false when there is no connection to send it on.
-    func sendChat(_ text: String, cid: String, reply: Int64? = nil, quote: ChatQuote? = nil) -> Bool {
+    func sendChat(_ text: String, cid: String, reply: Int64? = nil, quote: ChatQuote? = nil, extra: [String: Any]? = nil) -> Bool {
         guard let client, let code = roomCode else { return false }
         let snapshot = session?.snapshot.value
-        if snapshot?.state?.enc != true { return client.send(Wire.chat(text, cid: cid, reply: reply)) }
-        // A sealed room: the words go sealed, with what they answer inside; without the secret there is nothing to send
+        if snapshot?.state?.enc != true { return client.send(Wire.chat(text, cid: cid, reply: reply, x: extra)) }
+        // A sealed room: the words go sealed, with what they answer and what they carry inside; without the secret there is nothing to send
         guard let secret = secrets.secret(for: code), let you = snapshot?.you,
-              let sealed = ChatCipher.sealMessage(secret: secret, room: code, by: you, text: text, quote: quote) else { return false }
+              let sealed = ChatCipher.sealMessage(secret: secret, room: code, by: you, text: text, quote: quote, x: extra) else { return false }
         return client.send(Wire.chatSealed(ct: sealed.ct, pv: sealed.pv, cid: cid, reply: reply))
     }
 
@@ -522,11 +525,20 @@ final class GroupController {
         newClient.onMessage = { [weak self] message in
             if case let .error(code, text) = message { self?.errors.emit(ControllerError(code: code, message: text)) }
             if case let .autoplayFill(epoch, videoId, title) = message { self?.fillRoom(epoch: epoch, videoId: videoId, title: title) }
+            if case let .mediaTicket(id, tickets) = message, let id {
+                self?.answerTickets(id, ["tickets": tickets.map { ["m": $0.m, "url": $0.url, "token": $0.token] }])
+            }
+            // An error of the pictures is the answer to the one request that waits for it
+            if case let .error(code, _) = message, code.hasPrefix("media_"), let waiting = self?.ticketWaiters.keys.first {
+                self?.answerTickets(waiting, ["error": code])
+            }
             self?.onChat(room: code.uppercased(), message)
             newSession.onMessage(message)
         }
-        newClient.onAvatar = { [weak self] memberId, _, data in
+        newClient.onAvatar = { [weak self] memberId, _, received, sealed in
             guard let self else { return }
+            // The picture behind a sealed chat is opened here, so the screen gets a JPEG as ever; without the secret there is none
+            let data = !sealed || received == nil ? received : self.openBackground(code, received ?? "")
             self.pictures[memberId] = data
             self.avatars.emit(Avatar(id: memberId, data: data))
         }
@@ -836,7 +848,43 @@ final class GroupController {
     // Only meaningful in a room
     @discardableResult func requestKick(_ memberId: String) -> Bool { send(Wire.kick(memberId)) }
     @discardableResult func requestRoomName(_ name: String) -> Bool { send(Wire.roomName(name)) }
-    @discardableResult func requestRoomTheme(_ theme: String, bg: String?) -> Bool { send(Wire.roomTheme(theme, bg: bg)) }
+    @discardableResult func requestRoomTheme(_ theme: String, bg: String?) -> Bool {
+        guard let code = roomCode else { return false }
+        if session?.snapshot.value.state?.enc != true { return send(Wire.roomTheme(theme, bg: bg)) }
+        // A sealed room keeps the picture sealed: without the secret there is nothing to send, and a clear one is not taken
+        guard let secret = secrets.secret(for: code) else { return false }
+        var sealed: String?
+        if let bg {
+            guard let jpeg = Data(base64Encoded: bg), let envelope = ChatCipher.sealBackground(secret: secret, room: code, jpeg: jpeg) else { return false }
+            sealed = envelope
+        }
+        return send(Wire.roomTheme(theme, bg: sealed, sealed: true))
+    }
+
+    /// Tickets for files of [sizes] bytes, or the code of the error the room answered with (`media_full`, ...) or `offline`.
+    func mediaTickets(sizes: [Int64]) async -> [String: Any] {
+        guard let client else { return ["error": "offline"] }
+        let id = UUID().uuidString
+        return await withCheckedContinuation { continuation in
+            ticketWaiters[id] = continuation
+            if !client.send(Wire.mediaPut(sizes, id: id)) {
+                answerTickets(id, ["error": "offline"])
+                return
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: Self.ticketWaitMs * 1_000_000)
+                answerTickets(id, ["error": "offline"])
+            }
+        }
+    }
+
+    private func answerTickets(_ id: String, _ answer: [String: Any]) { ticketWaiters.removeValue(forKey: id)?.resume(returning: answer) }
+
+    /// The picture behind a sealed chat opened with the secret of [room]; nil without it.
+    private func openBackground(_ room: String, _ envelope: String) -> String? {
+        guard let secret = secrets.secret(for: room) else { return nil }
+        return ChatCipher.openBackground(secret: secret, room: room, envelope: envelope)?.base64EncodedString()
+    }
     @discardableResult func requestRoomSettings(_ guestControl: String) -> Bool { send(Wire.roomSettings(guestControl: guestControl)) }
     @discardableResult func requestRoomAutoplay(_ on: Bool) -> Bool { send(Wire.autoplay(on)) }
 
@@ -902,6 +950,8 @@ final class GroupController {
     private static let keyAvatar = "avatar"
     /// The chat messages kept, as many as the room keeps.
     private static let chatKept = 100
+    /// How long a request for tickets waits for the room, in milliseconds.
+    private static let ticketWaitMs: UInt64 = 15_000
     private static let keyRoomSolo = "room_solo"
     private static let keyRoomSoloItem = "room_solo_item"
     private static let keyLastActive = "room_last_active"

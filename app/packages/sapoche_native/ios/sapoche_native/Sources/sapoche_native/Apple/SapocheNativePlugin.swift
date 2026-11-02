@@ -200,7 +200,8 @@ public final class SapocheNativePlugin: NSObject, FlutterPlugin, FlutterStreamHa
     // ------------------------------------------------------------------ commands
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        let arguments = call.arguments as? [String: Any] ?? [:]
+        // Bytes from Dart come as Flutter's own type; the core knows only Data
+        let arguments = (call.arguments as? [String: Any] ?? [:]).mapValues { ($0 as? FlutterStandardTypedData)?.data ?? $0 }
         let method = call.method
         Task { @MainActor in
             do {

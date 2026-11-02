@@ -182,7 +182,19 @@ abstract class Backend {
 
   /// Writes [text] to the room's chat, as an answer to message number [reply] when it has one; [cid] comes back with
   /// it once the room has it. False when there is no connection to send it on.
-  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote});
+  ///
+  /// [extra] is what the message carries besides words (a song, pictures, a sticker): an object with a kind `k`, which
+  /// native only passes on, or seals with the words in a sealed room. [text] stands in for it where the kind is unknown.
+  Future<bool> sendChat(String text, String cid, {int? reply, ChatQuote? quote, Map<String, Object?>? extra});
+
+  /// Asks the room for tickets to put files of [sizes] bytes (once encrypted) in its bucket.
+  Future<MediaTickets> mediaTickets(List<int> sizes);
+
+  /// Puts [bytes] (an encrypted file) where [ticket] says. False when the server did not take them.
+  Future<bool> uploadMedia(MediaTicket ticket, Uint8List bytes);
+
+  /// The encrypted file [m] of room [room]; null when there is none or it cannot be fetched.
+  Future<Uint8List?> downloadMedia(String room, String m);
 
   /// Owner only: turns on end-to-end encryption of the room's chat for good. A secret is made on this device and the
   /// chat so far is deleted. False when this device cannot (it does not own the room, or the room is sealed already).
@@ -628,11 +640,13 @@ class NativeBackend implements Backend {
     String cid, {
     int? reply,
     ChatQuote? quote,
+    Map<String, Object?>? extra,
   }) async =>
       await _call<bool>('sendChat', {
         'text': text,
         'cid': cid,
         'reply': ?reply,
+        if (extra != null) 'extra': jsonEncode(extra),
         if (quote != null)
           'quote': {
             'id': quote.id,
@@ -642,6 +656,28 @@ class NativeBackend implements Backend {
           },
       }) ??
       false;
+
+  @override
+  Future<MediaTickets> mediaTickets(List<int> sizes) async =>
+      MediaTickets.fromMap(
+        (await _call<Map<Object?, Object?>>('mediaTickets', {
+              'sizes': sizes,
+            })) ??
+            const {'error': 'offline'},
+      );
+
+  @override
+  Future<bool> uploadMedia(MediaTicket ticket, Uint8List bytes) async =>
+      await _call<bool>('uploadMedia', {
+        'url': ticket.url,
+        'token': ticket.token,
+        'bytes': bytes,
+      }) ??
+      false;
+
+  @override
+  Future<Uint8List?> downloadMedia(String room, String m) =>
+      _call<Uint8List>('downloadMedia', {'room': room, 'm': m});
 
   @override
   Future<bool> enableEncryption() async =>

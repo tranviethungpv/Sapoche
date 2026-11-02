@@ -126,6 +126,7 @@ async function main() {
     await chatThreadsSection();
     await chatArchiveSection();
     await encryptionSection();
+    await extrasSection();
     await autoplayLaneSection();
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);
@@ -293,6 +294,7 @@ async function main() {
   await chatThreadsSection();
   await chatArchiveSection();
   await encryptionSection();
+  await extrasSection();
   await autoplayLaneSection();
   if (process.env.SIM_VAPID_PUBLIC) await pushSection();
   if (process.env.SIM_STALE_MS) await staleSection(Number(process.env.SIM_STALE_MS));
@@ -991,6 +993,16 @@ async function lifetimeSection() {
   await first.waitFor((m) => m.t === "chat");
   first.send({ t: "room.theme", theme: "ocean", bg: Buffer.from("wallpaper").toString("base64") });
   await first.waitFor((m) => m.t === "state" && m.state.theme === "ocean" && m.state.bg !== undefined);
+  // A picture sent with the chat: it takes 6 000 of the 10 000 bytes the account is set to hold (MEDIA_ACCOUNT_MAX)
+  const album = await askTickets(first, [6000], "keep");
+  check("a picture is given a ticket while the account has space", album.t === "media.ticket", JSON.stringify(album));
+  check("and put", (await putFile(album.tickets[0], Buffer.alloc(6000, 7))).status === 204);
+  first.send({ t: "chat", text: "📷 Photo", x: { k: "album", items: [{ m: album.tickets[0].m }] } });
+  await first.waitFor((m) => m.t === "chat" && m.msg.text === "📷 Photo");
+  const other = await newCode();
+  const crowd = new Client(other, "cr-id", "Crowd");
+  await crowd.join(true);
+  check("another room is refused when the account has no space for its picture", (await askTickets(crowd, [6000], "no")).code === "media_full");
   first.close();
   await sleep(500);
   check("an empty room with nothing queued is kept for a moment", (await roomInfo(bare)).exists === true);
@@ -1003,11 +1015,17 @@ async function lifetimeSection() {
   back.send({ t: "avatar.get", id: "room:bg" });
   check("and the picture behind its chat", (await back.waitFor((m) => m.t === "avatar" && m.id === "room:bg")).data === Buffer.from("wallpaper").toString("base64"));
   const remembered = await back.waitFor((m) => m.t === "chat.history");
-  check("and still has its chat when somebody comes back", remembered.msgs.map((m) => m.text).join() === "anyone?");
+  check("and still has its chat when somebody comes back", remembered.msgs.map((m) => m.text).join() === "anyone?,📷 Photo");
   back.close();
   // Four seconds after the last message (CHAT_KEEP_MS), once the room is empty and its short lifetime is over again
   await sleep(5200);
   check("and is gone when the chat is old", (await roomInfo(bare)).exists === false);
+  check("and its pictures with it", (await getFile(bare, album.tickets[0].m)).status === 404);
+  // The first connection was dropped long ago by the short timers of this server
+  const again2 = new Client(other, "cr2-id", "Crowd");
+  await again2.join(true);
+  check("which gives their space back to the account", (await askTickets(again2, [6000], "yes")).t === "media.ticket");
+  again2.close();
   const again = new Client(bare, "b-id", "Bee");
   check("and a new room has the default theme", (await again.join(true)).state.theme === "default");
   check("its chat went with it", (await again.waitFor((m) => m.t === "chat.history")).msgs.length === 0);
@@ -1554,7 +1572,7 @@ async function encryptionSection() {
   check("a sealed message is passed on as it is, with nothing to read", got.msg.ct === sealed && got.msg.pv === preview && got.msg.text === "" && got.msg.id === 1 && got.msg.by === pid("enc-bo") && got.msg.cid === "s-1", JSON.stringify(got));
   bob.send({ t: "chat", text: "still in the clear" });
   bob.send({ t: "chat", ct: "not base64url!" });
-  bob.send({ t: "chat", ct: "A".repeat(4097) });
+  bob.send({ t: "chat", ct: "A".repeat(16_385) });
   bob.send({ t: "chat", ct: sealed, pv: "A".repeat(601) });
   bob.send({ t: "chat", ct: 42 });
   check("words in the clear, or sealed ones that are not, or too long, are ignored", await ann.stays((m) => m.t === "chat", 400));
@@ -2329,6 +2347,140 @@ async function stormRound(seed) {
     JSON.stringify({ server: [s.epoch, s.phase, s.index, s.positionMs, s.startedAt], devices: pictured.map((m) => [m.epoch, m.phase, m.index, m.positionMs, m.startedAt]) }));
   check(`storm ${label}: no device was refused or slowed down`, models.every((m) => m.errors.length === 0), JSON.stringify(models.map((m) => m.errors)));
   clients.forEach((x) => x.close());
+}
+
+/** Asks [client] for tickets for files of the sizes [sizes], and answers with the message (or the error that came instead). */
+async function askTickets(client, sizes, id = "ask") {
+  client.send({ t: "media.put", id, files: sizes.map((n) => ({ n })) });
+  return client.waitFor((m) => (m.t === "media.ticket" && m.id === id) || (m.t === "error" && m.code.startsWith("media_")) || (m.t === "error" && m.code === "bad_message"));
+}
+
+const putFile = (ticket, bytes, extra = {}) =>
+  fetch(`${BASE}${ticket.url}&token=${ticket.token}`, { method: "PUT", body: bytes, headers: { ...keyHeaders, ...extra } });
+const getFile = (code, m, headers = keyHeaders) => fetch(`${BASE}/media/${code}/${m}`, { headers });
+
+/** What a message carries besides words (protocol 18), and the sealed picture behind a sealed chat. */
+async function extrasSection() {
+  console.log("Chat: extras, pictures and the sealed background");
+  const code = await newCode();
+  const ann = new Client(code, "ex-an", "Ann");
+  await ann.join(true);
+  const bob = new Client(code, "ex-bo", "Bob");
+  await bob.join(false);
+  const song = { k: "song", v: VIDEO_A, ti: "A song", ar: "Someone", d: 200000 };
+  ann.send({ t: "chat", text: "🎵 A song", x: song, cid: "x1" });
+  const got = await bob.waitFor((m) => m.t === "chat");
+  check("a message carries its extra as it was sent", JSON.stringify(got.msg.x) === JSON.stringify(song) && got.msg.text === "🎵 A song");
+  for (const bad of [{ v: 1 }, { k: "Song" }, { k: "toolongkind" }, [1, 2], "text", { k: "album", pad: "x".repeat(12_000) }]) ann.send({ t: "chat", text: "plain", x: bad });
+  const plain = [];
+  for (let i = 0; i < 6; i++) plain.push(await bob.waitFor((m) => m.t === "chat"));
+  check("an extra that is not an object of a kind, or too big, is left out and the words go on", plain.every((m) => m.msg.text === "plain" && m.msg.x === undefined));
+  const late = new Client(code, "ex-la", "Late");
+  await late.join(false);
+  const history = await late.waitFor((m) => m.t === "chat.history");
+  check("whoever joins later gets the extra with the history", JSON.stringify(history.msgs[0].x) === JSON.stringify(song));
+  late.send({ t: "chat.before", id: 3 });
+  check("and with an older page", JSON.stringify((await late.waitFor((m) => m.t === "chat.page")).msgs[0].x) === JSON.stringify(song));
+  late.close();
+
+  // Pictures
+  const bytes = Buffer.from(Array.from({ length: 1500 }, (_, i) => (i * 7) & 255));
+  const tickets = await askTickets(ann, [1500, 900], "t1");
+  check("a member asks for tickets and gets one per file, in order, with the id it gave", tickets.t === "media.ticket" && tickets.tickets.length === 2 && tickets.id === "t1", JSON.stringify(tickets));
+  const [first, second] = tickets.tickets;
+  check("a ticket is a path of this server with the size and the end of its life in it", first.url.startsWith(`/media/${code}/${first.m}?n=1500&e=`) && /^[A-Za-z0-9_-]{22}$/.test(first.m) && first.token.length > 20);
+  check("a file is put with its ticket", (await putFile(first, bytes)).status === 204);
+  const back = await getFile(code, first.m);
+  check("and given back, as it was put, to a member", back.status === 200 && Buffer.from(await back.arrayBuffer()).equals(bytes));
+  check("and may be kept for good by whoever holds it", /immutable/.test(back.headers.get("cache-control") ?? ""));
+  check("a file nobody put is not found", (await getFile(code, second.m)).status === 404);
+  if (KEY) check("nobody without the key of the group gets or puts a file", (await getFile(code, first.m, {})).status === 401 && (await fetch(`${BASE}${second.url}&token=${second.token}`, { method: "PUT", body: bytes })).status === 401);
+  check("a wrong token is refused", (await fetch(`${BASE}${second.url}&token=${first.token}`, { method: "PUT", body: bytes.subarray(0, 900), headers: keyHeaders })).status === 403);
+  check("so is a ticket for another size", (await fetch(`${BASE}${second.url.replace("n=900", "n=9000")}&token=${second.token}`, { method: "PUT", body: bytes.subarray(0, 900), headers: keyHeaders })).status === 403);
+  check("and more bytes than the ticket was for", (await putFile(second, bytes)).status === 413);
+  check("a ticket for one room does not serve another", (await fetch(`${BASE}${second.url.replace(code, "AAAAAA")}&token=${second.token}`, { method: "PUT", body: bytes.subarray(0, 900), headers: keyHeaders })).status === 403);
+  check("the right size is taken", (await putFile(second, bytes.subarray(0, 900))).status === 204);
+  const old = await askTickets(bob, [10], "old");
+  await sleep(Number(process.env.SIM_MEDIA_TICKET_MS) + 300 || 0);
+  if (process.env.SIM_MEDIA_TICKET_MS) check("a ticket does not last for ever", (await putFile(old.tickets[0], bytes.subarray(0, 10))).status === 410);
+
+  check("more than ten files at once is refused", (await askTickets(ann, Array(11).fill(10), "eleven")).code === "bad_message");
+  check("a file that is empty is refused", (await askTickets(ann, [0], "z")).code === "media_too_big");
+  ann.send({ t: "media.put", files: [{ n: 21_000 }], id: "big" });
+  check("a file over the size limit is refused", (await ann.waitFor((m) => m.t === "error")).code === "media_too_big");
+  ann.send({ t: "media.put", files: "nope" });
+  check("and a request that is not a list of files", (await ann.waitFor((m) => m.t === "error")).code === "bad_message");
+
+  // The room has 60 000 bytes (MEDIA_ROOM_MAX in sim-keyed.mjs): 1 500 + 900 + 10 are used
+  const space = await askTickets(ann, [20_000, 20_000, 17_000], "space");
+  check("tickets are given while the room has space", space.t === "media.ticket", JSON.stringify(space));
+  const full = await askTickets(ann, [2_000], "full");
+  check("and refused with media_full when it has not", full.code === "media_full", JSON.stringify(full));
+
+  // A member may ask for MEDIA_PER_DAY (30) files a day: 2 + 1 + 3 are counted
+  const other = await newCode();
+  const cara = new Client(other, "ex-ca", "Cara");
+  await cara.join(true);
+  for (let i = 0; i < 3; i++) check(`ten files a time are given (${i + 1})`, (await askTickets(cara, Array(10).fill(10), `d${i}`)).t === "media.ticket");
+  check("but not past the day's limit", (await askTickets(cara, [10], "d4")).code === "media_limit");
+
+  // A sealed room
+  const sealedCode = await newCode();
+  const e2ee = (name, id, caps = ["e2ee", "bgseal"]) => {
+    const client = new Client(sealedCode, id, name);
+    client.joinSealed = async (create) => {
+      await client.opened;
+      client.send({ t: "join", clientId: id, name, create, caps });
+      return client.waitFor((m) => m.t === "state");
+    };
+    return client;
+  };
+  const owner = e2ee("Own", "se-ow");
+  await owner.joinSealed(true);
+  owner.send({ t: "room.theme", theme: "c-1e88e5-d81b60", bg: Buffer.from("clear wallpaper").toString("base64") });
+  await owner.waitFor((m) => m.t === "state" && m.state.bg !== undefined);
+  const album = await askTickets(owner, [100], "al");
+  await putFile(album.tickets[0], Buffer.alloc(100, 1));
+  owner.send({ t: "room.encrypt" });
+  const sealedState = (await owner.waitFor((m) => m.t === "state" && m.state.enc === true)).state;
+  check("turning encryption on lets go of the picture behind the chat and keeps the look", sealedState.bg === undefined && sealedState.theme === "c-1e88e5-d81b60", JSON.stringify(sealedState));
+  check("and of the files, which no message can show now", (await getFile(sealedCode, album.tickets[0].m)).status === 404);
+  const reader = e2ee("Reader", "se-re");
+  await reader.joinSealed(false);
+  const plainApp = e2ee("Plain", "se-pl", ["e2ee"]);
+  await plainApp.joinSealed(false);
+  const bgs = "AQE" + "B".repeat(2000);
+  owner.send({ t: "room.theme", theme: "ocean", bg: Buffer.from("clear again").toString("base64") });
+  await owner.waitFor((m) => m.t === "state" && m.state.theme === "ocean");
+  check("a sealed room takes the theme but not a picture in the clear", (await resyncState(reader)).bg === undefined);
+  owner.send({ t: "room.theme", theme: "ocean", bgs });
+  const withBg = (await reader.waitFor((m) => m.t === "state" && m.state.bg !== undefined)).state;
+  check("it takes the sealed picture and shows a fingerprint of it, nothing that says it is sealed", /^[0-9a-f]{8}$/.test(withBg.bg) && withBg.bgSealed === undefined);
+  reader.send({ t: "avatar.get", id: "room:bg" });
+  const sealedBg = await reader.waitFor((m) => m.t === "avatar" && m.id === "room:bg");
+  check("and gives it, marked sealed, to an app that opens it", sealedBg.data === bgs && sealedBg.sealed === true && sealedBg.av === withBg.bg);
+  plainApp.send({ t: "avatar.get", id: "room:bg" });
+  check("but not to an app that does not", (await plainApp.waitFor((m) => m.t === "avatar" && m.id === "room:bg")).data === undefined);
+  owner.send({ t: "room.theme", theme: "ocean", bgs: "not base64url!" });
+  owner.send({ t: "room.theme", theme: "ocean", bgs: "A".repeat(90_401) });
+  owner.send({ t: "ping", c0: 1 });
+  await owner.waitFor((m) => m.t === "pong");
+  check("a sealed picture that is not base64url, or too big, is ignored", (await resyncState(reader)).bg === withBg.bg);
+  owner.send({ t: "room.theme", theme: "ocean", bgs: null });
+  check("null takes it away", (await reader.waitFor((m) => m.t === "state" && m.state.bg === undefined)).state.theme === "ocean");
+  const plainRoom = await newCode();
+  const solo = new Client(plainRoom, "ex-so", "Solo");
+  await solo.join(true);
+  solo.send({ t: "room.theme", theme: "forest", bgs });
+  await solo.waitFor((m) => m.t === "state" && m.state.theme === "forest");
+  check("a room that is not sealed takes no sealed picture", (await resyncState(solo)).bg === undefined);
+
+  // The sealed messages carry more now, and their extras are inside the seal
+  const sealed = "AQE" + "A".repeat(16_000);
+  owner.send({ t: "chat", ct: sealed, x: song });
+  const sealedMsg = await reader.waitFor((m) => m.t === "chat");
+  check("a sealed message may be 16 384 characters long, and its extra is left to the seal", sealedMsg.msg.ct === sealed && sealedMsg.msg.x === undefined);
+  [ann, bob, cara, owner, reader, plainApp, solo].forEach((x) => x.close());
 }
 
 main().catch((error) => {

@@ -65,7 +65,7 @@ final class RoomClient: SocketEvents {
     var onConnected: () -> Void = {}
 
     /// A member's picture arrived ([av] is its fingerprint), or with no [data] they took it away.
-    var onAvatar: (_ id: String, _ av: String?, _ data: String?) -> Void = { _, _, _ in }
+    var onAvatar: (_ id: String, _ av: String?, _ data: String?, _ sealed: Bool) -> Void = { _, _, _, _ in }
 
     let connection = StateFlow<Connection>(.connecting)
 
@@ -273,9 +273,9 @@ final class RoomClient: SocketEvents {
         case let .pong(c0, s1):
             lastPongMs = time.nowMs()
             clock.addSample(c0: c0, c2: time.nowMs(), s1: s1)
-        case let .avatar(id, av, data):
+        case let .avatar(id, av, data, sealed):
             if id == Wire.backgroundId { knownBackground = av } else { known[id] = av }
-            onAvatar(id, av, data)
+            onAvatar(id, av, data, sealed)
         case let message?:
             if case .state = message, createOnJoin == true { createOnJoin = false }
             if case let .state(_, yourId, state, members, protocolVersion) = message {
@@ -302,7 +302,7 @@ final class RoomClient: SocketEvents {
     private func wantBackground(_ bg: String?) {
         if serverProtocol < Self.themeProtocol || bg == knownBackground { return }
         knownBackground = bg
-        if bg == nil { onAvatar(Wire.backgroundId, nil, nil) } else { socket?.send(Wire.avatarGet(Wire.backgroundId)) }
+        if bg == nil { onAvatar(Wire.backgroundId, nil, nil, false) } else { socket?.send(Wire.avatarGet(Wire.backgroundId)) }
     }
 
     /// Asks for the pictures of members whose picture changed since it was last fetched, and forgets those who are gone.
@@ -318,7 +318,7 @@ final class RoomClient: SocketEvents {
                 }
             } else if known.removeValue(forKey: member.id) != nil {
                 // They had one and took it away
-                onAvatar(member.id, nil, nil)
+                onAvatar(member.id, nil, nil, false)
             }
         }
     }

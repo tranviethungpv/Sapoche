@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
+import 'chat_extra.dart';
+import 'chat_media.dart';
 import 'room_controller.dart';
 
 /// Lets the person pick a picture from their photos; gives back its bytes, already small, or null when they back out.
@@ -166,3 +168,37 @@ Future<Uint8List?> cutWallpaperAway(
   ),
   [photo, left, top, width, height],
 );
+
+/// Where the photos for the chat come from.
+enum PhotoSource { gallery, camera }
+
+/// Lets the person pick photos to send in the chat (one to [AlbumExtra.maxItems], in the order picked); empty when they
+/// back out. The photos are handed over as they are: [ChatMedia.prepare] turns them upright and makes them smaller.
+typedef ChatPhotoPicker = Future<List<PickedPhoto>> Function(PhotoSource source);
+
+/// Whether the camera can be asked for a photo: on the phones; a browser's picker has no camera of its own to ask for.
+bool get chatCameraAvailable =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
+
+/// The system's photo picker, which needs no permission; the camera asks for its own. The files are not scaled by the
+/// platform, which would make a GIF still.
+Future<List<PickedPhoto>> pickChatPhotos(PhotoSource source) async {
+  final picker = ImagePicker();
+  try {
+    final files = source == PhotoSource.camera
+        ? [?await picker.pickImage(source: ImageSource.camera)]
+        : await picker.pickMultiImage(
+            limit: AlbumExtra.maxItems,
+            requestFullMetadata: false,
+          );
+    return [
+      for (final file in files.take(AlbumExtra.maxItems))
+        PickedPhoto(await file.readAsBytes(), file.name),
+    ];
+  } on Object {
+    // No permission for the camera, or no camera: nothing was picked
+    return const [];
+  }
+}

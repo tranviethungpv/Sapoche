@@ -10,6 +10,8 @@ import 'data/music_controller.dart';
 import 'data/recent_rooms.dart';
 import 'data/recent_searches.dart';
 import 'data/room_controller.dart';
+import 'data/sticker_licenses.dart';
+import 'data/sticker_store.dart';
 import 'data/update_controller.dart';
 import 'frame_boost.dart';
 import 'frame_stats.dart';
@@ -43,6 +45,9 @@ Future<void> main() async {
   // The native side keeps the picture too, but it is the person's choice that counts when the app opens
   room.shareAvatar(settings.avatar);
   final library = LibraryController(backend)..start();
+  registerStickerLicenses();
+  // The packs are files of the room server, which the room controller knows the address of
+  final stickers = await StickerStore.load(server: () => room.profile.server, cacheFolder: backend.cacheFolder);
   runApp(
     SapocheApp(
       model: AppModel(
@@ -53,6 +58,7 @@ Future<void> main() async {
         searches: searches,
         music: MusicController(backend),
         update: UpdateController(backend),
+        stickers: stickers,
       ),
     ),
   );

@@ -195,7 +195,7 @@ final class GroupSession {
             case let .pause(epoch, positionMs, by): self.onPause(epoch: epoch, positionMs: positionMs, by: by)
             case let .advance(epoch, index, startedAt): self.onAdvance(epoch: epoch, index: index, startedAt: startedAt)
             case .pong: break // consumed by the connection layer
-            case .avatar: break // consumed by the connection layer too
+            case .avatar, .mediaTicket: break // consumed by the connection layer and the controller
             case .autoplayFill: break // answered by the controller, which can look for songs
             case .chat, .chatHistory, .chatPage, .chatUpdate, .chatReceipts, .react: break // shown by the controller
             case let .error(code, message): self.log("server error \(code): \(message)")

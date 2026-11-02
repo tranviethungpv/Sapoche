@@ -28,6 +28,7 @@ import 'widgets/like_button.dart';
 import 'widgets/marquee_text.dart';
 import 'widgets/download_actions.dart';
 import 'widgets/playlist_picker.dart';
+import 'widgets/queue_actions.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
 import 'widgets/video_frame.dart';
@@ -961,6 +962,7 @@ class _MoreButton extends StatelessWidget {
         ),
         'artist' => _openArtist(context),
         'playlist' => showAddToPlaylist(context, [current]),
+        'chat' => sendTrackToChat(context, current),
         'download' => startDownload(context, [current]),
         'blocked' => showNotInterested(context, current),
         _ => library.removeDownload(current.videoId),
@@ -971,6 +973,9 @@ class _MoreButton extends StatelessWidget {
         if (!current.isLocal)
           PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
         PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
+        // Only where the room has a chat to send it to
+        if (canSendToChat(controller, current))
+          PopupMenuItem(value: 'chat', child: Text(S.songSendToChat)),
         if (!current.isLocal && !kIsWeb)
           ...switch (library.downloadState(current.videoId)) {
             DownloadState.done => [

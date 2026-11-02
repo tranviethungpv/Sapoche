@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import '../strings.dart';
 import 'backend.dart';
 import 'calm.dart';
+import 'chat_extra.dart';
+import 'chat_media.dart';
 import 'invite_secret.dart';
 import 'models.dart';
 import 'recent_rooms.dart';
@@ -87,6 +89,9 @@ class RoomController extends ChangeNotifier {
 
   final Backend _backend;
   final RecentRooms? _recents;
+
+  /// The pictures of the chat: ready to send, put up, and brought back from the room.
+  late final ChatMedia media = ChatMedia(_backend);
   StreamSubscription<BackendEvent>? _subscription;
 
   RoomSnapshot _snapshot = const RoomSnapshot();
@@ -485,6 +490,7 @@ class RoomController extends ChangeNotifier {
       final arrived = {for (final m in messages) ?m.cid};
       for (final cid in arrived) {
         _chatDeadlines.remove(cid)?.cancel();
+        _releaseAlbum(cid);
       }
       list = [
         ...messages,
@@ -511,6 +517,7 @@ class RoomController extends ChangeNotifier {
         final cid = message.cid;
         if (cid != null) {
           _chatDeadlines.remove(cid)?.cancel();
+          _releaseAlbum(cid);
           list.removeWhere(
             (m) => m.delivery != ChatDelivery.sent && m.cid == cid,
           );
@@ -574,6 +581,10 @@ class RoomController extends ChangeNotifier {
       timer.cancel();
     }
     _chatDeadlines.clear();
+    for (final upload in albumUploads.value.values) {
+      upload.release();
+    }
+    albumUploads.value = const {};
     _chatRoom = null;
     chatHasOlder.value = false;
     _olderAskedAt = null;
@@ -592,10 +603,30 @@ class RoomController extends ChangeNotifier {
   }
 
   /// Writes [text] to the room's chat, as an answer to [reply] when given. It shows at once, and as not sent if the room
-  /// does not confirm it.
-  Future<void> sendChat(String text, {ChatQuote? reply}) async {
+  /// does not confirm it. [extra] is what the message carries besides words (see [Backend.sendChat]); [text] is then
+  /// what apps that do not know it show instead.
+  Future<void> sendChat(
+    String text, {
+    ChatQuote? reply,
+    Map<String, Object?>? extra,
+  }) async {
     final clean = text.trim();
     if (clean.isEmpty || !hasChat) return;
+    final cid = _addPending(clean, reply, extra);
+    return _deliver(cid, clean, reply, extra);
+  }
+
+  /// Shares [track] in the chat as a card of the song, as an answer to [reply] when given. A song that is not on YouTube
+  /// (a file on this phone) cannot be shared: gives false for it, and for a room without a chat.
+  bool sendSong(Track track, {ChatQuote? reply}) {
+    if (!hasChat || !SongExtra.isVideoId(track.videoId)) return false;
+    final extra = SongExtra.fromTrack(track);
+    sendChat(extra.standIn, reply: reply, extra: extra.toJson()).ignore();
+    return true;
+  }
+
+  /// Shows [text] at once as a message of this device that the room has not confirmed; gives the id it is known by.
+  String _addPending(String text, ChatQuote? reply, Map<String, Object?>? extra) {
     final cid = '${DateTime.now().microsecondsSinceEpoch}-${_chatSequence++}';
     chat.value = [
       ...chat.value,
@@ -603,16 +634,22 @@ class RoomController extends ChangeNotifier {
         id: 0,
         by: _snapshot.you ?? '',
         name: _profile.name ?? '',
-        text: clean,
+        text: text,
         at: DateTime.now().millisecondsSinceEpoch,
         cid: cid,
         delivery: ChatDelivery.sending,
         reply: reply,
+        x: extra,
       ),
     ];
+    return cid;
+  }
+
+  /// Gives the pending message [cid] to the room, and shows it as not sent if the room does not confirm it.
+  Future<void> _deliver(String cid, String text, ChatQuote? reply, Map<String, Object?>? extra) async {
     var sent = false;
     try {
-      sent = await _backend.sendChat(clean, cid, reply: reply?.id, quote: reply);
+      sent = await _backend.sendChat(text, cid, reply: reply?.id, quote: reply, extra: extra);
     } on Object {
       // Shown as not sent, with the way to try again
     }
@@ -625,13 +662,73 @@ class RoomController extends ChangeNotifier {
     _chatDeadlines[cid] = Timer(chatDeliveryTimeout, () => _chatFailed(cid));
   }
 
+  /// The pictures being sent, by the id of the message that shows them (its `cid`): their previews and how far each has
+  /// got. An entry stays while its message is on its way or failed, and goes when the room confirms it or it is dropped.
+  final ValueNotifier<Map<String, AlbumUpload>> albumUploads = ValueNotifier(const {});
+
+  /// Sends [photos] (made ready by [ChatMedia.prepare]) as one message, with [caption] if given. The message shows at
+  /// once with the previews in [albumUploads]; the pictures go up, and then it is sent like any other. If the room has no
+  /// space for them or a picture does not go up, it is shown as not sent, and [resendChat] tries again; the reason is
+  /// in [AlbumUpload.error] (`media_full` is a room out of space, see [S.chatPhotosFull]).
+  Future<void> sendAlbum(List<PreparedPhoto> photos, {String? caption, ChatQuote? reply}) async {
+    if (photos.isEmpty || !hasChat) return;
+    final note = caption?.trim() ?? '';
+    final text = note.isEmpty ? S.chatPhotoText(photos.length) : '${S.chatPhotoText(photos.length)} $note';
+    final upload = media.upload(photos, caption: note.isEmpty ? null : note);
+    final cid = _addPending(text, reply, null);
+    albumUploads.value = {...albumUploads.value, cid: upload};
+    return _sendUpload(cid, upload, text, reply);
+  }
+
+  Future<void> _sendUpload(String cid, AlbumUpload upload, String text, ChatQuote? reply) async {
+    final outcome = await upload.upload();
+    // Dropped while it went up
+    if (!chat.value.any((m) => m.cid == cid)) return;
+    final album = outcome.album;
+    if (album == null) return _chatFailed(cid);
+    return _deliver(cid, text, reply, album.toJson());
+  }
+
+  /// Drops [message], one of this device's that the room has not confirmed: gone from the chat, and its pictures let go.
+  void discardChat(ChatMessage message) {
+    final cid = message.cid;
+    if (cid == null || message.delivery == ChatDelivery.sent) return;
+    _chatDeadlines.remove(cid)?.cancel();
+    chat.value = [
+      for (final m in chat.value)
+        if (m.cid != cid) m,
+    ];
+    _releaseAlbum(cid);
+  }
+
+  void _releaseAlbum(String cid) {
+    final upload = albumUploads.value[cid];
+    if (upload == null) return;
+    upload.release();
+    albumUploads.value = {...albumUploads.value}..remove(cid);
+  }
+
   /// Tries [message], which did not reach the room, once more.
   Future<void> resendChat(ChatMessage message) {
+    final cid = message.cid;
+    final upload = albumUploads.value[cid];
+    if (upload != null) {
+      // Pictures that are no longer here cannot be sent: the message goes
+      if (upload.released) {
+        discardChat(message);
+        return Future.value();
+      }
+      chat.value = [
+        for (final m in chat.value)
+          if (m.cid == cid) m.withDelivery(ChatDelivery.sending) else m,
+      ];
+      return _sendUpload(cid!, upload, message.text, message.reply);
+    }
     chat.value = [
       for (final m in chat.value)
         if (m.cid != message.cid) m,
     ];
-    return sendChat(message.text, reply: message.reply);
+    return sendChat(message.text, reply: message.reply, extra: message.x);
   }
 
   /// Gives [message] this device's [reaction], or ([reaction] null) takes the one it gave away. It shows at once.
@@ -1074,6 +1171,35 @@ class RoomController extends ChangeNotifier {
     await _run(() => _backend.add(track, playNext: playNext));
   }
 
+  /// Plays [track] now in a room: a song that waits in the queue is jumped to, any other is put next and then jumped to.
+  Future<void> playNowInRoom(Track track) async {
+    QueueEntry? find() => _snapshot.queue.where((e) => sameSong(e, track)).lastOrNull;
+    var entry = find();
+    if (entry == null) {
+      await add(track, playNext: true);
+      entry = find() ?? await _entryAppearing(find);
+    }
+    if (entry != null) await jump(entry);
+  }
+
+  /// The entry [find] gives once the room's queue has it, or null when it does not come in a few seconds.
+  Future<QueueEntry?> _entryAppearing(QueueEntry? Function() find) {
+    final found = Completer<QueueEntry?>();
+    void check() {
+      final entry = find();
+      if (entry != null && !found.isCompleted) found.complete(entry);
+    }
+
+    addListener(check);
+    final timer = Timer(const Duration(seconds: 4), () {
+      if (!found.isCompleted) found.complete(null);
+    });
+    return found.future.whenComplete(() {
+      removeListener(check);
+      timer.cancel();
+    });
+  }
+
   /// Plays [other], another release of the song, in place of [entry].
   Future<void> swapVersion(QueueEntry entry, Track other) =>
       _run(() => _backend.swap(entry.id, other));
@@ -1332,6 +1458,10 @@ class RoomController extends ChangeNotifier {
     for (final timer in _chatDeadlines.values) {
       timer.cancel();
     }
+    for (final upload in albumUploads.value.values) {
+      upload.release();
+    }
+    albumUploads.dispose();
     chat.dispose();
     unreadChat.dispose();
     player.dispose();

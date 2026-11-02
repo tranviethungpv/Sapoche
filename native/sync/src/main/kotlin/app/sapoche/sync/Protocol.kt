@@ -3,6 +3,7 @@ package app.sapoche.sync
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -98,6 +99,8 @@ data class ChatMessage(
     val ct: String? = null,
     /** The start of the words sealed apart, for a notice. Protocol 15. */
     val pv: String? = null,
+    /** What the message carries besides words (a song, pictures, a sticker): an object with a kind `k`. Inside the seal in a sealed room. Protocol 18. */
+    val x: JsonObject? = null,
     /** Set by the app, not the room: a sealed message that this device has no secret to read, or one that does not open with it. */
     val locked: Boolean = false,
 )
@@ -148,7 +151,15 @@ sealed interface ServerMessage {
 
     /** The picture of member [id] as base64, with its fingerprint [av]; both are null when the member has none. */
     @Serializable
-    data class Avatar(val id: String, val av: String? = null, val data: String? = null) : ServerMessage
+    data class Avatar(val id: String, val av: String? = null, val data: String? = null, val sealed: Boolean = false) : ServerMessage
+
+    /** A ticket to put one file in the room's bucket: its id [m], the path [url] to put it at (with `token` added to it), and the [token]. Protocol 18. */
+    @Serializable
+    data class MediaTicketItem(val m: String, val url: String, val token: String)
+
+    /** The answer to [Protocol.mediaPut]: one ticket per file, in order, and the [id] the request had. Protocol 18. */
+    @Serializable
+    data class MediaTicket(val id: String? = null, val tickets: List<MediaTicketItem>) : ServerMessage
 
     /** A new chat message, this device's own included. Protocol 10. */
     @Serializable
@@ -202,6 +213,7 @@ object Protocol {
                 "pong" -> json.decodeFromJsonElement<ServerMessage.Pong>(obj)
                 "autoplay.fill" -> json.decodeFromJsonElement<ServerMessage.AutoplayFill>(obj)
                 "avatar" -> json.decodeFromJsonElement<ServerMessage.Avatar>(obj)
+                "media.ticket" -> json.decodeFromJsonElement<ServerMessage.MediaTicket>(obj)
                 "chat" -> json.decodeFromJsonElement<ServerMessage.Chat>(obj)
                 "chat.history" -> json.decodeFromJsonElement<ServerMessage.ChatHistory>(obj)
                 "chat.page" -> json.decodeFromJsonElement<ServerMessage.ChatPage>(obj)
@@ -229,7 +241,8 @@ object Protocol {
         put("name", name)
         if (create != null) put("create", create)
         // This app reads and writes sealed chat; a room that is sealed refuses one that does not say so. Protocol 15
-        put("caps", buildJsonArray { add("e2ee") })
+        // "bgseal": it opens the sealed picture behind a sealed chat. Protocol 18
+        put("caps", buildJsonArray { add("e2ee"); add("bgseal") })
         // Shown to the other members in this person's profile. Protocol 17
         if (app != null) put("app", app)
     }
@@ -253,10 +266,20 @@ object Protocol {
 
     fun roomName(name: String) = msg("room.name") { put("name", name) }
 
-    /** The look of the chat for the whole room, `default` taking it away, with the picture behind it as base64 of a JPEG (null takes it away). Protocol 16. */
-    fun roomTheme(theme: String, bg: String?) = msg("room.theme") {
+    /**
+     * The look of the chat for the whole room, `default` taking it away, with the picture behind it as base64 of a JPEG
+     * (null takes it away). In a sealed room [sealed] is true and the picture is the envelope of [ChatCipher.sealBackground]
+     * instead, sent as `bgs`. Protocol 16.
+     */
+    fun roomTheme(theme: String, bg: String?, sealed: Boolean = false) = msg("room.theme") {
         put("theme", theme)
-        put("bg", bg)
+        put(if (sealed) "bgs" else "bg", bg)
+    }
+
+    /** Asks for tickets to put files of [sizes] bytes (once encrypted) in the room's bucket; [id] comes back with the answer. Protocol 18. */
+    fun mediaPut(sizes: List<Long>, id: String) = msg("media.put") {
+        put("id", id)
+        put("files", buildJsonArray { sizes.forEach { n -> add(buildJsonObject { put("n", n) }) } })
     }
 
     /** Owner only: `all` or `add`. */
@@ -281,10 +304,11 @@ object Protocol {
      * A chat message to the room; [cid] comes back with it, so this device knows it arrived. [reply] is the number of the
      * message it answers (protocol 12). Protocol 10.
      */
-    fun chat(text: String, cid: String, reply: Long? = null) = msg("chat") {
+    fun chat(text: String, cid: String, reply: Long? = null, x: JsonObject? = null) = msg("chat") {
         put("text", text)
         put("cid", cid)
         if (reply != null) put("reply", reply)
+        if (x != null) put("x", x)
     }
 
     /** This member's reaction to the chat message [id]: a name of the room's reactions or an emoji; null takes it away. Protocol 12. */
