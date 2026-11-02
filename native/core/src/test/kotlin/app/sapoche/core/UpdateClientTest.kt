@@ -71,7 +71,7 @@ class UpdateClientTest {
         dir.deleteRecursively()
     }
 
-    private fun client() = UpdateClient(server.url("/").toString(), mapOf("X-Sapoche-Key" to "k"))
+    private fun client() = UpdateClient(server.url("/").toString(), headers = { mapOf("X-Sapoche-Key" to "k") })
 
     @Test
     fun `the newest release is read and the key is sent`() = runTest {

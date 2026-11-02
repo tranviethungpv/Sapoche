@@ -205,6 +205,9 @@ object UiJson {
 
     fun invite(code: String): String = JSONObject().put("type", "invite").put("code", code).toString()
 
+    /** A setup link was opened: the screen checks it and asks before using it. */
+    fun setup(link: String): String = JSONObject().put("type", "setup").put("link", link).toString()
+
     /** The person touched the notification of the chat of room [room]. */
     fun openChat(room: String): String = JSONObject().put("type", "openChat").put("room", room).toString()
 

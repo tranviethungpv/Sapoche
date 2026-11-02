@@ -75,6 +75,7 @@ class SapocheBridge(
 
     /** An invitation that arrived before the UI was listening. */
     private var pendingInvite: String? = null
+    private var pendingSetup: String? = null
     private var pendingChat: String? = null
 
     /** Waits for the answer of the system's dialog that asks for leave to show notifications. */
@@ -140,8 +141,17 @@ class SapocheBridge(
         controller = null
     }
 
-    /** Handles an invitation, `sapoche://join/CODE` or the https link of the server's invitation page; anything else is ignored. */
+    /**
+     * Handles an invitation, `sapoche://join/CODE` or the https link of the server's invitation page, and a setup link,
+     * `sapoche://setup?server=…&key=…`, which another phone shows as a QR code; anything else is ignored. The screen checks
+     * a setup link and asks before using it.
+     */
     fun onLink(uri: Uri?) {
+        if (uri?.scheme == "sapoche" && uri.host == "setup") {
+            val link = uri.toString()
+            if (sink != null) emit(UiJson.setup(link)) else pendingSetup = link
+            return
+        }
         val own = uri?.scheme == "sapoche" && uri.host == "join"
         val web = uri?.scheme == "https" && uri.host == Uri.parse(Config.SERVER).host && uri.pathSegments.firstOrNull() == "join"
         if (uri == null || !own && !web) return
@@ -268,6 +278,10 @@ class SapocheBridge(
         pendingInvite?.let {
             pendingInvite = null
             emit(UiJson.invite(it))
+        }
+        pendingSetup?.let {
+            pendingSetup = null
+            emit(UiJson.setup(it))
         }
         pendingChat?.let {
             pendingChat = null
@@ -400,10 +414,17 @@ class SapocheBridge(
                 "trimMs" to prefs.getLong("trim_ms", 0L),
                 "videoHeight" to SapocheApp.videoMaxHeight,
                 "server" to Config.SERVER,
+                "configured" to Config.isSet,
+                "key" to Config.authHeaders.isNotEmpty(),
                 "autoplay" to prefs.getBoolean("autoplay", true),
                 "audioQuality" to SapocheApp.audioQuality.level,
             )
             "setupLink" -> return Config.setupLink()
+            // The server of this build is the one built in; only the key of a build for the public is taken from the link
+            "configure" -> {
+                call.argument<String>("key")?.let(Config::setKey)
+                return null
+            }
             "cacheFolder" -> return activity.cacheDir.path
             "smooth" -> {
                 display.pace(call.argument<String>("pace") ?: "free")
@@ -690,11 +711,12 @@ class SapocheBridge(
         val group = withTimeout(SERVICE_START_TIMEOUT_MS) { SapocheApp.group.first { it != null } }!!
         when (call.method) {
             "createRoom" -> {
+                if (!Config.isSet) throw CodedException("not_configured", "Set the group key first")
                 val code = createRoom()
                 group.join(Config.SERVER, code, call.argument<String>("name").orEmpty(), create = true)
                 return code
             }
-            "join" -> group.join(
+            "join" -> if (!Config.isSet) throw CodedException("not_configured", "Set the group key first") else group.join(
                 Config.SERVER,
                 call.argument<String>("code").orEmpty().trim().uppercase(),
                 call.argument<String>("name").orEmpty(),

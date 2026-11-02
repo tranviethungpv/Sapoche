@@ -10,7 +10,8 @@
 #   with --publish:    first opens the APK on the emulator (app/tool/smoke.sh) and stops if it crashes; then
 #                      puts the files in the private R2 bucket (needs `wrangler login`; the APK first, then
 #                      latest.json, so a phone never reads news of a file that is not there yet; the file is
-#                      named sapoche-<version>.apk, and latest.json says so)
+#                      named sapoche-<version>.apk, and latest.json says so); then a copy WITHOUT the room key
+#                      (sapoche-<version>-android.apk in $HOME) goes on the GitHub release v<version> (app/tool/github_release.py)
 #
 # Bump `version:` in pubspec.yaml first: a phone only offers an update whose build number is higher.
 set -euo pipefail
@@ -115,11 +116,33 @@ if [ "$PUBLISH" = 1 ]; then
   SMOKE_APK=$HOME/sapoche-release-x64-$NAME.apk
   cp build/app/outputs/flutter-apk/app-release.apk "$SMOKE_APK"
   "$APP/tool/smoke.sh" "$SMOKE_APK"
+  # The copy for GitHub, which anybody can download: the same code, signed the same, with no key inside (SAPOCHE_NO_KEY).
+  # It is given its key by a setup link. The key must not be anywhere in it, which is checked before it can leave.
+  PUBLIC_APK=$HOME/sapoche-$NAME-android.apk
+  SAPOCHE_NO_KEY=1 "$FLUTTER" build apk --release --target-platform android-arm64 --split-debug-info="$SYMBOLS/public" --obfuscate
+  cp build/app/outputs/flutter-apk/app-release.apk "$PUBLIC_APK"
+  KEY=$(sed -n 's/^sapoche\.roomKey=//p' "$APP/android/sapoche.properties")
+  if [ -n "$KEY" ]; then
+    for apk in "$OUT" "$PUBLIC_APK"; do
+      found=0
+      for dex in $(unzip -Z1 "$apk" 'classes*.dex'); do
+        unzip -p "$apk" "$dex" | grep -aqF -- "$KEY" && found=1
+      done
+      [ "$apk" = "$OUT" ] && [ "$found" = 0 ] && { echo "the check for the key does not find it in the APK that has it: it cannot be trusted"; exit 1; }
+      [ "$apk" = "$PUBLIC_APK" ] && [ "$found" = 1 ] && { echo "the key is inside the APK made for GitHub: not published"; exit 1; }
+    done
+  fi
+  "$BUILD_TOOLS/apksigner" verify "$PUBLIC_APK" >/dev/null
   cd "$SERVER"
   npx wrangler r2 object put "sapoche-releases/sapoche-$NAME.apk" --remote --file "$OUT" --content-type application/vnd.android.package-archive
   npx wrangler r2 object put "sapoche-releases/sapoche-$NAME.apk.gz" --remote --file "$OUT.gz" --content-type application/gzip
   npx wrangler r2 object put "sapoche-releases/latest.json" --remote --file "$LATEST" --content-type application/json
   echo "published $NAME ($CODE)"
+  # Also on the release of this repository (tag v<version>), beside the iPhone build the CI puts there. Not having the
+  # token is not a failure: the release above is complete without it.
+  status=0
+  "$APP/tool/github_release.py" "v$NAME" "$APP/release-notes/$NAME.txt" "$PUBLIC_APK" || status=$?
+  [ "$status" = 3 ] && echo "NOT on GitHub: see app/tool/github_release.py for the token" || [ "$status" = 0 ] || exit "$status"
 else
   echo "not published; run again with --publish to put it in the bucket"
 fi

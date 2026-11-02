@@ -200,8 +200,9 @@ class _SettingsPageState extends State<SettingsPage> {
               label: S.backup,
               onTap: () => _open(context, () => S.backup, _backup),
             ),
-          // The server is set by the person on iOS and in a browser; on Android it is built into the app
-          if (kIsWeb || Platform.isIOS)
+          // The server is set by the person on iOS and in a browser; on Android it is built into the app, and only the
+          // build for the public (a GitHub release) has no key and asks for one here
+          if (kIsWeb || Platform.isIOS || !model.room.profile.configured)
             _NavRow(
               selected: _shows(_server),
               key: const ValueKey('settings-server'),
@@ -656,17 +657,19 @@ class _ServerGroup extends StatelessWidget {
       builder: (context, _) => _Group(
         footer: kIsWeb ? S.serverHelpWeb : S.serverHelp,
         children: [
-          _Row(
-            key: const ValueKey('server-address'),
-            label: S.serverAddress,
-            value: room.profile.server,
-            trailing: Icon(
-              Icons.edit_outlined,
-              size: 18,
-              color: context.palette.textSecondary,
+          // An Android build has its server built in: only its key is asked for
+          if (kIsWeb || Platform.isIOS)
+            _Row(
+              key: const ValueKey('server-address'),
+              label: S.serverAddress,
+              value: room.profile.server,
+              trailing: Icon(
+                Icons.edit_outlined,
+                size: 18,
+                color: context.palette.textSecondary,
+              ),
+              onTap: () => _edit(context, key: false),
             ),
-            onTap: () => _edit(context, key: false),
-          ),
           _Row(
             key: const ValueKey('server-key'),
             label: S.serverKey,
@@ -844,7 +847,9 @@ class _UpdateGroup extends StatelessWidget {
           UpdatePhase.failed => (
             S.updateError(info.error),
             info.version == null ? S.updateCheck : S.updateTryAgain,
-            info.version == null ? update.check : () => downloadUpdate(context, update),
+            info.version == null
+                ? update.check
+                : () => downloadUpdate(context, update),
           ),
           UpdatePhase.upToDate => (
             S.updateUpToDate,

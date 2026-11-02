@@ -19,6 +19,7 @@ class SapocheApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Config.init(this)
         instance = this
         EventLog.init(filesDir)
         videoMaxHeight = getSharedPreferences("sapoche", MODE_PRIVATE).getInt("video_height", DEFAULT_VIDEO_HEIGHT)
@@ -38,7 +39,7 @@ class SapocheApp : Application() {
         roomKeys = RoomKeys(this)
         chatNotifier = ChatNotifier(this)
         heat = Heat(this)
-        updater = Updater(this, UpdateClient(Config.SERVER, Config.authHeaders))
+        updater = Updater(this, UpdateClient(Config.SERVER, headers = { Config.authHeaders }))
         updateNotifier = UpdateNotifier(this)
     }
 

@@ -55,7 +55,10 @@ android {
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
         // Invitation links (https://<server>/join/CODE) open the app directly once Android has verified the server
         manifestPlaceholders["serverHost"] = URI(serverUrl).host
-        buildConfigField("String", "ROOM_KEY", "\"${localProperties.getProperty("sapoche.roomKey", "")}\"")
+        // SAPOCHE_NO_KEY=1 builds the app for the public (a GitHub release): no key inside, it is given one by a setup link
+        val noKey = System.getenv("SAPOCHE_NO_KEY") == "1"
+        buildConfigField("String", "ROOM_KEY", "\"${if (noKey) "" else localProperties.getProperty("sapoche.roomKey", "")}\"")
+        buildConfigField("boolean", "NEEDS_SETUP", noKey.toString())
     }
 
     // The release key lives next to sapoche.properties and is not committed. Without it the release

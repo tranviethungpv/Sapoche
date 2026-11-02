@@ -67,11 +67,11 @@ data class ReleaseNote(val version: String, val notes: String, val notesVi: Stri
 
 /**
  * Asks the server which release is the newest and fetches it. The file comes from a private bucket (see
- * server/src/update.ts), so every call carries the room key in [headers].
+ * server/src/update.ts), so every call carries the room key in [headers], asked for at each call (the key can be set while the app runs).
  */
 class UpdateClient(
     private val baseUrl: String,
-    private val headers: Map<String, String>,
+    private val headers: () -> Map<String, String>,
     private val client: OkHttpClient = OkHttpClient.Builder().callTimeout(0, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build(),
 ) {
 
@@ -161,7 +161,7 @@ class UpdateClient(
 
     private fun request(name: String, more: Request.Builder.() -> Unit = {}): Request =
         Request.Builder().url("${baseUrl.trimEnd('/')}/update/$name").also { builder ->
-            headers.forEach { (key, value) -> builder.header(key, value) }
+            headers().forEach { (key, value) -> builder.header(key, value) }
             builder.more()
         }.build()
 

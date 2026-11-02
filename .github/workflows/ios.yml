@@ -133,4 +133,6 @@ jobs:
           source = {"name": "Sapoche", "identifier": "app.sapoche.source", "apps": [app], "news": []}
           json.dump(source, open("source.json", "w"), indent=2, ensure_ascii=False)
           PY
-          gh release create "${TAG}" "sapoche-${version}.ipa" source.json --title "Sapoche ${version}" --notes-file notes.txt --verify-tag
+          # The Android build is put on the same release from the owner's computer (app/tool/release.sh), before or after this
+          gh release view "${TAG}" >/dev/null 2>&1 || gh release create "${TAG}" --title "Sapoche ${version}" --notes-file notes.txt --verify-tag || gh release view "${TAG}" >/dev/null
+          gh release upload "${TAG}" "sapoche-${version}.ipa" source.json --clobber
