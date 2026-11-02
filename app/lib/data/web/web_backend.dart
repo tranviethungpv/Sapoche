@@ -31,8 +31,9 @@ import 'youtube_links.dart';
 /// What the browser shows outside the page about what plays (media keys, the lock screen, the notification of a phone)
 /// and what it can ask of the app from there.
 abstract interface class MediaControls {
-  /// Tells the browser what plays now; a null [title] says nothing does.
-  void update({String? title, String? artist, String? artwork, required bool playing});
+  /// Tells the browser what plays now; a null [title] says nothing does. [canSteer] false greys out skip and seek: this
+  /// device may not move the room.
+  void update({String? title, String? artist, String? artwork, required bool playing, bool canSteer = true});
 
   /// Where the browser's own buttons go.
   void bind({
@@ -1471,10 +1472,11 @@ class WebBackend extends BackendDefaults {
   void _tellBrowser(QueueEntry? item, bool playing) {
     final media = this.media;
     if (media == null) return;
-    final key = '${item?.id}|$playing';
+    final canSteer = _session?.snapshot.canSteer ?? true;
+    final key = '${item?.id}|$playing|$canSteer';
     if (key == _shownOutside) return;
     _shownOutside = key;
-    media.update(title: item?.title, artist: item?.artist, artwork: item?.thumb, playing: playing);
+    media.update(title: item?.title, artist: item?.artist, artwork: item?.thumb, playing: playing, canSteer: canSteer);
   }
 
   /// The song this device plays now: in a room the room's, or the one it listens to alone.

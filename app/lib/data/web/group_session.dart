@@ -58,6 +58,14 @@ class GroupSnapshot {
   /// While [solo], a song is on its way to play on this device.
   final bool loading;
 
+  /// This device may play, skip and seek the room: the same rule as the server's, which refuses the rest. The media
+  /// keys and the lock screen of the browser are switched off when it is false instead of failing quietly.
+  bool get canSteer {
+    final room = state;
+    if (room == null) return true;
+    return solo || room.guestControl == 'all' || room.ownerId == you || !members.any((m) => m.owner && !m.away);
+  }
+
   GroupSnapshot copyWith({
     RoomState? state,
     List<Member>? members,

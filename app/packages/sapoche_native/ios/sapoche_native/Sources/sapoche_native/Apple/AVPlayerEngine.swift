@@ -159,7 +159,10 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func play() {
         guard current != nil else { return }
         soundWanted = true
-        activateSession()
+        // Every time, not only the first: after a call, Siri or a change of the output (a car's screen connecting) the
+        // system may have let go of the session, and a player asked to play on one that is not active stays silent while
+        // the buttons of the car, which got "success", do nothing
+        activateSession(force: true)
         if pausedAtEnd {
             // The song ended with the sleep timer waiting for it; the person wants to go on, so the next one starts
             pausedAtEnd = false
@@ -742,11 +745,15 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         guard let rawType, let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
         switch type {
         case .began:
+            log("the sound was taken by something else (wanted: \(soundWanted))")
             wasPlayingBeforeInterruption = soundWanted
+            // The system lets go of the session when it is interrupted; it has to be taken again to play
+            sessionActive = false
             onHold?()
             onChange?()
         case .ended:
             let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions ?? 0)
+            log("the interruption ended (may resume: \(options.contains(.shouldResume)), was playing: \(wasPlayingBeforeInterruption))")
             if wasPlayingBeforeInterruption && options.contains(.shouldResume) {
                 log("the interruption is over, playing again")
                 if let onResumeAfterInterruption { onResumeAfterInterruption() } else { play() }
@@ -759,6 +766,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     /// Headphones pulled out: the music must not go on through the speaker.
     private func routeChanged(_ rawReason: UInt?) {
+        // What a car does to the route is what is wanted when a button of the car does nothing
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
+        log("the output changed (reason \(rawReason ?? 0)), now: \(outputs)")
         guard let rawReason, AVAudioSession.RouteChangeReason(rawValue: rawReason) == .oldDeviceUnavailable else { return }
         log("the output went away, pausing")
         onHold?()
@@ -767,8 +777,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     /// Lets the system know sound is about to play: it is only done once there is something to play, so that opening the
     /// app does not stop what another app plays.
-    private func activateSession() {
-        guard !sessionActive else { return }
+    private func activateSession(force: Bool = false) {
+        guard force || !sessionActive else { return }
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .default, options: [])

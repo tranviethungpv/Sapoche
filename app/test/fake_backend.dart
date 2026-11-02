@@ -814,6 +814,9 @@ class FakeBackend implements Backend {
   Future<void> updateAllowInstalls() => _record('updateAllowInstalls');
 
   @override
+  Future<void> setAutoUpdate(bool on) => _record('autoUpdate $on');
+
+  @override
   Future<void> pickOutput() => _record('pickOutput');
 
   @override

@@ -10,8 +10,14 @@ import 'web_backend.dart';
 class BrowserMediaControls implements MediaControls {
   web.MediaSession get _session => web.window.navigator.mediaSession;
 
+  void Function()? _next;
+  void Function()? _prev;
+  void Function(int positionMs)? _seek;
+  bool? _steering;
+
   @override
-  void update({String? title, String? artist, String? artwork, required bool playing}) {
+  void update({String? title, String? artist, String? artwork, required bool playing, bool canSteer = true}) {
+    _steer(canSteer);
     if (title == null) {
       _session.metadata = null;
       _session.playbackState = 'none';
@@ -35,28 +41,38 @@ class BrowserMediaControls implements MediaControls {
     required void Function() prev,
     required void Function(int positionMs) seek,
   }) {
-    void on(String action, void Function() handler) {
-      try {
-        _session.setActionHandler(action, ((JSObject _) => handler()).toJS);
-      } on Object {
-        // A browser that does not know this action leaves it out
-      }
-    }
+    _next = next;
+    _prev = prev;
+    _seek = seek;
+    _handle('play', ((JSObject _) => play()).toJS);
+    _handle('pause', ((JSObject _) => pause()).toJS);
+    _steering = null;
+    _steer(true);
+  }
 
-    on('play', play);
-    on('pause', pause);
-    on('nexttrack', next);
-    on('previoustrack', prev);
+  /// Skip and seek are given to the browser only while this device may move the room; without a handler its media keys
+  /// and lock screen leave those buttons out.
+  void _steer(bool allowed) {
+    if (_steering == allowed || _next == null) return;
+    _steering = allowed;
+    _handle('nexttrack', allowed ? ((JSObject _) => _next!()).toJS : null);
+    _handle('previoustrack', allowed ? ((JSObject _) => _prev!()).toJS : null);
+    _handle(
+      'seekto',
+      allowed
+          ? ((JSObject details) {
+              final to = details.getProperty<JSNumber?>('seekTime'.toJS)?.toDartDouble;
+              if (to != null) _seek!((to * 1000).round());
+            }).toJS
+          : null,
+    );
+  }
+
+  void _handle(String action, JSFunction? handler) {
     try {
-      _session.setActionHandler(
-        'seekto',
-        ((JSObject details) {
-          final to = details.getProperty<JSNumber?>('seekTime'.toJS)?.toDartDouble;
-          if (to != null) seek((to * 1000).round());
-        }).toJS,
-      );
+      _session.setActionHandler(action, handler);
     } on Object {
-      // Not every browser has it
+      // A browser that does not know this action leaves it out
     }
   }
 }

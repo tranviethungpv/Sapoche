@@ -105,7 +105,17 @@ class GroupSession(
         val soloItemId: String? = null,
         /** While [solo], a song is on its way to play on this device. */
         val loading: Boolean = false,
-    )
+    ) {
+        /**
+         * This device may play, skip and seek the room: the same rule as the server's, which refuses the rest. Buttons
+         * outside the app (car, headset, lock screen) are switched off when it is false instead of failing quietly.
+         */
+        val canSteer: Boolean
+            get() {
+                val room = state ?: return true
+                return solo || room.guestControl == "all" || room.ownerId == you || members.none { it.owner && !it.away }
+            }
+    }
 
     /** Something that happened to this device, worth telling the person about: mostly what another member did. */
     sealed interface RoomEvent {

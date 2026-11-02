@@ -208,6 +208,7 @@ class SapocheBridge(
             missedReactions.take().forEach { emit(UiJson.reaction(it)) }
             SapocheApp.updater.refreshPermission()
             SapocheApp.updater.check(force = false)
+            if (SapocheApp.updater.auto) AutoUpdateWorker.schedule(activity)
             emit(UiJson.update(SapocheApp.updater.state.value))
             SapocheApp.group.value?.resumeRoom()
             renewSuggestionsIfDue()
@@ -432,6 +433,10 @@ class SapocheBridge(
             "updateInstall" -> return if (SapocheApp.updater.install()) null else "permission"
             "updateAllowInstalls" -> {
                 SapocheApp.updater.openInstallSettings()
+                return null
+            }
+            "setAutoUpdate" -> {
+                SapocheApp.updater.setAuto(call.argument<Boolean>("on") == true)
                 return null
             }
             "setAutoplay" -> {
@@ -838,25 +843,7 @@ class SapocheBridge(
     }
 
     /** What the server says about a room before joining it; null when it cannot be reached. */
-    private suspend fun roomInfo(code: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-        val clean = code.trim().uppercase()
-        if (!INVITE_CODE.matches(clean)) return@withContext null
-        val request = Request.Builder().url("${Config.SERVER}/room/$clean/info")
-            .apply { Config.authHeaders.forEach { (k, v) -> header(k, v) } }
-            .build()
-        http.newCall(request).execute().use {
-            if (!it.isSuccessful) return@use null
-            val json = JSONObject(it.body.string())
-            mapOf(
-                "exists" to json.optBoolean("exists"),
-                "name" to if (json.isNull("name")) null else json.getString("name"),
-                "members" to json.optInt("members"),
-                "playing" to json.optBoolean("playing"),
-                "title" to if (json.isNull("title")) null else json.getString("title"),
-                "who" to json.optJSONArray("who")?.let { names -> List(names.length()) { names.optString(it) } }.orEmpty(),
-            )
-        }
-    }
+    private suspend fun roomInfo(code: String): Map<String, Any?>? = RoomInfo.fetch(http, code)
 
     /** Whether the server answers, which protocol it speaks and whether it takes the key; nothing it is asked changes anything. */
     private suspend fun checkServer(): Map<String, Any?> = withContext(Dispatchers.IO) {

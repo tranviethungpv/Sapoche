@@ -18,7 +18,14 @@ class InstallResultReceiver : BroadcastReceiver() {
             } else {
                 intent.getParcelableExtra(Intent.EXTRA_INTENT)
             }
-            confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)?.let(context::startActivity)
+            if (confirm == null) return
+            if (SapocheApp.uiVisible.value) {
+                confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(confirm)
+            } else {
+                // Nobody is looking: a dialog out of nowhere would land on something else, so it waits behind a notification
+                SapocheApp.updateNotifier.offer(SapocheApp.updater.state.value.release?.versionName.orEmpty(), confirm)
+            }
             return
         }
         SapocheApp.updater.onInstallResult(status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))

@@ -116,6 +116,7 @@ object UiJson {
             .put("size", release?.size ?: 0L)
             .put("done", state.doneBytes)
             .put("error", state.error ?: JSONObject.NULL)
+            .put("autoUpdate", state.auto)
             .toString()
     }
 

@@ -1,0 +1,7 @@
+Widgets, the car and updates
+- Android: new home-screen widgets. Now playing in three sizes (the large one lists what comes next), Rooms and friends (who is listening, one tap to join) and Quick play (liked songs, a mix for you, downloads and your latest playlist).
+- Android Auto: browse your queue, rooms, library and suggestions on the car screen, and search by typing or by voice.
+- Buttons in the car, on headsets and on the lock screen no longer skip or seek when a room's owner has locked the controls.
+- Android: Settings > Updates can now install new versions by itself when nothing is playing (off by default). A short note also tells you when a new version is out.
+- iPhone: a note now tells you when a new version is out and takes you to it. Web: a "New version" bar offers to reload.
+- iPhone: playing from the car recovers better after a call or Siri.

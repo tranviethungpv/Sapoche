@@ -1261,6 +1261,35 @@ abstract final class S {
   );
   static String get updateOpenSettings => _t('Open settings', 'Mở cài đặt');
   static String get updateWhatsNew => _t('What’s new', 'Có gì mới');
+  static String updateSheetReady(String version) => _t(
+    'Sapoche $version is ready',
+    'Sapoche $version đã sẵn sàng',
+  );
+  static String updateSheetAvailable(String version) =>
+      _t('Sapoche $version is out', 'Đã có Sapoche $version');
+  static String get updateSheetStops => _t(
+    'Music stops for a moment while it installs.',
+    'Nhạc sẽ dừng một lúc khi cài.',
+  );
+  static String get updateNow => _t('Update now', 'Cập nhật ngay');
+  static String get updateOpenRelease =>
+      _t('Open the download page', 'Mở trang tải');
+  static String get updateViaSideStore => _t(
+    'Open the page, then update Sapoche in SideStore.',
+    'Mở trang tải rồi cập nhật Sapoche trong SideStore.',
+  );
+  static String get webNewVersion => _t(
+    'A new version of Sapoche is out. Reloading stops the music for a moment.',
+    'Đã có bản Sapoche mới. Tải lại sẽ làm nhạc dừng một lúc.',
+  );
+  static String get webReload => _t('Reload', 'Tải lại');
+  static String get autoUpdate =>
+      _t('Update automatically', 'Tự động cập nhật');
+  static String get autoUpdateHelp => _t(
+    'Looks for new versions on Wi-Fi and installs one when nothing is playing, no room is joined and the app is closed.',
+    'Tự tìm bản mới khi có Wi-Fi và cài khi không có nhạc đang phát, không ở trong phòng và app đang đóng.',
+  );
+  static String get updateLater => _t('Later', 'Để sau');
   static String get updateTryAgain => _t('Try again', 'Thử lại');
   static String updateError(String? code) => switch (code) {
     'unreachable' => _t(

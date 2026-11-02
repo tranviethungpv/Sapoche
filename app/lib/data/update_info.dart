@@ -33,6 +33,7 @@ class UpdateInfo {
     this.size = 0,
     this.done = 0,
     this.error,
+    this.autoUpdate = false,
   });
 
   factory UpdateInfo.fromJson(Map<String, dynamic> json) => UpdateInfo(
@@ -53,6 +54,7 @@ class UpdateInfo {
     size: (json['size'] as num?)?.toInt() ?? 0,
     done: (json['done'] as num?)?.toInt() ?? 0,
     error: json['error'] as String?,
+    autoUpdate: json['autoUpdate'] as bool? ?? false,
   );
 
   final UpdatePhase phase;
@@ -72,6 +74,9 @@ class UpdateInfo {
 
   /// A short code for what went wrong, see `S.updateError`.
   final String? error;
+
+  /// The app looks for updates and installs them by itself when nothing is lost by it (Android only).
+  final bool autoUpdate;
 
   /// A newer version is waiting for the person, in whatever state.
   bool get hasUpdate => version != null && phase != UpdatePhase.upToDate;

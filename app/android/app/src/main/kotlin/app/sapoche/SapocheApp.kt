@@ -39,6 +39,7 @@ class SapocheApp : Application() {
         chatNotifier = ChatNotifier(this)
         heat = Heat(this)
         updater = Updater(this, UpdateClient(Config.SERVER, Config.authHeaders))
+        updateNotifier = UpdateNotifier(this)
     }
 
     /** The country of the phone's settings, like "VN": what YouTube shows first follows it. */
@@ -103,6 +104,10 @@ class SapocheApp : Application() {
 
         /** Checks for a newer release of this app and installs it. */
         lateinit var updater: Updater
+            private set
+
+        /** Tells the person an update waits for their word when the system asks while nobody looks. */
+        lateinit var updateNotifier: UpdateNotifier
             private set
 
         /** Language of the few texts the native side shows itself (the notification's buttons); the UI tells it. */

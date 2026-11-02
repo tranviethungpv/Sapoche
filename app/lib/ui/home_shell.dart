@@ -1,13 +1,19 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../data/ios_update.dart';
 import '../data/page_reload.dart';
 import '../data/room_controller.dart';
 import '../data/setup_link.dart';
+import '../data/update_controller.dart';
+import '../data/update_nudge.dart';
+import '../data/version_check.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'chat_sheet.dart';
@@ -18,8 +24,10 @@ import 'room_page.dart';
 import 'rooms_sheet.dart';
 import 'scope.dart';
 import 'setup_dialog.dart';
+import 'ios_update_sheet.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
+import 'update_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/cached_cover.dart';
 import 'widgets/glass.dart';
@@ -132,7 +140,8 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
+class _HomeShellState extends State<HomeShell>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   int _tab = 0;
 
   /// The last tab of the capsule that was open, where its lens waits while Search is.
@@ -197,6 +206,10 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   StreamSubscription<String>? _libraryMessages;
   StreamSubscription<Notice>? _notices;
   RoomController? _watched;
+  UpdateController? _update;
+  Timer? _nudgeTimer;
+  Timer? _versionTimer;
+  bool _newVersionTold = false;
   String? _precachedCover;
 
   @override
@@ -252,10 +265,111 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     WidgetsBinding.instance.addPostFrameCallback((_) => _askForKey());
     WidgetsBinding.instance.addPostFrameCallback((_) => _onInvite());
     WidgetsBinding.instance.addPostFrameCallback((_) => _onSetup());
+    final update = _update = AppScope.of(context).update;
+    update.addListener(_scheduleNudge);
+    _sheet.addListener(_scheduleNudge);
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleNudge();
+    if (kIsWeb) {
+      _versionTimer = Timer.periodic(const Duration(minutes: 30), (_) => _checkVersion());
+      Timer(const Duration(seconds: 30), _checkVersion);
+    }
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      _versionTimer = Timer.periodic(const Duration(hours: 12), (_) => _checkRelease());
+      Timer(const Duration(seconds: 20), _checkRelease);
+    }
+  }
+
+  /// An iPhone has no store: the latest release of the public repository says whether a newer version is out, and the sheet
+  /// takes the person to it. Asked once for each version and again only after a few days, like the sheet of Android.
+  Future<void> _checkRelease() async {
+    if (!mounted) return;
+    final installed = (await PackageInfo.fromPlatform()).version;
+    final offer = await IosUpdateCheck(
+      installed: installed,
+      fetch: () async {
+        final reply = await http.get(
+          Uri.parse('https://api.github.com/repos/tranviethungpv/Sapoche/releases/latest'),
+          headers: const {'Accept': 'application/vnd.github+json'},
+        );
+        return reply.statusCode == 200 ? reply.body : null;
+      },
+    ).newer();
+    if (offer == null || !mounted) return;
+    final settings = AppScope.of(context).settings;
+    final now = DateTime.now();
+    final last = settings.updateSheetShown(offer.version);
+    if ((last != null && now.difference(last) < UpdateNudge.every) || !_quietMoment()) {
+      return;
+    }
+    settings.updateSheetWasShown(offer.version, now);
+    showIosUpdateSheet(context, offer);
+  }
+
+  /// Nothing is in the middle of being done: not over the player, a page of its own, a dialog or a keyboard.
+  bool _quietMoment() {
+    final focused = FocusManager.instance.primaryFocus?.context;
+    final typing = focused?.widget is EditableText || focused?.findAncestorWidgetOfExactType<EditableText>() != null;
+    return !(_sheet.isOpen || typing || ModalRoute.of(context)?.isCurrent == false);
+  }
+
+  /// A tab left open keeps the version it loaded with: from time to time the server's `version.json` is asked, and a newer
+  /// one is told once, with a way to load the page again.
+  Future<void> _checkVersion() async {
+    if (!mounted || _newVersionTold) return;
+    final info = await PackageInfo.fromPlatform();
+    final newer = await VersionCheck(
+      loaded: '${info.version}+${info.buildNumber}',
+      fetch: () async {
+        final reply = await http.get(Uri.base.resolve('version.json?t=${DateTime.now().millisecondsSinceEpoch}'));
+        return reply.statusCode == 200 ? reply.body : null;
+      },
+    ).newer();
+    if (newer == null || !mounted) return;
+    _newVersionTold = true;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(S.webNewVersion),
+          duration: const Duration(days: 1),
+          action: SnackBarAction(label: S.webReload, onPressed: reloadPage),
+        ),
+      );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _scheduleNudge();
+  }
+
+  /// The sheet about a new version waits for a quiet moment: a few seconds after the app is opened or comes back, after
+  /// the player is closed, or after the version turned up.
+  void _scheduleNudge() {
+    if (_nudgeTimer?.isActive ?? false) return;
+    _nudgeTimer = Timer(const Duration(seconds: 6), _nudgeUpdate);
+  }
+
+  void _nudgeUpdate() {
+    if (!mounted) return;
+    final model = AppScope.of(context);
+    final info = model.update.info;
+    final version = info.version;
+    if (version == null) return;
+    final now = DateTime.now();
+    if (!UpdateNudge.due(info, lastShown: model.settings.updateSheetShown(version), now: now)) return;
+    if (!_quietMoment()) return;
+    model.settings.updateSheetWasShown(version, now);
+    showUpdateSheet(context, model.update);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _nudgeTimer?.cancel();
+    _versionTimer?.cancel();
+    _update?.removeListener(_scheduleNudge);
+    _sheet.removeListener(_scheduleNudge);
     HardwareKeyboard.instance.removeHandler(_onKey);
     TabNavigation._active = null;
     TabNavigation._closePlayer = null;

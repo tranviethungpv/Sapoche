@@ -485,6 +485,9 @@ abstract class Backend {
 
   /// Opens the system page where the person lets this app install updates.
   Future<void> updateAllowInstalls();
+
+  /// Lets the app look for updates and install them by itself in the background, or not.
+  Future<void> setAutoUpdate(bool on);
 }
 
 /// [Backend] over Flutter platform channels, see SapocheBridge.kt.
@@ -1170,6 +1173,10 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> updateAllowInstalls() => _call<void>('updateAllowInstalls');
+
+  @override
+  Future<void> setAutoUpdate(bool on) =>
+      _call<void>('setAutoUpdate', {'on': on});
 }
 
 class BackendException implements Exception {

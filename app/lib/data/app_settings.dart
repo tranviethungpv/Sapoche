@@ -55,6 +55,15 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// When the sheet about [version] last came up; null if it never has.
+  DateTime? updateSheetShown(String version) {
+    final millis = _prefs.getInt('$_updateSheetKey$version');
+    return millis == null ? null : DateTime.fromMillisecondsSinceEpoch(millis);
+  }
+
+  void updateSheetWasShown(String version, DateTime at) =>
+      _prefs.setInt('$_updateSheetKey$version', at.millisecondsSinceEpoch);
+
   /// Whether the person turned "Light effects" on or off; null while they have not chosen, when a weak phone has it on
   /// and the others off ([Calm.light] is what is in force).
   bool? get lightEffects => _prefs.getBool(_lightEffectsKey);
@@ -126,6 +135,7 @@ class AppSettings extends ChangeNotifier {
   static const _languageKey = 'language';
   static const _lightEffectsKey = 'light_effects';
   static const _accentKey = 'accent';
+  static const _updateSheetKey = 'update_sheet_';
 
   static ThemeMode _read(SharedPreferences prefs) =>
       ThemeMode.values.asNameMap()[prefs.getString(_key)] ?? ThemeMode.system;

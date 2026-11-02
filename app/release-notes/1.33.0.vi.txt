@@ -1,0 +1,7 @@
+Widget, xe hơi và cập nhật
+- Android: thêm widget cho màn hình chính. Đang phát có ba cỡ (cỡ lớn liệt kê các bài kế tiếp), Phòng và bạn bè (ai đang nghe, chạm một cái để vào) và Nghe nhanh (bài đã thích, mix gợi ý, tải về và playlist mới nhất).
+- Android Auto: duyệt hàng đợi, phòng, thư viện và gợi ý ngay trên màn hình xe, tìm bài bằng cách gõ hay nói.
+- Nút trên xe, tai nghe và màn hình khoá không còn chuyển bài hay tua khi chủ phòng đã khoá quyền điều khiển.
+- Android: Cài đặt > Cập nhật có thể tự cài bản mới khi không có nhạc đang phát (mặc định tắt). Có thêm một tờ nhắc khi có bản mới.
+- iPhone: có tờ nhắc khi có bản mới và đưa bạn tới trang tải. Web: thanh "Có bản mới" để tải lại trang.
+- iPhone: phát từ xe hơi ổn hơn sau khi có cuộc gọi hay Siri.

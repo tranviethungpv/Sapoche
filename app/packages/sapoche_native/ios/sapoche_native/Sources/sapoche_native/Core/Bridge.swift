@@ -409,7 +409,7 @@ final class Bridge {
             return nil
         case "cacheFolder":
             return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.path
-        case "smooth", "updateCheck", "updateAllowInstalls":
+        case "smooth", "updateCheck", "updateAllowInstalls", "setAutoUpdate":
             return nil // the display and updates are the system's business on iOS
         case "updateDownload", "updateInstall":
             return nil

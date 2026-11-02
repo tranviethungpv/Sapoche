@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_now_playing_label">Sapoche</string>
+    <string name="widget_now_playing_description">Bài đang phát, kèm nút phát, dừng và chuyển bài.</string>
+    <string name="widget_rooms_label">Sapoche · Phòng</string>
+    <string name="widget_quick_label">Sapoche · Nghe nhanh</string>
+    <string name="widget_rooms_description">Bạn bè đang nghe ở phòng, và lối vào phòng.</string>
+    <string name="widget_quick_description">Bài thích, mix gợi ý, tải về và một playlist: chạm một cái là phát.</string>
+</resources>

@@ -33,33 +33,50 @@ final class NowPlaying {
 
     private func connectButtons() {
         let center = MPRemoteCommandCenter.shared()
+        // Each press is written to the log: from a car it is the only way to tell a button that never arrived from one that
+        // arrived and did nothing
         center.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.controller.requestPlay() }
+            Task { @MainActor in
+                EventLog.d("session", "play asked from outside")
+                self?.controller.requestPlay()
+            }
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.controller.pauseFromOutside() }
+            Task { @MainActor in
+                EventLog.d("session", "pause asked from outside")
+                self?.controller.pauseFromOutside()
+            }
             return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                EventLog.d("session", "play or pause asked from outside (sound wanted: \(self.engine.wantsSound))")
                 if self.engine.wantsSound { self.controller.pauseFromOutside() } else { self.controller.requestPlay() }
             }
             return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.controller.requestNext() }
+            guard let self, self.mayMoveRoom() else { return .commandFailed }
+            Task { @MainActor in
+                EventLog.d("session", "next asked from outside")
+                self.controller.requestNext()
+            }
             return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.controller.requestPrev() }
+            guard let self, self.mayMoveRoom() else { return .commandFailed }
+            Task { @MainActor in
+                EventLog.d("session", "previous asked from outside")
+                self.controller.requestPrev()
+            }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            guard let self, self.mayMoveRoom(), let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let ms = Int64(event.positionTime * 1000)
-            Task { @MainActor in self?.controller.requestSeek(ms) }
+            Task { @MainActor in self.controller.requestSeek(ms) }
             return .success
         }
         // Skipping by seconds is not what these buttons are for
@@ -67,13 +84,35 @@ final class NowPlaying {
         center.skipBackwardCommand.isEnabled = false
     }
 
+    /// Skipping and seeking move the whole room, which the server refuses a guest of a room that only lets guests add songs.
+    /// The car and the lock screen grey those buttons out instead of pressing them for nothing.
+    private func mayMoveRoom() -> Bool {
+        let allowed = controller.view.value.snapshot.canSteer
+        if !allowed { EventLog.d("session", "a button outside the app asked to move the room, which this device may not") }
+        return allowed
+    }
+
+    private var steerShown: Bool?
+
+    private func showSteering() {
+        let allowed = controller.view.value.snapshot.canSteer
+        guard steerShown != allowed else { return }
+        steerShown = allowed
+        let center = MPRemoteCommandCenter.shared()
+        center.nextTrackCommand.isEnabled = allowed
+        center.previousTrackCommand.isEnabled = allowed
+        center.changePlaybackPositionCommand.isEnabled = allowed
+    }
+
     // ------------------------------------------------------------------ what is shown
 
     /// Brings the lock screen up to date with the player; called whenever the player or the queue changed.
     func refresh() {
+        showSteering()
         let center = MPNowPlayingInfoCenter.default()
         guard let item = engine.loadedItem ?? shownItem() else {
             center.nowPlayingInfo = nil
+            center.playbackState = .stopped
             shownVideoId = nil
             artwork = nil
             given = nil
@@ -103,6 +142,8 @@ final class NowPlaying {
         if duration > 0 { fields[MPMediaItemPropertyPlaybackDuration] = Double(duration) / 1000 }
         if let artwork { fields[MPMediaItemPropertyArtwork] = artwork }
         center.nowPlayingInfo = fields
+        // Read by the system besides the rate, when it decides what a car or a watch shows the song as doing
+        center.playbackState = info.playing ? .playing : .paused
     }
 
     /// The song the queue is on while the player has nothing loaded (after a restart), so the lock screen is not blank.

@@ -33,6 +33,8 @@ data class UpdateState(
     val doneBytes: Long = 0,
     /** Why the last step failed: a short code the UI turns into words. */
     val error: String? = null,
+    /** The app looks for updates and installs them by itself when nothing is lost by it, see [AutoUpdateWorker]. */
+    val auto: Boolean = false,
 ) {
     enum class Phase { IDLE, CHECKING, UP_TO_DATE, AVAILABLE, DOWNLOADING, READY, NEEDS_PERMISSION, INSTALLING, FAILED }
 }
@@ -67,8 +69,28 @@ class Updater(
         }
     }
 
-    private val flow = MutableStateFlow(UpdateState(installed = installedName))
+    private val flow = MutableStateFlow(UpdateState(installed = installedName, auto = prefs.getBoolean(KEY_AUTO, false)))
     val state: StateFlow<UpdateState> get() = flow
+
+    /** Whether the app updates itself in the background; on until the person turns it off. */
+    val auto: Boolean get() = flow.value.auto
+
+    fun setAuto(on: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO, on).apply()
+        flow.value = flow.value.copy(auto = on)
+        if (on) AutoUpdateWorker.schedule(context) else AutoUpdateWorker.cancel(context)
+    }
+
+    /** Whether the background job already tried to install this release: it tries each only once. */
+    fun triedAuto(release: Release) = prefs.getLong(KEY_TRIED, 0) == release.versionCode
+
+    fun markTriedAuto(release: Release) = prefs.edit().putLong(KEY_TRIED, release.versionCode).apply()
+
+    /** For the background job: asks the server, fetches what is new on an unmetered network, and waits until that is done. */
+    suspend fun refresh() {
+        check(force = false)
+        job?.join()
+    }
 
     private fun part(release: Release) = File(dir, "app-${release.versionCode}.apk.part")
 
@@ -297,5 +319,7 @@ class Updater(
         /** A check on opening the app is skipped when the last one was this recent. */
         const val CHECK_EVERY_MS = 12 * 60 * 60 * 1000L
         private const val KEY_CHECKED = "update_checked_at"
+        private const val KEY_AUTO = "auto_update"
+        private const val KEY_TRIED = "update_auto_tried"
     }
 }

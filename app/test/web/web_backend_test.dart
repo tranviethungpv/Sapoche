@@ -72,11 +72,14 @@ class _Socket implements RoomSocket {
 
 class _Media implements MediaControls {
   final shown = <(String?, String?, bool)>[];
+  final steering = <bool>[];
   void Function()? pause;
 
   @override
-  void update({String? title, String? artist, String? artwork, required bool playing}) =>
-      shown.add((title, artist, playing));
+  void update({String? title, String? artist, String? artwork, required bool playing, bool canSteer = true}) {
+    shown.add((title, artist, playing));
+    steering.add(canSteer);
+  }
 
   @override
   void bind({

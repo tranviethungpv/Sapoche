@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/update_info.dart';
+import 'package:sapoche/data/update_nudge.dart';
 import 'package:sapoche/ui/home_shell.dart';
 
 import 'pump_app.dart';
@@ -349,5 +350,92 @@ void main() {
       await tester.pump();
       expect(backend.calls, contains('updateCheck'));
     });
+  });
+
+  group('the sheet about a new version', () {
+    testWidgets('comes up after a quiet moment, with what is new', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(news(UpdatePhase.ready, notes: '- Faster start'));
+      await tester.pump(const Duration(seconds: 7));
+      await tester.pumpAndSettle();
+      expect(find.text('Sapoche 1.3.0 is ready'), findsOneWidget);
+      expect(find.text('Faster start'), findsOneWidget);
+      expect(find.byKey(const ValueKey('update-sheet-now')), findsOneWidget);
+    });
+
+    testWidgets('does not come up for a phone that is up to date', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(news(UpdatePhase.upToDate, version: null));
+      await tester.pump(const Duration(seconds: 7));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('update-sheet-now')), findsNothing);
+    });
+
+    testWidgets('is not asked again for three days after "Later"', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(news(UpdatePhase.ready));
+      await tester.pump(const Duration(seconds: 7));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('update-sheet-later')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('update-sheet-now')), findsNothing);
+      // The news comes again (the phone looked once more): still not today
+      backend.emit(news(UpdatePhase.ready));
+      await tester.pump(const Duration(seconds: 7));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('update-sheet-now')), findsNothing);
+    });
+
+    testWidgets('takes the version when the person says so', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(news(UpdatePhase.available));
+      await tester.pump(const Duration(seconds: 7));
+      await tester.pumpAndSettle();
+      expect(find.text('Sapoche 1.3.0 is out'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('update-sheet-now')));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('updateDownload false'));
+    });
+  });
+
+  testWidgets('the person can turn automatic updates off and on', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(
+      const UpdateEvent(UpdateInfo(phase: UpdatePhase.upToDate, installed: '1.2.0', autoUpdate: true)),
+    );
+    await openTopic(tester, 'updates');
+    expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('auto-update-switch'))).value, isTrue);
+    await tester.tap(find.byKey(const ValueKey('auto-update-switch')));
+    await tester.pump();
+    expect(backend.calls, contains('autoUpdate false'));
+  });
+
+  test('the sheet is due for a version only every three days', () {
+    final info = UpdateInfo(phase: UpdatePhase.ready, version: '1.3.0');
+    final now = DateTime(2026, 11, 3);
+    expect(UpdateNudge.due(info, lastShown: null, now: now), isTrue);
+    expect(
+      UpdateNudge.due(info, lastShown: now.subtract(const Duration(days: 2)), now: now),
+      isFalse,
+    );
+    expect(
+      UpdateNudge.due(info, lastShown: now.subtract(const Duration(days: 3)), now: now),
+      isTrue,
+    );
+    expect(UpdateNudge.due(const UpdateInfo(), lastShown: null, now: now), isFalse);
+    expect(
+      UpdateNudge.due(
+        UpdateInfo(phase: UpdatePhase.downloading, version: '1.3.0'),
+        lastShown: null,
+        now: now,
+      ),
+      isFalse,
+    );
   });
 }

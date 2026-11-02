@@ -3,6 +3,9 @@ package app.sapoche
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,6 +15,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -23,16 +27,22 @@ import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.LibraryParams
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import app.sapoche.core.OkHttpDownloader
 import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.IdleAction
 import app.sapoche.sync.QueueFile
+import app.sapoche.sync.TrackRef
 import app.sapoche.sync.idleActions
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.SettableFuture
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,19 +55,21 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * Owns the player and the media session. Playback runs entirely inside this foreground
  * service, so it keeps going when the activity is gone or the screen is off.
  */
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
-    private var session: MediaSession? = null
+    private var session: MediaLibrarySession? = null
     private lateinit var player: ExoPlayer
     private lateinit var group: GroupController
     private lateinit var history: ListenHistory
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val roomsHttp = okhttp3.OkHttpClient()
 
     override fun onCreate() {
         super.onCreate()
@@ -116,47 +128,130 @@ class PlaybackService : MediaSessionService() {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, GroupAwarePlayer(player, group))
+        val steered = GroupAwarePlayer(player, group, ::playFromCar)
+        val car = CarLibrary(
+            SapocheApp.library,
+            queue = {
+                val view = group.view.value
+                if (view.roomCode != null) view.snapshot.state?.queue.orEmpty() else view.local.queue
+            },
+            search = { query ->
+                SapocheApp.resolver.search(query, 15, true).map { TrackRef(it.videoId, it.title, it.artist, it.thumbUrl, it.durationSec * 1000) }
+            },
+            vietnamese = { SapocheApp.language.value == "vi" },
+            rooms = { CarRooms(this, roomsHttp).list() },
+            suggested = { SapocheApp.suggestions.forYou() },
+        )
+        session = MediaLibrarySession.Builder(this, steered, object : MediaLibrarySession.Callback {
+            override fun onConnect(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo,
+            ): MediaSession.ConnectionResult {
+                val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                    .add(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
+                    .add(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
+                    .build()
+                return MediaSession.ConnectionResult.AcceptedResultBuilder(mediaSession)
+                    .setAvailableSessionCommands(commands)
+                    .setMediaButtonPreferences(roomButtons(repeatMode))
+                    .build()
+            }
+
+            override fun onCustomCommand(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                customCommand: SessionCommand,
+                args: Bundle,
+            ): ListenableFuture<SessionResult> {
+                when (customCommand.customAction) {
+                    CMD_SHUFFLE -> group.requestShuffleMode(!shuffleOn)
+                    CMD_REPEAT -> group.requestRepeat(nextRepeat(repeatMode))
+                }
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+
+            override fun onAddMediaItems(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                mediaItems: MutableList<MediaItem>,
+            ): ListenableFuture<MutableList<MediaItem>> {
+                // Controllers only send a media id; attach the URI that our data source understands
+                val resolved = mediaItems.map { it.buildUpon().setUri("$SCHEME:${it.mediaId}").build() }
+                return Futures.immediateFuture(resolved.toMutableList())
+            }
+
+            // A car's screen: browse the queue and the library, search by typing or by voice
+
+            override fun onGetLibraryRoot(
+                session: MediaLibrarySession,
+                browser: MediaSession.ControllerInfo,
+                params: LibraryParams?,
+            ): ListenableFuture<LibraryResult<MediaItem>> = Futures.immediateFuture(LibraryResult.ofItem(car.root(), params))
+
+            override fun onGetChildren(
+                session: MediaLibrarySession,
+                browser: MediaSession.ControllerInfo,
+                parentId: String,
+                page: Int,
+                pageSize: Int,
+                params: LibraryParams?,
+            ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = answer {
+                car.children(parentId)?.let { LibraryResult.ofItemList(ImmutableList.copyOf(it.drop(page * pageSize).take(pageSize)), params) }
+                    ?: LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+            }
+
+            override fun onGetItem(
+                session: MediaLibrarySession,
+                browser: MediaSession.ControllerInfo,
+                mediaId: String,
+            ): ListenableFuture<LibraryResult<MediaItem>> = answer {
+                car.item(mediaId)?.let { LibraryResult.ofItem(it, null) } ?: LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+            }
+
+            override fun onSearch(
+                session: MediaLibrarySession,
+                browser: MediaSession.ControllerInfo,
+                query: String,
+                params: LibraryParams?,
+            ): ListenableFuture<LibraryResult<Void>> {
+                scope.launch { session.notifySearchResultChanged(browser, query, car.find(query).size, params) }
+                return Futures.immediateFuture(LibraryResult.ofVoid())
+            }
+
+            override fun onGetSearchResult(
+                session: MediaLibrarySession,
+                browser: MediaSession.ControllerInfo,
+                query: String,
+                page: Int,
+                pageSize: Int,
+                params: LibraryParams?,
+            ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = answer {
+                LibraryResult.ofItemList(ImmutableList.copyOf(car.find(query).drop(page * pageSize).take(pageSize)), params)
+            }
+
+            override fun onSetMediaItems(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                mediaItems: MutableList<MediaItem>,
+                startIndex: Int,
+                startPositionMs: Long,
+            ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+                val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+                // Picking a room joins it; there is no song to put in the player
+                CarLibrary.roomCode(mediaItems.singleOrNull() ?: MediaItem.EMPTY)?.let {
+                    joinFromCar(it)
+                    return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, C.TIME_UNSET))
+                }
+                scope.launch {
+                    val expanded = runCatching { car.expand(mediaItems, startIndex) }.getOrNull()
+                    val (items, at) = expanded ?: (mediaItems.map { it.buildUpon().setUri("$SCHEME:${it.mediaId}").build() } to startIndex)
+                    future.set(MediaSession.MediaItemsWithStartPosition(items, at, startPositionMs))
+                }
+                return future
+            }
+        })
             .setSessionActivity(openApp)
-            .setBitmapLoader(CoverLoader())
-            .setCallback(object : MediaSession.Callback {
-                override fun onConnect(
-                    mediaSession: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                ): MediaSession.ConnectionResult {
-                    val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
-                        .add(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
-                        .add(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
-                        .build()
-                    return MediaSession.ConnectionResult.AcceptedResultBuilder(mediaSession)
-                        .setAvailableSessionCommands(commands)
-                        .setMediaButtonPreferences(roomButtons(repeatMode))
-                        .build()
-                }
-
-                override fun onCustomCommand(
-                    mediaSession: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    customCommand: SessionCommand,
-                    args: Bundle,
-                ): ListenableFuture<SessionResult> {
-                    when (customCommand.customAction) {
-                        CMD_SHUFFLE -> group.requestShuffleMode(!shuffleOn)
-                        CMD_REPEAT -> group.requestRepeat(nextRepeat(repeatMode))
-                    }
-                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-                }
-
-                override fun onAddMediaItems(
-                    mediaSession: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    mediaItems: MutableList<MediaItem>,
-                ): ListenableFuture<MutableList<MediaItem>> {
-                    // Controllers only send a media id; attach the URI that our data source understands
-                    val resolved = mediaItems.map { it.buildUpon().setUri("$SCHEME:${it.mediaId}").build() }
-                    return Futures.immediateFuture(resolved.toMutableList())
-                }
-            })
+            .setBitmapLoader(covers)
             .build()
 
         setMediaNotificationProvider(
@@ -180,6 +275,28 @@ class PlaybackService : MediaSessionService() {
                     shuffleOn = shuffle
                     session?.setMediaButtonPreferences(roomButtons(mode))
                 }
+        }
+
+        // The widgets of the home screen follow whether it plays and where: the song itself comes with the player's events
+        scope.launch { soundOn.collect { updateWidgets() } }
+        scope.launch {
+            group.view
+                .map { view ->
+                    listOf(
+                        view.roomCode?.let { "${view.snapshot.state?.name ?: it}|${view.snapshot.members.count { m -> !m.away }}" },
+                        widgetNext(view),
+                        view.snapshot.members.filter { m -> !m.away }.take(3).map { m -> m.id },
+                    )
+                }
+                .distinctUntilChanged()
+                .collect { updateWidgets() }
+        }
+        // A picture that arrives after the widget was drawn is drawn in
+        scope.launch { group.avatars.collect { widgetPictures = null; updateWidgets() } }
+
+        // The car, the headset and the lock screen grey out skip and seek while this device may not move the room
+        scope.launch {
+            group.view.map { it.snapshot.canSteer }.distinctUntilChanged().drop(1).collect { steered.steerChanged() }
         }
 
         // A message, an answer or a reaction that comes while nobody looks at the app is told as a notification
@@ -237,8 +354,108 @@ class PlaybackService : MediaSessionService() {
 
     private var wakeMode = C.WAKE_MODE_NETWORK
 
+    /** Runs [work] and gives its result as the answer to a controller's question. */
+    private fun <T : Any> answer(work: suspend () -> LibraryResult<T>): ListenableFuture<LibraryResult<T>> {
+        val future = SettableFuture.create<LibraryResult<T>>()
+        scope.launch { future.set(runCatching { work() }.getOrElse { LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN) }) }
+        return future
+    }
+
+    /**
+     * A car asked for [items] to play. A song of the queue is jumped to; in a room a song is added to the room's queue
+     * (the room is everybody's, a car does not replace it); otherwise the songs become the queue, from the one picked on.
+     */
+    private fun playFromCar(items: List<MediaItem>, startIndex: Int) {
+        val at = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+        val picked = items.getOrNull(at) ?: return
+        val (where, what) = CarLibrary.split(picked.mediaId)
+        EventLog.d("session", "a car asked to play ${picked.mediaId} (${items.size} songs from $where)")
+        if (where == CarLibrary.NOW && what != null) {
+            group.requestJump(what)
+            return
+        }
+        val tracks = items.map(CarLibrary::track)
+        if (group.view.value.roomCode != null) {
+            group.requestAddMany(listOf(tracks[at]), true)
+            return
+        }
+        group.requestClearQueue()
+        group.requestAddMany(tracks.drop(at) + tracks.take(at), false)
+    }
+
+    /** A car picked a room of its list: this device goes into it, under the name it last used. */
+    private fun joinFromCar(code: String) {
+        if (group.view.value.roomCode == code) return
+        EventLog.d("session", "a car asked to join room $code")
+        group.join(Config.SERVER, code, group.savedName() ?: Build.MODEL, create = false)
+    }
+
     /** Sound is playing or about to: it is being listened to, so nothing is let go of. */
     private val soundOn = MutableStateFlow(false)
+
+    /** The pictures of the notification, the lock screen and the widgets. */
+    private val covers = CoverLoader()
+
+    private var widgetState = WidgetState()
+
+    /** What the pictures of the widgets were made from, so they are made again only when it changes. */
+    private var widgetPictures: List<Any?>? = null
+
+    /** The songs after the one playing, with who put them on the queue, in a room. */
+    private fun widgetNext(view: GroupController.View): List<WidgetRow> {
+        val inRoom = view.roomCode != null
+        val queue = if (inRoom) view.snapshot.state?.queue.orEmpty() else view.local.queue
+        val index = if (inRoom) view.snapshot.state?.index ?: 0 else view.local.index
+        return queue.drop(index + 1).take(Widgets.NEXT_ROWS).map { WidgetRow(it.id, it.title, it.artist, it.addedBy.takeIf { _ -> inRoom && it.addedBy.isNotEmpty() }) }
+    }
+
+    /** The widgets of the home screen show what plays, with the queue and the room around it. */
+    private fun updateWidgets() {
+        if (!Widgets.hasWidgets(this)) return
+        val meta = player.mediaMetadata
+        val view = group.view.value
+        val listening = view.snapshot.members.filter { !it.away }
+        val room = view.roomCode?.let { code -> "${view.snapshot.state?.name ?: code} · ${listening.size}" }
+        val next = widgetNext(view)
+        val crew = if (view.roomCode != null) listening.take(3) else emptyList()
+        val state = WidgetState(
+            meta.title?.toString().orEmpty(), meta.artist?.toString().orEmpty(), soundOn.value, room,
+            next, crew.map { it.id }, view.roomCode,
+        )
+        // A room left is a room to forget: the rooms widget goes back to asking about friends
+        val leftRoom = widgetState.roomCode != null && state.roomCode == null
+        if (state != widgetState) {
+            widgetState = state
+            Widgets.update(this, state)
+            if (leftRoom) RoomsWidget.refresh(this)
+        }
+        val art = meta.artworkUri?.toString()
+        val thumbs = view.let { v -> (if (v.roomCode != null) v.snapshot.state?.queue.orEmpty() else v.local.queue).associateBy { it.id } }
+        val made = listOf(art, next.map { thumbs[it.id]?.thumb }, next.map { it.by }, crew.map { it.id }, group.picturesSeen().size)
+        if (made == widgetPictures) return
+        widgetPictures = made
+        val names = view.snapshot.members.associate { it.id to it.name }
+        val avatars = group.picturesSeen().associate { it.id to it.data }
+        val ring = getColor(R.color.widget_bg)
+        scope.launch(Dispatchers.IO) {
+            fun load(url: String?) = url?.let { runCatching { covers.loadBitmap(android.net.Uri.parse(it)).get() }.getOrNull() }
+            fun face(id: String): Bitmap {
+                val picture = avatars[id]?.let { data ->
+                    runCatching { android.util.Base64.decode(data, android.util.Base64.DEFAULT) }.getOrNull()?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                }
+                return Widgets.face(id, names[id].orEmpty(), picture)
+            }
+            val pictures = mutableMapOf<String, Bitmap>()
+            load(art)?.let { pictures[Widgets.COVER] = Widgets.rounded(it) }
+            next.forEachIndexed { i, row ->
+                load(thumbs[row.id]?.thumb)?.let { pictures[Widgets.nextCover(i)] = Widgets.rounded(it, 96, 12f) }
+                row.by?.let { pictures[Widgets.adderFile(i)] = face(it) }
+            }
+            if (crew.isNotEmpty()) pictures[Widgets.FACES] = Widgets.faces(crew.map { face(it.id) }, ring)
+            // The songs may have changed while the pictures came
+            launch(Dispatchers.Main) { if (made == widgetPictures) Widgets.update(this@PlaybackService, widgetState, pictures) }
+        }
+    }
 
     private fun updateSoundOn() {
         soundOn.value = player.playWhenReady &&
@@ -276,7 +493,7 @@ class PlaybackService : MediaSessionService() {
         else -> "off"
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Swiping the app out of the recents ends the session, as it does in YouTube Music and Spotify: the sound
@@ -292,6 +509,8 @@ class PlaybackService : MediaSessionService() {
         main.removeCallbacks(heartbeat)
         main.removeCallbacks(stallWatch)
         history.stop()
+        // The widgets keep what they last showed: a service that is gone plays nothing
+        Widgets.update(this, widgetState.copy(playing = false))
         scope.cancel()
         group.release()
         SapocheApp.setGroup(null)
@@ -356,6 +575,10 @@ class PlaybackService : MediaSessionService() {
             updateWakeMode(mediaItem)
         }
 
+        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+            updateWidgets()
+        }
+
         override fun onPlayerError(error: PlaybackException) {
             // Recovering is up to whoever owns the queue: the room session, or the personal queue
             EventLog.d("player", "error item=${currentId()} ${error.errorCodeName} cause=${error.cause?.javaClass?.simpleName}: ${error.cause?.message}")
@@ -416,7 +639,24 @@ class PlaybackService : MediaSessionService() {
      * Routes transport commands to whoever owns the queue: the room while joined, the personal queue
      * otherwise. The player itself only ever holds the song playing and the one after it.
      */
-    private class GroupAwarePlayer(player: Player, private val group: GroupController) : ForwardingPlayer(player) {
+    private class GroupAwarePlayer(
+        player: Player,
+        private val group: GroupController,
+        private val playFromOutside: (List<MediaItem>, Int) -> Unit,
+    ) : ForwardingPlayer(player) {
+        // What a controller outside the app wants played goes through the queue of the app, not straight into the player
+        override fun setMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long) = playFromOutside(mediaItems, startIndex)
+
+        override fun setMediaItems(mediaItems: MutableList<MediaItem>, resetPosition: Boolean) = playFromOutside(mediaItems, 0)
+
+        override fun setMediaItems(mediaItems: MutableList<MediaItem>) = playFromOutside(mediaItems, 0)
+
+        override fun setMediaItem(mediaItem: MediaItem) = playFromOutside(listOf(mediaItem), 0)
+
+        override fun setMediaItem(mediaItem: MediaItem, startPositionMs: Long) = playFromOutside(listOf(mediaItem), 0)
+
+        override fun setMediaItem(mediaItem: MediaItem, resetPosition: Boolean) = playFromOutside(listOf(mediaItem), 0)
+
         override fun play() {
             EventLog.d("session", "play asked by a controller")
             group.requestPlay { super.play() }
@@ -437,31 +677,55 @@ class PlaybackService : MediaSessionService() {
             group.pauseFromOutside()
         }
 
-        override fun seekToNext() {
-            group.requestNext()
+        override fun seekToNext() = steer("next") { group.requestNext() }
+
+        override fun seekToNextMediaItem() = steer("next") { group.requestNext() }
+
+        override fun seekToPrevious() = steer("previous") { group.requestPrev() }
+
+        override fun seekToPreviousMediaItem() = steer("previous") { group.requestPrev() }
+
+        /** What a guest of a room that only lets guests add songs may not do; the server would turn it away. */
+        private fun steer(what: String, act: () -> Unit) {
+            if (group.view.value.snapshot.canSteer) act() else EventLog.d("session", "$what asked by a controller, not allowed in this room")
         }
 
-        override fun seekToNextMediaItem() {
-            group.requestNext()
+        private val controllers = CopyOnWriteArraySet<Player.Listener>()
+
+        override fun addListener(listener: Player.Listener) {
+            controllers.add(listener)
+            super.addListener(listener)
         }
 
-        override fun seekToPrevious() {
-            group.requestPrev()
+        override fun removeListener(listener: Player.Listener) {
+            controllers.remove(listener)
+            super.removeListener(listener)
         }
 
-        override fun seekToPreviousMediaItem() {
-            group.requestPrev()
+        /** Tells the controllers the buttons they may use changed. */
+        fun steerChanged() {
+            val commands = availableCommands
+            controllers.forEach { it.onAvailableCommandsChanged(commands) }
         }
 
         override fun getAvailableCommands(): Player.Commands {
-            return super.getAvailableCommands().buildUpon()
+            val commands = super.getAvailableCommands().buildUpon()
                 .addAll(
                     Player.COMMAND_SEEK_TO_NEXT,
                     Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
                     Player.COMMAND_SEEK_TO_PREVIOUS,
                     Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
                 )
-                .build()
+            if (!group.view.value.snapshot.canSteer) {
+                commands.removeAll(
+                    Player.COMMAND_SEEK_TO_NEXT,
+                    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                    Player.COMMAND_SEEK_TO_PREVIOUS,
+                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                    Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
+                )
+            }
+            return commands.build()
         }
 
         override fun isCommandAvailable(command: Int): Boolean = availableCommands.contains(command)

@@ -33,6 +33,8 @@ class UpdateController extends ChangeNotifier {
 
   Future<void> allowInstalls() => _backend.updateAllowInstalls();
 
+  Future<void> setAutoUpdate(bool on) => _backend.setAutoUpdate(on);
+
   @override
   void dispose() {
     _subscription.cancel();

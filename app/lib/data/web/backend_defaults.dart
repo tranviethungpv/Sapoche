@@ -173,4 +173,7 @@ abstract class BackendDefaults implements Backend {
 
   @override
   Future<void> updateAllowInstalls() async {}
+
+  @override
+  Future<void> setAutoUpdate(bool on) async {}
 }

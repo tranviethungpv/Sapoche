@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_now_playing_label">Sapoche</string>
+    <string name="widget_now_playing_description">What plays now, with play, pause and skip.</string>
+    <string name="widget_rooms_label">Sapoche · Rooms</string>
+    <string name="widget_quick_label">Sapoche · Quick play</string>
+    <string name="widget_rooms_description">Friends who listen in a room, and a way in.</string>
+    <string name="widget_quick_description">Your liked songs, a mix, downloads and a playlist: one touch plays.</string>
+</resources>

@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- Updates from inside the app (Settings > Updates) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Lets an update of this app by itself go in without the system asking again (Android 12 and later) -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- A television has no touch screen and a remote instead; the app can be started from its launcher -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -64,9 +66,55 @@
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+            </intent-filter>
+            <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
         </service>
+        <!-- Tells Android Auto this is a media app: it lists it among the apps of the car's screen -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+        <!-- The widget of the home screen that shows what plays -->
+        <receiver
+            android:name=".NowPlayingWidget"
+            android:exported="false"
+            android:label="@string/widget_now_playing_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/now_playing_widget" />
+        </receiver>
+        <receiver
+            android:name=".RoomsWidget"
+            android:exported="false"
+            android:label="@string/widget_rooms_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/rooms_widget" />
+        </receiver>
+        <receiver
+            android:name=".QuickWidget"
+            android:exported="false"
+            android:label="@string/widget_quick_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_widget" />
+        </receiver>
+        <!-- What a touch on a widget does without opening the app -->
+        <receiver android:name=".WidgetActions" android:exported="false" />
         <!-- A headset or car button starts the service again after it stopped itself for being idle -->
         <receiver
             android:name="androidx.media3.session.MediaButtonReceiver"
