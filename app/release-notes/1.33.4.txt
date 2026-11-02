@@ -1,0 +1,4 @@
+The Home page stays put at its end, and tidier Now playing widgets
+- iPhone: pulling the Home page past its bottom and letting go no longer throws it back up to the middle. The page now stops at its end (the top still bounces, for pulling to refresh).
+- iPhone: the medium and large Now playing widgets are laid out properly. The title sits right above the buttons, and Previous, Play and Next are spread evenly across the width instead of crowding the left.
+- Android: the large Now playing widget no longer leaves an empty band under the next songs. The list now sits at the bottom of the widget and the room is shared out above it.

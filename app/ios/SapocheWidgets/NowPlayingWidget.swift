@@ -126,24 +126,28 @@ struct NowPlayingView: View {
         .clipped()
     }
 
+    /// Previous, play and next, each in an equal third of the width, so they are spread evenly however wide the widget is.
+    private var controls: some View {
+        HStack(spacing: 0) {
+            skip(PreviousIntent(), "backward.fill").frame(maxWidth: .infinity)
+            playButton.frame(maxWidth: .infinity)
+            skip(NextIntent(), "forward.fill").frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The words, the bar and the buttons form one block beside the cover, close together and centred in the height,
+    /// not the words at the top and the buttons far below them.
     private var medium: some View {
         HStack(spacing: 14) {
-            cover(104)
-            // The words sit on the progress bar, not at the top of the column: the space left over goes above them
-            VStack(alignment: .leading, spacing: 3) {
-                Spacer(minLength: 0)
+            cover(92)
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 16, weight: .bold)).lineLimit(1)
                 Text(subtitle).font(.system(size: 13)).foregroundStyle(Color.softWhite).lineLimit(1)
                 roomLine
-                progress.padding(.top, 7)
-                HStack {
-                    skip(PreviousIntent(), "backward.fill")
-                    Spacer()
-                    playButton
-                    Spacer()
-                    skip(NextIntent(), "forward.fill")
-                }
+                progress.padding(.vertical, 6)
+                controls
             }
+            .frame(maxWidth: .infinity)
         }
         .padding(14)
     }
@@ -151,20 +155,16 @@ struct NowPlayingView: View {
     private var large: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 14) {
-                cover(96)
+                cover(88)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 16, weight: .bold)).lineLimit(1)
                     Text(subtitle).font(.system(size: 13)).foregroundStyle(Color.softWhite).lineLimit(1)
                     roomLine
-                    Spacer(minLength: 2)
-                    HStack {
-                        skip(PreviousIntent(), "backward.fill")
-                        playButton
-                        skip(NextIntent(), "forward.fill")
-                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             progress
+            controls
             if !shown.next.isEmpty {
                 Divider().overlay(Color.white.opacity(0.25))
                 Text(entry.t("TIẾP THEO", "UP NEXT")).font(.system(size: 11, weight: .bold)).foregroundStyle(Color.softWhite)

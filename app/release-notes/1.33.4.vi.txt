@@ -1,0 +1,4 @@
+Trang Chủ đứng yên ở cuối trang, và widget Đang phát gọn hơn
+- iPhone: kéo trang Chủ quá đáy rồi thả tay không còn bị ném ngược lên giữa trang. Trang nay dừng ngay ở cuối (phần đầu trang vẫn nảy để kéo làm mới).
+- iPhone: widget Đang phát cỡ vừa và cỡ lớn được xếp lại cho đúng. Tên bài nằm sát phía trên các nút, và ba nút Trước, Phát, Sau cách đều nhau trên cả chiều rộng thay vì co hết về bên trái.
+- Android: widget Đang phát cỡ lớn không còn chừa một khoảng trống dưới các bài kế tiếp. Danh sách nay nằm sát đáy widget và chỗ thừa được chia ra phía trên nó.

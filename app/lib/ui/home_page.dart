@@ -24,6 +24,7 @@ import 'settings_page.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/cached_cover.dart';
+import 'widgets/end_clamped_physics.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
 import 'widgets/playlist_cover.dart';
@@ -180,7 +181,9 @@ class _HomePageState extends State<HomePage> {
                 onRefresh: _refresh,
                 edgeOffset: top,
                 child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
+                  physics: const EndClampedPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
                   padding: EdgeInsets.only(
                     top: top,
                     bottom: HomeShell.bottomInsetOf(context),
