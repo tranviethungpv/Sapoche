@@ -61,7 +61,7 @@ extension Color {
 /// A cover filling its frame; it keeps its colours when the system tints the widget (iOS 18 and later).
 @ViewBuilder func coverImage(_ image: UIImage) -> some View {
     if #available(iOS 18.0, *) {
-        Image(uiImage: image).widgetAccentedRenderingMode(.fullColor).resizable().scaledToFill()
+        Image(uiImage: image).resizable().widgetAccentedRenderingMode(.fullColor).scaledToFill()
     } else {
         Image(uiImage: image).resizable().scaledToFill()
     }
