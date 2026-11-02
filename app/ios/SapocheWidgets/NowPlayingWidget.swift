@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -41,7 +42,7 @@ struct NowPlayingView: View {
     private func cover(_ side: CGFloat, radius: CGFloat = 14) -> some View {
         Group {
             if let image = entry.cover {
-                Image(uiImage: image).resizable().scaledToFill().keepsColours()
+                coverImage(image)
             } else {
                 ZStack {
                     Color.sapoche.opacity(0.85)
@@ -104,7 +105,7 @@ struct NowPlayingView: View {
     private var small: some View {
         ZStack(alignment: .bottomLeading) {
             if let image = entry.cover {
-                Image(uiImage: image).resizable().scaledToFill().keepsColours()
+                coverImage(image)
             } else {
                 Color.sapoche.opacity(0.85)
             }

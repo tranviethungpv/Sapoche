@@ -58,9 +58,11 @@ extension Color {
     static let sapoche = Color(red: 0.847, green: 0.106, blue: 0.376)
 }
 
-extension Image {
-    /// The cover keeps its colours when the system tints the widget (iOS 18 and later).
-    @ViewBuilder func keepsColours() -> some View {
-        if #available(iOS 18.0, *) { self.widgetAccentedRenderingMode(.fullColor) } else { self }
+/// A cover filling its frame; it keeps its colours when the system tints the widget (iOS 18 and later).
+@ViewBuilder func coverImage(_ image: UIImage) -> some View {
+    if #available(iOS 18.0, *) {
+        Image(uiImage: image).widgetAccentedRenderingMode(.fullColor).resizable().scaledToFill()
+    } else {
+        Image(uiImage: image).resizable().scaledToFill()
     }
 }
