@@ -13,9 +13,29 @@ on:
     tags: ['v*']
 
 jobs:
+  # A release pushes `main` and its tag `v<version>` together, which starts two runs of this workflow on the very same commit.
+  # The run of the tag is the one that makes the release, so a run of `main` finds out here that a tag is on its commit and
+  # leaves the work to it. A push of `main` without a tag builds as always.
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.tagged.outputs.skip }}
+    steps:
+      - id: tagged
+        run: |
+          skip=false
+          if [ "${{ github.ref_type }}" = branch ] && git ls-remote --tags "https://github.com/${{ github.repository }}.git" 'v*' | grep -q "^${{ github.sha }}"; then
+            skip=true
+            echo "a tag is on ${{ github.sha }}: its run does the work"
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
   # The native side of iOS is Swift; its portable part (everything but the player and the system's own services) is
   # compiled and tested here on Linux, where it is quick, before the macOS job builds the whole app.
   swift:
+    needs: gate
+    if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container: swift:6.3-noble
@@ -28,6 +48,8 @@ jobs:
       - run: swift test
 
   ipa:
+    needs: gate
+    if: needs.gate.outputs.skip != 'true'
     runs-on: macos-26
     timeout-minutes: 30
     defaults:
