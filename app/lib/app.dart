@@ -11,6 +11,7 @@ import 'ui/home_shell.dart';
 import 'ui/scope.dart';
 import 'ui/widgets/ambient_backdrop.dart';
 import 'ui/widgets/pip_host.dart';
+import 'ui/widgets/settle_on_growth_physics.dart';
 import 'ui/widgets/toast_layout.dart';
 
 class SapocheApp extends StatefulWidget {
@@ -71,15 +72,7 @@ class _SapocheAppState extends State<SapocheApp> {
           return MaterialApp(
             title: S.appName,
             debugShowCheckedModeBanner: false,
-            // A mouse (DeX, a computer) drags a row of covers the way a finger does
-            scrollBehavior: const MaterialScrollBehavior().copyWith(
-              dragDevices: {
-                ui.PointerDeviceKind.touch,
-                ui.PointerDeviceKind.mouse,
-                ui.PointerDeviceKind.stylus,
-                ui.PointerDeviceKind.trackpad,
-              },
-            ),
+            scrollBehavior: const _ScrollBehavior(),
             themeMode: model.settings.themeMode,
             theme: buildTheme(
               Palette.forAccent(model.settings.accent, Brightness.light),
@@ -106,6 +99,23 @@ class _SapocheAppState extends State<SapocheApp> {
       ),
     );
   }
+}
+
+class _ScrollBehavior extends MaterialScrollBehavior {
+  const _ScrollBehavior();
+
+  // A mouse (DeX, a computer) drags a row of covers the way a finger does
+  @override
+  Set<ui.PointerDeviceKind> get dragDevices => {
+    ui.PointerDeviceKind.touch,
+    ui.PointerDeviceKind.mouse,
+    ui.PointerDeviceKind.stylus,
+    ui.PointerDeviceKind.trackpad,
+  };
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      SettleOnGrowthPhysics(parent: super.getScrollPhysics(context));
 }
 
 /// Shows the home screen once the first state arrived, and paints the colours of the song that is playing behind it.

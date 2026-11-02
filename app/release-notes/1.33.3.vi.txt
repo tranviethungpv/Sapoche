@@ -1,0 +1,2 @@
+Kéo quá cuối danh sách không còn bị bay ngược lên
+- iPhone: kéo trang Chủ quá đáy rồi thả tay không còn bị bay vọt lên giữa trang khi các hàng cuối còn đang tải. Trang đứng yên tại chỗ và hàng mới hiện ra bên dưới. Các danh sách khác dài ra lúc đang nảy, như kết quả tìm kiếm, cũng vậy.

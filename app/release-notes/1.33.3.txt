@@ -1,0 +1,2 @@
+Pulling a list past its end no longer throws it up the page
+- iPhone: pulling the Home page past its bottom and letting go no longer sends it flying up to the middle when the last rows are still loading. The page stays where it is and the new rows appear below. The same goes for any list that gets longer while it bounces, such as search results.
