@@ -118,6 +118,19 @@ class WidgetLayoutTest {
     }
 
     @Test
+    fun theMediumWidgetGrowsWithATallCellAndStaysWithinAShortOne() {
+        assertEquals(1f, Widgets.mediumScale(320, 130), 0f)
+        assertEquals(1f, Widgets.mediumScale(320, 90), 0f)
+        // A tall cell: what the layout holds is drawn bigger, but never wider than the cell has room for
+        assertTrue(Widgets.mediumScale(380, 228) in 1.3f..1.7f)
+        assertTrue(Widgets.mediumScale(260, 400) <= 260 / 240f)
+        assertEquals(1.7f, Widgets.mediumScale(900, 900), 0f)
+        val said = texts(nowPlaying(room, NowPlayingSize.MEDIUM, 380, 228, "now_medium_tall"))
+        assertTrue(said.toString(), "Cuối tuần · 4" in said)
+        nowPlaying(room.copy(room = null, crew = emptyList(), roomCode = null, playing = false, next = emptyList()), NowPlayingSize.MEDIUM, 380, 228, "now_medium_tall_alone")
+    }
+
+    @Test
     fun theSmallWidgetIsTheCoverWithTheSong() {
         val said = texts(nowPlaying(room, NowPlayingSize.SMALL, 150, 150, "now_small"))
         assertEquals(listOf("MAKING MY WAY", "Sơn Tùng M-TP"), said)

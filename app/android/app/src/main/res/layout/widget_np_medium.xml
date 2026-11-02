@@ -11,7 +11,9 @@
         android:contentDescription="@null"
         android:scaleType="fitXY" />
 
+    <!-- Sizes here are those of a cell 130 dp high; Widgets.scaleMedium grows them for a taller cell (Android 12 and later) -->
     <LinearLayout
+        android:id="@+id/widget_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center_vertical"
@@ -20,16 +22,16 @@
 
         <ImageView
             android:id="@+id/widget_cover"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:adjustViewBounds="true"
+            android:layout_width="92dp"
+            android:layout_height="92dp"
             android:contentDescription="@null"
             android:scaleType="fitCenter"
             android:src="@mipmap/ic_launcher" />
 
         <LinearLayout
+            android:id="@+id/widget_text_column"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
             android:layout_weight="1"
             android:gravity="center_vertical"
@@ -39,7 +41,7 @@
                 android:id="@+id/widget_room_line"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="3dp"
+                android:layout_marginBottom="2dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:visibility="gone">
@@ -64,6 +66,7 @@
                     android:textSize="11sp"
                     android:textStyle="bold" />
             </LinearLayout>
+
             <TextView
                 android:id="@+id/widget_title"
                 android:layout_width="match_parent"
@@ -75,7 +78,6 @@
                 android:textSize="17sp"
                 android:textStyle="bold" />
 
-
             <TextView
                 android:id="@+id/widget_artist"
                 android:layout_width="match_parent"
@@ -85,14 +87,12 @@
                 android:textColor="#CCFFFFFF"
                 android:textSize="13sp" />
 
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
+            <!-- The three buttons spread over the width of the words, the way the iPhone's widget has them -->
             <LinearLayout
+                android:id="@+id/widget_controls"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -105,15 +105,24 @@
                     android:padding="6dp"
                     android:src="@drawable/ic_widget_prev" />
 
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
                 <ImageButton
                     android:id="@+id/widget_play"
                     android:layout_width="40dp"
                     android:layout_height="40dp"
-                    android:layout_marginHorizontal="6dp"
                     android:background="@drawable/widget_play_bg"
                     android:contentDescription="@null"
                     android:padding="8dp"
                     android:src="@drawable/ic_widget_play" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
 
                 <ImageButton
                     android:id="@+id/widget_next"

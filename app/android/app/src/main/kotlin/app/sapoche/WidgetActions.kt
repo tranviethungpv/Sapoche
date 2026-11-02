@@ -29,6 +29,8 @@ class WidgetActions : BroadcastReceiver() {
             try {
                 when (intent.action) {
                     JUMP -> jump(context, intent.getStringExtra(EXTRA_ID).orEmpty())
+                    NEXT -> skip(context, next = true)
+                    PREVIOUS -> skip(context, next = false)
                     QUICK -> quick(context, intent.getStringExtra(EXTRA_LIST).orEmpty(), intent.getLongExtra(EXTRA_PLAYLIST, 0))
                 }
             } catch (e: Exception) {
@@ -45,12 +47,26 @@ class WidgetActions : BroadcastReceiver() {
         group.requestJump(itemId)
     }
 
+    /** The service's controller, which is started first when it is not running (it stops itself after a while with nothing to play). */
+    private suspend fun groupOrStart(context: Context) = SapocheApp.group.value ?: run {
+        // The service starts as the first song is asked for, and posts its notification when it plays
+        ContextCompat.startForegroundService(context, Intent(context, PlaybackService::class.java))
+        withTimeoutOrNull(START_TIMEOUT_MS) { SapocheApp.group.first { it != null } }
+    }
+
+    /** Next or previous song: the room's while joined, the personal queue's otherwise, as the buttons of the notification do. */
+    private suspend fun skip(context: Context, next: Boolean) {
+        val group = groupOrStart(context) ?: return
+        if (!group.view.value.snapshot.canSteer) {
+            EventLog.d("widget", "skip asked from a widget, not allowed in this room")
+            return say(context, Widgets.text("Phòng này không cho đổi bài", "This room does not let guests skip"))
+        }
+        EventLog.d("widget", if (next) "next asked from a widget" else "previous asked from a widget")
+        if (next) group.requestNext() else group.requestPrev()
+    }
+
     private suspend fun quick(context: Context, list: String, playlist: Long) {
-        val group = SapocheApp.group.value ?: run {
-            // The service starts as the first song is asked for, and posts its notification when it plays
-            ContextCompat.startForegroundService(context, Intent(context, PlaybackService::class.java))
-            withTimeoutOrNull(START_TIMEOUT_MS) { SapocheApp.group.first { it != null } }
-        } ?: return
+        val group = groupOrStart(context) ?: return
         if (group.view.value.roomCode != null) {
             return say(context, Widgets.text("Đang ở phòng: chọn bài trong app", "In a room: pick the songs in the app"))
         }
@@ -72,6 +88,8 @@ class WidgetActions : BroadcastReceiver() {
     companion object {
         private const val JUMP = "app.sapoche.widget.JUMP"
         private const val QUICK = "app.sapoche.widget.QUICK"
+        private const val NEXT = "app.sapoche.widget.NEXT"
+        private const val PREVIOUS = "app.sapoche.widget.PREVIOUS"
         private const val EXTRA_ID = "id"
         private const val EXTRA_LIST = "list"
         private const val EXTRA_PLAYLIST = "playlist"
@@ -86,6 +104,12 @@ class WidgetActions : BroadcastReceiver() {
 
         /** Jumps to the song of the queue with [itemId]; [row] tells the touches of different rows apart. */
         fun jump(context: Context, row: Int, itemId: String): PendingIntent = broadcast(context, 100 + row, Intent(JUMP).putExtra(EXTRA_ID, itemId))
+
+        /** Skips to the next song. */
+        fun next(context: Context): PendingIntent = broadcast(context, 300, Intent(NEXT))
+
+        /** Goes back to the previous song. */
+        fun previous(context: Context): PendingIntent = broadcast(context, 301, Intent(PREVIOUS))
 
         /** Plays the quick list [list] (and [playlist], when it is one). */
         fun quick(context: Context, list: String, playlist: Long = 0): PendingIntent =

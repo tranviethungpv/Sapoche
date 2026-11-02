@@ -69,4 +69,19 @@ class WidgetActionsTest {
         waitFor("did not jump") { group.view.value.local.current?.id == last.id }
         assertTrue(group.view.value.local.index == group.view.value.local.queue.lastIndex)
     }
+
+    @Test
+    fun theNextAndPreviousButtonsMoveThroughTheQueue() {
+        runBlocking {
+            likeNow("n1", 20)
+            likeNow("n2", 21)
+            likeNow("n3", 22)
+        }
+        val group = likedQueue()
+        val first = group.view.value.local.current?.id
+        WidgetActions.next(context).send()
+        waitFor("did not go to the next song") { group.view.value.local.index == 1 }
+        WidgetActions.previous(context).send()
+        waitFor("did not go back") { group.view.value.local.index == 0 && group.view.value.local.current?.id == first }
+    }
 }

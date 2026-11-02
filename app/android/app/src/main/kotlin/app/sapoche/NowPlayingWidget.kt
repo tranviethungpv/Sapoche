@@ -218,12 +218,23 @@ object Widgets {
         return out
     }
 
+    /**
+     * The size of a cell in dp. In portrait it is as wide as the least width the launcher reports and as high as the greatest
+     * height, and the other way round in landscape (the documentation of `AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH`); the
+     * least of both is only what the cell could be shrunk to.
+     */
+    fun cellSize(context: Context, options: Bundle, defaultWidthDp: Int, defaultHeightDp: Int): Pair<Int, Int> {
+        val portrait = context.resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        fun dp(key: String, fallback: Int) = options.getInt(key, 0).takeIf { it > 0 } ?: fallback
+        val width = if (portrait) dp(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, defaultWidthDp) else dp(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, defaultWidthDp)
+        val height = if (portrait) dp(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, defaultHeightDp) else dp(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, defaultHeightDp)
+        return width to height
+    }
+
     fun render(context: Context, manager: AppWidgetManager, size: NowPlayingSize, ids: IntArray) {
         val state = state(context)
         for (id in ids) {
-            val options = manager.getAppWidgetOptions(id)
-            val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0).takeIf { it > 0 } ?: size.defaultWidthDp
-            val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0).takeIf { it > 0 } ?: size.defaultHeightDp
+            val (width, height) = cellSize(context, manager.getAppWidgetOptions(id), size.defaultWidthDp, size.defaultHeightDp)
             manager.updateAppWidget(id, views(context, state, size, width, height))
         }
     }
@@ -249,16 +260,60 @@ object Widgets {
         if (size == NowPlayingSize.SMALL) return views
 
         if (cover != null) views.setImageViewBitmap(R.id.widget_cover, cover) else views.setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher)
-        views.setOnClickPendingIntent(R.id.widget_prev, key(context, KeyEvent.KEYCODE_MEDIA_PREVIOUS))
-        views.setOnClickPendingIntent(R.id.widget_next, key(context, KeyEvent.KEYCODE_MEDIA_NEXT))
+        // Straight to the app, like a touch on a song of the queue: through the media key receiver they did nothing
+        views.setOnClickPendingIntent(R.id.widget_prev, WidgetActions.previous(context))
+        views.setOnClickPendingIntent(R.id.widget_next, WidgetActions.next(context))
         fixedSize(views, R.id.widget_room, 11f)
         views.setTextViewText(R.id.widget_room, state.room.orEmpty())
         views.setViewVisibility(R.id.widget_room_line, if (state.room != null) View.VISIBLE else View.GONE)
         val showFaces = state.room != null && faces != null && state.crew.isNotEmpty()
         views.setViewVisibility(R.id.widget_faces, if (showFaces) View.VISIBLE else View.GONE)
         if (showFaces) views.setImageViewBitmap(R.id.widget_faces, faces)
+        if (size == NowPlayingSize.MEDIUM) scaleMedium(context, views, widthDp, heightDp)
         if (size == NowPlayingSize.LARGE) renderNext(context, views, state)
         return views
+    }
+
+    /** What the medium layout holds at 1: a cell 130 dp high and 320 wide. */
+    private const val MEDIUM_BASE_HEIGHT = 105f
+    private const val MEDIUM_BASE_WIDTH = 240f
+
+    /** How much bigger than the layout's own sizes the medium widget is drawn in a cell of [widthDp] by [heightDp]; never smaller. */
+    fun mediumScale(widthDp: Int, heightDp: Int): Float =
+        minOf(heightDp * 0.66f / MEDIUM_BASE_HEIGHT, widthDp / MEDIUM_BASE_WIDTH, 1.7f).coerceAtLeast(1f)
+
+    /**
+     * A cell taller than the layout was made for would leave its content in a band with empty space above and below, so the
+     * cover, the words and the buttons grow with the cell. A RemoteViews can only be given other sizes from Android 12; before
+     * that the layout stays as it is, in the middle.
+     */
+    private fun scaleMedium(context: Context, views: RemoteViews, widthDp: Int, heightDp: Int) {
+        val scale = mediumScale(widthDp, heightDp)
+        EventLog.d("widget", "medium widget in ${widthDp}x${heightDp} dp, drawn at x$scale")
+        if (scale <= 1f || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return
+        val dp = android.util.TypedValue.COMPLEX_UNIT_DIP
+        fun square(id: Int, sideDp: Float) {
+            views.setViewLayoutWidth(id, sideDp * scale, dp)
+            views.setViewLayoutHeight(id, sideDp * scale, dp)
+        }
+        square(R.id.widget_cover, 92f)
+        square(R.id.widget_play, 40f)
+        square(R.id.widget_prev, 32f)
+        square(R.id.widget_next, 32f)
+        val density = context.resources.displayMetrics.density
+        fun pad(id: Int, paddingDp: Float) = (paddingDp * scale * density).toInt().let { views.setViewPadding(id, it, it, it, it) }
+        pad(R.id.widget_content, 10f)
+        pad(R.id.widget_play, 8f)
+        pad(R.id.widget_prev, 6f)
+        pad(R.id.widget_next, 6f)
+        views.setViewLayoutMargin(R.id.widget_text_column, RemoteViews.MARGIN_START, 12f * scale, dp)
+        views.setViewLayoutMargin(R.id.widget_controls, RemoteViews.MARGIN_TOP, 6f * scale, dp)
+        // The words grow slower than the cover and the buttons: the column they are in does not grow with the cell, and a long title
+        // would be cut
+        val text = 1f + (scale - 1f) * 0.4f
+        fixedSize(views, R.id.widget_title, 17f * text)
+        fixedSize(views, R.id.widget_artist, 13f * text)
+        fixedSize(views, R.id.widget_room, 11f * text)
     }
 
     private fun renderNext(context: Context, views: RemoteViews, state: WidgetState) {
