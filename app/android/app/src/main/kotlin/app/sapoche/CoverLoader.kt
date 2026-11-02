@@ -25,8 +25,9 @@ class CoverLoader : BitmapLoader {
 
     private val executor = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor())
 
-    // The notification asks again on every state change; the same few covers should not be fetched again
-    private val cache = LruCache<String, Bitmap>(3)
+    // The notification asks again on every state change; the same few covers should not be fetched again. Room for the song
+    // playing and the ones fetched ahead of it by [prefetch]
+    private val cache = LruCache<String, Bitmap>(6)
 
     override fun supportsMimeType(mimeType: String) = mimeType.startsWith("image/")
 
@@ -35,6 +36,15 @@ class CoverLoader : BitmapLoader {
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> = executor.submit<Bitmap> {
         val key = uri.toString()
         cache.get(key) ?: load(key).also { cache.put(key, it) }
+    }
+
+    /**
+     * Fetches the cover at [uri] before anyone asks for it: when its song starts the picture is there at once, and a car's
+     * screen does not show the last song's cover over the new title while it comes.
+     */
+    fun prefetch(uri: Uri) {
+        val key = uri.toString()
+        executor.execute { if (cache.get(key) == null) runCatching { cache.put(key, load(key)) } }
     }
 
     private fun load(url: String): Bitmap {

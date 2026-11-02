@@ -13,9 +13,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /** The two shapes of the widget that plays a list with one touch; each is a widget of its own in the launcher's list. */
-enum class QuickSize(val layout: Int, val defaultWidthDp: Int, val defaultHeightDp: Int) {
-    WIDE(R.layout.widget_quick_wide, 320, 80),
-    GRID(R.layout.widget_quick_grid, 150, 150),
+enum class QuickSize(val defaultWidthDp: Int, val defaultHeightDp: Int) {
+    WIDE(320, 80),
+    GRID(150, 150),
 }
 
 /** Four tiles that play a list with one touch, without opening the app: liked songs, a mix for you, downloads and the latest playlist. */
@@ -30,10 +30,8 @@ open class QuickProvider(private val size: QuickSize) : AppWidgetProvider() {
                 // The playlist touched last; the library is the app's own, in this process
                 val playlist = runCatching { SapocheApp.library.playlists().firstOrNull() }.getOrNull()
                 for (id in ids) {
-                    val options = manager.getAppWidgetOptions(id)
-                    val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0).takeIf { it > 0 } ?: size.defaultWidthDp
-                    val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0).takeIf { it > 0 } ?: size.defaultHeightDp
-                    manager.updateAppWidget(id, views(app, size, width, height, playlist))
+                    val (width, height) = Widgets.cellSize(app, manager.getAppWidgetOptions(id), size.defaultWidthDp, size.defaultHeightDp)
+                    manager.updateAppWidget(id, views(app, width, height, playlist, square = size == QuickSize.GRID))
                 }
             } finally {
                 pending.finish()
@@ -48,11 +46,17 @@ open class QuickProvider(private val size: QuickSize) : AppWidgetProvider() {
     companion object {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-        /** One widget of [widthDp] by [heightDp]; the fourth tile is the latest [playlist], and is left out when there is none. */
-        fun views(context: Context, size: QuickSize, widthDp: Int, heightDp: Int, playlist: LibraryStore.Playlist?): RemoteViews {
-            val views = RemoteViews(context.packageName, size.layout)
+        /**
+         * One widget of [widthDp] by [heightDp]: the tiles in a row in a strip, else as a grid. The fourth tile is the latest
+         * [playlist], and is left out when there is none. With [square] the grid is a square card in the middle of the cell.
+         */
+        fun views(context: Context, widthDp: Int, heightDp: Int, playlist: LibraryStore.Playlist?, square: Boolean = false): RemoteViews {
+            val strip = Widgets.isStrip(widthDp, heightDp)
+            val views = RemoteViews(context.packageName, if (strip) R.layout.widget_quick_wide else R.layout.widget_quick_grid)
             val tiny = Widgets.picture(context, Widgets.BLUR)
-            views.setImageViewBitmap(R.id.widget_bg, WidgetArt.background(widthDp, heightDp, tiny, WidgetArt.accent(tiny)))
+            val card = square && !strip
+            views.setImageViewBitmap(R.id.widget_bg, WidgetArt.background(widthDp, heightDp, tiny, WidgetArt.accent(tiny), card))
+            if (card) Widgets.insetToSquare(context, views, R.id.widget_content, widthDp, heightDp, 6)
             val tiles = listOf(
                 Triple(R.id.widget_tile1, R.id.widget_tile1_label, Widgets.text("Bài thích", "Liked") to WidgetActions.quick(context, WidgetActions.LIKED)),
                 Triple(R.id.widget_tile2, R.id.widget_tile2_label, Widgets.text("Mix gợi ý", "Mix") to WidgetActions.quick(context, WidgetActions.MIX)),
@@ -63,8 +67,8 @@ open class QuickProvider(private val size: QuickSize) : AppWidgetProvider() {
                 views.setTextViewText(label, shown.first)
                 views.setOnClickPendingIntent(tile, shown.second)
             }
-            // With no playlist yet the fourth tile has nothing to play
-            views.setViewVisibility(R.id.widget_tile4, if (playlist == null) View.INVISIBLE else View.VISIBLE)
+            // With no playlist yet the fourth tile has nothing to play, and the others take its room instead of leaving a hole
+            views.setViewVisibility(R.id.widget_tile4, if (playlist == null) View.GONE else View.VISIBLE)
             if (playlist != null) {
                 Widgets.fixedSize(views, R.id.widget_tile4_label, 10f)
                 views.setTextViewText(R.id.widget_tile4_label, playlist.name)

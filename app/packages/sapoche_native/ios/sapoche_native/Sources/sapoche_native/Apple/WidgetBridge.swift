@@ -3,9 +3,6 @@ import UIKit
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
-#if canImport(ActivityKit)
-import ActivityKit
-#endif
 
 /// What the widgets show besides the song, which only the rest of the app knows.
 struct WidgetSources {
@@ -17,7 +14,7 @@ struct WidgetSources {
     var latestPlaylist: () async -> WidgetSnapshot.QuickPlaylist?
 }
 
-/// Keeps the widgets and the Live Activity in step with what plays, and hears their buttons.
+/// Keeps the widgets in step with what plays, and hears their buttons.
 @MainActor
 final class WidgetBridge {
     static let commandNotification = Notification.Name("app.sapoche.widgetCommand")
@@ -30,11 +27,6 @@ final class WidgetBridge {
     private var last: WidgetSnapshot?
     private var lastCover: String?
     private var lastCoverWritten: String?
-    private var activity: Any?
-    /// What the Live Activity was last given, to leave out an update that changes nothing.
-    private var activityKey: AnyHashable?
-    private var activityRoom: String?
-    private var activityUpdates: Task<Void, Never>?
     private var friends: WidgetSnapshot.Friends?
     private var playlist: WidgetSnapshot.QuickPlaylist?
     private var extrasAt: Date?
@@ -150,56 +142,5 @@ final class WidgetBridge {
                 self.write()
             }
         }
-    }
-
-    // ------------------------------------------------------------------ Live Activity of the room
-
-    /// The room this device is in as a Live Activity (lock screen and Dynamic Island): started when a room is joined, updated
-    /// with the song, ended when it is left. [room] is nil outside a room.
-    func updateRoomActivity(room: (name: String, code: String)?, snapshot: WidgetSnapshot, members: Int) {
-        #if canImport(ActivityKit)
-        guard #available(iOS 16.2, *) else { return }
-        let existing = Activity<RoomActivityAttributes>.activities
-        guard let room else {
-            for old in existing { Task { await old.end(nil, dismissalPolicy: .immediate) } }
-            activity = nil
-            activityKey = nil
-            return
-        }
-        let state = RoomActivityAttributes.ContentState(
-            title: snapshot.title, artist: snapshot.artist, playing: snapshot.playing, members: members,
-            startedAt: snapshot.playing ? snapshot.startedAt : nil, endsAt: snapshot.playing ? snapshot.endsAt : nil
-        )
-        // The player tells of itself twice a second in a room, and the system allows an activity only so many updates: an
-        // update that says what the last one said spends the allowance, and the one that changes the song can be the one refused.
-        // Times are compared a few seconds apart, as the drift of the room moves them a little all the time.
-        let step = 3.0
-        func rounded(_ date: Date?) -> Date? { date.map { Date(timeIntervalSince1970: ($0.timeIntervalSince1970 / step).rounded() * step) } }
-        var key = state
-        key.startedAt = rounded(state.startedAt)
-        key.endsAt = rounded(state.endsAt)
-        let content = ActivityContent(state: state, staleDate: nil)
-        if let running = existing.first(where: { $0.attributes.roomCode == room.code }) {
-            activity = running
-            if activityKey == AnyHashable(key) && activityRoom == room.code { return }
-            activityKey = AnyHashable(key)
-            activityRoom = room.code
-            // One after the other, so that an old state never lands after a newer one
-            let before = activityUpdates
-            activityUpdates = Task {
-                await before?.value
-                await running.update(content)
-            }
-            return
-        }
-        // Another room's, or one the system kept from an earlier run
-        for old in existing { Task { await old.end(nil, dismissalPolicy: .immediate) } }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        activity = try? Activity.request(attributes: RoomActivityAttributes(roomName: room.name, roomCode: room.code), content: content, pushType: nil)
-        if activity != nil {
-            activityKey = AnyHashable(key)
-            activityRoom = room.code
-        }
-        #endif
     }
 }

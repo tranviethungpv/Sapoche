@@ -71,9 +71,11 @@ object WidgetArt {
 
     /**
      * The picture behind a widget of [widthDp] by [heightDp]: [tiny] spread over it (the brand colours when there is no
-     * cover), a dark veil with a deeper foot, and a glow of [accent] in the top left corner, all with rounded corners.
+     * cover), a dark veil with a deeper foot, and a glow of [accent] in the top left corner, all with rounded corners. With
+     * [square] the picture is a square as wide as the cell's least side, in the middle of it, and clear around.
      */
-    fun background(widthDp: Int, heightDp: Int, tiny: Bitmap?, accent: Int): Bitmap {
+    fun background(widthDp: Int, heightDp: Int, tiny: Bitmap?, accent: Int, square: Boolean = false): Bitmap {
+        if (square && widthDp != heightDp) return centred(background(minOf(widthDp, heightDp), minOf(widthDp, heightDp), tiny, accent), widthDp, heightDp)
         val w = (widthDp * PX_PER_DP).toInt().coerceAtLeast(2)
         val h = (heightDp * PX_PER_DP).toInt().coerceAtLeast(2)
         val layer = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -105,7 +107,8 @@ object WidgetArt {
     }
 
     /** The cover itself filling the widget, with a veil at the foot for its words: the small widget. */
-    fun cover(widthDp: Int, heightDp: Int, cover: Bitmap?, accent: Int): Bitmap {
+    fun cover(widthDp: Int, heightDp: Int, cover: Bitmap?, accent: Int, square: Boolean = false): Bitmap {
+        if (square && widthDp != heightDp) return centred(cover(minOf(widthDp, heightDp), minOf(widthDp, heightDp), cover, accent), widthDp, heightDp)
         val w = (widthDp * PX_PER_DP).toInt().coerceAtLeast(2)
         val h = (heightDp * PX_PER_DP).toInt().coerceAtLeast(2)
         if (cover == null) return background(widthDp, heightDp, null, accent)
@@ -120,6 +123,15 @@ object WidgetArt {
         paint.shader = LinearGradient(0f, h * 0.38f, 0f, h.toFloat(), Color.TRANSPARENT, Color.argb(215, 0, 0, 0), Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
         return rounded(layer)
+    }
+
+    /** [card] in the middle of a clear picture of [widthDp] by [heightDp]. */
+    private fun centred(card: Bitmap, widthDp: Int, heightDp: Int): Bitmap {
+        val w = (widthDp * PX_PER_DP).toInt().coerceAtLeast(card.width)
+        val h = (heightDp * PX_PER_DP).toInt().coerceAtLeast(card.height)
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        Canvas(out).drawBitmap(card, (w - card.width) / 2f, (h - card.height) / 2f, null)
+        return out
     }
 
     private fun rounded(layer: Bitmap): Bitmap {

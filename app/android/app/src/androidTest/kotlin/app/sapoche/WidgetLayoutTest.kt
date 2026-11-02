@@ -14,6 +14,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -153,18 +154,47 @@ class WidgetLayoutTest {
     fun theQuickWidgetsFit() {
         seed(emptyList())
         val playlist = LibraryStore.Playlist(1, "Cuối tuần", 3, emptyList(), 0)
-        val wide = texts(shoot("quick_wide", QuickProvider.views(context, QuickSize.WIDE, 320, 80, playlist), 320, 80))
+        val wide = texts(shoot("quick_wide", QuickProvider.views(context, 320, 80, playlist), 320, 80))
         assertTrue(wide.toString(), "Cuối tuần" in wide)
-        shoot("quick_grid", QuickProvider.views(context, QuickSize.GRID, 150, 150, playlist), 150, 150)
+        shoot("quick_grid", QuickProvider.views(context, 150, 150, playlist), 150, 150)
+    }
+
+    @Test
+    fun aStripInATallCellIsLaidOutAsAGridAndALonePlaylistLeavesNoHole() {
+        assertTrue(Widgets.isStrip(320, 80))
+        assertTrue(Widgets.isStrip(382, 74))
+        assertFalse(Widgets.isStrip(382, 188))
+        assertFalse(Widgets.isStrip(145, 188))
+        seed(emptyList())
+        // A launcher with tall cells gives the 4×1 widget 188 dp; with no playlist the other three tiles share the room
+        val said = texts(shoot("quick_tall_cell", QuickProvider.views(context, 382, 188, null), 382, 188))
+        assertTrue(said.toString(), "Liked" in said || "Bài thích" in said)
+        val friends = Friends("ABC123", "Cuối tuần", listOf("Lan", "Minh"), "STAY")
+        shoot("rooms_tall_cell", RoomsWidgets.preview(context, WidgetState(), friends, 382, 188), 382, 188)
+        shoot("rooms_none_tall_cell", RoomsWidgets.preview(context, WidgetState(), null, 382, 188), 382, 188)
+    }
+
+    @Test
+    fun theSmallWidgetsAreSquareCardsInTheMiddleOfATallCell() {
+        seed(emptyList())
+        val playlist = LibraryStore.Playlist(1, "Cuối tuần", 3, emptyList(), 0)
+        for ((w, h) in listOf(145 to 188, 145 to 288)) {
+            shoot("quick_square_${w}x$h", QuickProvider.views(context, w, h, playlist, square = true), w, h)
+            shoot("rooms_square_${w}x$h", RoomsWidgets.preview(context, WidgetState(), null, w, h, square = true), w, h)
+            shoot("np_small_square_${w}x$h", Widgets.views(context, WidgetState("STAY", "The Kid LAROI", true), NowPlayingSize.SMALL, w, h), w, h)
+        }
+        // A 2×2 widget stretched into a strip is not a card: it fills the cell as a strip
+        val said = texts(shoot("quick_square_strip", QuickProvider.views(context, 382, 74, playlist, square = true), 382, 74))
+        assertTrue(said.toString(), "Cuối tuần" in said)
     }
 
     @Test
     fun theRoomsWidgetsFit() {
         seed(emptyList())
         val friends = Friends("ABC123", "Cuối tuần", listOf("Lan", "Minh"), "STAY")
-        val wide = texts(shoot("rooms_wide", RoomsWidgets.preview(context, WidgetState(), friends, RoomsSize.WIDE, 320, 72), 320, 72))
+        val wide = texts(shoot("rooms_wide", RoomsWidgets.preview(context, WidgetState(), friends, 320, 72), 320, 72))
         assertTrue(wide.toString(), "Lan, Minh đang nghe" in wide || "Lan, Minh listening" in wide)
-        shoot("rooms_small", RoomsWidgets.preview(context, WidgetState(), friends, RoomsSize.SMALL, 150, 150), 150, 150)
-        shoot("rooms_in", RoomsWidgets.preview(context, room, friends, RoomsSize.WIDE, 320, 72), 320, 72)
+        shoot("rooms_small", RoomsWidgets.preview(context, WidgetState(), friends, 150, 150), 150, 150)
+        shoot("rooms_in", RoomsWidgets.preview(context, room, friends, 320, 72), 320, 72)
     }
 }

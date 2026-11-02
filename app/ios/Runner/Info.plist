@@ -6,8 +6,6 @@
 	<array>
 		<string>group.app.sapoche.sapoche</string>
 	</array>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

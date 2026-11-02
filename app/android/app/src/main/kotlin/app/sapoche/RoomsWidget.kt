@@ -34,9 +34,9 @@ data class Friends(val code: String, val room: String, val who: List<String>, va
 }
 
 /** The two sizes of the widget that says who listens; each is a widget of its own in the launcher's list. */
-enum class RoomsSize(val layout: Int, val defaultWidthDp: Int, val defaultHeightDp: Int) {
-    WIDE(R.layout.widget_rooms_wide, 320, 72),
-    SMALL(R.layout.widget_rooms_small, 150, 150),
+enum class RoomsSize(val defaultWidthDp: Int, val defaultHeightDp: Int) {
+    WIDE(320, 72),
+    SMALL(150, 150),
 }
 
 /**
@@ -114,20 +114,24 @@ object RoomsWidgets {
         val friends = Friends.fromJson(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_FRIENDS, null))
         for ((provider, size) in PROVIDERS) {
             for (id in ids(context, provider)) {
-                val options = manager.getAppWidgetOptions(id)
-                val width = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0).takeIf { it > 0 } ?: size.defaultWidthDp
-                val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0).takeIf { it > 0 } ?: size.defaultHeightDp
-                manager.updateAppWidget(id, views(context, state, friends, size, width, height))
+                val (width, height) = Widgets.cellSize(context, manager.getAppWidgetOptions(id), size.defaultWidthDp, size.defaultHeightDp)
+                manager.updateAppWidget(id, views(context, state, friends, width, height, square = size == RoomsSize.SMALL))
             }
         }
     }
 
-    /** One widget of [widthDp] by [heightDp]: the room this device is in, else the friends' room, else a way to start one. */
-    private fun views(context: Context, state: WidgetState, friends: Friends?, size: RoomsSize, widthDp: Int, heightDp: Int): RemoteViews {
-        val views = RemoteViews(context.packageName, size.layout)
+    /**
+     * One widget of [widthDp] by [heightDp]: the room this device is in, else the friends' room, else a way to start one; on one
+     * line in a strip, else stacked. With [square] a widget that is not a strip is a square card in the middle of the cell.
+     */
+    private fun views(context: Context, state: WidgetState, friends: Friends?, widthDp: Int, heightDp: Int, square: Boolean = false): RemoteViews {
+        val strip = Widgets.isStrip(widthDp, heightDp)
+        val views = RemoteViews(context.packageName, if (strip) R.layout.widget_rooms_wide else R.layout.widget_rooms_small)
         val tiny = Widgets.picture(context, Widgets.BLUR)
-        views.setImageViewBitmap(R.id.widget_bg, WidgetArt.background(widthDp, heightDp, tiny, WidgetArt.accent(tiny)))
-        Widgets.fixedSize(views, R.id.widget_rooms_title, if (size == RoomsSize.SMALL) 14f else 15f)
+        val card = square && !strip
+        views.setImageViewBitmap(R.id.widget_bg, WidgetArt.background(widthDp, heightDp, tiny, WidgetArt.accent(tiny), card))
+        if (card) Widgets.insetToSquare(context, views, R.id.widget_content, widthDp, heightDp, 12)
+        Widgets.fixedSize(views, R.id.widget_rooms_title, if (strip) 15f else 14f)
         Widgets.fixedSize(views, R.id.widget_rooms_sub, 12f)
         Widgets.fixedSize(views, R.id.widget_rooms_button, 13f)
         val ring = 0xFFFFFFFF.toInt()
@@ -174,6 +178,6 @@ object RoomsWidgets {
     }
 
     /** Exposed for the layout tests: the same views, from what they are given. */
-    internal fun preview(context: Context, state: WidgetState, friends: Friends?, size: RoomsSize, widthDp: Int, heightDp: Int) =
-        views(context, state, friends, size, widthDp, heightDp)
+    internal fun preview(context: Context, state: WidgetState, friends: Friends?, widthDp: Int, heightDp: Int, square: Boolean = false) =
+        views(context, state, friends, widthDp, heightDp, square)
 }

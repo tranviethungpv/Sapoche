@@ -1,0 +1,4 @@
+Android Auto có nút tim và lời nhắc, widget thành thẻ vuông
+- Android Auto: màn đang phát có nút tim để thích hoặc bỏ thích bài, có nút trộn bài và lặp lại, và danh sách trống nay nói rõ nên làm gì (ví dụ "Chưa có phòng nào - tạo hoặc vào một phòng trong ứng dụng") thay vì chỉ ghi "No items". Ảnh bìa bài kế tiếp được tải trước nên hình đổi nhanh hơn khi hết bài.
+- Android: các widget 2×2 (Đang phát, Phòng, Nghe nhanh) được vẽ thành một thẻ vuông ở giữa ô, dù launcher của bạn cấp ô hình gì. Widget Phòng và Nghe nhanh dạng dải không còn bị méo góc hay hở một ô khi chưa có danh sách phát, và ô cao thì xếp giống bản 2×2.
+- iPhone: bỏ Live Activity của phòng (màn khoá và Dynamic Island). Widget, widget màn khoá và nút Control Center vẫn còn.

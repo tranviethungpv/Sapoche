@@ -197,7 +197,7 @@ final class NowPlaying {
         center.playbackState = info.playing ? .playing : .paused
     }
 
-    /// Hands what plays to the widgets and, in a room, to its Live Activity; they draw it themselves from then on.
+    /// Hands what plays to the widgets; they draw it themselves from then on.
     private func publishWidgets(item: QueueItem?, info: PlayerInfo?, duration: Int64 = 0) {
         let view = controller.view.value
         let inRoom = view.roomCode != nil
@@ -218,9 +218,6 @@ final class NowPlaying {
         )
         let address = item?.thumb
         widgets.publish(snapshot, coverFor: address, cover: address.flatMap { artworkCache[$0] }.flatMap(Self.thumbnail))
-        widgets.updateRoomActivity(
-            room: view.roomCode.map { (name: state?.name ?? $0, code: $0) }, snapshot: snapshot, members: listening.count
-        )
     }
 
     /// A small JPEG of a cover for the widgets, which have little memory to draw with.

@@ -77,6 +77,26 @@ class CarLibrary(
         )
         .build()
 
+    /**
+     * What stands in a list with nothing in it. A car says only "No items" for an empty folder, so the list holds one line that
+     * is not a song and says what to do; it can be neither opened nor played.
+     */
+    private fun hint(where: String, vi: String, en: String, subVi: String, subEn: String): MediaItem = MediaItem.Builder()
+        .setMediaId("$INFO|$where")
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(text(vi, en))
+                .setSubtitle(text(subVi, subEn))
+                .setIsBrowsable(false)
+                .setIsPlayable(false)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_MIXED)
+                .build(),
+        )
+        .build()
+
+    private fun List<MediaItem>.orHint(where: String, vi: String, en: String, subVi: String, subEn: String) =
+        ifEmpty { listOf(hint(where, vi, en, subVi, subEn)) }
+
     /** The items inside folder [parent], or null when there is no such folder. */
     suspend fun children(parent: String): List<MediaItem>? = when {
         parent == ROOT -> listOf(
@@ -86,17 +106,25 @@ class CarLibrary(
             folder(FOR_YOU, text("Cho bạn", "For you")),
         )
         parent == NOW -> queue().map { song(NOW, it.id, TrackRef(it.videoId, it.title, it.artist, it.thumb, it.durMs)) }
+            .orHint(NOW, "Hàng đợi đang trống", "The queue is empty", "Chọn bài ở Thư viện hoặc Cho bạn", "Pick a song in Library or For you")
         parent == LIBRARY -> listOf(
             folder(LIKED, text("Bài đã thích", "Liked songs")),
             folder(RECENT, text("Nghe gần đây", "Recently played")),
             folder(PLAYLISTS, text("Danh sách phát", "Playlists")),
         )
         parent == ROOMS -> rooms().map(::room)
+            .orHint(ROOMS, "Chưa có phòng nào", "No rooms yet", "Tạo hoặc vào một phòng trong ứng dụng", "Start or join a room in the app")
         parent == FOR_YOU -> songs(FOR_YOU, forYou())
+            .orHint(FOR_YOU, "Chưa có gợi ý", "No suggestions yet", "Nghe thêm vài bài để có gợi ý", "Play a few songs to get suggestions")
         parent == LIKED -> songs(LIKED, library.liked().map { it.track })
+            .orHint(LIKED, "Chưa có bài đã thích", "No liked songs yet", "Bấm ♥ ở màn đang phát", "Tap ♥ on the playing screen")
         parent == RECENT -> songs(RECENT, library.recent().map { it.track })
+            .orHint(RECENT, "Chưa nghe bài nào", "Nothing played yet", "Bài vừa nghe sẽ hiện ở đây", "Songs you play show up here")
         parent == PLAYLISTS -> library.playlists().map { folder("$PLAYLIST_PREFIX${it.id}", it.name) }
-        parent.startsWith(PLAYLIST_PREFIX) -> parent.removePrefix(PLAYLIST_PREFIX).toLongOrNull()?.let { songs(parent, library.playlistTracks(it)) }
+            .orHint(PLAYLISTS, "Chưa có danh sách phát", "No playlists yet", "Tạo danh sách phát trong ứng dụng", "Create a playlist in the app")
+        parent.startsWith(PLAYLIST_PREFIX) -> parent.removePrefix(PLAYLIST_PREFIX).toLongOrNull()?.let {
+            songs(parent, library.playlistTracks(it)).orHint(parent, "Danh sách này đang trống", "This playlist is empty", "Thêm bài vào trong ứng dụng", "Add songs in the app")
+        }
         else -> null
     }
 
@@ -157,6 +185,9 @@ class CarLibrary(
         const val RECENT = "recent"
         const val PLAYLISTS = "playlists"
         const val FOUND = "found"
+
+        /** The id of the line that says a list is empty; it is not a song and not a folder. */
+        const val INFO = "info"
         const val PLAYLIST_PREFIX = "pl-"
         private const val SEARCH_LIMIT = 15
 

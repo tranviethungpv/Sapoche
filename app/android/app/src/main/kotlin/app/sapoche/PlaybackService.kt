@@ -49,9 +49,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
@@ -150,10 +152,11 @@ class PlaybackService : MediaLibraryService() {
                 val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                     .add(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
                     .add(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
+                    .add(SessionCommand(CMD_LIKE, Bundle.EMPTY))
                     .build()
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(mediaSession)
                     .setAvailableSessionCommands(commands)
-                    .setMediaButtonPreferences(roomButtons(repeatMode))
+                    .setMediaButtonPreferences(buttons())
                     .build()
             }
 
@@ -166,6 +169,7 @@ class PlaybackService : MediaLibraryService() {
                 when (customCommand.customAction) {
                     CMD_SHUFFLE -> group.requestShuffleMode(!shuffleOn)
                     CMD_REPEAT -> group.requestRepeat(nextRepeat(repeatMode))
+                    CMD_LIKE -> likeCurrent()
                 }
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
@@ -273,8 +277,30 @@ class PlaybackService : MediaLibraryService() {
                 .collect { (mode, shuffle) ->
                     repeatMode = mode
                     shuffleOn = shuffle
-                    session?.setMediaButtonPreferences(roomButtons(mode))
+                    refreshButtons()
                 }
+        }
+
+        // The heart of a car's screen is full while the song playing is one of the liked songs, whoever liked it and from where
+        currentSong.value = player.currentMediaItem?.mediaId
+        scope.launch {
+            combine(currentSong, SapocheApp.library.changes.onStart { emit(Unit) }) { id, _ -> id }
+                .map { id -> id != null && id in SapocheApp.library.likedIds() }
+                .distinctUntilChanged()
+                .collect { likedNow = it; refreshButtons() }
+        }
+
+        // The cover of what comes next is fetched while this song plays, so it is there when that one starts
+        scope.launch {
+            group.view
+                .map { view ->
+                    val inRoom = view.roomCode != null
+                    val queue = if (inRoom) view.snapshot.state?.queue.orEmpty() else view.local.queue
+                    val index = if (inRoom) view.snapshot.state?.index ?: 0 else view.local.index
+                    queue.drop(index).take(3).mapNotNull { it.thumb }
+                }
+                .distinctUntilChanged()
+                .collect { thumbs -> thumbs.forEach { covers.prefetch(android.net.Uri.parse(it)) } }
         }
 
         // The widgets of the home screen follow whether it plays and where: the song itself comes with the player's events
@@ -471,6 +497,44 @@ class PlaybackService : MediaLibraryService() {
     /** Whether shuffle is on in the queue that is playing; the room's, or the personal one outside a room. */
     private var shuffleOn = false
 
+    /** The id of the song playing, which the heart of a car's screen is about. */
+    private val currentSong = MutableStateFlow<String?>(null)
+
+    /** Whether the song playing is a liked one. */
+    private var likedNow = false
+
+    /**
+     * The buttons beside the transport ones: shuffle, repeat and the heart. The heart is last: the notification has room for
+     * five buttons and drops the sixth, as it has no use for a heart, while a car's screen lists them all.
+     */
+    private fun buttons(): List<CommandButton> = roomButtons(repeatMode) + likeButton()
+
+    private fun refreshButtons() {
+        session?.setMediaButtonPreferences(buttons())
+    }
+
+    private fun likeButton(): CommandButton =
+        CommandButton.Builder(if (likedNow) CommandButton.ICON_HEART_FILLED else CommandButton.ICON_HEART_UNFILLED)
+            .setDisplayName(
+                if (SapocheApp.language.value == "vi") (if (likedNow) "Bỏ thích" else "Thích") else if (likedNow) "Unlike" else "Like",
+            )
+            .setSessionCommand(SessionCommand(CMD_LIKE, Bundle.EMPTY))
+            .build()
+
+    /** The heart: likes the song playing, or takes the like back, in the library of this phone. */
+    private fun likeCurrent() {
+        val item = player.currentMediaItem ?: return
+        val track = CarLibrary.track(item)
+        val liked = !likedNow
+        scope.launch {
+            SapocheApp.library.setLiked(track, liked)
+            // As in the app, a song liked is downloaded when that is switched on
+            if (liked && getSharedPreferences("sapoche", MODE_PRIVATE).getBoolean(DownloadWorker.KEY_AUTO, false)) {
+                DownloadWorker.enqueue(this@PlaybackService, waiting = true)
+            }
+        }
+    }
+
     private fun roomButtons(mode: String): List<CommandButton> {
         return listOf(
             CommandButton.Builder(if (shuffleOn) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF)
@@ -575,6 +639,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             EventLog.d("player", "transition to=${mediaItem?.mediaId} reason=$reason")
+            currentSong.value = mediaItem?.mediaId
             updateWakeMode(mediaItem)
         }
 
@@ -746,6 +811,7 @@ class PlaybackService : MediaLibraryService() {
         const val SCHEME = "sapoche"
         const val CMD_SHUFFLE = "app.sapoche.SHUFFLE"
         const val CMD_REPEAT = "app.sapoche.REPEAT"
+        const val CMD_LIKE = "app.sapoche.LIKE"
         /** Proof of life is for tests that read the log afterwards; a released app does not need to be that talkative. */
         val HEARTBEAT_MS = if (BuildConfig.DEBUG) 60_000L else 5 * 60_000L
 

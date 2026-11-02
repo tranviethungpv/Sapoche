@@ -12,6 +12,7 @@
         android:scaleType="fitXY" />
 
     <LinearLayout
+        android:id="@+id/widget_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -52,12 +53,13 @@
 
         <TextView
             android:id="@+id/widget_rooms_button"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/widget_join_bg"
             android:gravity="center"
-            android:paddingHorizontal="14dp"
-            android:paddingVertical="6dp"
+            android:minWidth="72dp"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="7dp"
             android:textColor="@color/widget_button_icon"
             android:textSize="13sp"
             android:textStyle="bold" />

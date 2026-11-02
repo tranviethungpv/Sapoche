@@ -1,0 +1,4 @@
+Android Auto gets a heart and tips, and the widgets sit square
+- Android Auto: a heart on the playing screen likes or unlikes the song, shuffle and repeat are there to touch, and an empty list now says what to do (for example "No rooms yet - start or join a room in the app") instead of just "No items". The cover of the next song is fetched ahead, so the picture changes sooner when a song ends.
+- Android: the 2×2 widgets (Now playing, Rooms, Quick play) are drawn as a square card in the middle of the cell, whatever shape your launcher gives them. The wide Rooms and Quick play widgets no longer have squashed corners or a hole when there is no playlist, and a tall cell lays them out like the 2×2 ones.
+- iPhone: the Live Activity of a room (lock screen and Dynamic Island) is gone. The widgets, lock screen widgets and Control Center buttons stay.

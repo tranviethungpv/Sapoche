@@ -21,10 +21,8 @@
 		A8BFA72D607F55948945B6C8 /* NowPlayingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF921B683722279ED45F55A /* NowPlayingWidget.swift */; };
 		38B45AFC714E6C65B552F92A /* LockScreenWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6291F4F7875DA12A9F4C9453 /* LockScreenWidget.swift */; };
 		27455DCC36858EC0847432CE /* Controls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7383D1721F4B4B8AC54AD17D /* Controls.swift */; };
-		7BE908795AB5030F261521E6 /* RoomLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52E86EC8AA2C6D4259FB1D39 /* RoomLiveActivity.swift */; };
 		86FC9F27A0F1B61A0C6A32FF /* SapocheIntents.swift (widgets) in Sources */ = {isa = PBXBuildFile; fileRef = AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift (widgets) */; };
 		951A0C3A1A4AA9E49BE782B7 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */; };
-		75E954190E18EC3CF90FF315 /* RoomActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E6139693BDF91752C3DAFC6 /* RoomActivityAttributes.swift */; };
 		285A9349391ACD28E6E10884 /* SapocheIntents.swift (runner) in Sources */ = {isa = PBXBuildFile; fileRef = AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift (runner) */; };
 		0EF5578BDC9BB7697F2EEBD2 /* SapocheWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D553F93CAF9A594E5B09E287 /* SapocheWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AAD76598525B1F4B3DA7B627 /* RoomsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54121C26C0EACF307B0DDEDB /* RoomsWidget.swift */; };
@@ -95,13 +93,11 @@
 		9FF921B683722279ED45F55A /* NowPlayingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingWidget.swift; sourceTree = "<group>"; };
 		6291F4F7875DA12A9F4C9453 /* LockScreenWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenWidget.swift; sourceTree = "<group>"; };
 		7383D1721F4B4B8AC54AD17D /* Controls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Controls.swift; sourceTree = "<group>"; };
-		52E86EC8AA2C6D4259FB1D39 /* RoomLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomLiveActivity.swift; sourceTree = "<group>"; };
 		0A8865E3716D899A83EA88FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		2C563CDE86A53B94650D7324 /* SapocheWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SapocheWidgets.entitlements; sourceTree = "<group>"; };
 		3EAED26DED0108E6C2F0DC8A /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SapocheIntents.swift; sourceTree = "<group>"; };
 		30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetSnapshot.swift; path = ../packages/sapoche_native/ios/sapoche_native/Sources/sapoche_native/Core/WidgetSnapshot.swift; sourceTree = "<group>"; };
-		6E6139693BDF91752C3DAFC6 /* RoomActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RoomActivityAttributes.swift; path = ../packages/sapoche_native/ios/sapoche_native/Sources/sapoche_native/Apple/RoomActivityAttributes.swift; sourceTree = "<group>"; };
 		D553F93CAF9A594E5B09E287 /* SapocheWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SapocheWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		54121C26C0EACF307B0DDEDB /* RoomsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomsWidget.swift; sourceTree = "<group>"; };
 		13B4329B51AB96C015A9222E /* QuickWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickWidget.swift; sourceTree = "<group>"; };
@@ -196,7 +192,6 @@
 				13B4329B51AB96C015A9222E /* QuickWidget.swift */,
 				54121C26C0EACF307B0DDEDB /* RoomsWidget.swift */,
 				7383D1721F4B4B8AC54AD17D /* Controls.swift */,
-				52E86EC8AA2C6D4259FB1D39 /* RoomLiveActivity.swift */,
 				0A8865E3716D899A83EA88FD /* Info.plist */,
 				2C563CDE86A53B94650D7324 /* SapocheWidgets.entitlements */,
 			);
@@ -207,7 +202,6 @@
 			isa = PBXGroup;
 			children = (
 				30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */,
-				6E6139693BDF91752C3DAFC6 /* RoomActivityAttributes.swift */,
 			);
 			name = "Shared with the widgets";
 			sourceTree = "<group>";
@@ -413,10 +407,8 @@
 				C004B98C59A8E7319CEFE1F8,
 				AAD76598525B1F4B3DA7B627,
 				27455DCC36858EC0847432CE,
-				7BE908795AB5030F261521E6,
 				86FC9F27A0F1B61A0C6A32FF,
 				951A0C3A1A4AA9E49BE782B7,
-				75E954190E18EC3CF90FF315,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

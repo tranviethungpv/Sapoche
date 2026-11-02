@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the widgets of the home screen, the lock screen and the Live Activity show: the song, whether it plays and, in a
+/// What the widgets of the home screen and the lock screen show: the song, whether it plays and, in a
 /// room, where. The app writes it into a folder it shares with the widgets (an App Group) whenever it changes; a widget
 /// is drawn from it alone, so it works while the app is not running.
 ///

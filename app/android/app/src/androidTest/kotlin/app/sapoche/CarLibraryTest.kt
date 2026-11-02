@@ -95,9 +95,30 @@ class CarLibraryTest {
     }
 
     @Test
-    fun noRoomsIsAnEmptyTab() = runTest {
+    fun noRoomsIsOneLineThatSaysWhatToDo() = runTest {
         rooms = emptyList()
-        assertEquals(emptyList<String>(), car().children("rooms")!!.map { it.mediaId })
+        val items = car().children("rooms")!!
+        assertEquals(listOf("info|rooms"), items.map { it.mediaId })
+        // Not a song and not a folder: a car can neither play nor open it
+        assertEquals(false, items.single().mediaMetadata.isPlayable)
+        assertEquals(false, items.single().mediaMetadata.isBrowsable)
+        assertEquals("No rooms yet", items.single().mediaMetadata.title.toString())
+    }
+
+    @Test
+    fun everyEmptyListSaysSoInTheLanguageOfTheApp() = runTest {
+        rooms = emptyList()
+        queue = emptyList()
+        vietnamese = true
+        for (list in listOf("now", "rooms", "liked", "recent", "playlists")) {
+            val items = car().children(list)!!
+            assertEquals(listOf("info|$list"), items.map { it.mediaId })
+            assertTrue(items.single().mediaMetadata.subtitle!!.isNotEmpty())
+        }
+        assertEquals("Chưa có bài đã thích", car().children("liked")!!.single().mediaMetadata.title.toString())
+        // A line of that kind is nothing to play
+        assertNull(car().expand(car().children("liked")!!, 0))
+        assertNull(car().item("info|liked"))
     }
 
     @Test

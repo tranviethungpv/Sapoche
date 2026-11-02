@@ -4,7 +4,7 @@
     android:initialLayout="@layout/widget_rooms_wide"
     android:minWidth="250dp"
     android:minHeight="70dp"
-    android:minResizeWidth="110dp"
+    android:minResizeWidth="250dp"
     android:minResizeHeight="70dp"
     android:previewImage="@drawable/widget_preview_rooms"
     android:resizeMode="horizontal"

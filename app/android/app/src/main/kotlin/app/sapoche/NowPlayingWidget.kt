@@ -231,6 +231,27 @@ object Widgets {
         return width to height
     }
 
+    /**
+     * Whether a cell is a strip, as wide as the 4×1 widgets are drawn for. A launcher with tall cells gives a 4×1 widget twice the
+     * height it was made for, and the row of tiles or the line of words would float in a band of nothing: such a widget is laid out
+     * the way the 2×2 one is.
+     */
+    fun isStrip(widthDp: Int, heightDp: Int) = widthDp >= heightDp * STRIP_RATIO
+
+    private const val STRIP_RATIO = 2.5f
+
+    /**
+     * Pads [id], which holds the content of a widget whose picture is a square in the middle of the cell ([WidgetArt] with
+     * `square`), by what is clear around the square, on top of [basePaddingDp] of its own, so the content stays on the card.
+     */
+    fun insetToSquare(context: Context, views: RemoteViews, id: Int, widthDp: Int, heightDp: Int, basePaddingDp: Int) {
+        val density = context.resources.displayMetrics.density
+        val side = minOf(widthDp, heightDp)
+        val x = ((widthDp - side) / 2f + basePaddingDp) * density
+        val y = ((heightDp - side) / 2f + basePaddingDp) * density
+        views.setViewPadding(id, x.toInt(), y.toInt(), x.toInt(), y.toInt())
+    }
+
     fun render(context: Context, manager: AppWidgetManager, size: NowPlayingSize, ids: IntArray) {
         val state = state(context)
         for (id in ids) {
@@ -247,9 +268,11 @@ object Widgets {
         val faces = picture(context, FACES)
         val idle = state.title.isEmpty()
         val views = RemoteViews(context.packageName, size.layout)
-        val art = if (size == NowPlayingSize.SMALL) WidgetArt.cover(widthDp, heightDp, cover, accent) else WidgetArt.background(widthDp, heightDp, tiny, accent)
-        views.setImageViewBitmap(R.id.widget_bg, art)
         val small = size == NowPlayingSize.SMALL
+        // The small widget is a square card in the middle of its cell, however tall the launcher makes the cell
+        val art = if (small) WidgetArt.cover(widthDp, heightDp, cover, accent, square = true) else WidgetArt.background(widthDp, heightDp, tiny, accent)
+        views.setImageViewBitmap(R.id.widget_bg, art)
+        if (small) insetToSquare(context, views, R.id.widget_content, widthDp, heightDp, 0)
         fixedSize(views, R.id.widget_title, if (small) 15f else 17f)
         fixedSize(views, R.id.widget_artist, if (small) 12f else 13f)
         views.setTextViewText(R.id.widget_title, if (idle) "Sapoche" else state.title)
