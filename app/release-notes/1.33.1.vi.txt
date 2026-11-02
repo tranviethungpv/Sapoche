@@ -1,0 +1,5 @@
+Widget trên iPhone, và bộ widget Android đẹp hơn
+- iPhone: widget cho màn hình chính hiện bài đang phát (nhỏ, vừa, lớn; cỡ lớn chạm một bài là nhảy tới bài đó), Phòng và bạn bè, và Nghe nhanh. Trên màn hình khoá: vòng tròn, hai dòng hoặc một dòng. Trong Trung tâm điều khiển: phát/dừng và mở phòng của bạn.
+- iPhone: khi đang ở phòng, Live Activity của phòng trên màn hình khoá và Dynamic Island nay đổi theo bài đang phát.
+- Android: bộ widget được thiết kế lại. Mỗi cỡ là một mục riêng trong danh sách widget, nền là bìa bài hát làm mờ, và chữ không xô lệch khi điện thoại đặt cỡ chữ lớn.
+- Android: có thể tải app từ GitHub mà không kèm khoá phòng; khoá được đưa vào bằng link hoặc mã QR thiết lập từ một máy đã có khoá (Cài đặt > Cài đặt cho máy khác).

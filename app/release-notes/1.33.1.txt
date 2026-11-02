@@ -1,0 +1,5 @@
+Widgets on iPhone, and a nicer set on Android
+- iPhone: home-screen widgets for what is playing (small, medium and large; the large one jumps to a song you touch), Rooms and friends, and Quick play. On the lock screen: a ring, two lines or one line. In Control Center: play and pause, and open your room.
+- iPhone: while you are in a room, its Live Activity on the lock screen and in the Dynamic Island now follows the song.
+- Android: the widgets are redesigned. Each size is its own entry in the widget list, the background is the blurred cover of the song, and the text stays put when the phone's font size is large.
+- Android: the app can be downloaded from GitHub without the room key; the key is given by a setup link or a QR code from a phone that has it (Settings > Set up another phone).
