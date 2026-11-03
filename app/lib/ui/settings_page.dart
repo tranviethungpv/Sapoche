@@ -509,11 +509,19 @@ class _SettingsPageState extends State<SettingsPage> {
   ];
 
   /// The artists the person listens to most, and the groups of them they play together.
-  static List<Widget> _tasteGroups(BuildContext context, LibraryController library) {
+  static List<Widget> _tasteGroups(
+    BuildContext context,
+    LibraryController library,
+  ) {
     final profile = library.tasteProfile;
     final artists = profile.artists.where((a) => a.score > 0).toList();
-    final quiet = {for (final m in profile.marksOf(TasteMarks.quietArtist)) m.key};
-    final clusters = clusterTaste(listens: library.listens, weights: {for (final a in artists) a.key: a.score});
+    final quiet = {
+      for (final m in profile.marksOf(TasteMarks.quietArtist)) m.key,
+    };
+    final clusters = clusterTaste(
+      listens: library.listens,
+      weights: {for (final a in artists) a.key: a.score},
+    );
     final labels = {for (final a in artists) a.key: a.label};
     return [
       _Group(
@@ -526,7 +534,8 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.all(16),
               child: Text(
                 S.tasteNone,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.palette.textSecondary),
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: context.palette.textSecondary),
               ),
             )
           else
@@ -555,21 +564,33 @@ class _SettingsPageState extends State<SettingsPage> {
           footer: S.tasteClustersHelp,
           children: [
             for (final (i, cluster) in clusters.indexed)
-              Padding(
+              SizedBox(
                 key: ValueKey('taste-cluster-$i'),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(S.dailyMix(i + 1), style: Theme.of(context).textTheme.bodyLarge),
-                    const SizedBox(height: 2),
-                    Text(
-                      [
-                        for (final key in cluster.artists.take(3)) labels[key] ?? key,
-                      ].join(', ') + (cluster.artists.length > 3 ? '…' : ''),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.palette.textSecondary),
-                    ),
-                  ],
+                width: double.infinity,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        S.dailyMix(i + 1),
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        [
+                              for (final key in cluster.artists.take(3))
+                                labels[key] ?? key,
+                            ].join(', ') +
+                            (cluster.artists.length > 3 ? '…' : ''),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: context.palette.textSecondary),
+                      ),
+                    ],
+                  ),
                 ),
               ),
           ],
@@ -580,7 +601,11 @@ class _SettingsPageState extends State<SettingsPage> {
   /// What the person told the taste (artists to hear less of, songs not to count, starter songs), to be taken off.
   static Widget _marksGroup(BuildContext context, LibraryController library) {
     final marks = [
-      for (final kind in [TasteMarks.quietArtist, TasteMarks.quietSong, TasteMarks.starter])
+      for (final kind in [
+        TasteMarks.quietArtist,
+        TasteMarks.quietSong,
+        TasteMarks.starter,
+      ])
         ...library.tasteProfile.marksOf(kind),
     ];
     if (marks.isEmpty) return const SizedBox.shrink();
@@ -593,7 +618,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _Row(
             key: ValueKey('mark-${mark.kind}-${mark.key}'),
             label: switch (mark.kind) {
-              TasteMarks.starter => TasteMarks.starterTrack(mark.label)?.title ?? mark.key,
+              TasteMarks.starter =>
+                TasteMarks.starterTrack(mark.label)?.title ?? mark.key,
               _ => mark.label,
             },
             value: switch (mark.kind) {
@@ -601,16 +627,18 @@ class _SettingsPageState extends State<SettingsPage> {
               TasteMarks.quietSong => S.tasteMarkSong,
               _ => TasteMarks.starterTrack(mark.label)?.artist,
             },
-            leading: Icon(
-              switch (mark.kind) {
-                TasteMarks.quietArtist => Icons.person_off_outlined,
-                TasteMarks.quietSong => Icons.visibility_off_outlined,
-                _ => Icons.star_outline_rounded,
-              },
-              color: p.primary,
-            ),
+            leading: Icon(switch (mark.kind) {
+              TasteMarks.quietArtist => Icons.person_off_outlined,
+              TasteMarks.quietSong => Icons.visibility_off_outlined,
+              _ => Icons.star_outline_rounded,
+            }, color: p.primary),
             trailing: Icon(Icons.close_rounded, color: p.textTertiary),
-            onTap: () => library.setTasteMark(mark.kind, mark.key, mark.label, on: false),
+            onTap: () => library.setTasteMark(
+              mark.kind,
+              mark.key,
+              mark.label,
+              on: false,
+            ),
           ),
       ],
     );
@@ -1937,7 +1965,12 @@ class _TasteArtistRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(artist.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.bodyLarge),
+                  Text(
+                    artist.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.bodyLarge,
+                  ),
                   const SizedBox(height: 6),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(2),
@@ -1959,7 +1992,12 @@ class _TasteArtistRow extends StatelessWidget {
             IconButton(
               tooltip: S.suggestLess,
               onPressed: onQuiet,
-              icon: Icon(quiet ? Icons.trending_down_rounded : Icons.remove_circle_outline_rounded, color: p.primary),
+              icon: Icon(
+                quiet
+                    ? Icons.trending_down_rounded
+                    : Icons.remove_circle_outline_rounded,
+                color: p.primary,
+              ),
             ),
             IconButton(
               tooltip: S.blockArtist,
@@ -1990,26 +2028,31 @@ class _TasteStats extends StatelessWidget {
       (ListenSource.shelf, S.tasteStatsShelf),
       (ListenSource.chosen, S.tasteStatsChosen),
     ]) {
-      final found = stats.where((s) => s.source == source && s.total >= minListens).firstOrNull;
+      final found = stats
+          .where((s) => s.source == source && s.total >= minListens)
+          .firstOrNull;
       if (found != null) lines.add(line((found.skipRate! * 100).round()));
     }
-    return Padding(
+    return SizedBox(
       key: const ValueKey('taste-stats'),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final line in lines.isEmpty ? [S.tasteStatsNone] : lines)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Text(
-                line,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: lines.isEmpty ? context.palette.textSecondary : null,
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final line in lines.isEmpty ? [S.tasteStatsNone] : lines)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Text(
+                  line,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: lines.isEmpty ? context.palette.textSecondary : null,
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
