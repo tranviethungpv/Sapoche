@@ -420,14 +420,17 @@ final class BridgeTests: XCTestCase {
     }
 
     func testThePicturesOnTheClipboardAreHandedOverWithTheirNames() async throws {
-        XCTAssertEqual(try await call("clipboardHasPhotos") as? Bool, false)
-        XCTAssertEqual((try await call("clipboardPhotos") as? [[String: Any]])?.count, 0)
+        let hasNone = try await call("clipboardHasPhotos") as? Bool
+        XCTAssertEqual(hasNone, false)
+        let none = try await call("clipboardPhotos") as? [[String: Any]]
+        XCTAssertEqual(none?.count, 0)
 
         platform.clipboard = [
             ClipboardPhoto(name: "pasted-1.png", bytes: Data([1, 2, 3])),
             ClipboardPhoto(name: "pasted-2.gif", bytes: Data([4, 5])),
         ]
-        XCTAssertEqual(try await call("clipboardHasPhotos") as? Bool, true)
+        let has = try await call("clipboardHasPhotos") as? Bool
+        XCTAssertEqual(has, true)
         let photos = try XCTUnwrap(try await call("clipboardPhotos") as? [[String: Any]])
         XCTAssertEqual(photos.map { $0["name"] as? String }, ["pasted-1.png", "pasted-2.gif"])
         XCTAssertEqual(photos.map { $0["bytes"] as? Data }, [Data([1, 2, 3]), Data([4, 5])])
@@ -435,7 +438,8 @@ final class BridgeTests: XCTestCase {
 
     func testAVideoIsSqueezedAndHandedBackWithItsPoster() async throws {
         platform.video = .success(PreparedVideo(path: "/tmp/out.mp4", w: 720, h: 1280, durMs: 31_000, poster: Data([9, 8])))
-        let made = try XCTUnwrap(try await call("prepareVideo", ["path": "/tmp/in.mov", "maxBytes": 10_485_760]) as? [String: Any])
+        let answer = try await call("prepareVideo", ["path": "/tmp/in.mov", "maxBytes": 10_485_760])
+        let made = try XCTUnwrap(answer as? [String: Any])
         XCTAssertEqual(made["path"] as? String, "/tmp/out.mp4")
         XCTAssertEqual(made["w"] as? Int, 720)
         XCTAssertEqual(made["durMs"] as? Int, 31_000)
