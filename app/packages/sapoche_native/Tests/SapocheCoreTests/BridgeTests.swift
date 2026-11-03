@@ -431,7 +431,8 @@ final class BridgeTests: XCTestCase {
         ]
         let has = try await call("clipboardHasPhotos") as? Bool
         XCTAssertEqual(has, true)
-        let photos = try XCTUnwrap(try await call("clipboardPhotos") as? [[String: Any]])
+        let answer = try await call("clipboardPhotos")
+        let photos = try XCTUnwrap(answer as? [[String: Any]])
         XCTAssertEqual(photos.map { $0["name"] as? String }, ["pasted-1.png", "pasted-2.gif"])
         XCTAssertEqual(photos.map { $0["bytes"] as? Data }, [Data([1, 2, 3]), Data([4, 5])])
     }
