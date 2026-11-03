@@ -12,6 +12,7 @@ import '../data/library_controller.dart';
 import '../data/models.dart';
 import '../data/room_controller.dart';
 import '../data/setup_link.dart';
+import '../data/taste_clusters.dart';
 import '../data/update_controller.dart';
 import '../data/update_info.dart';
 import '../format.dart';
@@ -375,8 +376,16 @@ class _SettingsPageState extends State<SettingsPage> {
     ),
   ];
 
-  /// What was blocked from the suggestions, to be let back one by one.
+  /// What the listening says about the person and what they told it, and what was blocked from the suggestions, to be
+  /// let back one by one.
   static List<Widget> _suggestions(BuildContext context, AppModel model) => [
+    ListenableBuilder(
+      listenable: model.library,
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _tasteGroups(context, model.library),
+      ),
+    ),
     ListenableBuilder(
       listenable: model.library,
       builder: (context, _) => _Group(
@@ -384,6 +393,27 @@ class _SettingsPageState extends State<SettingsPage> {
         footer: S.tasteStatsHelp,
         children: [_TasteStats(stats: model.library.tasteProfile.stats)],
       ),
+    ),
+    _Group(
+      footer: S.shareTasteHelp,
+      children: [
+        ListenableBuilder(
+          listenable: model.room,
+          builder: (context, _) => Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              key: const ValueKey('share-taste-switch'),
+              title: Text(S.shareTaste),
+              value: model.room.shareTaste,
+              onChanged: model.room.setShareTaste,
+            ),
+          ),
+        ),
+      ],
+    ),
+    ListenableBuilder(
+      listenable: model.library,
+      builder: (context, _) => _marksGroup(context, model.library),
     ),
     _Group(
       title: S.blockedHeading,
@@ -477,6 +507,114 @@ class _SettingsPageState extends State<SettingsPage> {
       },
     ),
   ];
+
+  /// The artists the person listens to most, and the groups of them they play together.
+  static List<Widget> _tasteGroups(BuildContext context, LibraryController library) {
+    final profile = library.tasteProfile;
+    final artists = profile.artists.where((a) => a.score > 0).toList();
+    final quiet = {for (final m in profile.marksOf(TasteMarks.quietArtist)) m.key};
+    final clusters = clusterTaste(listens: library.listens, weights: {for (final a in artists) a.key: a.score});
+    final labels = {for (final a in artists) a.key: a.label};
+    return [
+      _Group(
+        title: S.tasteHeading,
+        footer: artists.isEmpty ? null : S.tasteHelp,
+        children: [
+          if (artists.isEmpty)
+            Padding(
+              key: const ValueKey('taste-none'),
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                S.tasteNone,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.palette.textSecondary),
+              ),
+            )
+          else
+            for (final artist in artists.take(8))
+              _TasteArtistRow(
+                key: ValueKey('taste-artist-${artist.key}'),
+                artist: artist,
+                share: artist.score / artists.first.score,
+                quiet: quiet.contains(artist.key),
+                onQuiet: () => library.setTasteMark(
+                  TasteMarks.quietArtist,
+                  artist.key,
+                  artist.label,
+                  on: !quiet.contains(artist.key),
+                ),
+                onBlock: () => library.block(
+                  Track(videoId: '', title: '', artist: artist.label, durMs: 0),
+                  artistOnly: true,
+                ),
+              ),
+        ],
+      ),
+      if (clusters.isNotEmpty)
+        _Group(
+          title: S.tasteClustersHeading,
+          footer: S.tasteClustersHelp,
+          children: [
+            for (final (i, cluster) in clusters.indexed)
+              Padding(
+                key: ValueKey('taste-cluster-$i'),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(S.dailyMix(i + 1), style: Theme.of(context).textTheme.bodyLarge),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        for (final key in cluster.artists.take(3)) labels[key] ?? key,
+                      ].join(', ') + (cluster.artists.length > 3 ? '…' : ''),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.palette.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+    ];
+  }
+
+  /// What the person told the taste (artists to hear less of, songs not to count, starter songs), to be taken off.
+  static Widget _marksGroup(BuildContext context, LibraryController library) {
+    final marks = [
+      for (final kind in [TasteMarks.quietArtist, TasteMarks.quietSong, TasteMarks.starter])
+        ...library.tasteProfile.marksOf(kind),
+    ];
+    if (marks.isEmpty) return const SizedBox.shrink();
+    final p = context.palette;
+    return _Group(
+      title: S.tasteMarksHeading,
+      footer: S.tasteMarksHelp,
+      children: [
+        for (final mark in marks)
+          _Row(
+            key: ValueKey('mark-${mark.kind}-${mark.key}'),
+            label: switch (mark.kind) {
+              TasteMarks.starter => TasteMarks.starterTrack(mark.label)?.title ?? mark.key,
+              _ => mark.label,
+            },
+            value: switch (mark.kind) {
+              TasteMarks.quietArtist => S.tasteMarkArtist,
+              TasteMarks.quietSong => S.tasteMarkSong,
+              _ => TasteMarks.starterTrack(mark.label)?.artist,
+            },
+            leading: Icon(
+              switch (mark.kind) {
+                TasteMarks.quietArtist => Icons.person_off_outlined,
+                TasteMarks.quietSong => Icons.visibility_off_outlined,
+                _ => Icons.star_outline_rounded,
+              },
+              color: p.primary,
+            ),
+            trailing: Icon(Icons.close_rounded, color: p.textTertiary),
+            onTap: () => library.setTasteMark(mark.kind, mark.key, mark.label, on: false),
+          ),
+      ],
+    );
+  }
 
   static List<Widget> _playback(BuildContext context, AppModel model) => [
     _Group(
@@ -1759,6 +1897,76 @@ class _Swatch extends StatelessWidget {
                 ? const Icon(Icons.add_rounded, color: Colors.white, size: 20)
                 : null,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// An artist of the person's taste: how much they listen to them beside the artist they listen to most, and the ways
+/// to hear less of them.
+class _TasteArtistRow extends StatelessWidget {
+  const _TasteArtistRow({
+    super.key,
+    required this.artist,
+    required this.share,
+    required this.quiet,
+    required this.onQuiet,
+    required this.onBlock,
+  });
+
+  final ArtistRank artist;
+
+  /// Their score as a part of the highest, 0 to 1.
+  final double share;
+  final bool quiet;
+  final VoidCallback onQuiet;
+  final VoidCallback onBlock;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Opacity(
+      opacity: quiet ? 0.55 : 1,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 4, top: 6, bottom: 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(artist.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.bodyLarge),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      key: const ValueKey('taste-bar'),
+                      value: share.clamp(0.0, 1.0),
+                      minHeight: 3,
+                      color: p.primary,
+                      backgroundColor: p.text.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  if (quiet) ...[
+                    const SizedBox(height: 4),
+                    Text(S.tasteFewer, style: theme.bodySmall),
+                  ],
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: S.suggestLess,
+              onPressed: onQuiet,
+              icon: Icon(quiet ? Icons.trending_down_rounded : Icons.remove_circle_outline_rounded, color: p.primary),
+            ),
+            IconButton(
+              tooltip: S.blockArtist,
+              onPressed: onBlock,
+              icon: Icon(Icons.block_rounded, color: p.textTertiary),
+            ),
+          ],
         ),
       ),
     );

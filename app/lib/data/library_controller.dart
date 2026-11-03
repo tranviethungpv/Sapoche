@@ -404,6 +404,13 @@ class LibraryController extends ChangeNotifier {
     await refresh();
   }
 
+  /// Puts a mark on the taste (see [TasteMarks]) or, with [on] false, takes it off; the mixes and suggestions that
+  /// the taste makes are read again.
+  Future<void> setTasteMark(String kind, String key, String label, {required bool on}) async {
+    await _run(() => _backend.tasteMark(kind, key, label, on: on));
+    await refresh();
+  }
+
   /// Lets a blocked song or artist be offered again.
   Future<void> unblock(BlockedItem item) async {
     await _run(() => _backend.unblock(item));

@@ -590,6 +590,68 @@ abstract final class S {
     'Nothing here. Press and hold a song, or use its menu, to say you are not interested.',
     'Chưa có gì. Nhấn giữ một bài, hoặc dùng menu của bài, để chọn không quan tâm.',
   );
+  static String get notCountedSong =>
+      _t('Don’t count this in my taste', 'Không tính vào gu');
+  static String suggestLessArtist(String artist) =>
+      _t('Suggest less of $artist', 'Bớt gợi ý $artist');
+  static String get wontCount => _t(
+    'Got it, it won’t count',
+    'Đã hiểu, sẽ không tính vào gu',
+  );
+  static String get willSuggestLess => _t(
+    'Got it, fewer suggestions of this artist',
+    'Đã hiểu, sẽ bớt gợi ý nghệ sĩ này',
+  );
+  static String get tasteHeading => _t('Your taste', 'Gu của bạn');
+  static String get tasteHelp => _t(
+    'The artists you listen to most. Suggest less of one, or block them.',
+    'Những nghệ sĩ bạn nghe nhiều nhất. Có thể bớt gợi ý hoặc chặn một nghệ sĩ.',
+  );
+  static String get tasteNone => _t(
+    'Listen to a few songs and your taste shows up here',
+    'Nghe vài bài rồi gu của bạn sẽ hiện ở đây',
+  );
+  static String get tasteFewer => _t('Fewer suggestions', 'Bớt gợi ý');
+  static String get suggestLess => _t('Suggest less', 'Bớt gợi ý');
+  static String get blockArtist => _t('Block', 'Chặn');
+  static String get tasteClustersHeading => _t('Tastes', 'Các cụm gu');
+  static String get tasteClustersHelp => _t(
+    'Artists you tend to listen to in the same sitting.',
+    'Những nghệ sĩ bạn hay nghe trong cùng một lần.',
+  );
+  static String get shareTaste =>
+      _t('Share my taste with the room', 'Chia sẻ gu với phòng');
+  static String get shareTasteHelp => _t(
+    'The device chosen to play on by itself will see a few songs you often listen to; in an encrypted room the server cannot read them.',
+    'Máy được chọn để tự phát nhạc sẽ thấy vài bài bạn hay nghe; phòng mã hoá thì server không đọc được.',
+  );
+  static String get tasteMarksHeading =>
+      _t('What you told the taste', 'Bạn đã chỉnh gu');
+  static String get tasteMarksHelp => _t(
+    'Tap one to take it off.',
+    'Chạm vào để bỏ chỉnh.',
+  );
+  static String get tasteMarkArtist => _t('Fewer suggestions', 'Bớt gợi ý');
+  static String get tasteMarkSong => _t('Not counted', 'Không tính');
+  static String get tasteMarkStarter => _t('Starter', 'Bài khởi đầu');
+  static String get removeMark => _t('Take off', 'Bỏ chỉnh');
+  static String get pickArtists =>
+      _t('Pick a few artists you like', 'Chọn vài nghệ sĩ bạn thích');
+  static String get pickArtistsSearch =>
+      _t('Search for an artist', 'Tìm nghệ sĩ');
+  static String get pickArtistsStart => _t('Start', 'Bắt đầu');
+  static String get pickArtistsNone => _t(
+    'No artists to show right now. Try searching for one.',
+    'Hiện chưa có nghệ sĩ nào để hiện. Hãy thử tìm một nghệ sĩ.',
+  );
+  static String get pickArtistsFailed => _t(
+    'Could not load artists. Check the connection and try again.',
+    'Không tải được danh sách nghệ sĩ. Kiểm tra kết nối rồi thử lại.',
+  );
+  static String get pickArtistsNothing => _t(
+    'Could not start from those artists. Try others.',
+    'Không bắt đầu được từ những nghệ sĩ này. Hãy thử nghệ sĩ khác.',
+  );
   static String get discoverShelf =>
       _t('Try something new', 'Thử nghe cái mới');
   static String contextMix(String bucket) => switch (bucket) {

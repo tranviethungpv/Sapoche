@@ -21,6 +21,7 @@ import 'player/track_section.dart';
 import 'rooms_sheet.dart';
 import 'scope.dart';
 import 'settings_page.dart';
+import 'starter_artists_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/cached_cover.dart';
@@ -1175,6 +1176,17 @@ class _Welcome extends StatelessWidget {
                   Text(
                     S.homeEmptyBody,
                     style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+                  ),
+                  const SizedBox(height: 6),
+                  TextButton(
+                    key: const ValueKey('pick-artists'),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 36),
+                      alignment: Alignment.centerLeft,
+                    ),
+                    onPressed: () => showStarterArtists(context),
+                    child: Text(S.pickArtists),
                   ),
                 ],
               ),
