@@ -45,4 +45,38 @@ class QueuesTest {
     fun `an index past the end leaves nothing waiting`() {
         assertEquals(listOf("a"), ids(Queues.fresh(listOf(song("a")), listOf(item("a")), index = 5)))
     }
+
+    private fun by(id: String, member: String, auto: Boolean = false) = item(id).copy(addedBy = member, auto = auto)
+
+    @Test
+    fun `a room where one member added everything is asked about the last song alone`() {
+        val queue = listOf(by("a", "m1"), by("b", "m1"), by("c", "m1"))
+        assertEquals(listOf("c"), Queues.seeds(queue, "c"))
+    }
+
+    @Test
+    fun `each member who has a song in the queue gives one seed, the latest first, up to three`() {
+        val queue = listOf(by("a", "m1"), by("b", "m2"), by("c", "m3"), by("d", "m4"), by("e", "m1"))
+        // The last song is m1's; then m4's d, m3's c; m2's b is past the limit
+        assertEquals(listOf("e", "d", "c"), Queues.seeds(queue, "e"))
+        assertEquals(listOf("e", "d"), Queues.seeds(queue, "e", max = 2))
+    }
+
+    @Test
+    fun `songs autoplay added are nobody's choice, and a member counts once`() {
+        val queue = listOf(by("a", "m1"), by("b", "m2"), by("x", "m3", auto = true), by("c", "m2"), by("y", "m1", auto = true))
+        // The last song is autoplay's, so m1 and m2 are both still to be heard: m2's latest is c, then m1's a
+        assertEquals(listOf("y", "c", "a"), Queues.seeds(queue, "y"))
+    }
+
+    @Test
+    fun `the song asked about is always there, even when it left the queue`() {
+        val queue = listOf(by("a", "m1"), by("b", "m2"))
+        assertEquals(listOf("gone", "b", "a"), Queues.seeds(queue, "gone"))
+    }
+
+    @Test
+    fun `an empty queue gives the song asked about`() {
+        assertEquals(listOf("z"), Queues.seeds(emptyList(), "z"))
+    }
 }

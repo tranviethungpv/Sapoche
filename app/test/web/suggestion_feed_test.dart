@@ -91,6 +91,14 @@ void main() {
     expect(more.map((t) => t.videoId), ['k']);
   });
 
+  test('what plays on after several songs takes them in turns, and a seed that has no radio does not stop the rest', () async {
+    radios['s1'] = [ref('a1', 'A1'), ref('a2', 'A2')];
+    radios['s2'] = [ref('b1', 'B1'), ref('b2', 'B2')];
+    // s3 has no radio at all: asking for it throws
+    final more = await feed.afterMany(['s1', 's2', 's3'], {}, 10);
+    expect(more.map((t) => t.videoId), ['a1', 'b1', 'a2', 'b2']);
+  });
+
   test('a mix for this time of day is empty until enough was heard at this hour', () async {
     final (bucket, tracks) = await feed.contextMix();
     expect(bucket, isNotEmpty);

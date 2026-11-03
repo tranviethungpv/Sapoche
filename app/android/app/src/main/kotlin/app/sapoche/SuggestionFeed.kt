@@ -134,12 +134,31 @@ class SuggestionFeed(
      * person does not want: the radio YouTube Music makes of the song, or what YouTube lists beside it when that
      * cannot be had. Needs the network.
      */
-    suspend fun after(videoId: String, exclude: Set<String>, count: Int): List<TrackRef> {
+    suspend fun after(videoId: String, exclude: Set<String>, count: Int): List<TrackRef> = afterMany(listOf(videoId), exclude, count)
+
+    /**
+     * Up to [count] songs to carry on with after the [seeds] together, as [after] does for one: the radio of each seed,
+     * taken in turns so no seed crowds out the others. A seed whose radio cannot be had is left out, so the others
+     * still count.
+     */
+    suspend fun afterMany(seeds: List<String>, exclude: Set<String>, count: Int): List<TrackRef> {
         val taste = taste()
         val block = blocklist()
+        val lists = seeds.mapIndexedNotNull { i, seed ->
+            try {
+                radioOf(seed)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The first seed is the one asked for: with nothing for it the caller says so
+                if (i == 0 && seeds.size == 1) throw e
+                log("no radio for $seed: ${e.javaClass.simpleName}: ${e.message}")
+                null
+            }
+        }
         val pool = Suggestions.mix(
-            listOf(radioOf(videoId)),
-            exclude + videoId + store.heardSince(now() - RECENT_MS),
+            lists,
+            exclude + seeds + store.heardSince(now() - RECENT_MS),
             count * POOL_FACTOR,
         ) { Suggestions.welcome(it, taste, block) }
         // YouTube's order, put in the order that suits this person

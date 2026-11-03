@@ -8,6 +8,25 @@ enum Queues {
         var seen = Set(queue.dropFirst(max(index, 0)).enumerated().filter { $0.offset == 0 || !$0.element.auto }.map(\.element.videoId))
         return tracks.filter { seen.insert($0.videoId).inserted }
     }
+
+    /// The most songs autoplay asks a radio for at once: more would be many requests for a room that has run dry.
+    static let maxSeeds = 3
+
+    /// The songs a room's autoplay looks for more of: [ask], the last song, then the songs of [queue] that members put
+    /// there, the latest first, one for each member who has not a song among them yet. Songs autoplay itself put there
+    /// are not a member's choice and are left out. A room where one member added everything gives [ask] alone, as it
+    /// always did.
+    static func seeds(_ queue: [QueueItem], ask: String, max: Int = Queues.maxSeeds) -> [String] {
+        var seeds = [ask]
+        var adders = Set<String>()
+        if let asked = queue.last(where: { $0.videoId == ask && !$0.auto }) { adders.insert(asked.addedBy) }
+        for item in queue.reversed() {
+            if seeds.count >= max { break }
+            if item.auto || seeds.contains(item.videoId) || !adders.insert(item.addedBy).inserted { continue }
+            seeds.append(item.videoId)
+        }
+        return seeds
+    }
 }
 
 /// Turns the songs YouTube lists beside a few seed songs into one list worth offering. YouTube's related lists hold

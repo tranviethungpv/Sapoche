@@ -125,7 +125,7 @@ class PlaybackService : MediaLibraryService() {
             player,
             getSharedPreferences("sapoche", MODE_PRIVATE),
             QueueFile(File(filesDir, "local_queue.json")),
-        ) { videoId, exclude, count -> SapocheApp.suggestions.after(videoId, exclude, count) }
+        ) { seeds, exclude, count -> SapocheApp.suggestions.afterMany(seeds, exclude, count) }
         SapocheApp.setGroup(group)
         group.recoverRoom()
 

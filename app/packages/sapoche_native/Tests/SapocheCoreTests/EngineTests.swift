@@ -897,6 +897,21 @@ final class SmallPartsTests: XCTestCase {
         XCTAssertEqual(Suggestions.rank(list, taste: taste).map(\.videoId), Suggestions.rank(list, taste: taste).map(\.videoId))
     }
 
+    func testSeedsOfARoomsAutoplayAreTheLatestSongOfEachMember() {
+        func item(_ id: String, by: String, auto: Bool = false) -> QueueItem {
+            QueueItem(id: "item-\(id)", videoId: id, title: "T", artist: "A", thumb: nil, durMs: 200_000, addedBy: by, auto: auto)
+        }
+        let one = [item("a", by: "m1"), item("b", by: "m1"), item("c", by: "m1")]
+        XCTAssertEqual(Queues.seeds(one, ask: "c"), ["c"], "one member added everything: as it always was")
+        let many = [item("a", by: "m1"), item("b", by: "m2"), item("c", by: "m3"), item("d", by: "m4"), item("e", by: "m1")]
+        XCTAssertEqual(Queues.seeds(many, ask: "e"), ["e", "d", "c"])
+        XCTAssertEqual(Queues.seeds(many, ask: "e", max: 2), ["e", "d"])
+        let withAuto = [item("a", by: "m1"), item("b", by: "m2"), item("x", by: "m3", auto: true), item("c", by: "m2"), item("y", by: "m1", auto: true)]
+        XCTAssertEqual(Queues.seeds(withAuto, ask: "y"), ["y", "c", "a"])
+        XCTAssertEqual(Queues.seeds([item("a", by: "m1"), item("b", by: "m2")], ask: "gone"), ["gone", "b", "a"])
+        XCTAssertEqual(Queues.seeds([], ask: "z"), ["z"])
+    }
+
     func testVideoStreamsAreChosenByHeightAndOnlyH264Plays() {
         func source(_ height: Int, _ codec: String = "avc1.4d401f", _ kbps: Int = 1000) -> VideoSource {
             VideoSource(url: "u\(height)\(codec)", height: height, codec: codec, bitrateKbps: kbps, itag: height)

@@ -110,7 +110,7 @@ final class GroupController {
     private let queueFile: QueueFile
     private let config: () -> ServerConfig
     /// Up to [Int] songs to carry on with after [String] (a video id), leaving out the ids given.
-    private let moreLike: (String, Set<String>, Int) async throws -> [TrackRef]
+    private let moreLike: (_ seeds: [String], Set<String>, Int) async throws -> [TrackRef]
     /// The secrets of the rooms with end-to-end encrypted chat.
     let secrets: RoomSecretStore
     private let sockets: SocketFactory?
@@ -309,7 +309,7 @@ final class GroupController {
     init(engine: PlayerEngine, prefs: KeyValueStore, queueFile: QueueFile, config: @escaping () -> ServerConfig,
          recordListen: @escaping (TrackRef, String) -> Void = { _, _ in }, recordSkip: @escaping (TrackRef, String) -> Void = { _, _ in },
          time: TimeSource? = nil, sockets: SocketFactory? = nil,
-         moreLike: @escaping (String, Set<String>, Int) async throws -> [TrackRef] = { _, _, _ in [] },
+         moreLike: @escaping ([String], Set<String>, Int) async throws -> [TrackRef] = { _, _, _ in [] },
          secrets: RoomSecretStore = MemorySecrets()) {
         self.engine = engine
         self.secrets = secrets
@@ -412,7 +412,7 @@ final class GroupController {
             guard let self else { return }
             do {
                 let queued = Set(self.local.snapshot.value.queue.map(\.videoId))
-                let more = try await self.moreLike(like.videoId, queued, Self.autoplayCount)
+                let more = try await self.moreLike([like.videoId], queued, Self.autoplayCount)
                 if more.isEmpty || self.session != nil || !self.local.snapshot.value.finished { return }
                 EventLog.d("local", "autoplay adds \(more.count) songs like '\(like.title)'")
                 // Carrying on only adds: what has been played makes room when the new songs would not fit
@@ -433,9 +433,10 @@ final class GroupController {
         scope.launch { [weak self] in
             guard let self else { return }
             do {
-                let more = try await self.moreLike(videoId, Set(self.queue().map(\.videoId)), Self.autoplayCount)
+                let seeds = Queues.seeds(self.queue(), ask: videoId)
+                let more = try await self.moreLike(seeds, Set(self.queue().map(\.videoId)), Self.autoplayCount)
                 if more.isEmpty || self.session?.snapshot.value.state?.epoch != epoch { return }
-                EventLog.d("sync", "autoplay adds \(more.count) songs like '\(title)' to the room")
+                EventLog.d("sync", "autoplay adds \(more.count) songs like '\(title)' and \(seeds.count - 1) more to the room")
                 // Marked as autoplay's, so the room keeps them apart from the songs its members chose
                 self.send(Wire.queueAddMany(more, auto: true))
             } catch is CancellationError {
@@ -459,7 +460,7 @@ final class GroupController {
                 while self.local.snapshot.value.loading {
                     try await self.time.sleep(ms: Self.radioWaitStepMs)
                 }
-                let more = try await self.moreLike(videoId, [videoId], Self.radioCount)
+                let more = try await self.moreLike([videoId], [videoId], Self.radioCount)
                 let queue = self.local.snapshot.value.queue
                 if more.isEmpty || self.session != nil || queue.count != 1 || queue[0].videoId != videoId { return }
                 EventLog.d("local", "radio adds \(more.count) songs like \(videoId)")

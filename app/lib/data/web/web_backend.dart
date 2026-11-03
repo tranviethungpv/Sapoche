@@ -21,6 +21,7 @@ import 'push_port.dart';
 import 'music_client.dart';
 import 'music_feed.dart';
 import 'player_port.dart';
+import 'queues.dart';
 import 'room_client.dart';
 import 'room_socket.dart';
 import 'sleep_timer.dart';
@@ -796,8 +797,8 @@ class WebBackend extends BackendDefaults {
 
   /// Songs like [videoId] that are worth offering: what YouTube Music's radio lists, without the ones in [exclude] and
   /// without what is not music (mixes of hours, clips of seconds), up to [limit].
-  Future<List<TrackRef>> _moreLike(String videoId, Set<String> exclude, int limit) =>
-      _suggestions.after(videoId, exclude, limit);
+  Future<List<TrackRef>> _moreLike(List<String> seeds, Set<String> exclude, int limit) =>
+      _suggestions.afterMany(seeds, exclude, limit);
 
   /// Songs added each time the queue runs out and the music carries on by itself.
   static const _autoplayCount = 5;
@@ -814,7 +815,7 @@ class WebBackend extends BackendDefaults {
     _autoplaying = true;
     () async {
       try {
-        final more = await _moreLike(last.videoId, {for (final e in _local.snapshot.queue) e.videoId}, _autoplayCount);
+        final more = await _moreLike([last.videoId], {for (final e in _local.snapshot.queue) e.videoId}, _autoplayCount);
         if (more.isEmpty || _session != null || !_local.snapshot.finished) return;
         _note("local: autoplay adds ${more.length} songs like '${last.title}'");
         // Carrying on only adds: what has been played makes room when the new songs would not fit
@@ -843,7 +844,7 @@ class WebBackend extends BackendDefaults {
       while (_local.snapshot.loading) {
         await _local.changes.firstWhere((s) => !s.loading).timeout(const Duration(seconds: 30));
       }
-      final more = await _moreLike(videoId, {videoId}, _radioCount);
+      final more = await _moreLike([videoId], {videoId}, _radioCount);
       final queue = _local.snapshot.queue;
       if (turn != _radioFor || more.isEmpty || _session != null || queue.length != 1 || queue.first.videoId != videoId) return;
       _note('local: radio adds ${more.length} songs like $videoId');
@@ -858,10 +859,11 @@ class WebBackend extends BackendDefaults {
   /// personal queue. Nothing is sent when the room has moved on by the time they arrive, or when none were found.
   Future<void> _fillRoom(AutoplayFillMessage ask) async {
     try {
-      final queue = {for (final e in _session?.snapshot.state?.queue ?? const <QueueEntry>[]) e.videoId};
-      final more = await _moreLike(ask.videoId, queue, _autoplayCount);
+      final entries = _session?.snapshot.state?.queue ?? const <QueueEntry>[];
+      final seeds = Queues.seeds(entries, ask.videoId);
+      final more = await _moreLike(seeds, {for (final e in entries) e.videoId}, _autoplayCount);
       if (more.isEmpty || _session?.snapshot.state?.epoch != ask.epoch) return;
-      _note("sync: autoplay adds ${more.length} songs like '${ask.title}' to the room");
+      _note("sync: autoplay adds ${more.length} songs like '${ask.title}' and ${seeds.length - 1} more to the room");
       // Marked as autoplay's, so the room keeps them apart from the songs its members chose
       _send(Wire.queueAddMany(more, auto: true));
     } on Object catch (e) {

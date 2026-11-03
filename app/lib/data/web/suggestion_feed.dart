@@ -141,12 +141,27 @@ class SuggestionFeed {
 
   /// Up to [count] songs to carry on with after [videoId], other than [exclude], what was heard lately and what the
   /// person does not want: the radio YouTube Music makes of the song. Needs the network.
-  Future<List<TrackRef>> after(String videoId, Set<String> exclude, int count) async {
+  Future<List<TrackRef>> after(String videoId, Set<String> exclude, int count) => afterMany([videoId], exclude, count);
+
+  /// Up to [count] songs to carry on with after the [seeds] together, as [after] does for one: the radio of each seed,
+  /// taken in turns so no seed crowds out the others. A seed whose radio cannot be had is left out, so the others still
+  /// count.
+  Future<List<TrackRef>> afterMany(List<String> seeds, Set<String> exclude, int count) async {
     final taste = _taste();
     final block = _blocklist();
+    final lists = <List<TrackRef>>[];
+    for (final (i, seed) in seeds.indexed) {
+      try {
+        lists.add(await radio(seed));
+      } on Object catch (e) {
+        // The first seed is the one asked for: with nothing for it the caller says so
+        if (i == 0 && seeds.length == 1) rethrow;
+        _log('no radio for $seed: $e');
+      }
+    }
     final pool = Suggestions.mix(
-      [await radio(videoId)],
-      {...exclude, videoId, ...store.heardSince(_now() - _recentMs)},
+      lists,
+      {...exclude, ...seeds, ...store.heardSince(_now() - _recentMs)},
       count * _poolFactor,
       (t) => Suggestions.welcome(t, taste, block),
     );

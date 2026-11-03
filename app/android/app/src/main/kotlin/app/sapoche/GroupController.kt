@@ -67,8 +67,8 @@ class GroupController(
     private val exo: ExoPlayer,
     private val prefs: SharedPreferences,
     private val queueFile: QueueFile,
-    /** Up to [Int] songs to carry on with after [String] (a video id), leaving out the ids given. */
-    private val moreLike: suspend (String, Set<String>, Int) -> List<TrackRef> = { _, _, _ -> emptyList() },
+    /** Up to [Int] songs to carry on with after the songs [List] (video ids) together, leaving out the ids given. */
+    private val moreLike: suspend (List<String>, Set<String>, Int) -> List<TrackRef> = { _, _, _ -> emptyList() },
 ) {
     // Main thread: ExoPlayer must be used there, and the session only does light work
     private var scope = newScope()
@@ -338,7 +338,7 @@ class GroupController(
         val like = if (!LocalMusic.isLocal(last.videoId)) last else local.snapshot.value.queue.lastOrNull { !LocalMusic.isLocal(it.videoId) } ?: return
         autoplayJob = ownScope.launch {
             try {
-                val more = moreLike(like.videoId, local.snapshot.value.queue.map { it.videoId }.toSet(), AUTOPLAY_COUNT)
+                val more = moreLike(listOf(like.videoId), local.snapshot.value.queue.map { it.videoId }.toSet(), AUTOPLAY_COUNT)
                 if (more.isEmpty() || session != null || !local.snapshot.value.finished) return@launch
                 EventLog.d("local", "autoplay adds ${more.size} songs like '${like.title}'")
                 // Carrying on only adds: what has been played makes room when the new songs would not fit
@@ -360,9 +360,10 @@ class GroupController(
     private fun fillRoom(ask: ServerMessage.AutoplayFill) {
         scope.launch {
             try {
-                val more = moreLike(ask.videoId, queue().map { it.videoId }.toSet(), AUTOPLAY_COUNT)
+                val seeds = Queues.seeds(queue(), ask.videoId)
+                val more = moreLike(seeds, queue().map { it.videoId }.toSet(), AUTOPLAY_COUNT)
                 if (more.isEmpty() || session?.snapshot?.value?.state?.epoch != ask.epoch) return@launch
-                EventLog.d("sync", "autoplay adds ${more.size} songs like '${ask.title}' to the room")
+                EventLog.d("sync", "autoplay adds ${more.size} songs like '${ask.title}' and ${seeds.size - 1} more to the room")
                 // Marked as autoplay's, so the room keeps them apart from the songs its members chose
                 send(Protocol.queueAddMany(more, auto = true))
             } catch (e: CancellationException) {
@@ -385,7 +386,7 @@ class GroupController(
             try {
                 // The song that was tapped comes first: on a slow network the two would share it
                 local.snapshot.first { !it.loading }
-                val more = moreLike(videoId, setOf(videoId), RADIO_COUNT)
+                val more = moreLike(listOf(videoId), setOf(videoId), RADIO_COUNT)
                 val queue = local.snapshot.value.queue
                 if (more.isEmpty() || session != null || queue.singleOrNull()?.videoId != videoId) return@launch
                 EventLog.d("local", "radio adds ${more.size} songs like $videoId")

@@ -143,10 +143,29 @@ actor SuggestionFeed {
     /// person does not want: the radio YouTube Music makes of the song, or what YouTube lists beside it when that cannot
     /// be had. Needs the network.
     func after(_ videoId: String, exclude: Set<String>, count: Int) async throws -> [TrackRef] {
+        try await afterMany([videoId], exclude: exclude, count: count)
+    }
+
+    /// Up to [count] songs to carry on with after the [seeds] together, as `after` does for one: the radio of each seed,
+    /// taken in turns so no seed crowds out the others. A seed whose radio cannot be had is left out, so the others still
+    /// count.
+    func afterMany(_ seeds: [String], exclude: Set<String>, count: Int) async throws -> [TrackRef] {
         let taste = try await loadTaste()
         let block = try await blocklist()
         let heard = try await store.heardSince(now() - Self.recentMs)
-        let pool = Suggestions.mix([try await radioOf(videoId)], exclude: exclude.union([videoId]).union(heard), limit: count * Self.poolFactor) {
+        var lists: [[TrackRef]] = []
+        for (at, seed) in seeds.enumerated() {
+            do {
+                lists.append(try await radioOf(seed))
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // The first seed is the one asked for: with nothing for it the caller says so
+                if at == 0 && seeds.count == 1 { throw error }
+                log("no radio for \(seed): \(error.localizedDescription)")
+            }
+        }
+        let pool = Suggestions.mix(lists, exclude: exclude.union(seeds).union(heard), limit: count * Self.poolFactor) {
             Suggestions.welcome($0, taste: taste, block: block)
         }
         // YouTube's order, put in the order that suits this person

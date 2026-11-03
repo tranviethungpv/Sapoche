@@ -1118,8 +1118,8 @@ final class GroupControllerTests: XCTestCase {
         controller = GroupController(
             engine: engine, prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("queue.json")),
             config: { ServerConfig() }, time: time,
-            moreLike: { [unowned self] id, _, _ in
-                self.asked.append(id)
+            moreLike: { [unowned self] ids, _, _ in
+                self.asked.append(contentsOf: ids)
                 return [more]
             }
         )
@@ -1185,8 +1185,8 @@ final class GroupControllerTests: XCTestCase {
         let room = GroupController(
             engine: FakePlayer(time: time), prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("r.json")),
             config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets,
-            moreLike: { [unowned self] id, _, _ in
-                self.asked.append(id)
+            moreLike: { [unowned self] ids, _, _ in
+                self.asked.append(contentsOf: ids)
                 try await self.time.sleep(ms: 50) // finding songs takes a while
                 return [more]
             }
@@ -1211,6 +1211,34 @@ final class GroupControllerTests: XCTestCase {
         socket.receive(#"{"t":"state","serverNow":2,"you":"me","protocol":9,"state":{"queue":[{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":9,"addedBy":"me"}],"index":0,"phase":"preparing","startedAt":0,"positionMs":0,"epoch":5,"autoplay":true},"members":[]}"#)
         await time.advance(100)
         XCTAssertFalse(socket.sent.contains { $0.contains("queue.addMany") })
+        room.release()
+    }
+
+    func testTheRoomsAutoplayLooksForSongsLikeThoseOfSeveralMembers() async throws {
+        let sockets = FakeSockets()
+        let more = TrackRef(videoId: "more0000001", title: "More", artist: "A", thumb: nil, durMs: 200_000)
+        let room = GroupController(
+            engine: FakePlayer(time: time), prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("s.json")),
+            config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets,
+            moreLike: { [unowned self] ids, _, _ in
+                self.asked.append(contentsOf: ids)
+                return [more]
+            }
+        )
+        room.join(code: "ABC234", name: "Me", create: false)
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        func item(_ n: Int, by: String, auto: Bool = false) -> String {
+            #"{"id":"q\#(n)","videoId":"video00000\#(n)","title":"Song \#(n)","artist":"A","durMs":9,"addedBy":"\#(by)","auto":\#(auto)}"#
+        }
+        let queue = [item(1, by: "me"), item(2, by: "ann"), item(3, by: "bob"), item(4, by: "ann", auto: true)].joined(separator: ",")
+        socket.receive(#"{"t":"state","serverNow":1,"you":"me","protocol":9,"state":{"queue":[\#(queue)],"index":3,"phase":"idle","startedAt":0,"positionMs":0,"epoch":4,"autoplay":true},"members":[]}"#)
+        await time.advance(10)
+        socket.receive(#"{"t":"autoplay.fill","epoch":4,"videoId":"video000004","title":"Song 4"}"#)
+        await time.advance(100)
+        // The song autoplay played, then the latest song of two members who chose; autoplay's own are nobody's choice
+        XCTAssertEqual(asked, ["video000004", "video000003", "video000002"])
         room.release()
     }
 

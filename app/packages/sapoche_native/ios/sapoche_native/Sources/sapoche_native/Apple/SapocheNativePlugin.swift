@@ -112,7 +112,7 @@ final class SapocheRuntime {
                     do { try await store.recordSkip(track, source: source) } catch { EventLog.d("library", "could not write the skip: \(error.localizedDescription)") }
                 }
             },
-            moreLike: { videoId, exclude, count in try await suggestions.after(videoId, exclude: exclude, count: count) },
+            moreLike: { seeds, exclude, count in try await suggestions.afterMany(seeds, exclude: exclude, count: count) },
             secrets: KeychainSecrets()
         )
         bridge = Bridge(controller: controller, prefs: prefs, platform: platform, store: store, resolver: resolver, streams: streams,
