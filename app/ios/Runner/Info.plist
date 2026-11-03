@@ -69,7 +69,9 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save pictures from a chat to your photos.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Take a picture to send in a chat.</string>
+	<string>Take a picture or record a video to send in a chat.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record the sound of a video to send in a chat.</string>
 	<!-- The folder of the app shows in the Files app (On My iPhone > Sapoche): music is copied there to play it -->
 	<key>UIFileSharingEnabled</key>
 	<true/>

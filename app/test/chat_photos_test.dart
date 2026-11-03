@@ -195,8 +195,8 @@ void main() {
       expect(find.byKey(const ValueKey('photo-single')), findsOneWidget);
       expect(stack, findsNothing);
       final size = tester.getSize(find.byKey(const ValueKey('photo-single')));
-      expect(size.width, closeTo(540 * 0.48, 0.5));
-      expect(size.height, closeTo(540 * 0.48 * 3 / 4, 0.5));
+      expect(size.width, closeTo(540 * 0.6, 0.5));
+      expect(size.height, closeTo(540 * 0.6 * 3 / 4, 0.5));
       final bubbles = find.descendant(
         of: find.byKey(const ValueKey('chat-message-1')),
         matching: find.byWidgetPredicate(
@@ -211,15 +211,15 @@ void main() {
       expect(find.byKey(const ValueKey('album-page')), findsNothing);
     });
 
-    testWidgets('a tall picture is not taller than 213', (tester) async {
+    testWidgets('a tall picture is not taller than 270', (tester) async {
       await openChat(tester, (backend, room) async {
         final album = await makeAlbum(tester, backend, room, 1, w: 300, h: 900);
         return [albumMessage(1, album)];
       });
       final size = tester.getSize(find.byKey(const ValueKey('photo-single')));
-      expect(size.height, 213);
+      expect(size.height, 270);
       // 1:2 at most
-      expect(size.width, closeTo(106.5, 0.5));
+      expect(size.width, closeTo(135, 0.5));
     });
 
     testWidgets('the caption is under the pictures, in a bubble', (tester) async {
@@ -653,6 +653,9 @@ void main() {
       await pick(tester);
       await stagedShown(tester);
       expect(find.text(S.chatPhotoUnreadable('bad.bin')), findsOneWidget);
+      // Told in the chat, above the field, where it is seen; a snack bar would be under the chat
+      expect(find.descendant(of: find.byKey(const ValueKey('chat-notice')), matching: find.text(S.chatPhotoUnreadable('bad.bin'))), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
       expect(find.byKey(const ValueKey('photo-remove-0')), findsOneWidget);
       expect(find.byKey(const ValueKey('photo-remove-1')), findsNothing);
     });

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -147,6 +148,21 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   /// The song picked to go with the next message, shown above the field.
   Track? _song;
 
+  /// Whether the list is scrolled away from the newest message, for the button that goes back.
+  final _away = ValueNotifier(false);
+
+  /// A key for each message of the room (by the room's number for it), to find it on screen when a reply to it is touched.
+  final _itemKeys = <int, GlobalKey>{};
+
+  /// The message just jumped to, lit for a moment; and a jump on its way.
+  int? _flashId;
+  Timer? _flashTimer;
+  bool _jumping = false;
+
+  /// What went wrong with what was picked, shown above the field: a snack bar would be under the chat, out of sight.
+  String? _notice;
+  Timer? _noticeTimer;
+
   /// The stickers are shown in the place of the keyboard.
   bool _trayOpen = false;
 
@@ -165,6 +181,7 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
     _focus.addListener(_focusChanged);
     _field.addListener(_fieldChanged);
     _stopListening = listenForPastedPhotos(_addPhotos);
+    _scroll.addListener(_trackAway);
     // After this frame: what it changes is shown by buttons being built along with the sheet
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -190,7 +207,84 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
     _field.dispose();
     _focus.dispose();
     _scroll.dispose();
+    _away.dispose();
+    _flashTimer?.cancel();
+    _noticeTimer?.cancel();
     super.dispose();
+  }
+
+  /// More than a screen away from the newest message: the button to go back is shown.
+  void _trackAway() {
+    if (!_scroll.hasClients) return;
+    _away.value = _scroll.offset > _scroll.position.viewportDimension;
+  }
+
+  void _toNewest() {
+    if (!_scroll.hasClients) return;
+    _scroll.animateTo(
+      0,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// Scrolls to the message the room numbers [id], older than the one that answers it: screen by screen towards the
+  /// older ones (a list that builds as it goes has no place for a message it has not built), asking for the pages before
+  /// when the end of what is held is reached, and lights it when it is in view.
+  Future<void> _jumpToMessage(int id) async {
+    if (_jumping || !_scroll.hasClients) return;
+    bool held() =>
+        _c.chat.value.any((m) => m.id == id && m.delivery == ChatDelivery.sent);
+    if (!held() && !_c.chatHasOlder.value) return;
+    _jumping = true;
+    try {
+      for (var step = 0; step < 300 && mounted && _scroll.hasClients; step++) {
+        final context = _itemKeys[id]?.currentContext;
+        if (context != null && context.mounted) {
+          await Scrollable.ensureVisible(
+            context,
+            alignment: 0.5,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+          if (!mounted) return;
+          _flashTimer?.cancel();
+          setState(() => _flashId = id);
+          _flashTimer = Timer(const Duration(milliseconds: 1400), () {
+            if (mounted) setState(() => _flashId = null);
+          });
+          return;
+        }
+        final position = _scroll.position;
+        if (position.pixels >= position.maxScrollExtent - 1) {
+          // The end of what is held: the page before comes, or there is none and the message is gone
+          if (!_c.chatHasOlder.value) return;
+          _c.loadOlderChat();
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+          continue;
+        }
+        _scroll.jumpTo(
+          min(
+            position.pixels + position.viewportDimension * 0.8,
+            position.maxScrollExtent,
+          ),
+        );
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    } finally {
+      _jumping = false;
+    }
+  }
+
+  void _tell(String text) {
+    _noticeTimer?.cancel();
+    setState(() => _notice = text);
+    _noticeTimer = Timer(const Duration(seconds: 8), _hideNotice);
+  }
+
+  void _hideNotice() {
+    _noticeTimer?.cancel();
+    if (mounted && _notice != null) setState(() => _notice = null);
   }
 
   /// The keyboard coming up takes the place of the stickers.
@@ -347,11 +441,10 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   /// Squeezes [picked] to what a message holds and puts it above the field,
   /// where it waits for Send. One video to a message, and never with photos.
   Future<void> _addVideo(PickedVideo picked, {bool mirror = false}) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     // Making the one that waits again (turned the other way) is not a second video
     final again = _stagedVideo != null && identical(_videoSource, picked);
     if (_staged.isNotEmpty || (_stagedVideo != null && !again)) {
-      messenger?.showSnackBar(SnackBar(content: Text(S.chatNoMix)));
+      _tell(S.chatNoMix);
       return;
     }
     setState(() {
@@ -376,7 +469,7 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
     }
     if (!mounted) return;
     if (error != null) {
-      messenger?.showSnackBar(SnackBar(content: Text(error)));
+      _tell(error);
       return;
     }
     setState(() {
@@ -397,16 +490,13 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   /// Makes [picked] ready and puts them with the photos waiting above the
   /// field, as many as a message holds.
   Future<void> _addPhotos(List<PickedPhoto> picked) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     if (_stagedVideo != null) {
-      messenger?.showSnackBar(SnackBar(content: Text(S.chatNoMix)));
+      _tell(S.chatNoMix);
       return;
     }
     final room = AlbumExtra.maxItems - _staged.length;
     if (room <= 0) {
-      messenger?.showSnackBar(
-        SnackBar(content: Text(S.chatAlbumFull(AlbumExtra.maxItems))),
-      );
+      _tell(S.chatAlbumFull(AlbumExtra.maxItems));
       return;
     }
     setState(() => _preparing = true);
@@ -428,7 +518,7 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
       if (picked.length > room) S.chatAlbumFull(AlbumExtra.maxItems),
     ];
     if (errors.isNotEmpty) {
-      messenger?.showSnackBar(SnackBar(content: Text(errors.join('\n'))));
+      _tell(errors.join('\n'));
     }
     if (result.photos.isEmpty) return;
     setState(
@@ -639,35 +729,51 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                child: ReactionShower(
-                  controller: _c,
-                  child: ListenableBuilder(
-                    listenable: Listenable.merge([
-                      _c,
-                      _c.chat,
-                      _c.receipts,
-                      _c.chatHasOlder,
-                      _c.albumUploads,
-                    ]),
-                    builder: (context, _) =>
-                        _c.snapshot.encrypted && !_c.snapshot.encryptionKey
-                        ? _NeedsKey(controller: _c)
-                        : _c.chat.value.isEmpty
-                        ? const _EmptyChat()
-                        : _Messages(
-                            controller: _c,
-                            messages: _c.chat.value,
-                            hasOlder: _c.chatHasOlder.value,
-                            scroll: _scroll,
-                            timeShownOf: _timeShownOf,
-                            onShowTime: (key) => setState(
-                              () => _timeShownOf = _timeShownOf == key
-                                  ? null
-                                  : key,
-                            ),
-                            onReply: _replyToMessage,
-                          ),
-                  ),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ReactionShower(
+                        controller: _c,
+                        child: ListenableBuilder(
+                          listenable: Listenable.merge([
+                            _c,
+                            _c.chat,
+                            _c.receipts,
+                            _c.chatHasOlder,
+                            _c.albumUploads,
+                          ]),
+                          builder: (context, _) =>
+                              _c.snapshot.encrypted &&
+                                  !_c.snapshot.encryptionKey
+                              ? _NeedsKey(controller: _c)
+                              : _c.chat.value.isEmpty
+                              ? const _EmptyChat()
+                              : _Messages(
+                                  controller: _c,
+                                  messages: _c.chat.value,
+                                  hasOlder: _c.chatHasOlder.value,
+                                  scroll: _scroll,
+                                  timeShownOf: _timeShownOf,
+                                  onShowTime: (key) => setState(
+                                    () => _timeShownOf = _timeShownOf == key
+                                        ? null
+                                        : key,
+                                  ),
+                                  onReply: _replyToMessage,
+                                  keyOf: (id) =>
+                                      _itemKeys.putIfAbsent(id, GlobalKey.new),
+                                  flashId: _flashId,
+                                  onJumpTo: _jumpToMessage,
+                                ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 14,
+                      bottom: 10,
+                      child: _ToNewestButton(away: _away, onTap: _toNewest),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -694,6 +800,8 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                 onCancel: () => setState(() => _song = null),
               ),
             ),
+          if (_notice != null)
+            _NoticeBanner(text: _notice!, onClose: _hideNotice),
           if (_staged.isNotEmpty || _stagedVideo != null)
             TextFieldTapRegion(
               child: StagedPhotos(
@@ -1206,6 +1314,44 @@ class _SongBanner extends StatelessWidget {
   }
 }
 
+/// What went wrong with the pictures or the video picked, above the field where it is seen.
+class _NoticeBanner extends StatelessWidget {
+  const _NoticeBanner({required this.text, required this.onClose});
+
+  final String text;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      key: const ValueKey('chat-notice'),
+      margin: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+      padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
+      decoration: BoxDecoration(
+        color: p.error.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline_rounded, size: 20, color: p.error),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodySmall),
+          ),
+          IconButton(
+            key: const ValueKey('chat-notice-close'),
+            onPressed: onClose,
+            tooltip: S.close,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.close_rounded, size: 20, color: p.textTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Keeps the notices of this room quiet for a while, or turns them back on.
 class _MuteButton extends StatelessWidget {
   const _MuteButton({required this.controller});
@@ -1393,10 +1539,18 @@ class _Messages extends StatelessWidget {
     required this.timeShownOf,
     required this.onShowTime,
     required this.onReply,
+    required this.keyOf,
+    required this.flashId,
+    required this.onJumpTo,
   });
 
   final RoomController controller;
   final List<ChatMessage> messages;
+
+  /// The key that finds the message the room numbers so, the one lit for a moment, and the way to a message answered.
+  final GlobalKey Function(int id) keyOf;
+  final int? flashId;
+  final ValueChanged<int> onJumpTo;
 
   /// The room keeps messages from before the first one: a row at the top asks for them as it comes into view.
   final bool hasOlder;
@@ -1454,21 +1608,27 @@ class _Messages extends StatelessWidget {
         final key = message.delivery == ChatDelivery.sent
             ? message.id
             : message.cid;
+        final sentMessage = message.delivery == ChatDelivery.sent;
         return Column(
+          key: sentMessage ? keyOf(message.id) : null,
           children: [
             if (showTime) _TimeLine(at: at),
-            _Bubble(
-              controller: controller,
-              message: message,
-              mine: isMine(message),
-              startsGroup: startsGroup,
-              timeShown: key != null && key == timeShownOf,
-              progress: index == lastMine
-                  ? controller.progressOf(message)
-                  : null,
-              readers: markers[message.id] ?? const [],
-              onToggleTime: key == null ? null : () => onShowTime(key),
-              onReply: () => onReply(message),
+            _Flash(
+              lit: sentMessage && message.id == flashId,
+              child: _Bubble(
+                controller: controller,
+                message: message,
+                mine: isMine(message),
+                startsGroup: startsGroup,
+                timeShown: key != null && key == timeShownOf,
+                progress: index == lastMine
+                    ? controller.progressOf(message)
+                    : null,
+                readers: markers[message.id] ?? const [],
+                onToggleTime: key == null ? null : () => onShowTime(key),
+                onReply: () => onReply(message),
+                onJumpTo: onJumpTo,
+              ),
             ),
           ],
         );
@@ -1506,6 +1666,7 @@ class _Bubble extends StatelessWidget {
     required this.readers,
     required this.onToggleTime,
     required this.onReply,
+    required this.onJumpTo,
   });
 
   final RoomController controller;
@@ -1523,6 +1684,9 @@ class _Bubble extends StatelessWidget {
   final List<String> readers;
   final VoidCallback? onToggleTime;
   final VoidCallback onReply;
+
+  /// A touch on the quote of an answer: to the message it answers.
+  final ValueChanged<int> onJumpTo;
 
   @override
   Widget build(BuildContext context) {
@@ -1552,6 +1716,7 @@ class _Bubble extends StatelessWidget {
             quote: message.reply!,
             own: message.reply!.by == controller.snapshot.you,
             onBubbleOfMine: mine,
+            onTap: () => onJumpTo(message.reply!.id),
           );
     BoxDecoration decoration() => BoxDecoration(
       color: look != null
@@ -1860,9 +2025,13 @@ class _Quote extends StatelessWidget {
     required this.quote,
     required this.own,
     required this.onBubbleOfMine,
+    required this.onTap,
   });
 
   final ChatQuote quote;
+
+  /// A touch on the quote: to the message it quotes.
+  final VoidCallback onTap;
 
   /// The message answered was this device's own.
   final bool own;
@@ -1875,37 +2044,110 @@ class _Quote extends StatelessWidget {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     final ink = onBubbleOfMine ? p.onPrimary : p.text;
-    return Container(
+    return GestureDetector(
       key: const ValueKey('chat-quote'),
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
-      decoration: BoxDecoration(
-        color: ink.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(color: ink.withValues(alpha: 0.7), width: 3),
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+        decoration: BoxDecoration(
+          color: ink.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border(
+            left: BorderSide(color: ink.withValues(alpha: 0.7), width: 3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              own ? S.you : (quote.name.isEmpty ? S.someone : quote.name),
+              style: theme.labelSmall?.copyWith(
+                color: ink,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              quote.text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.bodySmall?.copyWith(
+                color: ink.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            own ? S.you : (quote.name.isEmpty ? S.someone : quote.name),
-            style: theme.labelSmall?.copyWith(
-              color: ink,
-              fontWeight: FontWeight.w600,
+    );
+  }
+}
+
+/// A message lit for a moment, after a touch on a reply took the person to it.
+class _Flash extends StatelessWidget {
+  const _Flash({required this.lit, required this.child});
+
+  final bool lit;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      key: lit ? const ValueKey('chat-flash') : null,
+      duration: const Duration(milliseconds: 350),
+      // No decoration at rest: the message is drawn as if nothing wrapped it
+      decoration: lit
+          ? BoxDecoration(
+              color: context.palette.primary.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(14),
+            )
+          : null,
+      child: child,
+    );
+  }
+}
+
+/// The round arrow over the messages that goes back to the newest one; there only while the list is scrolled away.
+class _ToNewestButton extends StatelessWidget {
+  const _ToNewestButton({required this.away, required this.onTap});
+
+  final ValueListenable<bool> away;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return ValueListenableBuilder<bool>(
+      valueListenable: away,
+      builder: (context, shown, _) => IgnorePointer(
+        ignoring: !shown,
+        child: AnimatedOpacity(
+          opacity: shown ? 1 : 0,
+          duration: const Duration(milliseconds: 150),
+          child: Tooltip(
+            message: S.chatToNewest,
+            child: Material(
+              key: const ValueKey('chat-to-newest'),
+              color: p.surfaceRaised,
+              elevation: 3,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onTap,
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: p.text,
+                    size: 28,
+                  ),
+                ),
+              ),
             ),
           ),
-          Text(
-            quote.text,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.bodySmall?.copyWith(
-              color: ink.withValues(alpha: 0.85),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

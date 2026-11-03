@@ -1112,6 +1112,54 @@ void main() {
       expect(find.byType(ReactionBar), findsNothing);
       expect(find.byTooltip(S.chat), findsNothing);
     });
+
+    testWidgets(
+      'a touch on the quote of an answer goes to the message it answers, far up, and a button goes back',
+      (tester) async {
+        final (backend, _) = await roomWithChat(tester);
+        final messages = [
+          for (var i = 1; i <= 60; i++) message(i, i.isEven ? 'me' : 'b', 'line $i'),
+          ChatMessage(
+            id: 61,
+            by: 'me',
+            name: 'Anna',
+            text: 'the answer',
+            at: 1790660600000 + 61000,
+            reply: const ChatQuote(id: 2, by: 'me', name: 'Anna', text: 'quoted words'),
+          ),
+        ];
+        backend.emit(history(messages));
+        await tester.pump();
+        await tester.tap(find.byTooltip(S.chat));
+        await tester.pumpAndSettle();
+
+        double arrow() => tester
+            .widget<AnimatedOpacity>(
+              find.ancestor(of: find.byKey(const ValueKey('chat-to-newest')), matching: find.byType(AnimatedOpacity)),
+            )
+            .opacity;
+        // At the newest message there is no way down to offer, and the message answered is far out of sight
+        expect(arrow(), 0);
+        expect(find.text('line 2'), findsNothing);
+
+        await tester.tap(find.byKey(const ValueKey('chat-quote')));
+        await tester.pumpAndSettle();
+        // The message answered is on screen, and lit for a moment
+        expect(find.text('line 2'), findsOneWidget);
+        expect(find.byKey(const ValueKey('chat-flash')), findsOneWidget);
+        expect(find.text('the answer'), findsNothing);
+        expect(arrow(), 1);
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('chat-flash')), findsNothing);
+
+        // The arrow brings the newest back
+        await tester.tap(find.byKey(const ValueKey('chat-to-newest')));
+        await tester.pumpAndSettle();
+        expect(find.text('the answer'), findsOneWidget);
+        expect(arrow(), 0);
+      },
+    );
   });
 }
 

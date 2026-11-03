@@ -898,6 +898,7 @@ abstract final class S {
   static String get chatReplyingToYourself =>
       _t('Replying to yourself', 'Đang trả lời chính mình');
   static String get chatCancelReply => _t('Cancel reply', 'Huỷ trả lời');
+  static String get chatToNewest => _t('Latest messages', 'Tin nhắn mới nhất');
   static String get chatCopy => _t('Copy', 'Sao chép');
   static String get chatCopied => _t('Message copied', 'Đã sao chép tin nhắn');
   static String get chatReactions => _t('Reactions', 'Cảm xúc');

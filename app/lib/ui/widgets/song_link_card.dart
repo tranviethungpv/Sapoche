@@ -31,6 +31,7 @@ class _SongLinkCardState extends State<SongLinkCard> {
   Widget build(BuildContext context) {
     return FutureBuilder<Track?>(
       future: _song,
+      initialData: widget.controller.knownSongOfLink(widget.link),
       builder: (context, snapshot) {
         final track = snapshot.data;
         if (track == null) return widget.fallback;

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -320,11 +321,51 @@ class ChatMedia {
     final photos = <PreparedPhoto>[];
     final refused = <PhotoError>[];
     for (final photo in picked.take(AlbumExtra.maxItems)) {
-      final (made, error) = await compute(_prepareAway, photo);
+      PreparedPhoto? made;
+      PhotoError? error;
+      (made, error) = await compute(_prepareAway, photo);
+      if (error is PhotoUnreadable) {
+        // A picture the decoders here do not know (HEIF from Google Photos): the system's own decoder may
+        final converted = await viaEngine(photo.bytes);
+        if (converted != null) {
+          final again = await compute(_prepareAway, PickedPhoto(converted, photo.name));
+          made = again.$1;
+          error = again.$2;
+        }
+      }
       if (made != null) photos.add(made);
       if (error != null) refused.add(error);
     }
     return PrepareResult(photos, refused);
+  }
+
+  /// [bytes] as a PNG of at most [maxSide] px along its longer side, decoded by the engine, which on Android hands the
+  /// picture to the system (HEIF, AVIF) and turns it upright. Null when the engine cannot read it either.
+  @visibleForTesting
+  static Future<Uint8List?> viaEngine(Uint8List bytes) async {
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? codec;
+    ui.Image? image;
+    try {
+      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final wide = descriptor.width >= descriptor.height;
+      codec = await descriptor.instantiateCodec(
+        targetWidth: wide && descriptor.width > maxSide ? maxSide : null,
+        targetHeight: !wide && descriptor.height > maxSide ? maxSide : null,
+      );
+      image = (await codec.getNextFrame()).image;
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      return png?.buffer.asUint8List(png.offsetInBytes, png.lengthInBytes);
+    } on Object {
+      return null;
+    } finally {
+      image?.dispose();
+      codec?.dispose();
+      descriptor?.dispose();
+      buffer?.dispose();
+    }
   }
 
   /// Makes [video] ready to send: squeezed to no more than [maxVideoBytes] where the device can (a browser sends what is

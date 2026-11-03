@@ -45,11 +45,11 @@ class SinglePhoto extends StatelessWidget {
   /// Drawn over the picture, under [overlay] (the play mark of a video).
   final Widget? badge;
 
-  static const maxHeight = 213.0;
+  static const maxHeight = 270.0;
 
   @override
   Widget build(BuildContext context) {
-    var width = MediaQuery.sizeOf(context).width * 0.48;
+    var width = MediaQuery.sizeOf(context).width * 0.6;
     var height = width / slot.aspect;
     if (height > maxHeight) {
       height = maxHeight;

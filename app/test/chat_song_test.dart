@@ -87,9 +87,11 @@ void main() {
       expect(find.text('Rick · 3:20'), findsOneWidget);
       expect(find.textContaining('music.youtube.com'), findsNothing);
       expect(find.byKey(const ValueKey('song-card-like')), findsOneWidget);
-      // 62 per cent of the screen, but not wider than 224 dp (540 dp in the test)
+      // 63 per cent of the screen, but not wider than 225 dp (540 dp in the test)
       expect(tester.getSize(card).width, closeTo(ChatSongCard.maxWidth, 1));
       expect(find.byKey(const ValueKey('song-card-record')), findsOneWidget);
+      // And a square, whatever the words or the buttons
+      expect(tester.getSize(card).height, closeTo(ChatSongCard.maxWidth, 1));
     });
 
     testWidgets('the buttons do what they say', (tester) async {

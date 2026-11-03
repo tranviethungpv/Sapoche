@@ -19,16 +19,16 @@ import 'artwork.dart';
 import 'cached_cover.dart';
 import 'equalizer.dart';
 
-/// A song shared in the chat, drawn as a square card: a record sleeve with the cover, and the record itself half out of it
+/// A song shared in the chat, drawn as a card that is always square: a record sleeve with the cover, and the record itself half out of it
 /// (it turns while the song plays), then the song, and small round buttons to play it, queue it or like it. Behind it the
 /// cover blurred; over that a dark veil, so that the white words on it can be read whatever the cover is (a contrast of
 /// 4.5 to 1 against a white one).
 class ChatSongCard extends StatelessWidget {
   const ChatSongCard({super.key, required this.controller, required this.song});
 
-  /// How much of the width of the screen the card takes, up to [maxWidth] dp.
-  static const widthFactor = 0.42;
-  static const maxWidth = 150.0;
+  /// How much of the width of the screen the card takes, up to [maxWidth] dp; its height is the same.
+  static const widthFactor = 0.63;
+  static const maxWidth = 225.0;
 
   /// The veil over the cover and the colour of the chat: 0.58 of black leaves a white cover at about 0.15 of luminance.
   static const _veil = 0.58;
@@ -42,8 +42,10 @@ class ChatSongCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final look = ChatLookScope.of(context);
+    final side = widthIn(context);
     return SizedBox(
-      width: widthIn(context),
+      width: side,
+      height: side,
       child: ClipRRect(
         key: const ValueKey('song-card'),
         borderRadius: BorderRadius.circular(18),
@@ -58,20 +60,25 @@ class ChatSongCard extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: () => showSongInfo(context, _entry),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
-                      child: ListenableBuilder(
-                        listenable: controller,
-                        builder: (context, _) => _Record(art: song.art, spinning: _isPlaying(controller, song.track)),
+                    // The record takes what the words and the buttons leave of the square
+                    Expanded(
+                      child: Center(
+                        child: FittedBox(
+                          child: ListenableBuilder(
+                            listenable: controller,
+                            builder: (context, _) =>
+                                _Record(art: song.art, spinning: _isPlaying(controller, song.track)),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     _Details(song: song),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 2),
                     ListenableBuilder(
                       listenable: controller,
                       builder: (context, _) => _Actions(controller: controller, song: song),
@@ -173,14 +180,14 @@ class _Details extends StatelessWidget {
           song.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: theme.titleSmall?.copyWith(color: ink, fontWeight: FontWeight.w700),
+          style: theme.labelLarge?.copyWith(color: ink, fontWeight: FontWeight.w700, fontSize: 12.5, height: 1.2),
         ),
         if (song.artist.isNotEmpty || length != null)
           Text(
             [if (song.artist.isNotEmpty) song.artist, ?length].join(' · '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.bodySmall?.copyWith(color: soft),
+            style: theme.bodySmall?.copyWith(color: soft, fontSize: 11),
           ),
       ],
     );
@@ -194,9 +201,9 @@ class _Record extends StatefulWidget {
   final String? art;
   final bool spinning;
 
-  /// The side of the sleeve, and how far the record comes out of it.
-  static const sleeve = 80.0;
-  static const out = 43.0;
+  /// The side of the sleeve, and how far the record comes out of it; drawn at this size and scaled to the room it has.
+  static const sleeve = 120.0;
+  static const out = 65.0;
 
   @override
   State<_Record> createState() => _RecordState();

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/strings.dart';
+import 'package:sapoche/ui/widgets/chat_song_card.dart';
 import 'package:sapoche/ui/widgets/linked_text.dart';
 
 import 'fake_backend.dart';
@@ -73,6 +74,13 @@ void main() {
       expect(backend.calls, contains('add dQw4w9WgXcQ next=true'));
       // The room has four seconds to bring it in before the app gives up waiting
       await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('once found, the song is known at once, for a message built again to start as the card', (tester) async {
+      await chatWith(tester, link, found: const LinkResult(tracks: [track]));
+      final controller = tester.widget<ChatSongCard>(find.byKey(const ValueKey('song-link-card'))).controller;
+      expect(controller.knownSongOfLink(link)?.videoId, track.videoId);
+      expect(controller.knownSongOfLink('https://youtu.be/other'), isNull);
     });
 
     testWidgets('with words around it, the words stay and the card is under them', (tester) async {

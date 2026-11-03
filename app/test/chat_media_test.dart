@@ -15,6 +15,7 @@ import 'package:sapoche/data/room_controller.dart';
 import 'package:sapoche/strings.dart';
 
 import 'fake_backend.dart';
+import 'png_fixture.dart';
 
 /// A picture with a gradient, so that it does not compress to nothing.
 img.Image gradient(int w, int h) {
@@ -149,6 +150,19 @@ void main() {
         ChatMedia.prepareOne(PickedPhoto(Uint8List.fromList(List.filled(100, 7)), 'x.jpg')),
         throwsA(isA<PhotoUnreadable>()),
       );
+    });
+
+    testWidgets('the engine reads a picture, scaled and upright, and no more than a picture', (tester) async {
+      final big = await tester.runAsync(() => ChatMedia.viaEngine(solidPng(10, 20, 30, side: 2000)));
+      final decoded = img.decodePng(big!)!;
+      expect((decoded.width, decoded.height), (ChatMedia.maxSide, ChatMedia.maxSide));
+      expect(await tester.runAsync(() => ChatMedia.viaEngine(Uint8List.fromList(List.filled(100, 7)))), isNull);
+      // And what no decoder reads is still refused in a batch, after the engine has had its try
+      final result = await tester.runAsync(
+        () => ChatMedia.prepare([PickedPhoto(Uint8List.fromList(List.filled(100, 7)), 'x.heic')]),
+      );
+      expect(result!.photos, isEmpty);
+      expect(result.refused.single, isA<PhotoUnreadable>());
     });
 
     test('a batch keeps the order, leaves out what is refused, and holds ten at most', () async {

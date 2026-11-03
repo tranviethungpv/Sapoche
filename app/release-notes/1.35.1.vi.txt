@@ -1,0 +1,8 @@
+Sửa chat: ảnh từ Google Photos, trả lời tin, thẻ bài hát to hơn
+- Ảnh từ Google Photos (HEIF) nay gửi được từ những điện thoại Android trước đây không đọc được. Khi một ảnh không gửi được, lý do hiện ngay phía trên ô nhập để bạn thấy, không còn nằm dưới khung chat.
+- Chạm vào phần trích dẫn trong tin trả lời để nhảy tới tin gốc; tin đó sáng lên một lúc. Tin cũ chưa tải sẽ được lấy thêm trên đường đi.
+- Khi cuộn xa khỏi tin mới nhất sẽ hiện mũi tên tròn; chạm vào để xuống thẳng tin mới nhất.
+- Thẻ bài hát to hơn (gấp rưỡi), luôn vuông, chữ nhỏ hơn. Ảnh đơn trong chat cũng to hơn một chút.
+- Nút phát, tạm dừng và đóng ở trang xem video trước đây bị đen trên nền đen ở giao diện sáng; nay màu trắng.
+- Cuộn chat qua link bài hát YouTube không còn làm các tin nhảy.
+- iPhone: quay video từ chat không còn làm app thoát đột ngột.

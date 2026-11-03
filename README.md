@@ -25,9 +25,10 @@
 ## Features
 
 - **Rooms.** Join with a code, a QR code or a link. Everyone hears the same song at the same moment, and anyone can add songs and steer playback (the owner can limit guests to adding songs).
+- **Room chat.** Talk while you listen: replies, reactions, pictures and albums, short videos, stickers, and songs you can play or queue from the message. A room can seal its chat with end-to-end encryption; pictures and videos are encrypted too.
 - **Background playback.** Each phone fetches its own audio stream, so music keeps playing with the screen off.
 - **Suggestions.** A home page learned on the phone only from what you play, like and skip.
-- **Everything else.** Search YouTube and YouTube Music, queue, playlists, downloads, music files already on the phone, synced lyrics, sleep timer, sound quality choice, room chat with optional end-to-end encryption.
+- **Everything else.** Search YouTube and YouTube Music, queue, playlists, downloads, music files already on the phone, synced lyrics, sleep timer, sound quality choice.
 - **Your look.** Light and dark themes, an accent colour of your own, and a layout for phones and tablets. English and Vietnamese.
 
 <p align="center">

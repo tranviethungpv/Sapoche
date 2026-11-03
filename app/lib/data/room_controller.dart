@@ -1318,6 +1318,11 @@ class RoomController extends ChangeNotifier {
   Future<LinkResult?> lookup(String text) => _backend.lookup(text);
 
   final _linkSongs = <String, Future<Track?>>{};
+  final _linkTracks = <String, Track>{};
+
+  /// The song [songOfLink] has already found for a link, to show at once: a message that is built again (scrolled away and
+  /// back) must not start as words and become a card a moment later, which moves everything under it.
+  Track? knownSongOfLink(String link) => _linkTracks[link];
 
   /// The song a link of YouTube points to, for the chat to show it as a card; null when it is no song (a playlist) or
   /// cannot be looked up. Asked once for a link: the answer is kept, and a failure is forgotten so that a later try may work.
@@ -1326,12 +1331,17 @@ class RoomController extends ChangeNotifier {
     if (known != null) return known;
     final asked = lookup(link).then<Track?>((found) {
       final track = found == null || found.isPlaylist || found.tracks.isEmpty ? null : found.tracks.first;
-      if (track == null) _linkSongs.remove(link);
+      if (track == null) {
+        _linkSongs.remove(link);
+      } else {
+        _linkTracks[link] = track;
+      }
       return track;
     }, onError: (Object _) {
       _linkSongs.remove(link);
       return null;
     });
+    if (_linkSongs.length >= 200) _linkTracks.remove(_linkSongs.keys.first);
     if (_linkSongs.length >= 200) _linkSongs.remove(_linkSongs.keys.first);
     return _linkSongs[link] = asked;
   }

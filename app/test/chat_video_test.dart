@@ -411,6 +411,12 @@ void main() {
       expect(tester.getRect(find.byKey(const ValueKey('video-surface'))).bottom, lessThanOrEqualTo(seek.top));
       expect(find.byKey(const ValueKey('video-play')), findsOneWidget);
       expect(find.byKey(const ValueKey('video-save')), findsOneWidget);
+      // White on the black page, whatever the theme of the app: dark buttons would not be seen
+      for (final key in ['video-play', 'video-save', 'video-close']) {
+        final button = tester.widget<IconButton>(find.byKey(ValueKey(key)));
+        final style = button.style ?? IconButtonTheme.of(tester.element(find.byKey(ValueKey(key)))).style;
+        expect(style?.foregroundColor?.resolve({}), Colors.white, reason: key);
+      }
       await tester.tap(find.byKey(const ValueKey('video-close')));
       await tester.pumpAndSettle();
     });

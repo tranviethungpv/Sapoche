@@ -1,0 +1,8 @@
+Chat fixes: pictures from Google Photos, replies, a bigger song card
+- Pictures from Google Photos (HEIF) can now be sent from Android phones that could not read them. When a picture cannot be sent, the reason now shows above the field, where you can see it, and not under the chat.
+- Tap the quote in a reply to jump to the message it answers; it lights up for a moment. Older messages are fetched on the way if they are not loaded yet.
+- A round arrow appears when you have scrolled away from the newest message; tap it to go straight back down.
+- The song card is bigger (half as big again), always square, with smaller words. A single picture in the chat is a little bigger too.
+- The play, pause and close buttons of the video page were dark on the black page in the light theme; they are white now.
+- Scrolling the chat past a YouTube song link no longer makes the messages jump.
+- iPhone: recording a video from the chat no longer crashes the app.

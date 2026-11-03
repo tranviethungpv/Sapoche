@@ -117,7 +117,12 @@ class _VideoPageState extends State<VideoPage> {
     final poster = AlbumSlot.item(widget.album.poster);
     final room = widget.controller.snapshot.room ?? '';
     return Theme(
-      data: Theme.of(context).copyWith(iconTheme: const IconThemeData(color: Colors.white)),
+      // An IconButton takes its colour from its own theme, not from the icon theme: in the light theme the buttons would be
+      // dark on the black page
+      data: Theme.of(context).copyWith(
+        iconTheme: const IconThemeData(color: Colors.white),
+        iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(foregroundColor: Colors.white)),
+      ),
       child: Scaffold(
         key: const ValueKey('video-page'),
         backgroundColor: Colors.black,

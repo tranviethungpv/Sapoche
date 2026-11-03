@@ -56,6 +56,7 @@ class VideoCompressor(private val context: Context) {
         val container: String,
         val h264: Boolean,
         val aac: Boolean,
+        val rotation: Int = 0,
     ) {
         val shortSide get() = min(w, h)
     }
@@ -71,10 +72,13 @@ class VideoCompressor(private val context: Context) {
         val folder = File(context.cacheDir, "video-out").apply { mkdirs() }
         val out = File(folder, "${UUID.randomUUID()}.mp4")
         val input = File(inputPath)
+        // What a video that plays the wrong way up needs to be told apart: how it came, and how it went out
+        EventLog.d("video", "in: ${facts.w}x${facts.h} rotation=${facts.rotation} container=${facts.container} h264=${facts.h264} aac=${facts.aac} bytes=${input.length()} mirror=$mirror")
 
         // Already what the chat wants and light enough: nothing is gained by squeezing it again
         if (!mirror && facts.container in MP4_LIKE && facts.h264 && (facts.aac || !facts.hasAudio) && input.length() <= LIGHT_ENOUGH && facts.shortSide <= STEPS.first().shortSide) {
             withContext(Dispatchers.IO) { input.copyTo(out, overwrite = true) }
+            EventLog.d("video", "sent as it was")
             return Result(out.path, facts.w, facts.h, facts.durMs, poster)
         }
 
@@ -92,6 +96,7 @@ class VideoCompressor(private val context: Context) {
             val size = out.length()
             if (size in 1..maxBytes) {
                 val (w, h) = shown(facts, scale)
+                EventLog.d("video", "out: ${withContext(Dispatchers.IO) { describe(out.path) }} bytes=$size")
                 // What was made says how long it is: the end of a screen recording that stands still is not kept
                 return Result(out.path, w, h, withContext(Dispatchers.IO) { lengthOf(out.path) } ?: facts.durMs, poster)
             }
@@ -110,6 +115,20 @@ class VideoCompressor(private val context: Context) {
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.takeIf { it > 0 }
         } catch (e: Exception) {
             null
+        } finally {
+            retriever.release()
+        }
+    }
+
+    /** The size and turn the file at [path] says it has, for the log. */
+    private fun describe(path: String): String {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(path)
+            fun key(k: Int) = retriever.extractMetadata(k)
+            "${key(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)}x${key(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)} rotation=${key(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)}"
+        } catch (e: Exception) {
+            "unreadable"
         } finally {
             retriever.release()
         }
@@ -150,7 +169,7 @@ class VideoCompressor(private val context: Context) {
             } finally {
                 extractor.release()
             }
-            return Facts(durMs, w, h, hasAudio, container, h264, aac)
+            return Facts(durMs, w, h, hasAudio, container, h264, aac, rotation)
         } catch (e: Failure) {
             throw e
         } catch (e: Exception) {
