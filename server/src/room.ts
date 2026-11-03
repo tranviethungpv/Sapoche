@@ -17,6 +17,7 @@ import type {
   Repeat,
   RoomState,
   ServerMessage,
+  TasteSeed,
   TrackInput,
 } from "./protocol";
 
@@ -119,6 +120,13 @@ const SEALED = /^[A-Za-z0-9_-]+$/;
 /** The close code of a device that must update the app to be in a room (end-to-end encryption). */
 const CLOSE_NEEDS_UPDATE = 4005;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+/** What a member offered for autoplay to start from (`taste.set`) is kept under this key plus their public id. */
+const TASTE_PREFIX = "taste:";
+const MAX_TASTE_SEEDS = 5;
+/** The title and the artist of a song offered for autoplay are cut here. */
+const MAX_TASTE_TEXT = 200;
+/** The most a sealed offer takes, in characters of base64. */
+const MAX_SEALED_TASTE_CHARS = 4096;
 
 /** A browser that asked to be told of the chat while it is away. */
 interface PushDevice {
@@ -324,6 +332,7 @@ export class Room extends DurableObject<Env> {
       case "solo": return this.onSolo(me, msg.on === true);
       case "avatar.set": return this.onAvatarSet(me, msg.data);
       case "avatar.get": return this.onAvatarGet(ws, msg.id);
+      case "taste.set": return this.onTasteSet(me, msg.seeds, msg.s);
       case "bye": return this.onBye(ws, me);
       case "kick": return this.onKick(ws, me, msg.id);
       case "room.name": return this.onRoomName(msg.name);
@@ -512,6 +521,10 @@ export class Room extends DurableObject<Env> {
     if (me.id !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
     if (this.s.enc) return;
     this.s.enc = true;
+    // What was offered in the clear goes with the chat: from here the room holds sealed offers only
+    const offered = [...(await this.ctx.storage.list({ prefix: TASTE_PREFIX })).keys()];
+    // The storage deletes at most 128 keys at a time
+    for (let i = 0; i < offered.length; i += 128) await this.ctx.storage.delete(offered.slice(i, i + 128));
     this.ctx.storage.sql.exec("DELETE FROM messages");
     this.chat = [];
     this.receipts = {};
@@ -861,6 +874,43 @@ export class Room extends DurableObject<Env> {
     this.send(ws, { t: "avatar", id, av: owner.av, data });
   }
 
+  /**
+   * Keeps, or with null (or neither field) takes back, the songs this member offers for autoplay to start from. A room
+   * whose chat is sealed takes only the sealed envelope [s] and one that is not only [seeds]: the room never holds a
+   * list it could read in a sealed room, and a message meant for the other kind of room changes nothing.
+   */
+  private async onTasteSet(me: Attachment, seeds: unknown, s: unknown): Promise<void> {
+    const sealed = this.s.enc === true;
+    const [offer, other] = sealed ? [s, seeds] : [seeds, s];
+    if (offer === undefined && other !== undefined && other !== null) return;
+    if (offer === undefined || offer === null) return void (await this.ctx.storage.delete(TASTE_PREFIX + me.id));
+    if (sealed) {
+      if (typeof offer !== "string" || !offer || offer.length > MAX_SEALED_TASTE_CHARS || !SEALED.test(offer)) return;
+      return void (await this.ctx.storage.put(TASTE_PREFIX + me.id, { s: offer }));
+    }
+    if (!Array.isArray(offer) || offer.length > MAX_TASTE_SEEDS) return;
+    const clean: TasteSeed[] = [];
+    for (const seed of offer as Partial<TasteSeed>[]) {
+      if (typeof seed?.v !== "string" || !VIDEO_ID.test(seed.v)) return;
+      clean.push({ v: seed.v, ti: String(seed.ti ?? "").slice(0, MAX_TASTE_TEXT), ar: String(seed.ar ?? "").slice(0, MAX_TASTE_TEXT) });
+    }
+    await this.ctx.storage.put(TASTE_PREFIX + me.id, { seeds: clean });
+  }
+
+  /** What the members here, other than [except], offered for autoplay to start from. */
+  private async tastesOf(except: string): Promise<{ by: string; seeds?: TasteSeed[]; s?: string }[]> {
+    const here = this.members().filter((m) => !m.away && m.id !== except);
+    if (!here.length) return [];
+    const kept = await this.ctx.storage.get<{ seeds?: TasteSeed[]; s?: string }>(here.map((m) => TASTE_PREFIX + m.id));
+    const sealed = this.s.enc === true;
+    return here.flatMap((m) => {
+      const offer = kept.get(TASTE_PREFIX + m.id);
+      // An offer of the other kind (kept from before the room was sealed) is not handed on
+      const value = sealed ? offer?.s : offer?.seeds;
+      return value ? [{ by: m.id, ...(sealed ? { s: value as string } : { seeds: value as TasteSeed[] }) }] : [];
+    });
+  }
+
   private async onSolo(me: Attachment, on: boolean): Promise<void> {
     for (const ws of this.ctx.getWebSockets()) {
       const att = ws.deserializeAttachment() as Attachment | null;
@@ -873,7 +923,7 @@ export class Room extends DurableObject<Env> {
 
   /** The device is leaving on purpose. An owner hands the room to whoever has been here longest. */
   private async onBye(ws: WebSocket, me: Attachment): Promise<void> {
-    await this.ctx.storage.delete(PUSH_PREFIX + me.id); // leaving on purpose ends the notices too
+    await this.ctx.storage.delete([PUSH_PREFIX + me.id, TASTE_PREFIX + me.id]); // leaving on purpose ends the notices and the offer too
     ws.close(1000, "left"); // the socket no longer counts as a member from here on
     if (this.s.ownerId === me.id) {
       // Somebody who is really here: a device gone quiet (away) only gets the room when nobody else is left
@@ -896,7 +946,7 @@ export class Room extends DurableObject<Env> {
   private async onKick(ws: WebSocket, me: Attachment, id: unknown): Promise<void> {
     if (me.id !== this.s.ownerId) return this.fail(ws, "forbidden", "Only the room's owner can do that");
     if (typeof id !== "string" || id === me.id) return;
-    await this.ctx.storage.delete(PUSH_PREFIX + id);
+    await this.ctx.storage.delete([PUSH_PREFIX + id, TASTE_PREFIX + id]);
     for (const other of this.ctx.getWebSockets()) {
       const att = other.deserializeAttachment() as Attachment | null;
       if (att?.id !== id) continue;
@@ -1328,7 +1378,7 @@ export class Room extends DurableObject<Env> {
     this.dropAutoplayed();
     if (this.s.repeat === "all" && this.s.queue.length > 0) return this.begin(0, 0, by);
     await this.goIdle();
-    if (askForMore && last) this.askForMoreSongs(last);
+    if (askForMore && last) await this.askForMoreSongs(last);
   }
 
   /** The current item played to its end: repeat it, or move on like the next button does. */
@@ -1350,7 +1400,7 @@ export class Room extends DurableObject<Env> {
    * The queue ran out. The server cannot fetch songs itself (YouTube blocks it), so one device that is here is asked to:
    * the owner's if it is a device following the room, else whoever has been here longest.
    */
-  private askForMoreSongs(last: QueueItem): void {
+  private async askForMoreSongs(last: QueueItem): Promise<void> {
     if (!this.s.autoplay) return;
     const limit = Number(this.env.STALE_MS) || AWAY_AFTER_MS;
     const now = Date.now();
@@ -1361,7 +1411,15 @@ export class Room extends DurableObject<Env> {
       .map((ws) => ({ ws, att: ws.deserializeAttachment() as Attachment | null }))
       .filter((c): c is { ws: WebSocket; att: Attachment } => c.att !== null && now - c.att.lastSeen <= limit)
       .sort((x, y) => rank(x.att) - rank(y.att) || (x.att.joinedAt ?? 0) - (y.att.joinedAt ?? 0))[0];
-    if (asked) this.send(asked.ws, { t: "autoplay.fill", epoch: this.s.epoch, videoId: last.videoId, title: last.title });
+    if (!asked) return;
+    const tastes = await this.tastesOf(asked.att.id);
+    this.send(asked.ws, {
+      t: "autoplay.fill",
+      epoch: this.s.epoch,
+      videoId: last.videoId,
+      title: last.title,
+      ...(tastes.length ? { tastes } : {}),
+    });
   }
 
   private async onRepeat(mode: Repeat): Promise<void> {

@@ -654,6 +654,94 @@ void main() {
     expect(page.messages.single.text, 'older');
   });
 
+  group('the songs a member offers a room\'s autoplay', () {
+    final secret = ChatCipher.encodeSecret(ChatCipher.newSecret());
+
+    /// A room whose state carries [protocol] and, when [sealed], `enc`; [onSent] sees what is sent; [push] says things later.
+    SocketOpener room(List<String> sent, {int protocol = 19, bool sealed = false, void Function(void Function(String))? push}) =>
+        (url, {required onOpen, required onMessage, required onClose}) {
+          push?.call(onMessage);
+          final socket = _Socket((text) {
+            sent.add(text);
+            if (!text.contains('"join"')) return;
+            scheduleMicrotask(() => onMessage(
+              '{"t":"state","serverNow":0,"you":"me","protocol":$protocol,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0${sealed ? ',"enc":true' : ''}},"members":[]}',
+            ));
+            scheduleMicrotask(() => onMessage('{"t":"chat.history","msgs":[]}'));
+          });
+          scheduleMicrotask(onOpen);
+          return socket;
+        };
+
+    LibraryStore loved() => LibraryStore()..recordListen(const Track(videoId: 'bNp9pn0ni3I', title: 'Song', artist: 'Artist', durMs: 200000));
+
+    List<Map<String, dynamic>> tastes(List<String> sent) => [
+      for (final t in sent)
+        if (t.contains('"taste.set"')) jsonDecode(t) as Map<String, dynamic>,
+    ];
+
+    test('is given to the room once, and again only when it changes or sharing is turned off', () async {
+      final sent = <String>[];
+      void Function(String)? say;
+      final (backend, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        library: loved(),
+        opener: room(sent, push: (f) => say = f),
+      );
+      backend.events.listen((_) {});
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(tastes(sent), hasLength(1));
+      final offer = tastes(sent).single['seeds'] as List<dynamic>;
+      expect((offer.single as Map)['v'], 'bNp9pn0ni3I');
+      // The room says its state at every change: the same offer is not sent again
+      say!('{"t":"state","serverNow":1,"you":"me","protocol":19,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":1},"members":[]}');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(tastes(sent), hasLength(1));
+      await backend.setShareTaste(false);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(tastes(sent), hasLength(2));
+      expect(tastes(sent).last['seeds'], isNull);
+      expect((await backend.profile()).shareTaste, isFalse);
+    });
+
+    test('is not sent to a server that does not know it', () async {
+      final sent = <String>[];
+      final (backend, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        library: loved(),
+        opener: room(sent, protocol: 18),
+      );
+      backend.events.listen((_) {});
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(tastes(sent), isEmpty);
+    });
+
+    test('goes sealed to a room whose chat is sealed, and never as a list the room could read', () async {
+      final sent = <String>[];
+      final (backend, _) = await backendWith(
+        (_) => http.Response('', 404),
+        prefs: {'web.key': 'k', 'web.name': 'Me'},
+        invite: 'ABC234',
+        openChat: true,
+        inviteSecret: secret,
+        library: loved(),
+        opener: room(sent, sealed: true),
+      );
+      backend.events.listen((_) {});
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      final message = tastes(sent).single;
+      expect(message.containsKey('seeds'), isFalse);
+      final opened = await ChatCipher.openTaste(ChatCipher.decodeSecret(secret)!, 'ABC234', 'me', message['s'] as String);
+      expect(opened!.map((e) => e.v), ['bNp9pn0ni3I']);
+    });
+  });
+
   group('a room with end-to-end encrypted chat', () {
     final secret = ChatCipher.encodeSecret(ChatCipher.newSecret());
 

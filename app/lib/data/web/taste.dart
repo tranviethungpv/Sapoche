@@ -75,10 +75,13 @@ class Taste {
     required List<Stamped> skipped,
     required this.now,
     int Function(int at)? hourOf,
+    this.quietSongs = const {},
+    this.quietArtists = const {},
   }) : _heard = heard,
        _hourOf = hourOf ?? _localHour {
     void add(List<Stamped> list, double weight, int halfLifeMs) {
       for (final s in list) {
+        if (quietSongs.contains(s.track.videoId)) continue;
         final value = weight * s.weight * _decay(now - s.at, halfLifeMs);
         _songs.update(s.track.videoId, (v) => v + value, ifAbsent: () => value);
         _artists.update(artistKey(s.track.artist), (v) => v + value, ifAbsent: () => value);
@@ -90,7 +93,20 @@ class Taste {
     add(heard, _heardWeight, _playHalfLifeMs);
     add(liked, _likedWeight, _likeHalfLifeMs);
     add(skipped, _skippedWeight, _playHalfLifeMs);
+    for (final key in quietArtists) {
+      if (_artists.containsKey(key)) _artists[key] = 0.0;
+    }
   }
+
+  /// Songs the person asked not to count: whatever happened to them is left out.
+  final Set<String> quietSongs;
+
+  /// Artists (by [artistKey]) the person wants fewer suggestions of: their score is nothing, and they are never a seed or
+  /// offered to a room.
+  final Set<String> quietArtists;
+
+  /// The person asked for fewer suggestions of this artist.
+  bool isQuiet(String artist) => quietArtists.contains(artistKey(artist));
 
   final List<Stamped> _heard;
   final int now;
@@ -137,13 +153,17 @@ class Taste {
 
   /// The songs suggestions are built from, up to [count]: the best loved, one per artist where there are enough artists,
   /// so the mix is not all one voice. A song of an artist that is disliked or blocked is never one.
-  List<String> seeds(int count, [Blocklist block = const Blocklist()]) {
+  List<String> seeds(int count, [Blocklist block = const Blocklist()]) => [for (final t in offer(count, block)) t.videoId];
+
+  /// The songs the person offers a room's autoplay to start from: [seeds] as they are (songs of files, and of artists
+  /// disliked or blocked, are never one).
+  List<TrackRef> offer(int count, [Blocklist block = const Blocklist()]) {
     final ranked = <(TrackRef, double)>[];
     for (final e in _songs.entries) {
       // A song from a file on the device has no radio to ask for: it tells what is liked, but is never a seed
       if (e.value < minSeed || e.key.startsWith(Track.localPrefix)) continue;
       final track = _tracks[e.key];
-      if (track != null && block.allows(track) && !dislikes(track.artist)) ranked.add((track, e.value));
+      if (track != null && block.allows(track) && !dislikes(track.artist) && !isQuiet(track.artist)) ranked.add((track, e.value));
     }
     ranked.sort((a, b) {
       final byValue = b.$2.compareTo(a.$2);
@@ -160,14 +180,14 @@ class Taste {
         perArtist.update(key, (n) => n + 1, ifAbsent: () => 1);
       }
     }
-    return picked.keys.toList();
+    return picked.values.toList();
   }
 
   /// The songs the person plays at this time of day ([bucket], see [bucketOf]), most played first, up to [count], one per
   /// artist; empty until enough was heard at that time for it to mean something.
   List<TrackRef> contextSeeds(String bucket, [Blocklist block = const Blocklist(), int count = 2]) {
     final since = now - _contextWindowMs;
-    final inBucket = _heard.where((s) => s.at >= since && bucketOf(_hourOf(s.at)) == bucket).toList();
+    final inBucket = _heard.where((s) => s.at >= since && !quietSongs.contains(s.track.videoId) && bucketOf(_hourOf(s.at)) == bucket).toList();
     if (inBucket.length < minContext) return const [];
     final plays = <String, double>{};
     final seen = <String, TrackRef>{};
@@ -188,6 +208,7 @@ class Taste {
       if (picked.length >= count) break;
       if (id.startsWith(Track.localPrefix) ||
           !block.allows(track) ||
+          isQuiet(track.artist) ||
           (_songs[id] ?? 0.0) <= 0.0 ||
           !artistsTaken.add(artistKey(track.artist))) {
         continue;

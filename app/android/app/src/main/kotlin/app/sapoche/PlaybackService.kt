@@ -125,9 +125,13 @@ class PlaybackService : MediaLibraryService() {
             player,
             getSharedPreferences("sapoche", MODE_PRIVATE),
             QueueFile(File(filesDir, "local_queue.json")),
-        ) { seeds, exclude, count -> SapocheApp.suggestions.afterMany(seeds, exclude, count) }
+            moreLike = { seeds, exclude, count -> SapocheApp.suggestions.afterMany(seeds, exclude, count) },
+            tasteOffer = { SapocheApp.suggestions.offer() },
+        )
         SapocheApp.setGroup(group)
         group.recoverRoom()
+        // What the person loves changes with what they hear and like: the room is told soon after
+        scope.launch { SapocheApp.library.changes.collect { group.tasteChanged() } }
 
         // Notification and lock screen buttons go through this wrapper, so while joined to a room
         // they control the whole room instead of just this phone, and outside one the personal queue

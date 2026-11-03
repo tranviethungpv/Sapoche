@@ -663,7 +663,7 @@ final class WireTests: XCTestCase {
             #"{"t":"state","serverNow":0,"you":"me","protocol":9,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":0,"autoplay":true},"members":[]}"#
         ) else { return XCTFail("not a state") }
         XCTAssertEqual(state.autoplay, true)
-        XCTAssertEqual(Wire.parse(#"{"t":"autoplay.fill","epoch":5,"videoId":"v","title":"Song"}"#), .autoplayFill(epoch: 5, videoId: "v", title: "Song"))
+        XCTAssertEqual(Wire.parse(#"{"t":"autoplay.fill","epoch":5,"videoId":"v","title":"Song"}"#), .autoplayFill(epoch: 5, videoId: "v", title: "Song", tastes: []))
         XCTAssertNil(Wire.parse(#"{"t":"autoplay.fill","epoch":5}"#))
         let sent = try XCTUnwrap(JSON.parse(Wire.autoplay(false))?.object)
         XCTAssertEqual(sent["t"] as? String, "autoplay")
@@ -895,6 +895,33 @@ final class SmallPartsTests: XCTestCase {
         let taste = tasteOf(["Known"])
         let list = [by("a", "Known"), by("b", "B"), by("c", "Known"), by("d", "D"), by("e", "E"), by("f", "F")]
         XCTAssertEqual(Suggestions.rank(list, taste: taste).map(\.videoId), Suggestions.rank(list, taste: taste).map(\.videoId))
+    }
+
+    func testTheSongsTheOthersOfferedComeWithTheRequestForMoreSongs() throws {
+        let ask = Wire.parse(#"{"t":"autoplay.fill","epoch":4,"videoId":"bNp9pn0ni3I","title":"One","tastes":[{"by":"m1","seeds":[{"v":"UoXllQoqEBY","ti":"Two","ar":"x"}]},{"by":"m2","s":"AQE-sealed"}]}"#)
+        XCTAssertEqual(ask, .autoplayFill(epoch: 4, videoId: "bNp9pn0ni3I", title: "One", tastes: [
+            MemberTaste(by: "m1", seeds: [TasteSeed(v: "UoXllQoqEBY", ti: "Two", ar: "x")], s: nil),
+            MemberTaste(by: "m2", seeds: nil, s: "AQE-sealed"),
+        ]))
+        let plain = try XCTUnwrap(JSON.parse(Wire.tasteSet([TasteSeed(v: "bNp9pn0ni3I", ti: "Song", ar: "Artist")]))?.object)
+        XCTAssertEqual(plain["t"] as? String, "taste.set")
+        XCTAssertEqual(((plain["seeds"] as? [[String: Any]])?.first)?["v"] as? String, "bNp9pn0ni3I")
+        XCTAssertTrue(JSON.parse(Wire.tasteSet(nil))?.object?["seeds"] is NSNull)
+        let sealed = try XCTUnwrap(JSON.parse(Wire.tasteSetSealed("AQE-abc"))?.object)
+        XCTAssertEqual(sealed["s"] as? String, "AQE-abc")
+        XCTAssertNil(sealed["seeds"])
+        XCTAssertTrue(JSON.parse(Wire.tasteSetSealed(nil))?.object?["s"] is NSNull)
+    }
+
+    func testASongOfEachMembersOfferJoinsTheSeedsGoingRoundWithTheEpoch() {
+        let offers = [["a1", "a2", "a3"], ["b1", "b2"], [], ["c1"]]
+        XCTAssertEqual(Queues.blend(["x"], offers: offers, epoch: 0), ["x", "a1", "b1", "c1"])
+        XCTAssertEqual(Queues.blend(["x"], offers: offers, epoch: 1), ["x", "b2", "c1", "a2"])
+        let four = [["a"], ["b"], ["c"], ["d"]]
+        XCTAssertEqual(Queues.blend(["x", "y", "z"], offers: four, epoch: 0), ["x", "y", "z", "a", "b"])
+        XCTAssertEqual(Queues.blend(["x", "y", "z"], offers: four, epoch: 1), ["x", "y", "z", "b", "c"])
+        XCTAssertEqual(Queues.blend(["a"], offers: [["a", "b"]], epoch: 0), ["a", "b"])
+        XCTAssertEqual(Queues.blend(["x"], offers: [], epoch: 7), ["x"])
     }
 
     func testSeedsOfARoomsAutoplayAreTheLatestSongOfEachMember() {

@@ -169,6 +169,10 @@ class SuggestionFeed {
     return Suggestions.rank(pool, taste).take(count).toList();
   }
 
+  /// The songs this person offers a room's autoplay to start from; never a song of a file, of an artist they asked for less
+  /// of, or a song they asked not to count.
+  List<TrackRef> offer() => _taste().offer(offerCount, _blocklist());
+
   /// What the listening says about the person: how much each artist and each song is loved, and how each source fared.
   TasteProfile profile() {
     final taste = _taste();
@@ -182,6 +186,7 @@ class SuggestionFeed {
   /// Songs not worth offering: the seeds themselves, those liked and those heard this week.
   Set<String> _known(List<String> seeds) => {...seeds, ...store.likedIds(), ...store.heardSince(_now() - _recentMs)};
 
+  static const offerCount = 5;
   static const forYouCount = 30;
   static const discoverCount = 20;
   static const contextCount = 20;

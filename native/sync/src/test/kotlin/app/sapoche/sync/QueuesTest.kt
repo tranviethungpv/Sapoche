@@ -79,4 +79,22 @@ class QueuesTest {
     fun `an empty queue gives the song asked about`() {
         assertEquals(listOf("z"), Queues.seeds(emptyList(), "z"))
     }
+
+    @Test
+    fun `a song of each member's offer joins the seeds, going round with the epoch`() {
+        val offers = listOf(listOf("a1", "a2", "a3"), listOf("b1", "b2"), emptyList(), listOf("c1"))
+        // The first song of each, from the first member; the one who offered nothing is not there
+        assertEquals(listOf("x", "a1", "b1", "c1"), Queues.blend(listOf("x"), offers, epoch = 0))
+        // Next time the room runs out it is the second song of those who gave more than one, and the members start elsewhere
+        assertEquals(listOf("x", "b2", "c1", "a2"), Queues.blend(listOf("x"), offers, epoch = 1))
+    }
+
+    @Test
+    fun `no more than five radios are asked for, and a song already a seed is not taken twice`() {
+        val offers = listOf(listOf("a"), listOf("b"), listOf("c"), listOf("d"))
+        assertEquals(listOf("x", "y", "z", "a", "b"), Queues.blend(listOf("x", "y", "z"), offers, epoch = 0))
+        assertEquals(listOf("x", "y", "z", "b", "c"), Queues.blend(listOf("x", "y", "z"), offers, epoch = 1))
+        assertEquals(listOf("a", "b"), Queues.blend(listOf("a"), listOf(listOf("a", "b")), epoch = 0))
+        assertEquals(listOf("x"), Queues.blend(listOf("x"), emptyList(), epoch = 7))
+    }
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/web/chat_cipher.dart';
+import 'package:sapoche/data/web/wire.dart' show TasteSeed;
 
 // The Dart cipher against the vectors Kotlin and Swift read as well: they were made with Node's own crypto.
 void main() {
@@ -166,5 +167,19 @@ void main() {
     expect(ChatCipher.decodeSecret('abc'), isNull);
     expect(ChatCipher.decodeSecret(''), isNull);
     expect(ChatCipher.encodeSecret(made), matches(RegExp(r'^[A-Za-z0-9_-]{43}$')));
+  });
+
+  test('the songs a member offers for autoplay are sealed to that member and that room', () async {
+    const seeds = [TasteSeed('bNp9pn0ni3I', 'Chiều hôm ấy', 'Jaykii'), TasteSeed('UoXllQoqEBY', 'Song 2', 'Artist')];
+    final envelope = await ChatCipher.sealTaste(secret, room, '0a1b2c3d4e5f6071', seeds);
+    expect(await ChatCipher.openTaste(secret, room, '0a1b2c3d4e5f6071', envelope), seeds);
+    // Not as another member's offer, in another room, or as a message: the label in the associated data keeps them apart
+    expect(await ChatCipher.openTaste(secret, room, 'b9f77f9b6e1bf750', envelope), isNull);
+    expect(await ChatCipher.openTaste(secret, 'XYZ234', '0a1b2c3d4e5f6071', envelope), isNull);
+    expect(await ChatCipher.open(secret, room, '0a1b2c3d4e5f6071', envelope), isNull);
+    final message = await ChatCipher.sealMessage(secret, room, 'taste:0a1b2c3d4e5f6071', 'hello', null);
+    expect(await ChatCipher.openTaste(secret, room, '0a1b2c3d4e5f6071', message.ct), isNull);
+    expect(await ChatCipher.openTaste(secret, room, 'a1', await ChatCipher.sealTaste(secret, room, 'a1', const [])), isEmpty);
+    expect(await ChatCipher.openTaste(secret, room, 'a1', 'not an envelope'), isNull);
   });
 }

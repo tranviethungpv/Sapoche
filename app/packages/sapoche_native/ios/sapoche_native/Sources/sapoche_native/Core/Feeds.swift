@@ -4,6 +4,7 @@ import Foundation
 /// loves most (the seeds, chosen by [Taste] from what they heard, liked and left after a few seconds). The lists are
 /// kept for [freshMs], so opening the app shows them at once, even offline, and the network is only used to renew them.
 actor SuggestionFeed {
+    static let offerCount = 5
     static let forYouCount = 30
     static let discoverCount = 20
     static let contextCount = 20
@@ -170,6 +171,13 @@ actor SuggestionFeed {
         }
         // YouTube's order, put in the order that suits this person
         return Array(Suggestions.rank(pool, taste: taste).prefix(count))
+    }
+
+    /// The songs this person offers a room's autoplay to start from; never a song of a file, of an artist they asked for less
+    /// of, or a song they asked not to count.
+    func offer() async throws -> [TrackRef] {
+        let taste = try await loadTaste()
+        return taste.offer(Self.offerCount, block: try await blocklist())
     }
 
     /// What the listening says about the person: how much each artist and each song is loved, and how each source fared.

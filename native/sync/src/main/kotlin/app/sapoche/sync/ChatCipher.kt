@@ -8,6 +8,7 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.io.encoding.Base64
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -116,6 +117,34 @@ object ChatCipher {
 
     /** The JPEG that [envelope] holds; null when it is not from this room's secret or intact. */
     fun openBackground(secret: ByteArray, room: String, envelope: String): ByteArray? = open(secret, room, BACKGROUND, envelope)
+
+    /** Stands before the public id in the associated data of a sealed offer for autoplay: no message has such a sender. */
+    private const val TASTE = "taste:"
+
+    /** The songs [seeds] that member [by] offers for autoplay in [room], sealed (protocol 19). */
+    fun sealTaste(secret: ByteArray, room: String, by: String, seeds: List<TasteSeed>): String {
+        val body = buildJsonObject {
+            put("seeds", buildJsonArray { seeds.forEach { add(buildJsonObject { put("v", it.v); put("ti", it.ti); put("ar", it.ar) }) } })
+        }.toString().toByteArray()
+        return seal(secret, room, TASTE + by, body + ByteArray((PAD - body.size % PAD) % PAD) { ' '.code.toByte() })
+    }
+
+    /** The songs that member [by] offered in [envelope]; null when it is not from this room's secret, that member, or intact. */
+    fun openTaste(secret: ByteArray, room: String, by: String, envelope: String): List<TasteSeed>? {
+        val body = open(secret, room, TASTE + by, envelope) ?: return null
+        return try {
+            (json.parseToJsonElement(String(body)).jsonObject["seeds"] as? kotlinx.serialization.json.JsonArray)?.map {
+                val o = it.jsonObject
+                TasteSeed(
+                    o["v"]?.jsonPrimitive?.contentOrNull ?: return null,
+                    o["ti"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    o["ar"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     /** The sealed words of a message by [by], with the quote of what it answers inside, and the sealed preview. */
     fun sealMessage(secret: ByteArray, room: String, by: String, text: String, quote: ChatQuote?, x: JsonObject? = null): Pair<String, String> {

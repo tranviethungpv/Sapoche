@@ -245,6 +245,21 @@ struct ChatMessage: Equatable {
     }
 }
 
+/// A song a member offers for autoplay to start from: its video id, title and artist. Protocol 19.
+struct TasteSeed: Equatable {
+    var v: String
+    var ti: String
+    var ar: String
+}
+
+/// What member [by] (a public id) offered for autoplay to start from: [seeds], or in a room with sealed chat [s], the sealed
+/// envelope of them. Protocol 19.
+struct MemberTaste: Equatable {
+    var by: String
+    var seeds: [TasteSeed]?
+    var s: String?
+}
+
 /// What a reply shows of the message it answers.
 struct ChatQuote: Equatable {
     var id: Int64
@@ -292,7 +307,8 @@ enum ServerMessage: Equatable {
     case advance(epoch: Int64, index: Int, startedAt: Int64)
     case pong(c0: Int64, s1: Int64)
     /// The room's queue ran out and this device is asked to find songs like [videoId] and send them with `Wire.queueAddMany`.
-    case autoplayFill(epoch: Int64, videoId: String, title: String)
+    /// [tastes] are the songs the other members offered to start from as well (protocol 19).
+    case autoplayFill(epoch: Int64, videoId: String, title: String, tastes: [MemberTaste])
     /// The picture of member [id] as base64, with its fingerprint [av]; both are nil when the member has none.
     case avatar(id: String, av: String?, data: String?, sealed: Bool)
     /// The answer to `Wire.mediaPut`: one ticket per file, in order, and the [id] the request had. Protocol 18.
@@ -346,7 +362,15 @@ enum Wire {
             return .pong(c0: c0, s1: s1)
         case "autoplay.fill":
             guard let epoch = json["epoch"].int64, let videoId = json["videoId"].string, let title = json["title"].string else { return nil }
-            return .autoplayFill(epoch: epoch, videoId: videoId, title: title)
+            let tastes = json["tastes"].array.compactMap { member -> MemberTaste? in
+                guard let by = member["by"].string else { return nil }
+                let seeds = member["seeds"].raw == nil ? nil : member["seeds"].array.compactMap { seed -> TasteSeed? in
+                    guard let v = seed["v"].string else { return nil }
+                    return TasteSeed(v: v, ti: seed["ti"].string ?? "", ar: seed["ar"].string ?? "")
+                }
+                return MemberTaste(by: by, seeds: seeds, s: member["s"].string)
+            }
+            return .autoplayFill(epoch: epoch, videoId: videoId, title: title, tastes: tastes)
         case "avatar":
             guard let id = json["id"].string else { return nil }
             return .avatar(id: id, av: json["av"].string, data: json["data"].string, sealed: json["sealed"].bool ?? false)
@@ -430,6 +454,15 @@ enum Wire {
     /// [rttMs] is the best round trip this device has measured; the room uses the slowest of its devices to decide how
     /// far ahead to schedule a start. Nil leaves it out, as older apps do.
     static func ping(_ c0: Int64, rttMs: Double? = nil) -> String { msg("ping", ["c0": c0], optional: rttMs.map { ["rtt": Int64($0)] }) }
+
+    /// A few songs this member likes, for autoplay to start from (protocol 19): [seeds] in a room whose chat is not sealed.
+    /// Nil takes them back.
+    static func tasteSet(_ seeds: [TasteSeed]?) -> String {
+        msg("taste.set", ["seeds": seeds.map { list in list.map { ["v": $0.v, "ti": $0.ti, "ar": $0.ar] } } ?? NSNull()])
+    }
+
+    /// The same for a room whose chat is sealed: the sealed envelope [sealed] of the songs. Nil takes them back.
+    static func tasteSetSealed(_ sealed: String?) -> String { msg("taste.set", ["s": sealed ?? NSNull()]) }
 
     /// The device's own picture as base64 of a small JPEG; nil takes it away. Only servers of protocol 8 or newer know it.
     static func avatarSet(_ data: String?) -> String { msg("avatar.set", ["data": data ?? NSNull()]) }

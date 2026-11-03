@@ -550,6 +550,9 @@ class FakeBackend implements Backend {
   Future<void> setAutoplay(bool on) => _record('autoplay $on');
 
   @override
+  Future<void> setShareTaste(bool on) => _record('shareTaste $on');
+
+  @override
   Future<void> setAudioQuality(AudioQuality quality) =>
       _record('audioQuality ${quality.name}');
 

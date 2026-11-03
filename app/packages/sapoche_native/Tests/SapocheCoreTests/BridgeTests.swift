@@ -1214,6 +1214,86 @@ final class GroupControllerTests: XCTestCase {
         room.release()
     }
 
+    /// The songs the person loves are offered to the room at the first state of a connection and when they change, sealed in
+    /// a room whose chat is, and taken back when the person turns sharing off.
+    func testTheDeviceOffersItsSongsToTheRoomAndTakesThemBackWhenTheOtherTurnsSharingOff() async throws {
+        let sockets = FakeSockets()
+        let secrets = MemorySecrets()
+        let offered = [TrackRef(videoId: "bNp9pn0ni3I", title: "Song", artist: "A", thumb: nil, durMs: 200_000)]
+        let room = GroupController(
+            engine: FakePlayer(time: time), prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("o.json")),
+            config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets, tasteOffer: { offered }, secrets: secrets
+        )
+        room.join(code: "ABC234", name: "Me", create: false)
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        func taste() -> [[String: Any]] { socket.sent.compactMap { JSON.parse($0)?.object }.filter { $0["t"] as? String == "taste.set" } }
+        let state = #"{"t":"state","serverNow":1,"you":"me","protocol":19,"state":{"queue":[],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":1},"members":[]}"#
+        socket.receive(state)
+        await time.advance(10)
+        XCTAssertEqual(taste().count, 1)
+        XCTAssertEqual(((taste()[0]["seeds"] as? [[String: Any]])?.first)?["v"] as? String, "bNp9pn0ni3I")
+        // The room says its state at every change: the same offer is not sent again
+        socket.receive(state)
+        await time.advance(10)
+        XCTAssertEqual(taste().count, 1)
+        // Turning sharing off takes the songs back
+        room.shareTasteOn = false
+        await time.advance(10)
+        XCTAssertEqual(taste().count, 2)
+        XCTAssertTrue(taste()[1]["seeds"] is NSNull)
+        // An older server does not know the message
+        let old = GroupController(
+            engine: FakePlayer(time: time), prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("o2.json")),
+            config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets, tasteOffer: { offered }
+        )
+        old.join(code: "ABC234", name: "Me", create: false)
+        await time.advance(10)
+        let oldSocket = try XCTUnwrap(sockets.opened.last)
+        oldSocket.open()
+        oldSocket.receive(state.replacingOccurrences(of: #""protocol":19"#, with: #""protocol":18"#))
+        await time.advance(10)
+        XCTAssertFalse(oldSocket.sent.contains { $0.contains("taste.set") })
+        room.release()
+        old.release()
+    }
+
+    func testARoomWithSealedChatIsOfferedSealedSongsAndOpensTheOnesItIsGiven() async throws {
+        let sockets = FakeSockets()
+        let secrets = MemorySecrets()
+        let secret = ChatCipher.newSecret()
+        secrets.save(secret, for: "ABC234")
+        let offered = [TrackRef(videoId: "bNp9pn0ni3I", title: "Song", artist: "A", thumb: nil, durMs: 200_000)]
+        let more = TrackRef(videoId: "more0000001", title: "More", artist: "A", thumb: nil, durMs: 200_000)
+        let room = GroupController(
+            engine: FakePlayer(time: time), prefs: MemoryStore(), queueFile: QueueFile(url: dir.appendingPathComponent("e.json")),
+            config: { ServerConfig(server: "https://x") }, time: time, sockets: sockets,
+            moreLike: { [unowned self] ids, _, _ in
+                self.asked.append(contentsOf: ids)
+                return [more]
+            },
+            tasteOffer: { offered }, secrets: secrets
+        )
+        room.join(code: "ABC234", name: "Me", create: false)
+        await time.advance(10)
+        let socket = try XCTUnwrap(sockets.opened.last)
+        socket.open()
+        let item = #"{"id":"q1","videoId":"video000001","title":"Song 1","artist":"A","durMs":9,"addedBy":"me"}"#
+        socket.receive(#"{"t":"state","serverNow":1,"you":"me","protocol":19,"state":{"queue":[\#(item)],"index":0,"phase":"idle","startedAt":0,"positionMs":0,"epoch":4,"autoplay":true,"enc":true},"members":[]}"#)
+        await time.advance(10)
+        let sent = socket.sent.compactMap { JSON.parse($0)?.object }.first { $0["t"] as? String == "taste.set" }
+        let envelope = try XCTUnwrap(sent?["s"] as? String)
+        XCTAssertNil(sent?["seeds"], "a sealed room is given nothing it could read")
+        XCTAssertEqual(ChatCipher.openTaste(secret: secret, room: "ABC234", by: "me", envelope: envelope)?.map(\.v), ["bNp9pn0ni3I"])
+
+        let theirs = try XCTUnwrap(ChatCipher.sealTaste(secret: secret, room: "ABC234", by: "ann", seeds: [TasteSeed(v: "UoXllQoqEBY", ti: "T", ar: "A")]))
+        socket.receive(#"{"t":"autoplay.fill","epoch":4,"videoId":"video000001","title":"Song 1","tastes":[{"by":"ann","s":"\#(theirs)"},{"by":"bob","s":"AQE-not-from-this-room"}]}"#)
+        await time.advance(100)
+        XCTAssertEqual(asked, ["video000001", "UoXllQoqEBY"], "what a member offered is opened, and an offer that cannot be read is left out")
+        room.release()
+    }
+
     func testTheRoomsAutoplayLooksForSongsLikeThoseOfSeveralMembers() async throws {
         let sockets = FakeSockets()
         let more = TrackRef(videoId: "more0000001", title: "More", artist: "A", thumb: nil, durMs: 200_000)

@@ -3,6 +3,7 @@ package app.sapoche.sync
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonArray
@@ -27,6 +28,10 @@ data class QueueItem(
     /** Put on the queue by autoplay, not by a member: it stays behind the songs they chose and goes once played. Protocol 12. */
     val auto: Boolean = false,
 )
+
+/** A song a member offers for autoplay to start from: its video id, title and artist. Protocol 19. */
+@Serializable
+data class TasteSeed(val v: String, val ti: String, val ar: String)
 
 /** A song to put on the queue; the server adds the item id and who added it. */
 data class TrackRef(val videoId: String, val title: String, val artist: String, val thumb: String?, val durMs: Long)
@@ -145,9 +150,16 @@ sealed interface ServerMessage {
     @Serializable
     data class Pong(val c0: Long, val s1: Long) : ServerMessage
 
-    /** The room's queue ran out and this device is asked to find songs like [videoId] and send them with [Protocol.queueAddMany]. */
+    /**
+     * The room's queue ran out and this device is asked to find songs like [videoId] and send them with [Protocol.queueAddMany].
+     * [tastes] are the songs the other members offered to start from as well (protocol 19).
+     */
     @Serializable
-    data class AutoplayFill(val epoch: Long, val videoId: String, val title: String) : ServerMessage
+    data class AutoplayFill(val epoch: Long, val videoId: String, val title: String, val tastes: List<MemberTaste> = emptyList()) : ServerMessage
+
+    /** What member [by] (a public id) offered for autoplay to start from: [seeds], or in a room with sealed chat [s], the sealed envelope of them. */
+    @Serializable
+    data class MemberTaste(val by: String, val seeds: List<TasteSeed>? = null, val s: String? = null)
 
     /** The picture of member [id] as base64, with its fingerprint [av]; both are null when the member has none. */
     @Serializable
@@ -293,6 +305,16 @@ object Protocol {
         put("c0", c0)
         if (rttMs != null) put("rtt", rttMs.toLong())
     }
+
+    /**
+     * A few songs this member likes, for autoplay to start from (protocol 19): [seeds] in a room whose chat is not sealed, else
+     * the sealed envelope [sealed]. Null takes them back.
+     */
+    fun tasteSet(seeds: List<TasteSeed>?) = msg("taste.set") {
+        put("seeds", if (seeds == null) JsonNull else buildJsonArray { seeds.forEach { add(buildJsonObject { put("v", it.v); put("ti", it.ti); put("ar", it.ar) }) } })
+    }
+
+    fun tasteSetSealed(sealed: String?) = msg("taste.set") { put("s", sealed) }
 
     /** The device's own picture as base64 of a small JPEG; null takes it away. Only servers of protocol 8 or newer know it. */
     fun avatarSet(data: String?) = msg("avatar.set") { put("data", data) }

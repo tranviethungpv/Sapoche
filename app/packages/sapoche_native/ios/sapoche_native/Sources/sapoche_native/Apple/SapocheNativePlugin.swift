@@ -79,6 +79,8 @@ final class SapocheRuntime {
                 onChange: { Task { @MainActor in
                     SapocheRuntime.shared.bridge.libraryChanged()
                     SapocheRuntime.shared.nowPlaying.libraryChanged()
+                    // What the person loves changes with what they hear and like: the room is told soon after
+                    SapocheRuntime.shared.controller.tasteChanged()
                 } },
                 untitled: { language() == "vi" ? "Chưa đặt tên" : "Untitled" }
             )
@@ -113,6 +115,7 @@ final class SapocheRuntime {
                 }
             },
             moreLike: { seeds, exclude, count in try await suggestions.afterMany(seeds, exclude: exclude, count: count) },
+            tasteOffer: { try await suggestions.offer() },
             secrets: KeychainSecrets()
         )
         bridge = Bridge(controller: controller, prefs: prefs, platform: platform, store: store, resolver: resolver, streams: streams,

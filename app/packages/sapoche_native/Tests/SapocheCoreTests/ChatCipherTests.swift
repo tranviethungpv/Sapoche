@@ -119,6 +119,23 @@ final class ChatCipherTests: XCTestCase {
         XCTAssertEqual(String(decoding: preview, as: UTF8.self), String(repeating: "é", count: 120))
     }
 
+    func testTheSongsAMemberOffersForAutoplayAreSealedToThatMemberAndThatRoom() throws {
+        let v = try vectors()
+        let secret = unbase64url(v["secret"] as! String)
+        let code = v["code"] as! String
+        let seeds = [TasteSeed(v: "bNp9pn0ni3I", ti: "Chiều hôm ấy", ar: "Jaykii"), TasteSeed(v: "UoXllQoqEBY", ti: "Song 2", ar: "Artist")]
+        let envelope = try XCTUnwrap(ChatCipher.sealTaste(secret: secret, room: code, by: "0a1b2c3d4e5f6071", seeds: seeds))
+        XCTAssertEqual(ChatCipher.openTaste(secret: secret, room: code, by: "0a1b2c3d4e5f6071", envelope: envelope), seeds)
+        // Not as another member's offer, in another room, or as a message: the label in the associated data keeps them apart
+        XCTAssertNil(ChatCipher.openTaste(secret: secret, room: code, by: "b9f77f9b6e1bf750", envelope: envelope))
+        XCTAssertNil(ChatCipher.openTaste(secret: secret, room: "XYZ234", by: "0a1b2c3d4e5f6071", envelope: envelope))
+        XCTAssertNil(ChatCipher.open(secret: secret, room: code, by: "0a1b2c3d4e5f6071", envelope: envelope))
+        let message = try XCTUnwrap(ChatCipher.sealMessage(secret: secret, room: code, by: "taste:0a1b2c3d4e5f6071", text: "hello", quote: nil)).ct
+        XCTAssertNil(ChatCipher.openTaste(secret: secret, room: code, by: "0a1b2c3d4e5f6071", envelope: message))
+        XCTAssertEqual(ChatCipher.openTaste(secret: secret, room: code, by: "a1", envelope: try XCTUnwrap(ChatCipher.sealTaste(secret: secret, room: code, by: "a1", seeds: []))), [])
+        XCTAssertNil(ChatCipher.openTaste(secret: secret, room: code, by: "a1", envelope: "not an envelope"))
+    }
+
     func testASecretIsWrittenAndReadAsBase64urlAndOnly32BytesAreOne() {
         let made = ChatCipher.newSecret()
         XCTAssertEqual(made.count, 32)

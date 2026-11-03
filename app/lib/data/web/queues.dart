@@ -21,4 +21,25 @@ abstract final class Queues {
     }
     return seeds;
   }
+
+  /// The most songs autoplay asks for radios of in all, its own and the members' offers together.
+  static const maxBlend = 5;
+
+  /// [base] (see [seeds]) with one song of each member's offer, to look for songs that suit the room and not only the
+  /// last song: [offers] are the video ids each member offered, in the order they gave them. Which song of an offer, and
+  /// which members when there are not places for all, goes round with [epoch], so the next time the room runs out it is
+  /// others'. Songs already among the seeds are not taken twice. At most [max] come back in all.
+  static List<String> blend(List<String> base, List<List<String>> offers, int epoch, {int max = maxBlend}) {
+    final result = [...base];
+    final members = offers.where((o) => o.isNotEmpty).toList();
+    if (members.isEmpty) return result;
+    final start = epoch % members.length;
+    for (var i = 0; i < members.length; i++) {
+      if (result.length >= max) break;
+      final offer = members[(start + i) % members.length];
+      final pick = [for (var k = 0; k < offer.length; k++) offer[(epoch + k) % offer.length]].where((id) => !result.contains(id)).firstOrNull;
+      if (pick != null) result.add(pick);
+    }
+    return result;
+  }
 }

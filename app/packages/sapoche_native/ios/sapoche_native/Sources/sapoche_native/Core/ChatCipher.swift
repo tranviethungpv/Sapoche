@@ -101,6 +101,30 @@ enum ChatCipher {
     /// Stands where the sender goes in the associated data of the sealed picture behind the chat: no member's public id looks like it.
     private static let background = "bg"
 
+    /// Stands before the public id in the associated data of a sealed offer for autoplay: no message has such a sender.
+    private static let tasteLabel = "taste:"
+
+    /// The songs [seeds] that member [by] offers for autoplay in [room], sealed (protocol 19).
+    static func sealTaste(secret: Data, room: String, by: String, seeds: [TasteSeed]) -> String? {
+        let list = seeds.map { ["v": $0.v, "ti": $0.ti, "ar": $0.ar] }
+        var body = Data(JSONText.encode(["seeds": list]).utf8)
+        body.append(Data(repeating: 0x20, count: (pad - body.count % pad) % pad))
+        return seal(secret: secret, room: room, by: tasteLabel + by, plaintext: body)
+    }
+
+    /// The songs that member [by] offered in [envelope]; nil when it is not from this room's secret, that member, or intact.
+    static func openTaste(secret: Data, room: String, by: String, envelope: String) -> [TasteSeed]? {
+        guard let body = open(secret: secret, room: room, by: tasteLabel + by, envelope: envelope),
+              let text = String(data: body, encoding: .utf8), let list = JSON.parse(text)?["seeds"].array, list.count > 0 || JSON.parse(text)?["seeds"].raw != nil
+        else { return nil }
+        var seeds: [TasteSeed] = []
+        for item in list {
+            guard let v = item["v"].string else { return nil }
+            seeds.append(TasteSeed(v: v, ti: item["ti"].string ?? "", ar: item["ar"].string ?? ""))
+        }
+        return seeds
+    }
+
     /// The bytes of the JPEG behind the chat of [room], sealed. [nonce] is only given by the tests.
     static func sealBackground(secret: Data, room: String, jpeg: Data, nonce: Data? = nil) -> String? {
         seal(secret: secret, room: room, by: background, plaintext: jpeg, nonce: nonce)

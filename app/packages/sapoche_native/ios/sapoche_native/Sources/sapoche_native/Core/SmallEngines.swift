@@ -12,6 +12,27 @@ enum Queues {
     /// The most songs autoplay asks a radio for at once: more would be many requests for a room that has run dry.
     static let maxSeeds = 3
 
+    /// The most songs autoplay asks for radios of in all, its own and the members' offers together.
+    static let maxBlend = 5
+
+    /// [base] (see `seeds`) with one song of each member's offer, to look for songs that suit the room and not only the last
+    /// song: [offers] are the video ids each member offered, in the order they gave them. Which song of an offer, and which
+    /// members when there are not places for all, goes round with [epoch], so the next time the room runs out it is others'.
+    /// Songs already among the seeds are not taken twice. At most [max] come back in all.
+    static func blend(_ base: [String], offers: [[String]], epoch: Int64, max: Int = Queues.maxBlend) -> [String] {
+        var result = base
+        let members = offers.filter { !$0.isEmpty }
+        if members.isEmpty { return result }
+        let start = Int(((epoch % Int64(members.count)) + Int64(members.count)) % Int64(members.count))
+        for i in members.indices {
+            if result.count >= max { break }
+            let offer = members[(start + i) % members.count]
+            let pick = offer.indices.map { offer[Int(((epoch + Int64($0)) % Int64(offer.count) + Int64(offer.count)) % Int64(offer.count))] }.first { !result.contains($0) }
+            if let pick { result.append(pick) }
+        }
+        return result
+    }
+
     /// The songs a room's autoplay looks for more of: [ask], the last song, then the songs of [queue] that members put
     /// there, the latest first, one for each member who has not a song among them yet. Songs autoplay itself put there
     /// are not a member's choice and are left out. A room where one member added everything gives [ask] alone, as it

@@ -185,16 +185,44 @@ class PongMessage extends ServerMessage {
   final int s1;
 }
 
-/// The room's queue ran out and this device is asked to find songs like [videoId].
+/// A song a member offers for autoplay to start from: its video id, title and artist. Protocol 19.
+class TasteSeed {
+  const TasteSeed(this.v, this.ti, this.ar);
+
+  final String v;
+  final String ti;
+  final String ar;
+
+  @override
+  bool operator ==(Object other) => other is TasteSeed && other.v == v && other.ti == ti && other.ar == ar;
+
+  @override
+  int get hashCode => Object.hash(v, ti, ar);
+}
+
+/// What member [by] (a public id) offered for autoplay to start from: [seeds], or in a room with sealed chat [s], the
+/// sealed envelope of them. Protocol 19.
+class MemberTaste {
+  const MemberTaste({required this.by, this.seeds, this.s});
+
+  final String by;
+  final List<TasteSeed>? seeds;
+  final String? s;
+}
+
+/// The room's queue ran out and this device is asked to find songs like [videoId]. [tastes] are the songs the other
+/// members offered to start from as well (protocol 19).
 class AutoplayFillMessage extends ServerMessage {
   const AutoplayFillMessage({
     required this.epoch,
     required this.videoId,
     required this.title,
+    this.tastes = const [],
   });
   final int epoch;
   final String videoId;
   final String title;
+  final List<MemberTaste> tastes;
 }
 
 class AvatarMessage extends ServerMessage {
@@ -316,6 +344,23 @@ ServerMessage? parseServerMessage(String text) {
         epoch: n('epoch'),
         videoId: obj['videoId'] as String,
         title: obj['title'] as String,
+        tastes: [
+          for (final e in obj['tastes'] as List<dynamic>? ?? const [])
+            MemberTaste(
+              by: (e as Map<String, dynamic>)['by'] as String,
+              seeds: e['seeds'] == null
+                  ? null
+                  : [
+                      for (final seed in e['seeds'] as List<dynamic>)
+                        TasteSeed(
+                          (seed as Map<String, dynamic>)['v'] as String,
+                          seed['ti'] as String? ?? '',
+                          seed['ar'] as String? ?? '',
+                        ),
+                    ],
+              s: e['s'] as String?,
+            ),
+        ],
       ),
       'avatar' => AvatarMessage(
         id: obj['id'] as String,
@@ -438,6 +483,19 @@ abstract final class Wire {
       _msg('ping', {'c0': c0, 'rtt': ?rttMs?.toInt()});
 
   static String avatarSet(String? data) => _msg('avatar.set', {'data': data});
+
+  /// A few songs this member likes, for autoplay to start from (protocol 19): [seeds] in a room whose chat is not
+  /// sealed. Null takes them back.
+  static String tasteSet(List<TasteSeed>? seeds) => _msg('taste.set', {
+    'seeds': seeds == null
+        ? null
+        : [
+            for (final s in seeds) {'v': s.v, 'ti': s.ti, 'ar': s.ar},
+          ],
+  });
+
+  /// The same for a room whose chat is sealed: the sealed envelope [sealed] of the songs. Null takes them back.
+  static String tasteSetSealed(String? sealed) => _msg('taste.set', {'s': sealed});
   static String avatarGet(String id) => _msg('avatar.get', {'id': id});
 
   /// Asks to be told of the chat of [room] while away, at the browser with push subscription [sub]; see push.set in

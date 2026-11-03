@@ -111,6 +111,7 @@ final class GroupController {
     private let config: () -> ServerConfig
     /// Up to [Int] songs to carry on with after [String] (a video id), leaving out the ids given.
     private let moreLike: (_ seeds: [String], Set<String>, Int) async throws -> [TrackRef]
+    private let tasteOffer: () async throws -> [TrackRef]
     /// The secrets of the rooms with end-to-end encrypted chat.
     let secrets: RoomSecretStore
     private let sockets: SocketFactory?
@@ -310,6 +311,7 @@ final class GroupController {
          recordListen: @escaping (TrackRef, String) -> Void = { _, _ in }, recordSkip: @escaping (TrackRef, String) -> Void = { _, _ in },
          time: TimeSource? = nil, sockets: SocketFactory? = nil,
          moreLike: @escaping ([String], Set<String>, Int) async throws -> [TrackRef] = { _, _, _ in [] },
+         tasteOffer: @escaping () async throws -> [TrackRef] = { [] },
          secrets: RoomSecretStore = MemorySecrets()) {
         self.engine = engine
         self.secrets = secrets
@@ -319,6 +321,7 @@ final class GroupController {
         self.time = time ?? SystemTime.shared
         self.sockets = sockets
         self.moreLike = moreLike
+        self.tasteOffer = tasteOffer
         trimMs = prefs.int64(Self.keyTrimMs) ?? 0
         videoMode = prefs.bool(Self.keyVideo, default: false)
         view = StateFlow(View())
@@ -429,11 +432,12 @@ final class GroupController {
 
     /// The room's queue ran out and the server asked this device for songs like the last one, as [autoplay] does for the
     /// personal queue. Nothing is sent when the room has moved on by the time they arrive, or when none were found.
-    private func fillRoom(epoch: Int64, videoId: String, title: String) {
+    private func fillRoom(epoch: Int64, videoId: String, title: String, tastes: [MemberTaste]) {
         scope.launch { [weak self] in
             guard let self else { return }
             do {
-                let seeds = Queues.seeds(self.queue(), ask: videoId)
+                // The songs of the queue, and a song of each member who offered some, going round with each time the room runs out
+                let seeds = Queues.blend(Queues.seeds(self.queue(), ask: videoId), offers: self.openOffers(tastes), epoch: epoch)
                 let more = try await self.moreLike(seeds, Set(self.queue().map(\.videoId)), Self.autoplayCount)
                 if more.isEmpty || self.session?.snapshot.value.state?.epoch != epoch { return }
                 EventLog.d("sync", "autoplay adds \(more.count) songs like '\(title)' and \(seeds.count - 1) more to the room")
@@ -444,6 +448,73 @@ final class GroupController {
             } catch {
                 EventLog.d("sync", "autoplay found nothing for the room: \(error.localizedDescription)")
             }
+        }
+    }
+
+    /// Whether this device offers the songs it loves to a room's autoplay (on unless the person turned it off).
+    var shareTasteOn: Bool {
+        get { prefs.bool(Self.keyShareTaste, default: true) }
+        set {
+            prefs.set(newValue, for: Self.keyShareTaste)
+            shareTaste()
+        }
+    }
+
+    /// The message last sent about this device's songs on this connection, so the same one is not sent again at every state.
+    private var sentTaste: String?
+    private var tasteJob: Job?
+
+    /// What this person loves changed (a song was heard, a mark put on the taste): tells the room soon, if it differs.
+    func tasteChanged() {
+        if session == nil { return }
+        tasteJob?.cancel()
+        tasteJob = scope.launch { [weak self] in
+            guard let self else { return }
+            try await self.time.sleep(ms: Self.tasteDelayMs)
+            self.shareTaste()
+        }
+    }
+
+    /// Hands the room the songs this device offers autoplay, or takes them back when the person does not want to share, once
+    /// per connection and again when they change. A room whose chat is sealed is given them sealed, and without its secret
+    /// nothing can be offered. The server must know protocol 19.
+    private func shareTaste() {
+        guard let session else { return }
+        scope.launch { [weak self] in
+            // Read once the session has taken in the state that came with this
+            guard let self, let state = session.snapshot.value.state, let code = self.roomCode, let you = session.snapshot.value.you else { return }
+            let sealed = state.enc
+            var offer: [TasteSeed] = []
+            if self.shareTasteOn {
+                do {
+                    offer = try await self.tasteOffer().map { TasteSeed(v: $0.videoId, ti: String($0.title.prefix(Self.tasteText)), ar: String($0.artist.prefix(Self.tasteText))) }
+                } catch {
+                    return
+                }
+            }
+            let message: String
+            if offer.isEmpty {
+                message = sealed ? Wire.tasteSetSealed(nil) : Wire.tasteSet(nil)
+            } else if !sealed {
+                message = Wire.tasteSet(offer)
+            } else if let secret = self.secrets.secret(for: code), let envelope = ChatCipher.sealTaste(secret: secret, room: code, by: you, seeds: offer) {
+                message = Wire.tasteSetSealed(envelope)
+            } else {
+                message = Wire.tasteSetSealed(nil)
+            }
+            if message == self.sentTaste || self.session !== session { return }
+            if self.send(message) { self.sentTaste = message }
+        }
+    }
+
+    /// The video ids each member offered in [tastes], opened with the room's secret when the chat is sealed; a member whose
+    /// offer cannot be read is left out.
+    private func openOffers(_ tastes: [MemberTaste]) -> [[String]] {
+        guard let code = roomCode else { return [] }
+        let secret = session?.snapshot.value.state?.enc == true ? secrets.secret(for: code) : nil
+        return tastes.map { member in
+            let seeds = member.seeds ?? member.s.flatMap { sealed in secret.flatMap { ChatCipher.openTaste(secret: $0, room: code, by: member.by, envelope: sealed) } }
+            return (seeds ?? []).map(\.v)
         }
     }
 
@@ -546,7 +617,7 @@ final class GroupController {
                                    appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
         newClient.onMessage = { [weak self] message in
             if case let .error(code, text) = message { self?.errors.emit(ControllerError(code: code, message: text)) }
-            if case let .autoplayFill(epoch, videoId, title) = message { self?.fillRoom(epoch: epoch, videoId: videoId, title: title) }
+            if case let .autoplayFill(epoch, videoId, title, tastes) = message { self?.fillRoom(epoch: epoch, videoId: videoId, title: title, tastes: tastes) }
             if case let .mediaTicket(id, tickets) = message, let id {
                 self?.answerTickets(id, ["tickets": tickets.map { ["m": $0.m, "url": $0.url, "token": $0.token] }])
             }
@@ -556,6 +627,8 @@ final class GroupController {
             }
             self?.onChat(room: code.uppercased(), message)
             newSession.onMessage(message)
+            // After the session has the state: the offer depends on whether the room's chat is sealed
+            if case let .state(_, _, _, _, protocolVersion) = message, protocolVersion >= Self.tasteProtocol { self?.shareTaste() }
         }
         newClient.onAvatar = { [weak self] memberId, _, received, sealed in
             guard let self else { return }
@@ -566,6 +639,7 @@ final class GroupController {
         }
         newClient.setAvatar(prefs.string(Self.keyAvatar))
         newClient.onConnected = { [weak self, weak newClient] in
+            self?.sentTaste = nil
             newSession.onReconnected()
             self?.scope.launch { [weak self] in
                 if let newClient { self?.flushPending(newClient) }
@@ -979,6 +1053,10 @@ final class GroupController {
     private static let keyRoomSoloItem = "room_solo_item"
     private static let keyLastActive = "room_last_active"
     private static let keyAutoplay = "autoplay"
+    private static let keyShareTaste = "share_taste"
+    private static let tasteProtocol = 19
+    private static let tasteText = 200
+    private static let tasteDelayMs: Int64 = 3_000
     private static let keyVideo = "video_mode"
 
     /// Songs added each time the queue runs out and the music carries on by itself.

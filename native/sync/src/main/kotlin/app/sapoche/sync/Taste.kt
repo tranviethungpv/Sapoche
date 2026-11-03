@@ -28,6 +28,10 @@ class Taste(
     skipped: List<Stamped>,
     private val now: Long,
     private val hourOf: (Long) -> Int = ::localHour,
+    /** Songs the person asked not to count: whatever happened to them is left out. */
+    private val quietSongs: Set<String> = emptySet(),
+    /** Artists (by [artistKey]) the person wants fewer suggestions of: their score is nothing, and they are never a seed or offered to a room. */
+    private val quietArtists: Set<String> = emptySet(),
 ) {
     private val songs = HashMap<String, Double>()
     private val artists = HashMap<String, Double>()
@@ -37,6 +41,7 @@ class Taste(
     init {
         fun add(list: List<Stamped>, weight: Double, halfLifeMs: Long) {
             for (s in list) {
+                if (s.track.videoId in quietSongs) continue
                 val value = weight * s.weight * decay(now - s.at, halfLifeMs)
                 songs.merge(s.track.videoId, value, Double::plus)
                 artists.merge(artistKey(s.track.artist), value, Double::plus)
@@ -47,7 +52,11 @@ class Taste(
         add(heard, HEARD, PLAY_HALF_LIFE_MS)
         add(liked, LIKED, LIKE_HALF_LIFE_MS)
         add(skipped, SKIPPED, PLAY_HALF_LIFE_MS)
+        for (key in quietArtists) if (key in artists) artists[key] = 0.0
     }
+
+    /** The person asked for fewer suggestions of this artist. */
+    fun isQuiet(artist: String) = artistKey(artist) in quietArtists
 
     /** How much the song is loved: below nothing when it was left more than it was heard; 0 for a song never met. */
     fun songScore(videoId: String): Double = songs[videoId] ?: 0.0
@@ -80,11 +89,14 @@ class Taste(
      * The songs suggestions are built from, up to [count]: the best loved, one per artist where there are enough
      * artists, so the mix is not all one voice. A song of an artist that is disliked or blocked is never one.
      */
-    fun seeds(count: Int, block: Blocklist = Blocklist()): List<String> {
+    fun seeds(count: Int, block: Blocklist = Blocklist()): List<String> = offer(count, block).map { it.videoId }
+
+    /** The songs the person offers a room's autoplay to start from: [seeds] as they are (songs of files, and of artists disliked or blocked, are never one). */
+    fun offer(count: Int, block: Blocklist = Blocklist()): List<TrackRef> {
         val ranked = songs.entries
             // A song from a file on this phone has no radio to ask for: it tells what is liked, but is never a seed
             .filter { it.value >= MIN_SEED && !LocalMusic.isLocal(it.key) }
-            .mapNotNull { e -> tracks[e.key]?.takeIf { block.allows(it) && !dislikes(it.artist) }?.let { it to e.value } }
+            .mapNotNull { e -> tracks[e.key]?.takeIf { block.allows(it) && !dislikes(it.artist) && !isQuiet(it.artist) }?.let { it to e.value } }
             .sortedWith(compareByDescending<Pair<TrackRef, Double>> { it.second }.thenBy { it.first.videoId })
             .map { it.first }
         val picked = LinkedHashMap<String, TrackRef>()
@@ -98,7 +110,7 @@ class Taste(
                 perArtist.merge(key, 1, Int::plus)
             }
         }
-        return picked.keys.toList()
+        return picked.values.toList()
     }
 
     /**
@@ -107,7 +119,7 @@ class Taste(
      */
     fun contextSeeds(bucket: String, block: Blocklist = Blocklist(), count: Int = 2): List<TrackRef> {
         val since = now - CONTEXT_WINDOW_MS
-        val inBucket = heard.filter { it.at >= since && bucketOf(hourOf(it.at)) == bucket }
+        val inBucket = heard.filter { it.at >= since && it.track.videoId !in quietSongs && bucketOf(hourOf(it.at)) == bucket }
         if (inBucket.size < MIN_CONTEXT) return emptyList()
         val plays = HashMap<String, Double>()
         val seen = HashMap<String, TrackRef>()
@@ -120,7 +132,7 @@ class Taste(
         for (id in plays.keys.sortedWith(compareByDescending<String> { plays[it] }.thenBy { it })) {
             val track = seen.getValue(id)
             if (picked.size >= count) break
-            if (LocalMusic.isLocal(id) || !block.allows(track) || (songs[id] ?: 0.0) <= 0.0 || !artistsTaken.add(artistKey(track.artist))) continue
+            if (LocalMusic.isLocal(id) || !block.allows(track) || isQuiet(track.artist) || (songs[id] ?: 0.0) <= 0.0 || !artistsTaken.add(artistKey(track.artist))) continue
             picked += track
         }
         return picked

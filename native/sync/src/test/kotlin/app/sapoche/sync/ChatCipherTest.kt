@@ -130,4 +130,27 @@ class ChatCipherTest {
         assertNull(ChatCipher.decodeSecret(""))
         assertTrue(ChatCipher.encodeSecret(made).matches(Regex("[A-Za-z0-9_-]{43}")))
     }
+
+    @Test
+    fun `the songs a member offers for autoplay are sealed to that member and that room`() {
+        val seeds = listOf(TasteSeed("bNp9pn0ni3I", "Chiều hôm ấy", "Jaykii"), TasteSeed("UoXllQoqEBY", "Song 2", "Artist"))
+        val envelope = ChatCipher.sealTaste(secret, room, "0a1b2c3d4e5f6071", seeds)
+        assertEquals(seeds, ChatCipher.openTaste(secret, room, "0a1b2c3d4e5f6071", envelope))
+        // Not as another member's offer, in another room, or as a message: the label in the associated data keeps them apart
+        assertNull(ChatCipher.openTaste(secret, room, "b9f77f9b6e1bf750", envelope))
+        assertNull(ChatCipher.openTaste(secret, "XYZ234", "0a1b2c3d4e5f6071", envelope))
+        assertNull(ChatCipher.open(secret, room, "0a1b2c3d4e5f6071", envelope))
+        // And a message cannot pass for an offer
+        val (message, _) = ChatCipher.sealMessage(secret, room, "taste:0a1b2c3d4e5f6071", "hello", null)
+        assertNull(ChatCipher.openTaste(secret, room, "0a1b2c3d4e5f6071", message))
+    }
+
+    @Test
+    fun `an offer is padded, and one that is not what it should be is not opened`() {
+        val envelope = ChatCipher.sealTaste(secret, room, "a1", emptyList())
+        assertEquals(emptyList(), ChatCipher.openTaste(secret, room, "a1", envelope))
+        assertNull(ChatCipher.openTaste(secret, room, "a1", "not an envelope"))
+        val wrong = ChatCipher.seal(secret, room, "taste:a1", "{\"seeds\": 3}".toByteArray())
+        assertNull(ChatCipher.openTaste(secret, room, "a1", wrong))
+    }
 }

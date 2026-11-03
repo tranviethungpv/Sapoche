@@ -32,4 +32,30 @@ void main() {
   test('an empty queue gives the song asked about', () {
     expect(Queues.seeds(const [], 'z'), ['z']);
   });
+
+  test("a song of each member's offer joins the seeds, going round with the epoch", () {
+    final offers = [
+      ['a1', 'a2', 'a3'],
+      ['b1', 'b2'],
+      <String>[],
+      ['c1'],
+    ];
+    // The first song of each, from the first member; the one who offered nothing is not there
+    expect(Queues.blend(['x'], offers, 0), ['x', 'a1', 'b1', 'c1']);
+    // Next time the room runs out it is the second song of those who gave more than one, and the members start elsewhere
+    expect(Queues.blend(['x'], offers, 1), ['x', 'b2', 'c1', 'a2']);
+  });
+
+  test('no more than five radios are asked for, and a song already a seed is not taken twice', () {
+    final four = [
+      ['a'],
+      ['b'],
+      ['c'],
+      ['d'],
+    ];
+    expect(Queues.blend(['x', 'y', 'z'], four, 0), ['x', 'y', 'z', 'a', 'b']);
+    expect(Queues.blend(['x', 'y', 'z'], four, 1), ['x', 'y', 'z', 'b', 'c']);
+    expect(Queues.blend(['a'], [['a', 'b']], 0), ['a', 'b']);
+    expect(Queues.blend(['x'], const [], 7), ['x']);
+  });
 }

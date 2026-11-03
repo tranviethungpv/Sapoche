@@ -1355,6 +1355,15 @@ class RoomController extends ChangeNotifier {
     return _run(() => _backend.setAutoplay(on));
   }
 
+  /// Whether this device offers the songs it loves to a room's autoplay.
+  bool get shareTaste => _profile.shareTaste;
+
+  Future<void> setShareTaste(bool on) {
+    _profile = _profile.withShareTaste(on);
+    notifyListeners();
+    return _run(() => _backend.setShareTaste(on));
+  }
+
   /// How much sound a song that is not kept yet is fetched in.
   AudioQuality get audioQuality => _profile.audioQuality;
 

@@ -74,7 +74,11 @@ class WebBackend extends BackendDefaults {
        _library = library ?? LibraryStore(),
        _random = random ?? Random.secure() {
     _library
-      ..onChanged = (() => _events.add(const LibraryEvent()))
+      ..onChanged = (() {
+        _events.add(const LibraryEvent());
+        // What the person loves changes with what they hear and like: the room is told soon after
+        _tasteChanged();
+      })
       ..unnamed = () => _language == 'vi' ? 'Chưa đặt tên' : 'Untitled';
     final watch = Stopwatch()..start();
     _now = nowMs ?? () => watch.elapsedMilliseconds;
@@ -224,6 +228,7 @@ class WebBackend extends BackendDefaults {
   static const _keyTrim = 'web.trim';
   static const _keyLocalQueue = 'web.localQueue';
   static const _keyAutoplay = 'web.autoplay';
+  static const _keyShareTaste = 'web.shareTaste';
   static const _keyVideo = 'web.video';
   static const _keyVideoHeight = 'web.videoHeight';
   static const _chatKept = 200;
@@ -268,6 +273,7 @@ class WebBackend extends BackendDefaults {
     trimMs: prefs.getInt(_keyTrim) ?? 0,
     server: _server,
     autoplay: _autoplayOn,
+    shareTaste: _shareTasteOn,
     configured: _server.isNotEmpty,
     hasKey: _key.isNotEmpty,
     // The browser would not give the stored library back: this one lasts until the page closes
@@ -409,8 +415,13 @@ class WebBackend extends BackendDefaults {
       }
       _onChat(code, message);
       session.onMessage(message);
+      // After the session has the state: the offer depends on whether the room's chat is sealed
+      if (message is StateMessage && message.protocol >= _tasteProtocol) _shareTaste();
     };
-    client.onConnected = session.onReconnected;
+    client.onConnected = () {
+      _sentTaste = null;
+      session.onReconnected();
+    };
     client.onAvatar = (id, _, data, sealed) {
       if (!sealed || data == null) return _events.add(AvatarEvent(id, data == null ? null : base64Decode(data)));
       // The picture behind a sealed chat is opened here, so the screen gets a JPEG as ever; without the secret there is none
@@ -795,6 +806,74 @@ class WebBackend extends BackendDefaults {
   @override
   Future<void> setAutoplay(bool on) async => prefs.setBool(_keyAutoplay, on);
 
+  /// Whether this device offers the songs it loves to a room's autoplay (on unless the person turned it off).
+  bool get _shareTasteOn => prefs.getBool(_keyShareTaste) ?? true;
+
+  @override
+  Future<void> setShareTaste(bool on) async {
+    await prefs.setBool(_keyShareTaste, on);
+    unawaited(_shareTaste());
+  }
+
+  static const _tasteProtocol = 19;
+  static const _tasteText = 200;
+
+  /// The message last sent about this device's songs on this connection, so the same one is not sent again at every state.
+  String? _sentTaste;
+  Timer? _tasteTimer;
+
+  /// What this person loves changed (a song was heard, a mark put on the taste): tells the room soon, if it differs.
+  void _tasteChanged() {
+    if (_session == null) return;
+    _tasteTimer?.cancel();
+    _tasteTimer = Timer(const Duration(seconds: 3), () => unawaited(_shareTaste()));
+  }
+
+  /// Hands the room the songs this device offers autoplay, or takes them back when the person does not want to share, once
+  /// per connection and again when they change. A room whose chat is sealed is given them sealed, and without its secret
+  /// nothing can be offered. The server must know protocol 19.
+  Future<void> _shareTaste() async {
+    final session = _session;
+    final room = _roomCode;
+    final snapshot = session?.snapshot;
+    final state = snapshot?.state;
+    final you = snapshot?.you;
+    if (session == null || room == null || state == null || you == null) return;
+    final sealed = state.enc;
+    String cut(String text) => text.runes.length <= _tasteText ? text : String.fromCharCodes(text.runes.take(_tasteText));
+    final offer = _shareTasteOn
+        ? [for (final t in _suggestions.offer()) TasteSeed(t.videoId, cut(t.title), cut(t.artist))]
+        : const <TasteSeed>[];
+    final String message;
+    if (offer.isEmpty) {
+      message = sealed ? Wire.tasteSetSealed(null) : Wire.tasteSet(null);
+    } else if (!sealed) {
+      message = Wire.tasteSet(offer);
+    } else {
+      final secret = ChatCipher.decodeSecret(_secrets[room] ?? '');
+      message = secret == null ? Wire.tasteSetSealed(null) : Wire.tasteSetSealed(await ChatCipher.sealTaste(secret, room, you, offer));
+    }
+    if (message == _sentTaste || !identical(session, _session)) return;
+    if (_send(message)) _sentTaste = message;
+  }
+
+  /// The video ids each member offered in [tastes], opened with the room's secret when the chat is sealed; a member whose
+  /// offer cannot be read is left out.
+  Future<List<List<String>>> _openOffers(List<MemberTaste> tastes) async {
+    final room = _roomCode;
+    final secret = room != null && _session?.snapshot.state?.enc == true ? ChatCipher.decodeSecret(_secrets[room] ?? '') : null;
+    return [
+      for (final member in tastes)
+        [
+          for (final seed
+              in member.seeds ??
+                  (member.s != null && secret != null ? await ChatCipher.openTaste(secret, room!, member.by, member.s!) : null) ??
+                  const <TasteSeed>[])
+            seed.v,
+        ],
+    ];
+  }
+
   /// Songs like [videoId] that are worth offering: what YouTube Music's radio lists, without the ones in [exclude] and
   /// without what is not music (mixes of hours, clips of seconds), up to [limit].
   Future<List<TrackRef>> _moreLike(List<String> seeds, Set<String> exclude, int limit) =>
@@ -860,7 +939,8 @@ class WebBackend extends BackendDefaults {
   Future<void> _fillRoom(AutoplayFillMessage ask) async {
     try {
       final entries = _session?.snapshot.state?.queue ?? const <QueueEntry>[];
-      final seeds = Queues.seeds(entries, ask.videoId);
+      // The songs of the queue, and a song of each member who offered some, going round with each time the room runs out
+      final seeds = Queues.blend(Queues.seeds(entries, ask.videoId), await _openOffers(ask.tastes), ask.epoch);
       final more = await _moreLike(seeds, {for (final e in entries) e.videoId}, _autoplayCount);
       if (more.isEmpty || _session?.snapshot.state?.epoch != ask.epoch) return;
       _note("sync: autoplay adds ${more.length} songs like '${ask.title}' and ${seeds.length - 1} more to the room");

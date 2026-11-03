@@ -95,6 +95,9 @@ class SuggestionFeed(
         }
     }
 
+    /** The songs this person offers a room's autoplay to start from; never a song of a file, of an artist they asked for less of, or a song they asked not to count. */
+    suspend fun offer(): List<TrackRef> = taste().offer(OFFER, blocklist())
+
     /** What the listening says about the person: how much each artist and each song is loved, and how each source fared. */
     suspend fun profile(): Profile {
         val taste = taste()
@@ -184,6 +187,7 @@ class SuggestionFeed(
     private suspend fun known(seeds: List<String>): Set<String> = seeds.toSet() + store.likedIds() + store.heardSince(now() - RECENT_MS)
 
     companion object {
+        const val OFFER = 5
         const val FOR_YOU = 30
         const val DISCOVER = 20
         const val CONTEXT = 20

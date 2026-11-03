@@ -279,6 +279,7 @@ async function main() {
   if (process.env.SIM_RELEASE) await updateSection(JSON.parse(process.env.SIM_RELEASE));
   await playlistAndRepeatSection();
   await autoplaySection();
+  await tasteSection();
   await crossfireSection();
   await conformanceSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
@@ -1390,6 +1391,114 @@ async function autoplaySection() {
   const refused = await b.waitFor((m) => m.t === "error");
   check("guests that may only add songs cannot change it", refused.code === "forbidden");
   [a, b].forEach((x) => x.close());
+}
+
+/** The songs members offer for autoplay to start from (protocol 19): kept per member, handed only to the device asked. */
+async function tasteSection() {
+  console.log("Autoplay: what members like");
+  const [a, b, c] = await freshRoom(["Ta", "Tb", "Tc"]); // Ta came first, so it owns the room
+  const track = (videoId, title) => ({ videoId, title, artist: "x", durMs: 200000 });
+  const seed = (v, ti = "Title", ar = "Artist") => ({ v, ti, ar });
+  const quiet = () => [a, b, c].forEach((x) => (x.inbox.length = 0));
+  const playing = async (followers) => {
+    const p = await all(followers, (x) => x.waitFor((m) => m.t === "prepare"));
+    await all(followers, (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    await all(followers, (x) => x.waitFor((m) => m.t === "start"));
+    return p[0];
+  };
+  /** Plays one song to its end and returns what the owner's device is asked. */
+  const runOut = async (title) => {
+    a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, title)] });
+    await playing([a, b, c]);
+    quiet();
+    b.send({ t: "next" });
+    await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+    return a.waitFor((m) => m.t === "autoplay.fill");
+  };
+
+  b.send({ t: "taste.set", seeds: [seed(VIDEO_B, "Bee song", "Bee"), seed(VIDEO_C)] });
+  c.send({ t: "taste.set", seeds: [seed(VIDEO_A, "T".repeat(300), "A".repeat(300))] });
+  a.send({ t: "taste.set", seeds: [seed(VIDEO_C, "Own")] });
+  await sleep(300);
+  const first = await runOut("One");
+  const byId = Object.fromEntries((first.tastes ?? []).map((t) => [t.by, t]));
+  check("the device asked is given what the others offered, by their public ids", Object.keys(byId).sort().join() === [pid("Tb-id"), pid("Tc-id")].sort().join(), JSON.stringify(first.tastes));
+  check("and not what it offered itself", byId[pid("Ta-id")] === undefined);
+  check("each offer has its songs", byId[pid("Tb-id")].seeds.map((x) => x.v).join() === `${VIDEO_B},${VIDEO_C}` && byId[pid("Tb-id")].seeds[0].ti === "Bee song" && byId[pid("Tb-id")].s === undefined);
+  check("a title and an artist are cut at 200 characters", byId[pid("Tc-id")].seeds[0].ti.length === 200 && byId[pid("Tc-id")].seeds[0].ar.length === 200);
+  check("the others are not sent it", await b.stays((m) => m.t === "autoplay.fill", 300) && await c.stays((m) => m.t === "autoplay.fill", 100));
+
+  // An offer that is too long, or has a bad song, or the wrong kind for the room, changes nothing
+  const six = Array.from({ length: 6 }, () => seed(VIDEO_A));
+  b.send({ t: "taste.set", seeds: six });
+  b.send({ t: "taste.set", seeds: [seed("not a video")] });
+  b.send({ t: "taste.set", seeds: "x" });
+  b.send({ t: "taste.set", s: "AQE" + "A".repeat(40) });
+  await sleep(300);
+  a.send({ t: "queue.addMany", tracks: [track(VIDEO_B, "Two")] });
+  await playing([a, b, c]);
+  quiet();
+  b.send({ t: "next" });
+  await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  const second = await a.waitFor((m) => m.t === "autoplay.fill");
+  check("six songs, a bad id, or an offer sealed for a room that is not, change nothing", second.tastes.find((t) => t.by === pid("Tb-id"))?.seeds.length === 2, JSON.stringify(second.tastes));
+
+  // Taking it back, and leaving
+  c.send({ t: "taste.set", seeds: null });
+  b.send({ t: "bye" });
+  await sleep(300);
+  a.send({ t: "queue.addMany", tracks: [track(VIDEO_C, "Three")] });
+  await playing([a, c]);
+  quiet();
+  c.send({ t: "next" });
+  await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  const third = await a.waitFor((m) => m.t === "autoplay.fill");
+  check("an offer taken back, and one of a member who left, are not handed on", third.tastes === undefined, JSON.stringify(third.tastes));
+  [a, b, c].forEach((x) => x.close());
+
+  // A room whose chat is sealed keeps only sealed offers
+  const code = await newCode();
+  const e2ee = ["e2ee"];
+  const open = async (id, name, create) => {
+    const client = new Client(code, id, name);
+    await client.opened;
+    client.send({ t: "join", clientId: id, name, create, caps: e2ee });
+    await client.waitFor((m) => m.t === "state");
+    return client;
+  };
+  const ann = await open("tst-an", "Ann", true);
+  const bob = await open("tst-bo", "Bob", false);
+  bob.send({ t: "taste.set", seeds: [seed(VIDEO_B, "In the clear")] });
+  await sleep(200);
+  ann.send({ t: "room.encrypt" });
+  await bob.waitFor((m) => m.t === "state" && m.state.enc === true);
+  const sealed = "AQE" + "S".repeat(80);
+  ann.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One")] });
+  const play = async () => {
+    const p = await all([ann, bob], (x) => x.waitFor((m) => m.t === "prepare"));
+    await all([ann, bob], (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    await all([ann, bob], (x) => x.waitFor((m) => m.t === "start"));
+  };
+  await play();
+  ann.inbox.length = 0;
+  bob.send({ t: "next" });
+  await ann.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  const none = await ann.waitFor((m) => m.t === "autoplay.fill");
+  check("what was offered in the clear goes when the room is sealed", none.tastes === undefined, JSON.stringify(none.tastes));
+
+  bob.send({ t: "taste.set", seeds: [seed(VIDEO_B)] });
+  bob.send({ t: "taste.set", s: "not base64url!" });
+  bob.send({ t: "taste.set", s: "A".repeat(4097) });
+  bob.send({ t: "taste.set", s: sealed });
+  await sleep(300);
+  ann.send({ t: "queue.addMany", tracks: [track(VIDEO_B, "Two")] });
+  await play();
+  ann.inbox.length = 0;
+  bob.send({ t: "next" });
+  await ann.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  const kept = await ann.waitFor((m) => m.t === "autoplay.fill");
+  check("a sealed room holds the sealed offer as it came, and never a list it could read", kept.tastes?.length === 1 && kept.tastes[0].s === sealed && kept.tastes[0].seeds === undefined && kept.tastes[0].by === pid("tst-bo"), JSON.stringify(kept.tastes));
+  [ann, bob].forEach((x) => x.close());
 }
 
 /** Answers, reactions to a message and who has got it (protocol 12). */

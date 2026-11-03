@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 
 export interface QueueItem {
   id: string;
@@ -13,6 +13,13 @@ export interface QueueItem {
   addedBy: string;
   /** Put on the queue by autoplay, not by a member: it stays after the songs members chose and is dropped once played. Protocol 12. */
   auto?: true;
+}
+
+/** A song one member offers as something to start from when autoplay looks for more: [v] its video id, [ti] title, [ar] artist. Protocol 19. */
+export interface TasteSeed {
+  v: string;
+  ti: string;
+  ar: string;
 }
 
 export type Phase = "idle" | "preparing" | "playing" | "paused";
@@ -185,6 +192,13 @@ export type ClientMessage =
   | { t: "avatar.set"; data: string | null }
   /** Asks for the picture of the member [id]; answered with an avatar message to this socket only. */
   | { t: "avatar.get"; id: string }
+  /**
+   * A few songs this member likes, to start from when autoplay looks for more. The room does not pass them on: it hands
+   * them only to the one device autoplay asks, in `autoplay.fill`. [seeds] (at most 5) is for a room whose chat is not
+   * sealed, [s] for one that is: the sealed envelope (section 5l) of JSON `{"seeds": [...]}`, base64url, at most 4096
+   * characters. null, or neither, takes this member's songs back. Protocol 19.
+   */
+  | { t: "taste.set"; seeds?: TasteSeed[] | null; s?: string | null }
   /** With [next] the item goes right after the current one instead of at the end of the queue. */
   | { t: "queue.add"; videoId: string; title: string; artist: string; thumb?: string; durMs: number; next?: boolean }
   /**
@@ -269,9 +283,10 @@ export type ServerMessage =
   | { t: "pong"; c0: number; s1: number }
   /**
    * The queue ran out and autoplay is on: sent to one device that is here, which answers with `queue.addMany` of songs
-   * like [videoId]. Protocol 9.
+   * like [videoId]. Protocol 9. [tastes] (protocol 19) are the songs the other members here offered with `taste.set`, to start from as well; each
+   * is [by] a public id, with `seeds` or, in a sealed room, `s`.
    */
-  | { t: "autoplay.fill"; epoch: number; videoId: string; title: string }
+  | { t: "autoplay.fill"; epoch: number; videoId: string; title: string; tastes?: { by: string; seeds?: TasteSeed[]; s?: string }[] }
   /** The picture of [id] ([av] is its fingerprint); both are absent when that member has none. */
   | { t: "avatar"; id: string; av?: string; data?: string; sealed?: true }
   /** One ticket per file asked for, in the same order: put the file at [url] (a path of this server) with [token] added as `token`. Protocol 18. */

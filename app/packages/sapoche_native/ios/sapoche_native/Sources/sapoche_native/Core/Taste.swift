@@ -46,6 +46,8 @@ struct Taste {
     static let buckets = ["morning", "afternoon", "evening", "night"]
 
     private let heard: [Stamped]
+    private let quietSongs: Set<String>
+    private let quietArtists: Set<String>
     private let now: Int64
     private let hourOf: (Int64) -> Int
     private var songs: [String: Double] = [:]
@@ -53,17 +55,28 @@ struct Taste {
     private var tracks: [String: TrackRef] = [:]
     private var labels: [String: String] = [:]
 
-    init(heard: [Stamped], liked: [Stamped], skipped: [Stamped], now: Int64, hourOf: ((Int64) -> Int)? = nil) {
+    /// [quietSongs] are songs the person asked not to count: whatever happened to them is left out. [quietArtists] are artists
+    /// (by `artistKey`) the person wants fewer suggestions of: their score is nothing, and they are never a seed or offered
+    /// to a room.
+    init(heard: [Stamped], liked: [Stamped], skipped: [Stamped], now: Int64, hourOf: ((Int64) -> Int)? = nil,
+         quietSongs: Set<String> = [], quietArtists: Set<String> = []) {
         self.heard = heard
+        self.quietSongs = quietSongs
+        self.quietArtists = quietArtists
         self.now = now
         self.hourOf = hourOf ?? Taste.localHour
         add(heard, weight: Self.heardWeight, halfLifeMs: Self.playHalfLifeMs)
         add(liked, weight: Self.likedWeight, halfLifeMs: Self.likeHalfLifeMs)
         add(skipped, weight: Self.skippedWeight, halfLifeMs: Self.playHalfLifeMs)
+        for key in quietArtists where artists[key] != nil { artists[key] = 0 }
     }
+
+    /// The person asked for fewer suggestions of this artist.
+    func isQuiet(_ artist: String) -> Bool { quietArtists.contains(Taste.artistKey(artist)) }
 
     private mutating func add(_ list: [Stamped], weight: Double, halfLifeMs: Int64) {
         for stamped in list {
+            if quietSongs.contains(stamped.track.videoId) { continue }
             let value = weight * stamped.weight * Taste.decay(now - stamped.at, halfLifeMs)
             songs[stamped.track.videoId, default: 0] += value
             artists[Taste.artistKey(stamped.track.artist), default: 0] += value
@@ -107,22 +120,26 @@ struct Taste {
 
     /// The songs suggestions are built from, up to [count]: the best loved, one per artist where there are enough
     /// artists, so the mix is not all one voice. A song of an artist that is disliked or blocked is never one.
-    func seeds(_ count: Int, block: Blocklist = Blocklist()) -> [String] {
+    func seeds(_ count: Int, block: Blocklist = Blocklist()) -> [String] { offer(count, block: block).map(\.videoId) }
+
+    /// The songs the person offers a room's autoplay to start from: `seeds` as they are (songs of files, and of artists
+    /// disliked or blocked, are never one).
+    func offer(_ count: Int, block: Blocklist = Blocklist()) -> [TrackRef] {
         var scored: [(track: TrackRef, score: Double)] = []
         // A song from a file on this phone has no radio to ask for: it tells what is liked, but is never a seed
         for (id, score) in songs where score >= Self.minSeed && !LocalMusic.isLocal(id) {
-            guard let track = tracks[id], block.allows(track), !dislikes(track.artist) else { continue }
+            guard let track = tracks[id], block.allows(track), !dislikes(track.artist), !isQuiet(track.artist) else { continue }
             scored.append((track, score))
         }
         scored.sort { $0.score != $1.score ? $0.score > $1.score : $0.track.videoId < $1.track.videoId }
-        var picked: [String] = []
+        var picked: [TrackRef] = []
         var perArtist: [String: Int] = [:]
         for cap in 1...2 {
             for entry in scored {
                 if picked.count >= count { break }
                 let key = Taste.artistKey(entry.track.artist)
-                if picked.contains(entry.track.videoId) || (perArtist[key] ?? 0) >= cap { continue }
-                picked.append(entry.track.videoId)
+                if picked.contains(where: { $0.videoId == entry.track.videoId }) || (perArtist[key] ?? 0) >= cap { continue }
+                picked.append(entry.track)
                 perArtist[key, default: 0] += 1
             }
         }
@@ -133,7 +150,7 @@ struct Taste {
     /// per artist; empty until enough was heard at that time for it to mean something.
     func contextSeeds(_ bucket: String, block: Blocklist = Blocklist(), count: Int = 2) -> [TrackRef] {
         let since = now - Self.contextWindowMs
-        let inBucket = heard.filter { $0.at >= since && Taste.bucketOf(hourOf($0.at)) == bucket }
+        let inBucket = heard.filter { $0.at >= since && !quietSongs.contains($0.track.videoId) && Taste.bucketOf(hourOf($0.at)) == bucket }
         if inBucket.count < Self.minContext { return [] }
         var plays: [String: Double] = [:]
         var seen: [String: TrackRef] = [:]
@@ -147,7 +164,7 @@ struct Taste {
         for id in order {
             if picked.count >= count { break }
             guard let track = seen[id] else { continue }
-            if LocalMusic.isLocal(id) || !block.allows(track) || (songs[id] ?? 0) <= 0 || !taken.insert(Taste.artistKey(track.artist)).inserted { continue }
+            if LocalMusic.isLocal(id) || !block.allows(track) || isQuiet(track.artist) || (songs[id] ?? 0) <= 0 || !taken.insert(Taste.artistKey(track.artist)).inserted { continue }
             picked.append(track)
         }
         return picked

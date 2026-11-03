@@ -32,6 +32,7 @@ import app.sapoche.sync.Queues
 import app.sapoche.sync.RoomClient
 import app.sapoche.sync.Sleep
 import app.sapoche.sync.SleepTimer
+import app.sapoche.sync.TasteSeed
 import app.sapoche.sync.TrackRef
 import app.sapoche.sync.ServerMessage
 import kotlinx.coroutines.CancellationException
@@ -69,6 +70,8 @@ class GroupController(
     private val queueFile: QueueFile,
     /** Up to [Int] songs to carry on with after the songs [List] (video ids) together, leaving out the ids given. */
     private val moreLike: suspend (List<String>, Set<String>, Int) -> List<TrackRef> = { _, _, _ -> emptyList() },
+    /** The songs this person offers a room's autoplay to start from: a few they love, never songs of files. */
+    private val tasteOffer: suspend () -> List<TrackRef> = { emptyList() },
 ) {
     // Main thread: ExoPlayer must be used there, and the session only does light work
     private var scope = newScope()
@@ -360,7 +363,8 @@ class GroupController(
     private fun fillRoom(ask: ServerMessage.AutoplayFill) {
         scope.launch {
             try {
-                val seeds = Queues.seeds(queue(), ask.videoId)
+                // The songs of the queue, and a song of each member who offered some, going round with each time the room runs out
+                val seeds = Queues.blend(Queues.seeds(queue(), ask.videoId), openOffers(ask.tastes), ask.epoch)
                 val more = moreLike(seeds, queue().map { it.videoId }.toSet(), AUTOPLAY_COUNT)
                 if (more.isEmpty() || session?.snapshot?.value?.state?.epoch != ask.epoch) return@launch
                 EventLog.d("sync", "autoplay adds ${more.size} songs like '${ask.title}' and ${seeds.size - 1} more to the room")
@@ -371,6 +375,75 @@ class GroupController(
             } catch (e: Exception) {
                 EventLog.d("sync", "autoplay found nothing for the room: ${e.javaClass.simpleName}: ${e.message}")
             }
+        }
+    }
+
+    /** Whether this device offers the songs it loves to a room's autoplay (on unless the person turned it off). */
+    var shareTasteOn: Boolean
+        get() = prefs.getBoolean(KEY_SHARE_TASTE, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SHARE_TASTE, value).apply()
+            shareTaste()
+        }
+
+    /** The message last sent about this device's songs on this connection, so the same one is not sent again at every state. */
+    private var sentTaste: String? = null
+    private var tasteJob: Job? = null
+
+    /** What this person loves changed (a song was heard, a mark put on the taste): tells the room soon, if it differs. */
+    fun tasteChanged() {
+        if (session == null) return
+        tasteJob?.cancel()
+        tasteJob = scope.launch {
+            delay(TASTE_DELAY_MS)
+            shareTaste()
+        }
+    }
+
+    /**
+     * Hands the room the songs this device offers autoplay, or takes them back when the person does not want to share,
+     * once per connection and again when they change. A room whose chat is sealed is given them sealed, and without its
+     * secret nothing can be offered. The server must know protocol 19.
+     */
+    private fun shareTaste() {
+        val s = session ?: return
+        scope.launch {
+            // Read once the session has taken in the state that came with this
+            val state = s.snapshot.value.state ?: return@launch
+            val code = roomCode ?: return@launch
+            val you = s.snapshot.value.you ?: return@launch
+            val sealed = state.enc
+            val offer = if (shareTasteOn) {
+                try {
+                    tasteOffer().map { TasteSeed(it.videoId, it.title.take(TASTE_TEXT), it.artist.take(TASTE_TEXT)) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    return@launch
+                }
+            } else {
+                emptyList()
+            }
+            val message = when {
+                offer.isEmpty() -> if (sealed) Protocol.tasteSetSealed(null) else Protocol.tasteSet(null)
+                !sealed -> Protocol.tasteSet(offer)
+                else -> {
+                    val secret = SapocheApp.roomKeys.get(code)
+                    if (secret == null) Protocol.tasteSetSealed(null) else Protocol.tasteSetSealed(ChatCipher.sealTaste(secret, code, you, offer))
+                }
+            }
+            if (message == sentTaste || session !== s) return@launch
+            if (send(message)) sentTaste = message
+        }
+    }
+
+    /** The video ids each member offered in [tastes], opened with the room's secret when the chat is sealed; a member whose offer cannot be read is left out. */
+    private fun openOffers(tastes: List<ServerMessage.MemberTaste>): List<List<String>> {
+        val code = roomCode ?: return emptyList()
+        val secret = if (session?.snapshot?.value?.state?.enc == true) SapocheApp.roomKeys.get(code) else null
+        return tastes.map { member ->
+            val seeds = member.seeds ?: member.s?.let { sealed -> secret?.let { ChatCipher.openTaste(it, code, member.by, sealed) } }
+            seeds.orEmpty().map { it.v }
         }
     }
 
@@ -473,6 +546,8 @@ class GroupController(
             if (it is ServerMessage.Error && it.code.startsWith("media_")) ticketWaiters.values.firstOrNull()?.complete(it)
             onChat(code.uppercase(), it)
             newSession.onMessage(it)
+            // After the session has the state: the offer depends on whether the room's chat is sealed
+            if (it is ServerMessage.State && it.protocol >= TASTE_PROTOCOL) shareTaste()
         }
         newClient.onAvatar = { memberId, _, received, sealed ->
             // The picture behind a sealed chat is opened here, so the screen gets a JPEG as ever; without the secret there is none
@@ -482,6 +557,7 @@ class GroupController(
         }
         newClient.setAvatar(prefs.getString(KEY_AVATAR, null))
         newClient.onConnected = {
+            sentTaste = null
             newSession.onReconnected()
             scope.launch { flushPending(newClient) }
         }
@@ -983,6 +1059,10 @@ class GroupController(
         const val KEY_LAST_ACTIVE = "room_last_active"
         const val KEY_VIDEO = "video_mode"
         const val KEY_AUTOPLAY = "autoplay"
+        const val KEY_SHARE_TASTE = "share_taste"
+        const val TASTE_PROTOCOL = 19
+        const val TASTE_TEXT = 200
+        const val TASTE_DELAY_MS = 3_000L
         const val MIN_SPEED = 0.25f
         const val MAX_SPEED = 2f
 

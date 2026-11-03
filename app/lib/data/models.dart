@@ -1074,6 +1074,7 @@ class Profile {
     this.trimMs = 0,
     this.server = '',
     this.autoplay = true,
+    this.shareTaste = true,
     this.configured = true,
     this.hasKey = true,
     this.audioQuality = AudioQuality.max,
@@ -1090,6 +1091,9 @@ class Profile {
 
   /// The music carries on with similar songs when the queue runs out.
   final bool autoplay;
+
+  /// A room's autoplay may be given a few songs this person loves, to start from.
+  final bool shareTaste;
 
   /// How much sound a song that is not kept yet is fetched in.
   final AudioQuality audioQuality;
@@ -1110,6 +1114,20 @@ class Profile {
     trimMs: trimMs,
     server: server,
     autoplay: value,
+    shareTaste: shareTaste,
+    configured: configured,
+    hasKey: hasKey,
+    audioQuality: audioQuality,
+    libraryLost: libraryLost,
+  );
+
+  Profile withShareTaste(bool value) => Profile(
+    name: name,
+    device: device,
+    trimMs: trimMs,
+    server: server,
+    autoplay: autoplay,
+    shareTaste: value,
     configured: configured,
     hasKey: hasKey,
     audioQuality: audioQuality,
@@ -1122,6 +1140,7 @@ class Profile {
     trimMs: trimMs,
     server: server,
     autoplay: autoplay,
+    shareTaste: shareTaste,
     configured: configured,
     hasKey: hasKey,
     audioQuality: value,
@@ -1134,6 +1153,7 @@ class Profile {
     trimMs: (map['trimMs'] as num?)?.toInt() ?? 0,
     server: map['server'] as String? ?? '',
     autoplay: map['autoplay'] as bool? ?? true,
+    shareTaste: map['shareTaste'] as bool? ?? true,
     configured: map['configured'] as bool? ?? true,
     hasKey: map['key'] as bool? ?? true,
     audioQuality: AudioQuality.of((map['audioQuality'] as num?)?.toInt()),

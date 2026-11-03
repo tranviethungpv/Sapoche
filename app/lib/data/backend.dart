@@ -418,6 +418,9 @@ abstract class Backend {
   /// Whether the music carries on with similar songs when the queue runs out.
   Future<void> setAutoplay(bool on);
 
+  /// Whether this device offers the songs it loves to a room's autoplay (on unless the person turned it off).
+  Future<void> setShareTaste(bool on);
+
   /// How much sound to fetch for the songs that are not kept yet; from the next song on.
   Future<void> setAudioQuality(AudioQuality quality);
 
@@ -1057,6 +1060,9 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> setAutoplay(bool on) => _call('setAutoplay', {'on': on});
+
+  @override
+  Future<void> setShareTaste(bool on) => _call('setShareTaste', {'on': on});
 
   @override
   Future<void> setAudioQuality(AudioQuality quality) =>

@@ -423,7 +423,7 @@ final class Bridge {
         case "profile":
             var profile: [String: Any] = [
                 "device": platform.deviceModel, "trimMs": controller.trimMs, "videoHeight": videoHeight,
-                "server": settings.server, "autoplay": controller.autoplayOn, "configured": settings.isSet, "key": !settings.key.isEmpty,
+                "server": settings.server, "autoplay": controller.autoplayOn, "shareTaste": controller.shareTasteOn, "configured": settings.isSet, "key": !settings.key.isEmpty,
                 "audioQuality": audioQuality.rawValue,
             ]
             // Only a name the person chose: the phone's own name would be shown to everybody in the room
@@ -454,6 +454,9 @@ final class Bridge {
             return nil
         case "setAutoplay":
             controller.autoplayOn = bool("on")
+            return nil
+        case "setShareTaste":
+            controller.shareTasteOn = bool("on")
             return nil
         case "setAudioQuality":
             // Songs already kept on disk stay in the stream they were fetched in, so nothing is dropped here

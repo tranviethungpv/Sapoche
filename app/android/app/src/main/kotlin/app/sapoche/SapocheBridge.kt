@@ -421,7 +421,8 @@ class SapocheBridge(
                 "server" to Config.SERVER,
                 "configured" to Config.isSet,
                 "key" to Config.authHeaders.isNotEmpty(),
-                "autoplay" to prefs.getBoolean("autoplay", true),
+"autoplay" to prefs.getBoolean("autoplay", true),
+                "shareTaste" to prefs.getBoolean("share_taste", true),
                 "audioQuality" to SapocheApp.audioQuality.level,
             )
             "setupLink" -> return Config.setupLink()
@@ -750,6 +751,9 @@ class SapocheBridge(
                 create = false,
             )
             "leave" -> group.leave()
+            "setShareTaste" -> {
+                group.shareTasteOn = call.argument<Boolean>("on") == true
+            }
             "sleep" -> when (call.argument<String>("mode")) {
                 "time" -> group.sleep.startIn(call.argument<Int>("minutes") ?: 0)
                 "song" -> group.sleep.startAtSongEnd()

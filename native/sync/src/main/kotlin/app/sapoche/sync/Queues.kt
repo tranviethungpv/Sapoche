@@ -30,4 +30,27 @@ object Queues {
         }
         return seeds
     }
+
+    /** The most songs autoplay asks for radios of in all, its own and the members' offers together. */
+    const val MAX_BLEND = 5
+
+    /**
+     * [base] (see [seeds]) with one song of each member's offer, to look for songs that suit the room and not only the
+     * last song: [offers] are the video ids each member offered, in the order they gave them. Which song of an offer, and
+     * which members when there are not places for all, goes round with [epoch], so the next time the room runs out it is
+     * others'. Songs already among the seeds are not taken twice. At most [max] come back in all.
+     */
+    fun blend(base: List<String>, offers: List<List<String>>, epoch: Long, max: Int = MAX_BLEND): List<String> {
+        val result = ArrayList(base)
+        val members = offers.filter { it.isNotEmpty() }
+        if (members.isEmpty()) return result
+        val start = Math.floorMod(epoch, members.size.toLong()).toInt()
+        for (i in members.indices) {
+            if (result.size >= max) break
+            val offer = members[(start + i) % members.size]
+            val pick = (0 until offer.size).map { offer[Math.floorMod(epoch + it, offer.size.toLong()).toInt()] }.firstOrNull { it !in result } ?: continue
+            result += pick
+        }
+        return result
+    }
 }

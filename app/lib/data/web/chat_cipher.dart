@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
 import '../models.dart';
+import 'wire.dart' show TasteSeed;
 
 /// End-to-end encryption of a room's chat (protocol 15). The room has one secret of 32 bytes, made on the device of its
 /// owner and handed to the others in the invitation link, never through the server. The key for a message is
@@ -119,6 +120,36 @@ class ChatCipher {
     String room,
     String envelope,
   ) => open(secret, room, _background, envelope);
+
+  /// Stands before the public id in the associated data of a sealed offer for autoplay: no message has such a sender.
+  static const _taste = 'taste:';
+
+  /// The songs [seeds] that member [by] offers for autoplay in [room], sealed (protocol 19).
+  static Future<String> sealTaste(List<int> secret, String room, String by, List<TasteSeed> seeds) {
+    final body = utf8.encode(
+      jsonEncode({
+        'seeds': [
+          for (final s in seeds) {'v': s.v, 'ti': s.ti, 'ar': s.ar},
+        ],
+      }),
+    );
+    return seal(secret, room, '$_taste$by', [...body, ...List.filled((_pad - body.length % _pad) % _pad, 0x20)]);
+  }
+
+  /// The songs that member [by] offered in [envelope]; null when it is not from this room's secret, that member, or intact.
+  static Future<List<TasteSeed>?> openTaste(List<int> secret, String room, String by, String envelope) async {
+    final body = await open(secret, room, '$_taste$by', envelope);
+    if (body == null) return null;
+    try {
+      final list = (jsonDecode(utf8.decode(body)) as Map<String, dynamic>)['seeds'] as List<dynamic>;
+      return [
+        for (final e in list)
+          TasteSeed((e as Map<String, dynamic>)['v'] as String, e['ti'] as String? ?? '', e['ar'] as String? ?? ''),
+      ];
+    } on Object {
+      return null;
+    }
+  }
 
   /// The sealed words of a message by [by], with the quote of what it answers inside, and the sealed preview.
   static Future<({String ct, String pv})> sealMessage(

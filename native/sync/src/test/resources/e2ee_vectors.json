@@ -53,6 +53,14 @@
       "nonce": "DQ0NDQ0NDQ0NDQ0N",
       "plaintext": "AwgNEhccISYrMDU6P0RJTlNYXWJnbHF2e4CFio-UmZ6jqK2yt7zBxsvQ1drf5Onu8_j9AgcMERYbICUqLzQ5PkNITVJXXGFma3B1en-EiY6TmJ2ip6yxtrvAxcrP1Nne4-jt8g",
       "envelope": "AQENDQ0NDQ0NDQ0NDQ1o-G_rjuhd9ECLlRfyQJX3sw_TcMW3NdgrPjXvj8oXm417KgwQEZaGhFNNkYaXRxqqZFDFPgG4ZZXW4I12pAwJkPbhsxE7jCQIMrkQj81wp8PUga58bDzc0mrjwk0qwERXzL2y6jnk6Wy4lXQKwhXjTVCmbw"
+    },
+    {
+      "kind": "taste",
+      "epoch": 1,
+      "by": "taste:0a1b2c3d4e5f6071",
+      "nonce": "Dw8PDw8PDw8PDw8P",
+      "plaintext": "eyJzZWVkcyI6W3sidiI6ImJOcDlwbjBuaTNJIiwidGkiOiJDaGnhu4F1IGjDtG0g4bqleSIsImFyIjoiSmF5a2lpIn0seyJ2IjoiVW9YbGxRb3FFQlkiLCJ0aSI6IlNvbmcgMiIsImFyIjoiQXJ0aXN0In1dfSAgICAgICAgICA",
+      "envelope": "AQEPDw8PDw8PDw8PDw9Tqwb_S358mSOtaQlNHlNgOgvI-TgGmVam6NdtVMKlYYP9NF5RDukulZAHTWOAcBTyY3Jb3E49NDUebGWAZiPmKPXRnWyBpJNWwOJu7j7X2JkT1mxLpYvKA2fBNcyjTDG7KiZn2Q0Vlvevj4jgkqbqP99TvI2gwB-VfLTMM33lv872usOhV448vQ3VJB2uISg"
     }
   ],
   "file": {
