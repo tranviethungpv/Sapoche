@@ -244,6 +244,26 @@ void main() {
       expect(library.sourceStats(0).firstWhere((s) => s.source == ListenSource.chosen).heard, 1);
     });
 
+    test('what the person told the taste is kept, replaced, taken off and survives a restart', () async {
+      library
+        ..setTasteMark(TasteMarks.quietArtist, 'beck', 'Beck', on: true)
+        ..setTasteMark(TasteMarks.quietSong, 'bNp9pn0ni3I', 'Song', on: true)
+        ..setTasteMark(TasteMarks.quietArtist, 'beck', 'Beck (renamed)', on: true);
+      expect(library.tasteMarks().map((m) => (m.kind, m.key, m.label)), [
+        (TasteMarks.quietArtist, 'beck', 'Beck (renamed)'),
+        (TasteMarks.quietSong, 'bNp9pn0ni3I', 'Song'),
+      ]);
+      library.setTasteMark(TasteMarks.quietArtist, 'beck', '', on: false);
+      expect(library.tasteMarks().map((m) => m.kind), [TasteMarks.quietSong]);
+      // Forgetting the history is not forgetting what the person told the taste
+      library.clearHistory();
+      expect(library.tasteMarks(), hasLength(1));
+      final disk = _Disk();
+      final first = LibraryStore(disk: disk, nowMs: tick)..setTasteMark(TasteMarks.starter, 'x', '{"videoId":"x"}', on: true);
+      await first.flush();
+      expect(LibraryStore(stored: disk.json).tasteMarks().single.key, 'x');
+    });
+
     test('forgetting the history forgets the skips and the songs only they kept', () {
       library
         ..recordSkip(song('a'))

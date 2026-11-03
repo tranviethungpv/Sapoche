@@ -98,7 +98,8 @@ enum Suggestions {
     static func compose(_ lists: [[TrackRef]], taste: Taste, block: Blocklist, exclude: Set<String>, limit: Int) -> [TrackRef] {
         let wanted = lists.map { list in list.filter { welcome($0, taste: taste, block: block) } }
         var known = turns(wanted.map { list in list.filter { taste.knows($0.artist) } })[...]
-        var fresh = turns(wanted.map { list in list.filter { !taste.knows($0.artist) } })[...]
+        // An artist the person wants fewer suggestions of is not a stranger to be tried either
+        var fresh = turns(wanted.map { list in list.filter { !taste.knows($0.artist) && !taste.isQuiet($0.artist) } })[...]
         var seen = exclude
         var perArtist: [String: Int] = [:]
         func take(_ queue: inout ArraySlice<TrackRef>) -> TrackRef? {
@@ -128,7 +129,7 @@ enum Suggestions {
 
     /// Only the songs by artists the person does not know yet, one of each artist: something new to try.
     static func discover(_ lists: [[TrackRef]], taste: Taste, block: Blocklist, exclude: Set<String>, limit: Int) -> [TrackRef] {
-        let fresh = lists.map { list in list.filter { welcome($0, taste: taste, block: block) && !taste.knows($0.artist) } }
+        let fresh = lists.map { list in list.filter { welcome($0, taste: taste, block: block) && !taste.knows($0.artist) && !taste.isQuiet($0.artist) } }
         var seen = exclude
         var artists = Set<String>()
         var result: [TrackRef] = []
@@ -167,7 +168,7 @@ enum Suggestions {
         }
         while true {
             let stranger = result.count % strangerEvery == strangerEvery - 1
-            let next = (stranger ? ordered.first { fits($0.track) && !taste.knows($0.track.artist) } : nil) ?? ordered.first { fits($0.track) }
+            let next = (stranger ? ordered.first { fits($0.track) && !taste.knows($0.track.artist) && !taste.isQuiet($0.track.artist) } : nil) ?? ordered.first { fits($0.track) }
             guard let pick = next else { break }
             taken.insert(pick.track.videoId)
             perArtist[Taste.artistKey(pick.track.artist), default: 0] += 1

@@ -8,6 +8,7 @@ import app.sapoche.sync.ListenSource
 import app.sapoche.sync.Stamped
 import app.sapoche.sync.Suggestions
 import app.sapoche.sync.Taste
+import app.sapoche.sync.TasteMarks
 import app.sapoche.sync.TrackRef
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -29,12 +30,19 @@ class SuggestionFeed(
     private val renewing = Mutex()
 
     /** What the library says about the person, as of now. */
-    private suspend fun taste(): Taste = Taste(
-        heard = store.listens().map { Stamped(it.track, it.at, ListenSource.weight(it.source)) },
-        liked = store.liked().map { Stamped(it.track, it.at) },
-        skipped = store.skipped().map { Stamped(it.track, it.at, ListenSource.weight(it.source)) },
-        now = now(),
-    )
+    private suspend fun taste(): Taste {
+        val marks = store.tasteMarks()
+        return Taste(
+            // The songs a new person started with count as heard when they were chosen
+            heard = store.listens().map { Stamped(it.track, it.at, ListenSource.weight(it.source)) } +
+                marks.filter { it.kind == TasteMarks.STARTER }.mapNotNull { TasteMarks.starter(it.label, it.at) },
+            liked = store.liked().map { Stamped(it.track, it.at) },
+            skipped = store.skipped().map { Stamped(it.track, it.at, ListenSource.weight(it.source)) },
+            now = now(),
+            quietSongs = marks.filter { it.kind == TasteMarks.QUIET_SONG }.map { it.key }.toSet(),
+            quietArtists = marks.filter { it.kind == TasteMarks.QUIET_ARTIST }.map { it.key }.toSet(),
+        )
+    }
 
     private suspend fun blocklist(): Blocklist {
         val blocked = store.blocked()
@@ -101,10 +109,15 @@ class SuggestionFeed(
     /** What the listening says about the person: how much each artist and each song is loved, and how each source fared. */
     suspend fun profile(): Profile {
         val taste = taste()
-        return Profile(taste.artistScores(), taste.songScores(), sourceStats())
+        return Profile(taste.artistScores(), taste.songScores(), store.tasteMarks(), sourceStats())
     }
 
-    data class Profile(val artists: List<ArtistScore>, val songs: Map<String, Double>, val stats: List<LibraryStore.SourceStats>)
+    data class Profile(
+        val artists: List<ArtistScore>,
+        val songs: Map<String, Double>,
+        val marks: List<LibraryStore.TasteMark>,
+        val stats: List<LibraryStore.SourceStats>,
+    )
 
     /** How the songs of each source fared in the last [STATS_MS]: heard, and left after a few seconds. */
     suspend fun sourceStats(): List<LibraryStore.SourceStats> = store.sourceStats(now() - STATS_MS)

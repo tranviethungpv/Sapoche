@@ -369,6 +369,22 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(after.map(\.source), ["shelf", nil])
     }
 
+    func testWhatThePersonToldTheTasteIsKeptReplacedAndTakenOff() async throws {
+        try await store.setTasteMark(kind: "quiet_artist", key: "beck", label: "Beck", on: true, at: 5)
+        try await store.setTasteMark(kind: "quiet_song", key: "bNp9pn0ni3I", label: "Song", on: true, at: 6)
+        try await store.setTasteMark(kind: "quiet_artist", key: "beck", label: "Beck (renamed)", on: true, at: 7)
+        let marks = try await store.tasteMarks()
+        XCTAssertEqual(marks, [LibraryStore.TasteMark(kind: "quiet_artist", key: "beck", label: "Beck (renamed)", at: 7),
+                               LibraryStore.TasteMark(kind: "quiet_song", key: "bNp9pn0ni3I", label: "Song", at: 6)])
+        try await store.setTasteMark(kind: "quiet_artist", key: "beck", label: "", on: false)
+        let left = try await store.tasteMarks()
+        XCTAssertEqual(left.map(\.kind), ["quiet_song"])
+        // Forgetting the history is not forgetting what the person told the taste
+        try await store.clearHistory()
+        let after = try await store.tasteMarks()
+        XCTAssertEqual(after.count, 1)
+    }
+
     func testEveryListenComesBackWithItsOwnTime() async throws {
         try await store.recordListen(song("a"), at: 10)
         try await store.recordListen(song("b"), at: 30)

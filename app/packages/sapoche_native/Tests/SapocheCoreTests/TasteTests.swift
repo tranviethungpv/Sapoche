@@ -77,6 +77,37 @@ final class TasteTests: XCTestCase {
         XCTAssertEqual(sources.of("v", item: item("dev-a"), you: "dev-a"), ListenSource.shelf)
     }
 
+    func testASongThePersonAskedNotToCountIsLeftOutOfEverythingItDid() {
+        let listens = [heard("a", 1, "Adele"), heard("a", 2, "Adele"), heard("b", 1, "Beck")]
+        XCTAssertTrue(make(heard: listens).knows("Adele"))
+        let quiet = Taste(heard: listens, liked: [], skipped: [], now: now, hourOf: { _ in 12 }, quietSongs: ["a"])
+        XCTAssertFalse(quiet.knows("Adele"), "the plays of that song were all of the artist's")
+        XCTAssertEqual(quiet.songScore("a"), 0)
+        XCTAssertTrue(quiet.knows("Beck"))
+        XCTAssertEqual(quiet.seeds(5), ["b"])
+    }
+
+    func testAnArtistThePersonWantsFewerSuggestionsOfHasNoScoreIsNoSeedAndIsNeverOffered() {
+        let listens = [heard("a", 1, "Adele"), heard("b", 1, "Beck"), heard("c", 1, "Cher")]
+        let quiet = Taste(heard: listens, liked: [], skipped: [], now: now, hourOf: { _ in 12 }, quietArtists: ["beck"])
+        XCTAssertTrue(quiet.isQuiet("Beck - Topic"))
+        XCTAssertFalse(quiet.knows("Beck"))
+        XCTAssertEqual(quiet.artistScore("Beck"), 0)
+        XCTAssertEqual(quiet.seeds(5).sorted(), ["a", "c"])
+        XCTAssertEqual(quiet.offer(5).map(\.videoId).sorted(), ["a", "c"], "and a room is not told of them")
+        // The songs are still in the taste, so they can still be played and shown where they were
+        XCTAssertGreaterThan(quiet.songScore("b"), 0)
+    }
+
+    func testASongANewPersonStartedWithCountsAsHeardWhenItWasChosen() {
+        let label = #"{"videoId":"bNp9pn0ni3I","title":"Chiều hôm ấy","artist":"Jaykii","thumb":"https://x/t.jpg","durMs":215000}"#
+        let stamped = TasteMarks.starter(label: label, at: now - day)!
+        XCTAssertEqual(stamped.track, TrackRef(videoId: "bNp9pn0ni3I", title: "Chiều hôm ấy", artist: "Jaykii", thumb: "https://x/t.jpg", durMs: 215000))
+        XCTAssertTrue(make(heard: [stamped]).knows("Jaykii"))
+        XCTAssertNil(TasteMarks.starter(label: "not json", at: 1))
+        XCTAssertNil(TasteMarks.starter(label: #"{"title":"no id"}"#, at: 1))
+    }
+
     func testALikeWeighsMoreThanAListen() {
         let taste = make(heard: [heard("a"), heard("b"), heard("b", 2)], liked: [heard("a")])
         XCTAssertEqual(taste.seeds(2), ["a", "b"], "a: 1 listen and a like beat b: 2 listens")

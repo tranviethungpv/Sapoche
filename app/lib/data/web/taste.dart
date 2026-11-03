@@ -341,7 +341,7 @@ abstract final class Suggestions {
     final result = <TrackRef>[];
     while (true) {
       final stranger = result.length % _strangerEvery == _strangerEvery - 1;
-      var next = stranger ? ordered.where((e) => fits(e.track) && !taste.knows(e.track.artist)).firstOrNull : null;
+      var next = stranger ? ordered.where((e) => fits(e.track) && !taste.knows(e.track.artist) && !taste.isQuiet(e.track.artist)).firstOrNull : null;
       next ??= ordered.where((e) => fits(e.track)).firstOrNull;
       if (next == null) break;
       taken.add(next.track.videoId);
@@ -368,7 +368,7 @@ abstract final class Suggestions {
   ) {
     final welcomed = [for (final list in lists) list.where((t) => welcome(t, taste, block)).toList()];
     final known = Queue.of(_turns([for (final list in welcomed) list.where((t) => taste.knows(t.artist)).toList()]));
-    final fresh = Queue.of(_turns([for (final list in welcomed) list.where((t) => !taste.knows(t.artist)).toList()]));
+    final fresh = Queue.of(_turns([for (final list in welcomed) list.where((t) => !taste.knows(t.artist) && !taste.isQuiet(t.artist)).toList()]));
     final seen = {...exclude};
     final perArtist = <String, int>{};
     TrackRef? take(Queue<TrackRef> queue) {
@@ -402,7 +402,7 @@ abstract final class Suggestions {
     int limit,
   ) {
     final fresh = [
-      for (final list in lists) list.where((t) => welcome(t, taste, block) && !taste.knows(t.artist)).toList(),
+      for (final list in lists) list.where((t) => welcome(t, taste, block) && !taste.knows(t.artist) && !taste.isQuiet(t.artist)).toList(),
     ];
     final seen = {...exclude};
     final artists = <String>{};

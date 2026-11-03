@@ -249,6 +249,23 @@ actor LibraryStore {
         }
     }
 
+    /// What the person told the taste (see `TasteMarks`), the latest first.
+    func tasteMarks() throws -> [TasteMark] {
+        try db.rows("SELECT kind, key, label, at FROM taste_marks ORDER BY at DESC, kind, key").map {
+            TasteMark(kind: $0[0].text ?? "", key: $0[1].text ?? "", label: $0[2].text ?? "", at: $0[3].int)
+        }
+    }
+
+    /// Puts a mark on the taste ([on]), or takes it off. A mark of the same kind and key is replaced.
+    func setTasteMark(kind: String, key: String, label: String, on: Bool, at: Int64 = LibraryStore.now()) throws {
+        if on {
+            try db.run("INSERT OR REPLACE INTO taste_marks(kind, key, label, at) VALUES(?, ?, ?, ?)", [.text(kind), .text(key), .text(label), .int(at)])
+        } else {
+            try db.run("DELETE FROM taste_marks WHERE kind = ? AND key = ?", [.text(kind), .text(key)])
+        }
+        onChange()
+    }
+
     /// Songs left after a few seconds, the latest first, each time one entry.
     func skipped() throws -> [Entry] {
         try entries(db.rows("""

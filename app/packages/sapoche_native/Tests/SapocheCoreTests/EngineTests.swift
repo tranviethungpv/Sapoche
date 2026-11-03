@@ -858,6 +858,17 @@ final class SmallPartsTests: XCTestCase {
         XCTAssertEqual(Suggestions.discover(lists, taste: taste, block: Blocklist(), exclude: [], limit: 1).map(\.videoId), ["n1"])
     }
 
+    func testAnArtistThePersonWantsFewerSuggestionsOfIsNoStrangerToBeTried() {
+        let now: Int64 = 1_000 * 24 * 60 * 60 * 1000
+        let taste = Taste(heard: [Stamped(track: by("k0", "Known"), at: now - 1000)], liked: [], skipped: [], now: now, quietArtists: ["quiet"])
+        let lists = [[by("q1", "Quiet"), by("n1", "New"), by("k1", "Known")]]
+        XCTAssertEqual(Suggestions.discover(lists, taste: taste, block: Blocklist(), exclude: [], limit: 10).map(\.videoId), ["n1"])
+        XCTAssertEqual(Suggestions.compose(lists, taste: taste, block: Blocklist(), exclude: [], limit: 10).map(\.videoId), ["k1", "n1"])
+        // And autoplay does not keep a place for them either
+        let ranked = Suggestions.rank([by("a", "Known"), by("b", "Known 2"), by("c", "Known 3"), by("d", "Known 4"), by("q", "Quiet"), by("s", "Stranger")], taste: taste)
+        XCTAssertEqual(ranked[4].videoId, "s")
+    }
+
     func testRankingKeepsTheOrderOfTheRadioForAStranger() {
         let list = [by("a", "X"), by("b", "Y"), by("c", "Z"), by("d", "W")]
         XCTAssertEqual(Suggestions.rank(list, taste: Taste(heard: [], liked: [], skipped: [], now: 0)).map(\.videoId), ["a", "b", "c", "d"])

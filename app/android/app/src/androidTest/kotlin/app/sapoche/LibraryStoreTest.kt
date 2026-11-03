@@ -441,6 +441,22 @@ class LibraryStoreTest {
     }
 
     @Test
+    fun whatThePersonToldTheTasteIsKeptReplacedAndTakenOff() = runTest {
+        store.setTasteMark("quiet_artist", "beck", "Beck", on = true, at = 5)
+        store.setTasteMark("quiet_song", "bNp9pn0ni3I", "Song", on = true, at = 6)
+        store.setTasteMark("quiet_artist", "beck", "Beck (renamed)", on = true, at = 7)
+        assertEquals(
+            listOf(LibraryStore.TasteMark("quiet_artist", "beck", "Beck (renamed)", 7), LibraryStore.TasteMark("quiet_song", "bNp9pn0ni3I", "Song", 6)),
+            store.tasteMarks(),
+        )
+        store.setTasteMark("quiet_artist", "beck", "", on = false)
+        assertEquals(listOf("quiet_song"), store.tasteMarks().map { it.kind })
+        // Forgetting the history is not forgetting what the person told the taste
+        store.clearHistory()
+        assertEquals(1, store.tasteMarks().size)
+    }
+
+    @Test
     fun whatWasFetchedForASeedComesBackWithItsTime() = runTest {
         assertNull(store.cachedSuggestions("seed"))
         store.putSuggestions("seed", listOf(song("a"), song("b").copy(thumb = null, title = "Quote \" and, comma")), at = 42)

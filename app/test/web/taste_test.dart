@@ -68,6 +68,38 @@ void main() {
       expect(sources.of('v', item: item('dev-a'), you: 'dev-a'), ListenSource.shelf);
     });
 
+    test('a song the person asked not to count is left out of everything it did', () {
+      final listens = [heard('a', 1, 'Adele'), heard('a', 2, 'Adele'), heard('b', 1, 'Beck')];
+      expect(taste(heard: listens).knows('Adele'), isTrue);
+      final quiet = Taste(heard: listens, liked: const [], skipped: const [], now: now, hourOf: (_) => 12, quietSongs: {'a'});
+      expect(quiet.knows('Adele'), isFalse, reason: "the plays of that song were all of the artist's");
+      expect(quiet.songScore('a'), 0);
+      expect(quiet.knows('Beck'), isTrue);
+      expect(quiet.seeds(5), ['b']);
+    });
+
+    test('an artist the person wants fewer suggestions of has no score, is no seed and is never offered', () {
+      final listens = [heard('a', 1, 'Adele'), heard('b', 1, 'Beck'), heard('c', 1, 'Cher')];
+      final quiet = Taste(heard: listens, liked: const [], skipped: const [], now: now, hourOf: (_) => 12, quietArtists: {'beck'});
+      expect(quiet.isQuiet('Beck - Topic'), isTrue);
+      expect(quiet.knows('Beck'), isFalse);
+      expect(quiet.artistScore('Beck'), 0);
+      expect(quiet.seeds(5)..sort(), ['a', 'c']);
+      expect([for (final t in quiet.offer(5)) t.videoId]..sort(), ['a', 'c'], reason: 'and a room is not told of them');
+      // The songs are still in the taste, so they can still be played and shown where they were
+      expect(quiet.songScore('b'), greaterThan(0));
+    });
+
+    test('a song a new person started with counts as heard when it was chosen', () {
+      const label = '{"videoId":"bNp9pn0ni3I","title":"Chiều hôm ấy","artist":"Jaykii","thumb":"https://x/t.jpg","durMs":215000}';
+      final track = TasteMarks.starterTrack(label)!;
+      expect((track.videoId, track.title, track.artist, track.durMs), ('bNp9pn0ni3I', 'Chiều hôm ấy', 'Jaykii', 215000));
+      expect(taste(heard: [Stamped(TrackRef.of(track), now - day)]).knows('Jaykii'), isTrue);
+      expect(TasteMarks.starterTrack('not json'), isNull);
+      expect(TasteMarks.starterTrack('{"title":"no id"}'), isNull);
+      expect(TasteMarks.starterTrack(TasteMarks.starterLabel(track))!.videoId, 'bNp9pn0ni3I');
+    });
+
     test('an artist is known once listened to', () {
       final t = taste(heard: [heard('a', 1, 'Jack, K-ICM')]);
       expect(t.knows('Jack'), isTrue);
@@ -271,6 +303,24 @@ void main() {
       ];
       final mixed = Suggestions.compose(lists, t, const Blocklist(artists: {'blocked'}), {'d'}, 10);
       expect(ids(mixed), ['c']);
+    });
+
+    test('an artist the person wants fewer suggestions of is no stranger to be tried', () {
+      final t = Taste(
+        heard: [Stamped(by('k0', 'Known'), now - 1000)],
+        liked: const [],
+        skipped: const [],
+        now: now,
+        quietArtists: {'quiet'},
+      );
+      final lists = [
+        [by('q1', 'Quiet'), by('n1', 'New'), by('k1', 'Known')],
+      ];
+      expect(ids(Suggestions.discover(lists, t, const Blocklist(), {}, 10)), ['n1']);
+      expect(ids(Suggestions.compose(lists, t, const Blocklist(), {}, 10)), ['k1', 'n1']);
+      // And autoplay does not keep a place for them either
+      final ranked = Suggestions.rank([by('a', 'Known'), by('b', 'Known 2'), by('c', 'Known 3'), by('d', 'Known 4'), by('q', 'Quiet'), by('s', 'Stranger')], t);
+      expect(ranked[4].videoId, 's');
     });
 
     test('discover offers one song of each artist that is new', () {

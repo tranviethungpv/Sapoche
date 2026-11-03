@@ -598,6 +598,10 @@ class FakeBackend implements Backend {
   List<MusicTrack> videoSearchResult = const [];
   List<SeedList> seedListsResult = const [];
 
+  @override
+  Future<void> tasteMark(String kind, String key, String label, {required bool on}) =>
+      _record('tasteMark $kind $key on=$on');
+
   /// What [tasteProfile] gives back; when a test does not say, what the recent and liked songs make of it: a play is a
   /// point, a like two more.
   TasteProfile? tasteProfileResult;

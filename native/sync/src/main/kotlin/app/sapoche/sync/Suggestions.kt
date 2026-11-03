@@ -56,7 +56,8 @@ object Suggestions {
     fun compose(lists: List<List<TrackRef>>, taste: Taste, block: Blocklist, exclude: Set<String>, limit: Int): List<TrackRef> {
         val welcome = lists.map { list -> list.filter { welcome(it, taste, block) } }
         val known = ArrayDeque(turns(welcome.map { list -> list.filter { taste.knows(it.artist) } }))
-        val fresh = ArrayDeque(turns(welcome.map { list -> list.filterNot { taste.knows(it.artist) } }))
+        // An artist the person wants fewer suggestions of is not a stranger to be tried either
+        val fresh = ArrayDeque(turns(welcome.map { list -> list.filterNot { taste.knows(it.artist) || taste.isQuiet(it.artist) } }))
         val seen = HashSet(exclude)
         val perArtist = HashMap<String, Int>()
         fun take(queue: ArrayDeque<TrackRef>): TrackRef? {
@@ -81,7 +82,7 @@ object Suggestions {
 
     /** Only the songs by artists the person does not know yet, a few of each artist: something new to try. */
     fun discover(lists: List<List<TrackRef>>, taste: Taste, block: Blocklist, exclude: Set<String>, limit: Int): List<TrackRef> {
-        val fresh = lists.map { list -> list.filter { welcome(it, taste, block) && !taste.knows(it.artist) } }
+        val fresh = lists.map { list -> list.filter { welcome(it, taste, block) && !taste.knows(it.artist) && !taste.isQuiet(it.artist) } }
         val seen = HashSet(exclude)
         val artists = HashSet<String>()
         return turns(fresh).filter { seen.add(it.videoId) && artists.add(Taste.artistKey(it.artist)) }.take(limit)
@@ -115,7 +116,7 @@ object Suggestions {
         fun fits(track: TrackRef) = track.videoId !in taken && (perArtist[Taste.artistKey(track.artist)] ?: 0) < MAX_PER_ARTIST
         while (true) {
             val stranger = result.size % STRANGER_EVERY == STRANGER_EVERY - 1
-            val next = (if (stranger) ordered.firstOrNull { fits(it) && !taste.knows(it.artist) } else null) ?: ordered.firstOrNull(::fits) ?: break
+            val next = (if (stranger) ordered.firstOrNull { fits(it) && !taste.knows(it.artist) && !taste.isQuiet(it.artist) } else null) ?: ordered.firstOrNull(::fits) ?: break
             taken += next.videoId
             perArtist.merge(Taste.artistKey(next.artist), 1, Int::plus)
             result += next

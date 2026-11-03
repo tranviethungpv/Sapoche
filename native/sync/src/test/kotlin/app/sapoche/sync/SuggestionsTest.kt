@@ -161,4 +161,16 @@ class SuggestionsTest {
         val list = listOf(by("a", "Known"), by("b", "B"), by("c", "Known"), by("d", "D"), by("e", "E"), by("f", "F"))
         assertEquals(ids(Suggestions.rank(list, taste)), ids(Suggestions.rank(list, taste)))
     }
+
+    @Test
+    fun `an artist the person wants fewer suggestions of is no stranger to be tried`() {
+        val now = 1_000L * 24 * 60 * 60 * 1000
+        val taste = Taste(listOf(Stamped(by("k0", "Known"), now - 1000)), emptyList(), emptyList(), now, quietArtists = setOf("quiet"))
+        val lists = listOf(listOf(by("q1", "Quiet"), by("n1", "New"), by("k1", "Known")))
+        assertEquals(listOf("n1"), ids(Suggestions.discover(lists, taste, Blocklist(), emptySet(), 10)))
+        assertEquals(listOf("k1", "n1"), ids(Suggestions.compose(lists, taste, Blocklist(), emptySet(), 10)))
+        // And autoplay does not keep a place for them either
+        val ranked = Suggestions.rank(listOf(by("a", "Known"), by("b", "Known 2"), by("c", "Known 3"), by("d", "Known 4"), by("q", "Quiet"), by("s", "Stranger")), taste)
+        assertEquals("s", ranked[4].videoId)
+    }
 }

@@ -134,10 +134,13 @@ HomeShelves buildHome({
     for (final b in blocked)
       if (b.isArtist) b.key,
   };
+  // Artists the person asked for fewer suggestions of: their songs are not offered, though they still play
+  final quietArtists = {for (final m in taste.marksOf(TasteMarks.quietArtist)) m.key};
   // A song the person left more than they heard is in no row either
   bool allowed(Track t) =>
       !blockedSongs.contains(t.videoId) &&
       !blockedArtists.contains(mainArtist(t.artist)) &&
+      !quietArtists.contains(mainArtist(t.artist)) &&
       (taste.songs[t.videoId] ?? 0) >= 0;
 
   // How much each song, and each artist, is loved: the songs that count are the ones the person has met
@@ -159,8 +162,9 @@ HomeShelves buildHome({
     for (final a in taste.artists)
       if (a.score > 0 && byArtist.containsKey(a.key)) a.key: a.score,
   };
-  final topArtists = byArtist.keys.toList()
-    ..sort((a, b) => (artistScore[b] ?? 0).compareTo(artistScore[a] ?? 0));
+  // An artist the score gives nothing (left again and again, or asked for less) has no mix
+  final topArtists = artistScore.keys.toList()
+    ..sort((a, b) => artistScore[b]!.compareTo(artistScore[a]!));
   // A mix of an artist begins with a radio, which a song from a file on the phone has none of
   final mixes = topArtists.length < 2
       ? <ArtistMix>[]

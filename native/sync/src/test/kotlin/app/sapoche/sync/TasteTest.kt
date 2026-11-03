@@ -3,6 +3,7 @@ package app.sapoche.sync
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TasteTest {
@@ -175,5 +176,40 @@ class TasteTest {
         assertEquals("jack", Taste.artistKey("Jack & K-ICM"))
         assertEquals("noo phước thịnh", Taste.artistKey("Noo Phước Thịnh - Topic"))
         assertEquals("Jack", Taste.artistLabel("Jack, K-ICM"))
+    }
+
+    @Test
+    fun `a song the person asked not to count is left out of everything it did`() {
+        val listens = listOf(heard("a", 1, "Adele"), heard("a", 2, "Adele"), heard("b", 1, "Beck"))
+        val full = taste(heard = listens)
+        val quiet = Taste(listens, emptyList(), emptyList(), now, { 12 }, quietSongs = setOf("a"))
+        assertTrue(full.knows("Adele"))
+        assertFalse(quiet.knows("Adele"), "the plays of that song were all of the artist's")
+        assertEquals(0.0, quiet.songScore("a"))
+        assertTrue(quiet.knows("Beck"))
+        assertEquals(listOf("b"), quiet.seeds(5))
+    }
+
+    @Test
+    fun `an artist the person wants fewer suggestions of has no score, is no seed and is never offered`() {
+        val listens = listOf(heard("a", 1, "Adele"), heard("b", 1, "Beck"), heard("c", 1, "Cher"))
+        val quiet = Taste(listens, emptyList(), emptyList(), now, { 12 }, quietArtists = setOf("beck"))
+        assertTrue(quiet.isQuiet("Beck - Topic"))
+        assertFalse(quiet.knows("Beck"))
+        assertEquals(0.0, quiet.artistScore("Beck"))
+        assertEquals(listOf("a", "c"), quiet.seeds(5).sorted())
+        assertEquals(listOf("a", "c"), quiet.offer(5).map { it.videoId }.sorted(), "and a room is not told of them")
+        // The songs are still in the taste, so they can still be played and shown where they were
+        assertTrue(quiet.songScore("b") > 0)
+    }
+
+    @Test
+    fun `a song a new person started with counts as heard when it was chosen`() {
+        val label = """{"videoId":"bNp9pn0ni3I","title":"Chiều hôm ấy","artist":"Jaykii","thumb":"https://x/t.jpg","durMs":215000}"""
+        val stamped = TasteMarks.starter(label, now - day)!!
+        assertEquals(TrackRef("bNp9pn0ni3I", "Chiều hôm ấy", "Jaykii", "https://x/t.jpg", 215000), stamped.track)
+        assertTrue(taste(heard = listOf(stamped)).knows("Jaykii"))
+        assertNull(TasteMarks.starter("not json", 1))
+        assertNull(TasteMarks.starter("""{"title":"no id"}""", 1))
     }
 }

@@ -28,16 +28,30 @@ class SuggestionFeed {
   Future<bool>? _renewing;
 
   /// What the library says about the person, as of now.
-  Taste _taste() => Taste(
-    heard: [
-      for (final e in store.listens()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch, ListenSource.weight(e.source)),
-    ],
-    liked: [for (final e in store.likedEntries()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch)],
-    skipped: [
-      for (final e in store.skipped()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch, ListenSource.weight(e.source)),
-    ],
-    now: _now(),
-  );
+  /// The song a starter mark stands for, heard when it was chosen; null when the mark holds no song.
+  static Stamped? _starter(TasteMark mark) {
+    final track = TasteMarks.starterTrack(mark.label);
+    return track == null ? null : Stamped(TrackRef.of(track), mark.at);
+  }
+
+  Taste _taste() {
+    final marks = store.tasteMarks();
+    return Taste(
+      heard: [
+        for (final e in store.listens()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch, ListenSource.weight(e.source)),
+        // The songs a new person started with count as heard when they were chosen
+        for (final m in marks)
+          if (m.kind == TasteMarks.starter) ?_starter(m),
+      ],
+      liked: [for (final e in store.likedEntries()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch)],
+      skipped: [
+        for (final e in store.skipped()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch, ListenSource.weight(e.source)),
+      ],
+      now: _now(),
+      quietSongs: {for (final m in marks) if (m.kind == TasteMarks.quietSong) m.key},
+      quietArtists: {for (final m in marks) if (m.kind == TasteMarks.quietArtist) m.key},
+    );
+  }
 
   Blocklist _blocklist() {
     final blocked = store.blocked();
@@ -179,6 +193,7 @@ class SuggestionFeed {
     return TasteProfile(
       artists: [for (final a in taste.artistScores()) ArtistRank(key: a.key, label: a.label, score: a.score)],
       songs: taste.songScores(),
+      marks: store.tasteMarks(),
       stats: sourceStats(),
     );
   }

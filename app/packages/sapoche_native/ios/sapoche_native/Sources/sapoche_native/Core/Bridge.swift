@@ -471,8 +471,12 @@ final class Bridge {
             return [
                 "artists": profile.artists.map { ["key": $0.key, "label": $0.label, "score": $0.score] as [String: Any] },
                 "songs": profile.songs,
+                "marks": profile.marks.map { ["kind": $0.kind, "key": $0.key, "label": $0.label, "at": $0.at] as [String: Any] },
                 "stats": profile.stats.map { ["source": $0.source, "heard": $0.heard, "skipped": $0.skipped] as [String: Any] },
             ] as [String: Any]
+        case "tasteMark":
+            try await store.setTasteMark(kind: string("kind"), key: string("key"), label: string("label"), on: bool("on"))
+            return nil
         case "contextMix":
             let mix = try await suggestions.contextMix()
             return ["bucket": mix.bucket, "tracks": mix.tracks.map { $0.toMap() }] as [String: Any]

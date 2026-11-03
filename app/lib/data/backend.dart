@@ -393,6 +393,9 @@ abstract class Backend {
   /// Songs by artists the person does not know yet, from what was kept: something new to try.
   Future<List<Track>> discover();
 
+  /// Puts a mark on the taste (see [TasteMarks]) or, with [on] false, takes it off.
+  Future<void> tasteMark(String kind, String key, String label, {required bool on});
+
   /// A mix for this time of day; no songs until enough was heard at this hour.
   Future<ContextMix> contextMix();
 
@@ -1020,6 +1023,10 @@ class NativeBackend implements Backend {
     for (final e in await _call<List<Object?>>('discover') ?? const [])
       Track.fromMap(e as Map<Object?, Object?>),
   ];
+
+  @override
+  Future<void> tasteMark(String kind, String key, String label, {required bool on}) =>
+      _call<void>('tasteMark', {'kind': kind, 'key': key, 'label': label, 'on': on});
 
   @override
   Future<TasteProfile> tasteProfile() async => TasteProfile.fromMap(

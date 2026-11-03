@@ -270,6 +270,29 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         }
     }
 
+    /** What the person told the taste (see [TasteMarks]), the latest first. */
+    suspend fun tasteMarks(): List<TasteMark> = withContext(io) {
+        readableDatabase.rawQuery("SELECT kind, key, label, at FROM taste_marks ORDER BY at DESC, kind, key", null).use { c ->
+            buildList { while (c.moveToNext()) add(TasteMark(c.getString(0), c.getString(1), c.getString(2), c.getLong(3))) }
+        }
+    }
+
+    /** Puts a mark on the taste ([on]), or takes it off. A mark of the same kind and key is replaced. */
+    suspend fun setTasteMark(kind: String, key: String, label: String, on: Boolean, at: Long = System.currentTimeMillis()) = withContext(io) {
+        val db = writableDatabase
+        if (on) {
+            db.insertWithOnConflict("taste_marks", null, ContentValues().apply {
+                put("kind", kind)
+                put("key", key)
+                put("label", label)
+                put("at", at)
+            }, SQLiteDatabase.CONFLICT_REPLACE)
+        } else {
+            db.delete("taste_marks", "kind = ? AND key = ?", arrayOf(kind, key))
+        }
+        _changes.tryEmit(Unit)
+    }
+
     /** Songs left after a few seconds, the latest first, each time one entry. */
     suspend fun skipped(): List<Entry> = withContext(io) {
         readableDatabase.rawQuery(

@@ -499,12 +499,22 @@ class SapocheBridge(
             "seedLists" -> return SapocheApp.suggestions.seedLists().map { (seed, tracks) ->
                 mapOf("seed" to seed, "tracks" to tracks.map { it.toMap() })
             }
+            "tasteMark" -> {
+                SapocheApp.library.setTasteMark(
+                    call.argument<String>("kind").orEmpty(),
+                    call.argument<String>("key").orEmpty(),
+                    call.argument<String>("label").orEmpty(),
+                    call.argument<Boolean>("on") == true,
+                )
+                return null
+            }
             "discover" -> return SapocheApp.suggestions.discover().map { it.toMap() }
             "tasteProfile" -> {
                 val profile = SapocheApp.suggestions.profile()
                 return mapOf(
                     "artists" to profile.artists.map { mapOf("key" to it.key, "label" to it.label, "score" to it.score) },
                     "songs" to profile.songs,
+                    "marks" to profile.marks.map { mapOf("kind" to it.kind, "key" to it.key, "label" to it.label, "at" to it.at) },
                     "stats" to profile.stats.map { mapOf("source" to it.source, "heard" to it.heard, "skipped" to it.skipped) },
                 )
             }

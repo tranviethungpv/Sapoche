@@ -52,6 +52,8 @@ class LibraryStore {
   final _skips = <(String, int, String?)>[];
   // What was asked not to be offered, the latest last
   final _blocked = <_Blocked>[];
+  // What the person told the taste (see TasteMarks), the latest last
+  final _marks = <_Blocked>[];
   // What YouTube listed beside a seed song, by the seed's id
   final _suggestions = <String, _Cached>{};
   final _playlists = <_Playlist>[];
@@ -196,6 +198,20 @@ class LibraryStore {
   List<BlockedItem> blocked() => [
     for (final b in _blocked.reversed) BlockedItem(kind: b.kind, key: b.key, label: b.label),
   ];
+
+  // ------------------------------------------------------------------ taste marks
+
+  /// What the person told the taste (see [TasteMarks]), the latest first.
+  List<TasteMark> tasteMarks() => [
+    for (final m in _marks.reversed) TasteMark(kind: m.kind, key: m.key, label: m.label, at: m.at),
+  ];
+
+  /// Puts a mark on the taste ([on]), or takes it off. A mark of the same kind and key is replaced.
+  void setTasteMark(String kind, String key, String label, {required bool on}) {
+    _marks.removeWhere((m) => m.kind == kind && m.key == key);
+    if (on) _marks.add(_Blocked(kind, key, label, _now()));
+    _changed();
+  }
 
   // ------------------------------------------------------------------ suggestions
 
@@ -436,6 +452,9 @@ class LibraryStore {
     'blocked': [
       for (final b in _blocked) [b.kind, b.key, b.label, b.at],
     ],
+    'marks': [
+      for (final m in _marks) [m.kind, m.key, m.label, m.at],
+    ],
     'suggestions': {
       for (final e in _suggestions.entries)
         e.key: {
@@ -480,6 +499,10 @@ class LibraryStore {
     for (final row in json['blocked'] as List? ?? const []) {
       final b = row as List;
       _blocked.add(_Blocked(b[0] as String, b[1] as String, b[2] as String, (b[3] as num).toInt()));
+    }
+    for (final row in json['marks'] as List? ?? const []) {
+      final m = row as List;
+      _marks.add(_Blocked(m[0] as String, m[1] as String, m[2] as String, (m[3] as num).toInt()));
     }
     (json['suggestions'] as Map<String, Object?>? ?? const {}).forEach((seed, value) {
       final m = value as Map<String, Object?>;

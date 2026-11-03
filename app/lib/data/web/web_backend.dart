@@ -1364,6 +1364,10 @@ class WebBackend extends BackendDefaults {
   Future<TasteProfile> tasteProfile() async => _suggestions.profile();
 
   @override
+  Future<void> tasteMark(String kind, String key, String label, {required bool on}) async =>
+      _library.setTasteMark(kind, key, label, on: on);
+
+  @override
   Future<ContextMix> contextMix() async {
     final (bucket, tracks) = await _suggestions.contextMix();
     return ContextMix(bucket: bucket, tracks: [for (final t in tracks) _track(t)]);

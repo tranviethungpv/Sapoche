@@ -36,10 +36,15 @@ actor SuggestionFeed {
 
     /// What the library says about the person, as of now.
     private func loadTaste() async throws -> Taste {
-        let heard = try await store.listens().map { Stamped(track: $0.track, at: $0.at, weight: ListenSource.weight($0.source)) }
+        let marks = try await store.tasteMarks()
+        // The songs a new person started with count as heard when they were chosen
+        let starters = marks.filter { $0.kind == TasteMarks.starter }.compactMap { TasteMarks.starter(label: $0.label, at: $0.at) }
+        let heard = try await store.listens().map { Stamped(track: $0.track, at: $0.at, weight: ListenSource.weight($0.source)) } + starters
         let liked = try await store.liked().map { Stamped(track: $0.track, at: $0.at) }
         let skipped = try await store.skipped().map { Stamped(track: $0.track, at: $0.at, weight: ListenSource.weight($0.source)) }
-        return Taste(heard: heard, liked: liked, skipped: skipped, now: now())
+        return Taste(heard: heard, liked: liked, skipped: skipped, now: now(),
+                     quietSongs: Set(marks.filter { $0.kind == TasteMarks.quietSong }.map(\.key)),
+                     quietArtists: Set(marks.filter { $0.kind == TasteMarks.quietArtist }.map(\.key)))
     }
 
     private func blocklist() async throws -> Blocklist {
@@ -181,9 +186,9 @@ actor SuggestionFeed {
     }
 
     /// What the listening says about the person: how much each artist and each song is loved, and how each source fared.
-    func profile() async throws -> (artists: [ArtistScore], songs: [String: Double], stats: [LibraryStore.SourceStats]) {
+    func profile() async throws -> (artists: [ArtistScore], songs: [String: Double], marks: [LibraryStore.TasteMark], stats: [LibraryStore.SourceStats]) {
         let taste = try await loadTaste()
-        return (taste.artistScores(), taste.songScores(), try await sourceStats())
+        return (taste.artistScores(), taste.songScores(), try await store.tasteMarks(), try await sourceStats())
     }
 
     /// The radio YouTube Music makes of the song, or what YouTube lists beside it when that cannot be had.

@@ -1396,9 +1396,65 @@ class ArtistRank {
   int get hashCode => Object.hash(key, label, score);
 }
 
+/// What the person told the taste (see [TasteMarks]): [kind], what it is about ([key]: an artist in plain letters or a
+/// video id), how to show it ([label]) and when.
+class TasteMark {
+  const TasteMark({required this.kind, required this.key, required this.label, this.at = 0});
+
+  final String kind;
+  final String key;
+  final String label;
+  final int at;
+
+  factory TasteMark.fromMap(Map<Object?, Object?> map) => TasteMark(
+    kind: map['kind'] as String? ?? '',
+    key: map['key'] as String? ?? '',
+    label: map['label'] as String? ?? '',
+    at: (map['at'] as num?)?.toInt() ?? 0,
+  );
+
+  @override
+  bool operator ==(Object other) => other is TasteMark && other.kind == kind && other.key == key && other.label == label && other.at == at;
+
+  @override
+  int get hashCode => Object.hash(kind, key, label, at);
+}
+
+/// The kinds of [TasteMark], as the native side knows them.
+abstract final class TasteMarks {
+  /// An artist to be suggested less: not a seed, not known, nothing offered to a room; their songs still play.
+  static const quietArtist = 'quiet_artist';
+
+  /// A song that is not to count: whatever happened to it is left out of the taste.
+  static const quietSong = 'quiet_song';
+
+  /// A song a new person chose an artist by (key: its video id; label: the song as JSON): counts as heard when chosen.
+  static const starter = 'starter';
+
+  /// The label of a [starter] mark for [track].
+  static String starterLabel(Track track) =>
+      jsonEncode({'videoId': track.videoId, 'title': track.title, 'artist': track.artist, 'thumb': track.thumb, 'durMs': track.durMs});
+
+  /// The song a [starter] mark stands for; null when its [label] is not a song.
+  static Track? starterTrack(String label) {
+    try {
+      final o = jsonDecode(label) as Map<String, dynamic>;
+      return Track(
+        videoId: o['videoId'] as String,
+        title: o['title'] as String? ?? '',
+        artist: o['artist'] as String? ?? '',
+        thumb: o['thumb'] as String?,
+        durMs: (o['durMs'] as num?)?.toInt() ?? 0,
+      );
+    } on Object {
+      return null;
+    }
+  }
+}
+
 /// What the listening says about the person, as the native side works it out. Every list is ready to draw.
 class TasteProfile {
-  const TasteProfile({this.artists = const [], this.songs = const {}, this.stats = const []});
+  const TasteProfile({this.artists = const [], this.songs = const {}, this.marks = const [], this.stats = const []});
 
   /// The artists with the highest score, the highest first. A score below nothing is an artist left again and again.
   final List<ArtistRank> artists;
@@ -1406,8 +1462,14 @@ class TasteProfile {
   /// How much each song is loved, by video id; below nothing for a song left more than it was heard.
   final Map<String, double> songs;
 
+  /// What the person told the taste, the latest first.
+  final List<TasteMark> marks;
+
   /// How the songs of each source fared in the last 30 days.
   final List<SourceStats> stats;
+
+  /// The marks of one [kind].
+  Iterable<TasteMark> marksOf(String kind) => marks.where((m) => m.kind == kind);
 
   factory TasteProfile.fromMap(Map<Object?, Object?> map) => TasteProfile(
     artists: [
@@ -1422,6 +1484,9 @@ class TasteProfile {
       for (final e in (map['songs'] as Map<Object?, Object?>? ?? const {}).entries)
         e.key as String: (e.value as num).toDouble(),
     },
+    marks: [
+      for (final e in map['marks'] as List<Object?>? ?? const []) TasteMark.fromMap(e as Map<Object?, Object?>),
+    ],
     stats: [
       for (final e in map['stats'] as List<Object?>? ?? const []) SourceStats.fromMap(e as Map<Object?, Object?>),
     ],
@@ -1429,10 +1494,14 @@ class TasteProfile {
 
   @override
   bool operator ==(Object other) =>
-      other is TasteProfile && listEquals(artists, other.artists) && mapEquals(songs, other.songs) && listEquals(stats, other.stats);
+      other is TasteProfile &&
+      listEquals(artists, other.artists) &&
+      mapEquals(songs, other.songs) &&
+      listEquals(marks, other.marks) &&
+      listEquals(stats, other.stats);
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(artists), Object.hashAll(songs.entries.map((e) => Object.hash(e.key, e.value))), Object.hashAll(stats));
+  int get hashCode => Object.hash(Object.hashAll(artists), Object.hashAll(songs.entries.map((e) => Object.hash(e.key, e.value))), Object.hashAll(marks), Object.hashAll(stats));
 }
 
 /// How the songs from one [source] fared lately: heard for long enough, and left after a few seconds.
