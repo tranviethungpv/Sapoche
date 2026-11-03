@@ -858,6 +858,45 @@ final class SmallPartsTests: XCTestCase {
         XCTAssertEqual(Suggestions.discover(lists, taste: taste, block: Blocklist(), exclude: [], limit: 1).map(\.videoId), ["n1"])
     }
 
+    func testRankingKeepsTheOrderOfTheRadioForAStranger() {
+        let list = [by("a", "X"), by("b", "Y"), by("c", "Z"), by("d", "W")]
+        XCTAssertEqual(Suggestions.rank(list, taste: Taste(heard: [], liked: [], skipped: [], now: 0)).map(\.videoId), ["a", "b", "c", "d"])
+    }
+
+    func testRankingLiftsSongsByArtistsThePersonLovesAFewPlacesAtMost() {
+        let taste = tasteOf(["Loved"])
+        // The loved artist's song stands fifth: what it adds is worth four places, and no more
+        let list = [by("a", "A"), by("b", "B"), by("c", "C"), by("d", "D"), by("e", "Loved")]
+        XCTAssertEqual(Suggestions.rank(list, taste: taste).map(\.videoId), ["e", "a", "b", "c", "d"])
+        let far = [by("a", "A"), by("b", "B"), by("c", "C"), by("d", "D"), by("e", "E"), by("f", "F"), by("g", "G"), by("h", "H"), by("i", "Loved")]
+        XCTAssertEqual(Suggestions.rank(far, taste: taste).first?.videoId, "a", "at the ninth place it does not reach the top")
+    }
+
+    func testASongLeftMoreThanItWasHeardIsDropped() {
+        let now: Int64 = 1_000 * 24 * 60 * 60 * 1000
+        let taste = Taste(heard: [], liked: [], skipped: [Stamped(track: by("bad", "Y"), at: now - 1000)], now: now)
+        XCTAssertEqual(Suggestions.rank([by("bad", "Y"), by("ok", "Z")], taste: taste).map(\.videoId), ["ok"])
+    }
+
+    func testNoArtistComesMoreThanTwiceInARanking() {
+        let list = (1...8).map { by("k\($0)", "Known") } + [by("n1", "New 1"), by("n2", "New 2")]
+        XCTAssertEqual(Suggestions.rank(list, taste: tasteOf(["Known"])).map(\.videoId), ["k1", "k2", "n1", "n2"])
+    }
+
+    func testEveryFifthPlaceIsForAnArtistNotKnownYetWhenTheListHasOne() {
+        let taste = tasteOf(["A", "B", "C", "D", "E"])
+        let list = [by("a", "A"), by("b", "B"), by("c", "C"), by("d", "D"), by("e", "E"), by("s", "Stranger")]
+        // By score e would be fifth; the place is for the stranger
+        XCTAssertEqual(Suggestions.rank(list, taste: taste).map(\.videoId), ["a", "b", "c", "d", "s", "e"])
+        XCTAssertEqual(Suggestions.rank(Array(list.dropLast()), taste: taste).map(\.videoId), ["a", "b", "c", "d", "e"])
+    }
+
+    func testRankingGivesTheSameOrderEveryTime() {
+        let taste = tasteOf(["Known"])
+        let list = [by("a", "Known"), by("b", "B"), by("c", "Known"), by("d", "D"), by("e", "E"), by("f", "F")]
+        XCTAssertEqual(Suggestions.rank(list, taste: taste).map(\.videoId), Suggestions.rank(list, taste: taste).map(\.videoId))
+    }
+
     func testVideoStreamsAreChosenByHeightAndOnlyH264Plays() {
         func source(_ height: Int, _ codec: String = "avc1.4d401f", _ kbps: Int = 1000) -> VideoSource {
             VideoSource(url: "u\(height)\(codec)", height: height, codec: codec, bitrateKbps: kbps, itag: height)

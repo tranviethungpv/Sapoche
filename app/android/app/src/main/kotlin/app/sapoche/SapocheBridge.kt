@@ -499,9 +499,14 @@ class SapocheBridge(
                 mapOf("seed" to seed, "tracks" to tracks.map { it.toMap() })
             }
             "discover" -> return SapocheApp.suggestions.discover().map { it.toMap() }
-            "tasteProfile" -> return mapOf(
-                "stats" to SapocheApp.suggestions.sourceStats().map { mapOf("source" to it.source, "heard" to it.heard, "skipped" to it.skipped) },
-            )
+            "tasteProfile" -> {
+                val profile = SapocheApp.suggestions.profile()
+                return mapOf(
+                    "artists" to profile.artists.map { mapOf("key" to it.key, "label" to it.label, "score" to it.score) },
+                    "songs" to profile.songs,
+                    "stats" to profile.stats.map { mapOf("source" to it.source, "heard" to it.heard, "skipped" to it.skipped) },
+                )
+            }
             "contextMix" -> {
                 val (bucket, tracks) = SapocheApp.suggestions.contextMix()
                 return mapOf("bucket" to bucket, "tracks" to tracks.map { it.toMap() })

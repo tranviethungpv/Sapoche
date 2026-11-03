@@ -3,7 +3,7 @@ library;
 
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 
 import 'song_key.dart';
 
@@ -1360,24 +1360,59 @@ abstract final class ListenSource {
   static double weight(String? source) => source == roomOther ? otherWeight : 1.0;
 }
 
-/// What the listening says about the person, as the native side works it out.
+/// How much an artist is loved, as the native side works it out: [key] is the artist in plain letters (see
+/// [mainArtist]), [label] the name as it is written.
+class ArtistRank {
+  const ArtistRank({required this.key, required this.label, required this.score});
+
+  final String key;
+  final String label;
+  final double score;
+
+  @override
+  bool operator ==(Object other) => other is ArtistRank && other.key == key && other.label == label && other.score == score;
+
+  @override
+  int get hashCode => Object.hash(key, label, score);
+}
+
+/// What the listening says about the person, as the native side works it out. Every list is ready to draw.
 class TasteProfile {
-  const TasteProfile({this.stats = const []});
+  const TasteProfile({this.artists = const [], this.songs = const {}, this.stats = const []});
+
+  /// The artists with the highest score, the highest first. A score below nothing is an artist left again and again.
+  final List<ArtistRank> artists;
+
+  /// How much each song is loved, by video id; below nothing for a song left more than it was heard.
+  final Map<String, double> songs;
 
   /// How the songs of each source fared in the last 30 days.
   final List<SourceStats> stats;
 
   factory TasteProfile.fromMap(Map<Object?, Object?> map) => TasteProfile(
+    artists: [
+      for (final e in map['artists'] as List<Object?>? ?? const [])
+        ArtistRank(
+          key: (e as Map<Object?, Object?>)['key'] as String? ?? '',
+          label: e['label'] as String? ?? '',
+          score: (e['score'] as num?)?.toDouble() ?? 0,
+        ),
+    ],
+    songs: {
+      for (final e in (map['songs'] as Map<Object?, Object?>? ?? const {}).entries)
+        e.key as String: (e.value as num).toDouble(),
+    },
     stats: [
       for (final e in map['stats'] as List<Object?>? ?? const []) SourceStats.fromMap(e as Map<Object?, Object?>),
     ],
   );
 
   @override
-  bool operator ==(Object other) => other is TasteProfile && listEquals(stats, other.stats);
+  bool operator ==(Object other) =>
+      other is TasteProfile && listEquals(artists, other.artists) && mapEquals(songs, other.songs) && listEquals(stats, other.stats);
 
   @override
-  int get hashCode => Object.hashAll(stats);
+  int get hashCode => Object.hash(Object.hashAll(artists), Object.hashAll(songs.entries.map((e) => Object.hash(e.key, e.value))), Object.hashAll(stats));
 }
 
 /// How the songs from one [source] fared lately: heard for long enough, and left after a few seconds.

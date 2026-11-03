@@ -144,11 +144,23 @@ class SuggestionFeed {
   Future<List<TrackRef>> after(String videoId, Set<String> exclude, int count) async {
     final taste = _taste();
     final block = _blocklist();
-    return Suggestions.mix(
+    final pool = Suggestions.mix(
       [await radio(videoId)],
       {...exclude, videoId, ...store.heardSince(_now() - _recentMs)},
-      count,
+      count * _poolFactor,
       (t) => Suggestions.welcome(t, taste, block),
+    );
+    // YouTube's order, put in the order that suits this person
+    return Suggestions.rank(pool, taste).take(count).toList();
+  }
+
+  /// What the listening says about the person: how much each artist and each song is loved, and how each source fared.
+  TasteProfile profile() {
+    final taste = _taste();
+    return TasteProfile(
+      artists: [for (final a in taste.artistScores()) ArtistRank(key: a.key, label: a.label, score: a.score)],
+      songs: taste.songScores(),
+      stats: sourceStats(),
     );
   }
 
@@ -160,6 +172,8 @@ class SuggestionFeed {
   static const contextCount = 20;
   static const seedCount = 8;
   static const freshMs = 12 * 60 * 60 * 1000;
+  /// Songs looked at for each one that is given, so ranking has a choice.
+  static const _poolFactor = 4;
   static const statsMs = 30 * 24 * 60 * 60 * 1000;
   static const song = 'song';
   static const artist = 'artist';

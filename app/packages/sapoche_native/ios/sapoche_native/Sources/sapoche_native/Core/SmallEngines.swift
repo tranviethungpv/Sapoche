@@ -99,6 +99,43 @@ enum Suggestions {
         return result
     }
 
+    /// Of every five songs, the last is for an artist the person does not know yet.
+    private static let strangerEvery = 5
+
+    /// Position counts for less the further down the radio's list a song stands: half as much at the eighth place.
+    private static let positionSpan = 8.0
+
+    /// How much knowing the artist adds to a song's score, as a share of the artist loved most.
+    private static let affinityWeight = 0.35
+
+    /// [list], a radio's songs in the order YouTube gives them, put in the order that suits this person: the nearer the
+    /// top the better, plus a little for songs by artists they love. A song they left more than they heard is dropped,
+    /// every fifth place is kept for an artist they do not know yet if the list has one, and no artist comes more than
+    /// [maxPerArtist] times. The order is the same whenever the same list and the same taste are given.
+    static func rank(_ list: [TrackRef], taste: Taste) -> [TrackRef] {
+        let strongest = taste.strongestArtist
+        func affinity(_ track: TrackRef) -> Double { strongest <= 0 ? 0 : min(max(taste.artistScore(track.artist) / strongest, 0), 1) }
+        var ordered = Array(list.enumerated()).filter { taste.songScore($0.element.videoId) >= 0 }.map { entry in
+            (index: entry.offset, track: entry.element, score: 1 / (1 + Double(entry.offset) / positionSpan) + affinityWeight * affinity(entry.element))
+        }
+        ordered.sort { $0.score != $1.score ? $0.score > $1.score : $0.index < $1.index }
+        var taken = Set<String>()
+        var perArtist: [String: Int] = [:]
+        var result: [TrackRef] = []
+        func fits(_ track: TrackRef) -> Bool {
+            !taken.contains(track.videoId) && (perArtist[Taste.artistKey(track.artist)] ?? 0) < maxPerArtist
+        }
+        while true {
+            let stranger = result.count % strangerEvery == strangerEvery - 1
+            let next = (stranger ? ordered.first { fits($0.track) && !taste.knows($0.track.artist) } : nil) ?? ordered.first { fits($0.track) }
+            guard let pick = next else { break }
+            taken.insert(pick.track.videoId)
+            perArtist[Taste.artistKey(pick.track.artist), default: 0] += 1
+            result.append(pick.track)
+        }
+        return result
+    }
+
     /// The lists read in turns, one song from each at a time.
     private static func turns(_ lists: [[TrackRef]]) -> [TrackRef] {
         var queues = lists.map { ArraySlice($0) }

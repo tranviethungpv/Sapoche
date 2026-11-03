@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sapoche/data/home_model.dart';
+import 'dart:math';
+
+import 'package:sapoche/data/home_model.dart' hide buildHome;
+import 'package:sapoche/data/home_model.dart' as model show buildHome;
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/data/song_key.dart';
@@ -17,6 +20,63 @@ HistoryEntry heard(Track track, DateTime now, {int days = 0, int plays = 1}) =>
       at: now.subtract(Duration(days: days)),
       plays: plays,
     );
+
+/// What the native side would say of this listening: a play counts for less as it gets older (half after 30 days), a
+/// like for as much as two plays. The page itself does not work this out; the tests need some taste to give it.
+TasteProfile tasteOf(List<HistoryEntry> recent, List<Track> liked, DateTime now) {
+  final tracks = <String, Track>{
+    for (final t in [...recent.map((e) => e.track), ...liked]) t.videoId: t,
+  };
+  double scoreOf(Track track) {
+    var score = 0.0;
+    for (final e in recent) {
+      if (e.track.videoId == track.videoId) {
+        score += e.plays * pow(0.5, now.difference(e.at).inHours / (30 * 24));
+      }
+    }
+    return liked.any((l) => l.videoId == track.videoId) ? score + 2 : score;
+  }
+
+  final songs = {for (final t in tracks.values) t.videoId: scoreOf(t)};
+  final artists = <String, double>{};
+  final labels = <String, String>{};
+  for (final t in tracks.values) {
+    final key = mainArtist(t.artist);
+    artists[key] = (artists[key] ?? 0) + songs[t.videoId]!;
+    labels[key] = displayArtist(t.artist);
+  }
+  return TasteProfile(
+    artists: [
+      for (final e in artists.entries) ArtistRank(key: e.key, label: labels[e.key]!, score: e.value),
+    ],
+    songs: songs,
+  );
+}
+
+/// [model.buildHome] with the taste the listening gives, unless the test says what it is.
+HomeShelves buildHome({
+  required List<HistoryEntry> recent,
+  required List<Track> liked,
+  required List<Track> forYou,
+  required List<SeedList> seedLists,
+  required DateTime now,
+  TasteProfile? taste,
+  List<Track> discover = const [],
+  ContextMix context = const ContextMix(),
+  List<BlockedItem> blocked = const [],
+  List<HistoryEntry> listens = const [],
+}) => model.buildHome(
+  taste: taste ?? tasteOf(recent, liked, now),
+  recent: recent,
+  liked: liked,
+  forYou: forYou,
+  seedLists: seedLists,
+  now: now,
+  discover: discover,
+  context: context,
+  blocked: blocked,
+  listens: listens,
+);
 
 void main() {
   final now = DateTime(2026, 9, 30, 20);
@@ -563,6 +623,66 @@ void main() {
       );
       expect(home.quickPicks.map((s) => s.videoId), ['a']);
       expect(home.contextBucket, '');
+    });
+  });
+
+  group('the score is the native side\'s', () {
+    test('a song the person keeps skipping is in no row, whatever the list says', () {
+      final a = t('a', 'Adele');
+      final bad = t('bad', 'Beck');
+      final home = buildHome(
+        recent: [heard(a, now, plays: 3), heard(bad, now, plays: 1)],
+        liked: const [],
+        forYou: [bad, t('x', 'Xavier')],
+        seedLists: const [],
+        discover: [bad],
+        now: now,
+        taste: const TasteProfile(
+          artists: [
+            ArtistRank(key: 'adele', label: 'Adele', score: 3),
+            ArtistRank(key: 'beck', label: 'Beck', score: -1),
+          ],
+          songs: {'a': 3, 'bad': -1.2},
+        ),
+      );
+      expect(home.quickPicks.map((s) => s.videoId), ['x']);
+      expect(home.discover, isEmpty);
+      expect(home.topSeed?.videoId, 'a');
+      expect(home.mixes, isEmpty, reason: 'one artist is not enough for a mix');
+    });
+
+    test('the mixes follow the artists\' score, not the plays', () {
+      // Beck was played more, but the score says Adele is loved more (Beck's plays were mostly skipped on the way)
+      final home = buildHome(
+        recent: [heard(t('a', 'Adele'), now), heard(t('b', 'Beck'), now, plays: 9)],
+        liked: const [],
+        forYou: const [],
+        seedLists: const [],
+        now: now,
+        taste: const TasteProfile(
+          artists: [
+            ArtistRank(key: 'adele', label: 'Adele', score: 5),
+            ArtistRank(key: 'beck', label: 'Beck', score: 2),
+          ],
+          songs: {'a': 5, 'b': 2},
+        ),
+      );
+      expect(home.mixes.map((m) => m.artist), ['Adele', 'Beck']);
+    });
+
+    test('an artist the score gives nothing is no mix and no seed', () {
+      final home = buildHome(
+        recent: [heard(t('a', 'Adele'), now), heard(t('b', 'Beck'), now)],
+        liked: const [],
+        forYou: const [],
+        seedLists: const [],
+        now: now,
+        taste: const TasteProfile(
+          artists: [ArtistRank(key: 'adele', label: 'Adele', score: 2)],
+          songs: {'a': 2},
+        ),
+      );
+      expect(home.mixes, isEmpty);
     });
   });
 }

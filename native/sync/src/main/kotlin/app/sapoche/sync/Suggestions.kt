@@ -87,6 +87,42 @@ object Suggestions {
         return turns(fresh).filter { seen.add(it.videoId) && artists.add(Taste.artistKey(it.artist)) }.take(limit)
     }
 
+    /** Of every five songs, the last is for an artist the person does not know yet. */
+    private const val STRANGER_EVERY = 5
+
+    /** Position counts for less the further down the radio's list a song stands: half as much at the eighth place. */
+    private const val POSITION_SPAN = 8.0
+
+    /** How much knowing the artist adds to a song's score, as a share of the artist loved most. */
+    private const val AFFINITY_WEIGHT = 0.35
+
+    /**
+     * [list], a radio's songs in the order YouTube gives them, put in the order that suits this person: the nearer the top
+     * the better, plus a little for songs by artists they love. A song they left more than they heard is dropped, every
+     * fifth place is kept for an artist they do not know yet if the list has one, and no artist comes more than
+     * [MAX_PER_ARTIST] times. The order is the same whenever the same list and the same taste are given.
+     */
+    fun rank(list: List<TrackRef>, taste: Taste): List<TrackRef> {
+        val strongest = taste.strongestArtist
+        fun affinity(track: TrackRef) = if (strongest <= 0) 0.0 else (taste.artistScore(track.artist) / strongest).coerceIn(0.0, 1.0)
+        val ordered = list.withIndex()
+            .filter { taste.songScore(it.value.videoId) >= 0 }
+            .sortedWith(compareByDescending<IndexedValue<TrackRef>> { 1.0 / (1 + it.index / POSITION_SPAN) + AFFINITY_WEIGHT * affinity(it.value) }.thenBy { it.index })
+            .map { it.value }
+        val taken = HashSet<String>()
+        val perArtist = HashMap<String, Int>()
+        val result = ArrayList<TrackRef>()
+        fun fits(track: TrackRef) = track.videoId !in taken && (perArtist[Taste.artistKey(track.artist)] ?: 0) < MAX_PER_ARTIST
+        while (true) {
+            val stranger = result.size % STRANGER_EVERY == STRANGER_EVERY - 1
+            val next = (if (stranger) ordered.firstOrNull { fits(it) && !taste.knows(it.artist) } else null) ?: ordered.firstOrNull(::fits) ?: break
+            taken += next.videoId
+            perArtist.merge(Taste.artistKey(next.artist), 1, Int::plus)
+            result += next
+        }
+        return result
+    }
+
     /** The lists read in turns, one song from each at a time. */
     private fun turns(lists: List<List<TrackRef>>): List<TrackRef> {
         val queues = lists.map { it.iterator() }

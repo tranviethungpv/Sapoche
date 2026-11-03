@@ -106,19 +106,13 @@ String dayPartOf(DateTime time) => switch (time.hour) {
   _ => 'night',
 };
 
-/// A play counts for less as it gets older: half as much after a month.
-const _halfLife = Duration(days: 30);
-
-/// A liked song counts for as much as two plays.
-const _likeWeight = 2.0;
-
 const _forgottenAfter = Duration(days: 30);
 
-double _recency(DateTime at, DateTime now) =>
-    pow(0.5, now.difference(at).inHours / _halfLife.inHours).toDouble();
-
-/// Picks the rows of the home page from the person's history, likes and the suggestions kept for them.
+/// Picks the rows of the home page from the person's history, likes and the suggestions kept for them. How much each
+/// song and each artist is loved is not worked out here: [taste] is what the native side says (the same score that
+/// the suggestions use), so a song the person keeps skipping is in no row.
 HomeShelves buildHome({
+  required TasteProfile taste,
   required List<HistoryEntry> recent,
   required List<Track> liked,
   required List<Track> forYou,
@@ -140,31 +134,33 @@ HomeShelves buildHome({
     for (final b in blocked)
       if (b.isArtist) b.key,
   };
+  // A song the person left more than they heard is in no row either
   bool allowed(Track t) =>
       !blockedSongs.contains(t.videoId) &&
-      !blockedArtists.contains(mainArtist(t.artist));
+      !blockedArtists.contains(mainArtist(t.artist)) &&
+      (taste.songs[t.videoId] ?? 0) >= 0;
 
-  // How much each song, and each artist, is loved
+  // How much each song, and each artist, is loved: the songs that count are the ones the person has met
   final scores = <Track, double>{};
-  for (final e in recent) {
-    scores[e.track] = e.plays * _recency(e.at, now);
-  }
-  for (final t in liked) {
-    scores[t] = (scores[t] ?? 0) + _likeWeight;
+  for (final t in [...recent.map((e) => e.track), ...liked]) {
+    final score = taste.songs[t.videoId];
+    if (score != null && score > 0) scores[t] = score;
   }
   final ranked = scores.keys.where(allowed).toList()
     ..sort((a, b) => scores[b]!.compareTo(scores[a]!));
 
   final byArtist = <String, List<Track>>{};
-  final artistScore = <String, double>{};
   for (final t in ranked) {
     final artist = mainArtist(t.artist);
     if (artist.isEmpty) continue;
     byArtist.putIfAbsent(artist, () => []).add(t);
-    artistScore[artist] = (artistScore[artist] ?? 0) + scores[t]!;
   }
+  final artistScore = {
+    for (final a in taste.artists)
+      if (a.score > 0 && byArtist.containsKey(a.key)) a.key: a.score,
+  };
   final topArtists = byArtist.keys.toList()
-    ..sort((a, b) => artistScore[b]!.compareTo(artistScore[a]!));
+    ..sort((a, b) => (artistScore[b] ?? 0).compareTo(artistScore[a] ?? 0));
   // A mix of an artist begins with a radio, which a song from a file on the phone has none of
   final mixes = topArtists.length < 2
       ? <ArtistMix>[]

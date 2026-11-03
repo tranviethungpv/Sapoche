@@ -8,6 +8,13 @@ struct Stamped: Equatable {
     var weight = 1.0
 }
 
+/// How much an artist is loved: [key] is `Taste.artistKey`, [label] the name as it is written.
+struct ArtistScore: Equatable {
+    let key: String
+    let label: String
+    let score: Double
+}
+
 /// Songs and artists the person asked not to be offered, by video id and by [Taste.artistKey].
 struct Blocklist {
     var songs: Set<String> = []
@@ -32,6 +39,8 @@ struct Taste {
     static let minSeed = 0.5
     static let contextWindowMs: Int64 = 60 * 24 * 60 * 60 * 1000
     static let minContext = 5
+    static let maxArtists = 60
+    static let maxSongs = 800
 
     /// The parts of a day, for the mix that suits the time: morning, afternoon, evening and night.
     static let buckets = ["morning", "afternoon", "evening", "night"]
@@ -42,6 +51,7 @@ struct Taste {
     private var songs: [String: Double] = [:]
     private var artists: [String: Double] = [:]
     private var tracks: [String: TrackRef] = [:]
+    private var labels: [String: String] = [:]
 
     init(heard: [Stamped], liked: [Stamped], skipped: [Stamped], now: Int64, hourOf: ((Int64) -> Int)? = nil) {
         self.heard = heard
@@ -58,7 +68,31 @@ struct Taste {
             songs[stamped.track.videoId, default: 0] += value
             artists[Taste.artistKey(stamped.track.artist), default: 0] += value
             if tracks[stamped.track.videoId] == nil { tracks[stamped.track.videoId] = stamped.track }
+            let key = Taste.artistKey(stamped.track.artist)
+            if labels[key] == nil { labels[key] = Taste.artistLabel(stamped.track.artist) }
         }
+    }
+
+    /// How much the song is loved: below nothing when it was left more than it was heard; 0 for a song never met.
+    func songScore(_ videoId: String) -> Double { songs[videoId] ?? 0 }
+
+    /// How much the artist is loved, as `songScore` is for a song.
+    func artistScore(_ artist: String) -> Double { artists[Taste.artistKey(artist)] ?? 0 }
+
+    /// The most an artist is loved; 0 or less when no artist is loved.
+    var strongestArtist: Double { artists.values.max() ?? 0 }
+
+    /// The [limit] artists with the highest score, the highest first.
+    func artistScores(limit: Int = Taste.maxArtists) -> [ArtistScore] {
+        artists.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .prefix(limit)
+            .map { ArtistScore(key: $0.key, label: labels[$0.key] ?? "", score: $0.value) }
+    }
+
+    /// The scores of the [limit] songs that count most, either way: what is loved and what is left again and again.
+    func songScores(limit: Int = Taste.maxSongs) -> [String: Double] {
+        let top = songs.sorted { abs($0.value) != abs($1.value) ? abs($0.value) > abs($1.value) : $0.key < $1.key }.prefix(limit)
+        return Dictionary(uniqueKeysWithValues: top.map { ($0.key, $0.value) })
     }
 
     /// The artist has been listened to, or liked, enough to be known.

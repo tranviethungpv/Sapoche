@@ -464,8 +464,12 @@ final class Bridge {
         case "discover":
             return try await suggestions.discover().map { $0.toMap() }
         case "tasteProfile":
-            let stats = try await suggestions.sourceStats().map { ["source": $0.source, "heard": $0.heard, "skipped": $0.skipped] as [String: Any] }
-            return ["stats": stats] as [String: Any]
+            let profile = try await suggestions.profile()
+            return [
+                "artists": profile.artists.map { ["key": $0.key, "label": $0.label, "score": $0.score] as [String: Any] },
+                "songs": profile.songs,
+                "stats": profile.stats.map { ["source": $0.source, "heard": $0.heard, "skipped": $0.skipped] as [String: Any] },
+            ] as [String: Any]
         case "contextMix":
             let mix = try await suggestions.contextMix()
             return ["bucket": mix.bucket, "tracks": mix.tracks.map { $0.toMap() }] as [String: Any]

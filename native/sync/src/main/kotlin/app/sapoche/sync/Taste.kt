@@ -9,6 +9,9 @@ import kotlin.math.pow
  */
 data class Stamped(val track: TrackRef, val at: Long, val weight: Double = 1.0)
 
+/** How much an artist is loved: [key] is [Taste.artistKey], [label] the name as it is written. */
+data class ArtistScore(val key: String, val label: String, val score: Double)
+
 /** Songs and artists the person asked not to be offered, by video id and by [Taste.artistKey]. */
 class Blocklist(private val songs: Set<String> = emptySet(), private val artists: Set<String> = emptySet()) {
     fun allows(track: TrackRef) = track.videoId !in songs && Taste.artistKey(track.artist) !in artists
@@ -29,6 +32,7 @@ class Taste(
     private val songs = HashMap<String, Double>()
     private val artists = HashMap<String, Double>()
     private val tracks = HashMap<String, TrackRef>()
+    private val labels = HashMap<String, String>()
 
     init {
         fun add(list: List<Stamped>, weight: Double, halfLifeMs: Long) {
@@ -37,12 +41,34 @@ class Taste(
                 songs.merge(s.track.videoId, value, Double::plus)
                 artists.merge(artistKey(s.track.artist), value, Double::plus)
                 tracks.putIfAbsent(s.track.videoId, s.track)
+                labels.putIfAbsent(artistKey(s.track.artist), artistLabel(s.track.artist))
             }
         }
         add(heard, HEARD, PLAY_HALF_LIFE_MS)
         add(liked, LIKED, LIKE_HALF_LIFE_MS)
         add(skipped, SKIPPED, PLAY_HALF_LIFE_MS)
     }
+
+    /** How much the song is loved: below nothing when it was left more than it was heard; 0 for a song never met. */
+    fun songScore(videoId: String): Double = songs[videoId] ?: 0.0
+
+    /** How much the artist is loved, as [songScore] is for a song. */
+    fun artistScore(artist: String): Double = artists[artistKey(artist)] ?: 0.0
+
+    /** The most an artist is loved; 0 or less when no artist is loved. */
+    val strongestArtist: Double get() = artists.values.maxOrNull() ?: 0.0
+
+    /** The [limit] artists with the highest score, the highest first. */
+    fun artistScores(limit: Int = MAX_ARTISTS): List<ArtistScore> = artists.entries
+        .sortedWith(compareByDescending<Map.Entry<String, Double>> { it.value }.thenBy { it.key })
+        .take(limit)
+        .map { ArtistScore(it.key, labels[it.key].orEmpty(), it.value) }
+
+    /** The scores of the [limit] songs that count most, either way: what is loved and what is left again and again. */
+    fun songScores(limit: Int = MAX_SONGS): Map<String, Double> = songs.entries
+        .sortedWith(compareByDescending<Map.Entry<String, Double>> { kotlin.math.abs(it.value) }.thenBy { it.key })
+        .take(limit)
+        .associate { it.key to it.value }
 
     /** The artist has been listened to, or liked, enough to be known. */
     fun knows(artist: String) = (artists[artistKey(artist)] ?: 0.0) >= KNOWN
@@ -111,6 +137,8 @@ class Taste(
         const val MIN_SEED = 0.5
         const val CONTEXT_WINDOW_MS = 60L * 24 * 60 * 60 * 1000
         const val MIN_CONTEXT = 5
+        const val MAX_ARTISTS = 60
+        const val MAX_SONGS = 800
 
         /** The parts of a day, for the mix that suits the time: morning, afternoon, evening and night. */
         val BUCKETS = listOf("morning", "afternoon", "evening", "night")

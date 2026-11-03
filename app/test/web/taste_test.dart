@@ -282,5 +282,58 @@ void main() {
       expect(ids(Suggestions.discover(lists, t, const Blocklist(), {}, 10)), ['n1', 'o1', 'm1']);
       expect(ids(Suggestions.discover(lists, t, const Blocklist(), {}, 1)), ['n1']);
     });
+
+    test('ranking keeps the order of the radio for a stranger', () {
+      final list = [by('a', 'X'), by('b', 'Y'), by('c', 'Z'), by('d', 'W')];
+      expect(ids(Suggestions.rank(list, taste())), ['a', 'b', 'c', 'd']);
+    });
+
+    test('ranking lifts songs by artists the person loves, a few places at most', () {
+      final t = tasteOf(['Loved']);
+      // The loved artist's song stands fifth: what it adds is worth four places, and no more
+      final list = [by('a', 'A'), by('b', 'B'), by('c', 'C'), by('d', 'D'), by('e', 'Loved')];
+      expect(ids(Suggestions.rank(list, t)), ['e', 'a', 'b', 'c', 'd']);
+      final far = [for (final x in 'abcdefgh'.split('')) by(x, x.toUpperCase()), by('i', 'Loved')];
+      expect(ids(Suggestions.rank(far, t)).first, 'a', reason: 'at the ninth place it does not reach the top');
+    });
+
+    test('a song left more than it was heard is dropped', () {
+      final t = taste(skipped: [Stamped(by('bad', 'Y'), now - 1000)]);
+      expect(ids(Suggestions.rank([by('bad', 'Y'), by('ok', 'Z')], t)), ['ok']);
+    });
+
+    test('no artist comes more than twice in a ranking', () {
+      final list = [for (var i = 1; i <= 8; i++) by('k$i', 'Known'), by('n1', 'New 1'), by('n2', 'New 2')];
+      expect(ids(Suggestions.rank(list, tasteOf(['Known']))), ['k1', 'k2', 'n1', 'n2']);
+    });
+
+    test('every fifth place is for an artist not known yet when the list has one', () {
+      final t = tasteOf(['A', 'B', 'C', 'D', 'E']);
+      final list = [by('a', 'A'), by('b', 'B'), by('c', 'C'), by('d', 'D'), by('e', 'E'), by('s', 'Stranger')];
+      // By score e would be fifth; the place is for the stranger
+      expect(ids(Suggestions.rank(list, t)), ['a', 'b', 'c', 'd', 's', 'e']);
+      expect(ids(Suggestions.rank(list.sublist(0, 5), t)), ['a', 'b', 'c', 'd', 'e']);
+    });
+
+    test('ranking gives the same order every time', () {
+      final t = tasteOf(['Known']);
+      final list = [by('a', 'Known'), by('b', 'B'), by('c', 'Known'), by('d', 'D'), by('e', 'E'), by('f', 'F')];
+      expect(ids(Suggestions.rank(list, t)), ids(Suggestions.rank(list, t)));
+    });
+
+    test('the taste tells how much each artist and each song is loved', () {
+      final t = taste(
+        heard: [heard('a', 1, 'Adele - Topic'), heard('b', 1, 'Adele')],
+        skipped: [Stamped(song('x', 'Beck'), now)],
+      );
+      final artists = t.artistScores();
+      expect(artists.first.key, 'adele');
+      expect(artists.first.label, 'Adele');
+      expect(artists.last.score, lessThan(0));
+      expect(t.songScore('x'), lessThan(0));
+      expect(t.songScore('unknown'), 0);
+      // Either way counts: a song left again and again weighs as much as one loved
+      expect(t.songScores(limit: 1).keys, ['x']);
+    });
   });
 }

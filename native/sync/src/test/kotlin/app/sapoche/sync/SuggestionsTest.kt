@@ -113,4 +113,52 @@ class SuggestionsTest {
         assertEquals(listOf("n1", "o1", "m1"), ids(Suggestions.discover(lists, taste, Blocklist(), emptySet(), 10)))
         assertEquals(listOf("n1"), ids(Suggestions.discover(lists, taste, Blocklist(), emptySet(), 1)))
     }
+
+    @Test
+    fun `ranking keeps the order of the radio for a stranger`() {
+        val list = listOf(by("a", "X"), by("b", "Y"), by("c", "Z"), by("d", "W"))
+        assertEquals(listOf("a", "b", "c", "d"), ids(Suggestions.rank(list, Taste(emptyList(), emptyList(), emptyList(), 0))))
+    }
+
+    @Test
+    fun `ranking lifts songs by artists the person loves, a few places at most`() {
+        val taste = tasteOf("Loved")
+        // The loved artist's song stands fifth: what it adds is worth four places, and no more
+        val list = listOf(by("a", "A"), by("b", "B"), by("c", "C"), by("d", "D"), by("e", "Loved"))
+        assertEquals(listOf("e", "a", "b", "c", "d"), ids(Suggestions.rank(list, taste)))
+        val far = listOf(by("a", "A"), by("b", "B"), by("c", "C"), by("d", "D"), by("e", "E"), by("f", "F"), by("g", "G"), by("h", "H"), by("i", "Loved"))
+        assertEquals("a", ids(Suggestions.rank(far, taste)).first(), "at the ninth place it does not reach the top")
+    }
+
+    @Test
+    fun `a song left more than it was heard is dropped`() {
+        val now = 1_000L * 24 * 60 * 60 * 1000
+        val skipped = listOf(Stamped(by("bad", "Y"), now - 1000))
+        val taste = Taste(emptyList(), emptyList(), skipped, now)
+        assertEquals(listOf("ok"), ids(Suggestions.rank(listOf(by("bad", "Y"), by("ok", "Z")), taste)))
+    }
+
+    @Test
+    fun `no artist comes more than twice`() {
+        val taste = tasteOf("Known")
+        val list = (1..8).map { by("k$it", "Known") } + listOf(by("n1", "New 1"), by("n2", "New 2"))
+        assertEquals(listOf("k1", "k2", "n1", "n2"), ids(Suggestions.rank(list, taste)))
+    }
+
+    @Test
+    fun `every fifth place is for an artist not known yet when the list has one`() {
+        val taste = tasteOf("A", "B", "C", "D", "E")
+        val list = listOf(by("a", "A"), by("b", "B"), by("c", "C"), by("d", "D"), by("e", "E"), by("s", "Stranger"))
+        // By score e would be fifth; the place is for the stranger
+        assertEquals(listOf("a", "b", "c", "d", "s", "e"), ids(Suggestions.rank(list, taste)))
+        // With no stranger in the list the place goes to whoever is next
+        assertEquals(listOf("a", "b", "c", "d", "e"), ids(Suggestions.rank(list.dropLast(1), taste)))
+    }
+
+    @Test
+    fun `ranking gives the same order every time`() {
+        val taste = tasteOf("Known")
+        val list = listOf(by("a", "Known"), by("b", "B"), by("c", "Known"), by("d", "D"), by("e", "E"), by("f", "F"))
+        assertEquals(ids(Suggestions.rank(list, taste)), ids(Suggestions.rank(list, taste)))
+    }
 }

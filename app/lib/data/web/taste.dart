@@ -45,6 +45,15 @@ class ListenSources {
   }
 }
 
+/// How much an artist is loved: [key] is [Taste.artistKey], [label] the name as it is written.
+class ArtistScore {
+  const ArtistScore(this.key, this.label, this.score);
+
+  final String key;
+  final String label;
+  final double score;
+}
+
 /// Songs and artists the person asked not to be offered, by video id and by [Taste.artistKey].
 class Blocklist {
   const Blocklist({this.songs = const {}, this.artists = const {}});
@@ -74,6 +83,7 @@ class Taste {
         _songs.update(s.track.videoId, (v) => v + value, ifAbsent: () => value);
         _artists.update(artistKey(s.track.artist), (v) => v + value, ifAbsent: () => value);
         _tracks.putIfAbsent(s.track.videoId, () => s.track);
+        _labels.putIfAbsent(artistKey(s.track.artist), () => artistLabel(s.track.artist));
       }
     }
 
@@ -88,6 +98,36 @@ class Taste {
   final _songs = <String, double>{};
   final _artists = <String, double>{};
   final _tracks = <String, TrackRef>{};
+  final _labels = <String, String>{};
+
+  /// How much the song is loved: below nothing when it was left more than it was heard; 0 for a song never met.
+  double songScore(String videoId) => _songs[videoId] ?? 0.0;
+
+  /// How much the artist is loved, as [songScore] is for a song.
+  double artistScore(String artist) => _artists[artistKey(artist)] ?? 0.0;
+
+  /// The most an artist is loved; 0 or less when no artist is loved.
+  double get strongestArtist => _artists.values.fold(0.0, (m, v) => v > m ? v : m);
+
+  /// The [limit] artists with the highest score, the highest first.
+  List<ArtistScore> artistScores({int limit = maxArtists}) {
+    final all = _artists.entries.toList()
+      ..sort((a, b) {
+        final byValue = b.value.compareTo(a.value);
+        return byValue != 0 ? byValue : a.key.compareTo(b.key);
+      });
+    return [for (final e in all.take(limit)) ArtistScore(e.key, _labels[e.key] ?? '', e.value)];
+  }
+
+  /// The scores of the [limit] songs that count most, either way: what is loved and what is left again and again.
+  Map<String, double> songScores({int limit = maxSongs}) {
+    final all = _songs.entries.toList()
+      ..sort((a, b) {
+        final byValue = b.value.abs().compareTo(a.value.abs());
+        return byValue != 0 ? byValue : a.key.compareTo(b.key);
+      });
+    return {for (final e in all.take(limit)) e.key: e.value};
+  }
 
   /// The artist has been listened to, or liked, enough to be known.
   bool knows(String artist) => (_artists[artistKey(artist)] ?? 0.0) >= known;
@@ -167,6 +207,8 @@ class Taste {
   static const minSeed = 0.5;
   static const _contextWindowMs = 60 * 24 * 60 * 60 * 1000;
   static const minContext = 5;
+  static const maxArtists = 60;
+  static const maxSongs = 800;
 
   /// The parts of a day, for the mix that suits the time: morning, afternoon, evening and night.
   static const buckets = ['morning', 'afternoon', 'evening', 'night'];
@@ -248,6 +290,45 @@ abstract final class Suggestions {
 
   /// Of every ten songs, these come from artists the person does not know yet (the rest from ones they do).
   static const _newArtistSlots = {2, 5, 8};
+
+  /// Of every five songs, the last is for an artist the person does not know yet.
+  static const _strangerEvery = 5;
+
+  /// Position counts for less the further down the radio's list a song stands: half as much at the eighth place.
+  static const _positionSpan = 8.0;
+
+  /// How much knowing the artist adds to a song's score, as a share of the artist loved most.
+  static const _affinityWeight = 0.35;
+
+  /// [list], a radio's songs in the order YouTube gives them, put in the order that suits this person: the nearer the top
+  /// the better, plus a little for songs by artists they love. A song they left more than they heard is dropped, every
+  /// fifth place is kept for an artist they do not know yet if the list has one, and no artist comes more than
+  /// [maxPerArtist] times. The order is the same whenever the same list and the same taste are given.
+  static List<TrackRef> rank(List<TrackRef> list, Taste taste) {
+    final strongest = taste.strongestArtist;
+    double affinity(TrackRef t) => strongest <= 0 ? 0.0 : (taste.artistScore(t.artist) / strongest).clamp(0.0, 1.0);
+    final ordered = [
+      for (final (i, t) in list.indexed)
+        if (taste.songScore(t.videoId) >= 0) (index: i, track: t, score: 1 / (1 + i / _positionSpan) + _affinityWeight * affinity(t)),
+    ]..sort((a, b) {
+        final byScore = b.score.compareTo(a.score);
+        return byScore != 0 ? byScore : a.index.compareTo(b.index);
+      });
+    final taken = <String>{};
+    final perArtist = <String, int>{};
+    bool fits(TrackRef t) => !taken.contains(t.videoId) && (perArtist[Taste.artistKey(t.artist)] ?? 0) < maxPerArtist;
+    final result = <TrackRef>[];
+    while (true) {
+      final stranger = result.length % _strangerEvery == _strangerEvery - 1;
+      var next = stranger ? ordered.where((e) => fits(e.track) && !taste.knows(e.track.artist)).firstOrNull : null;
+      next ??= ordered.where((e) => fits(e.track)).firstOrNull;
+      if (next == null) break;
+      taken.add(next.track.videoId);
+      perArtist.update(Taste.artistKey(next.track.artist), (n) => n + 1, ifAbsent: () => 1);
+      result.add(next.track);
+    }
+    return result;
+  }
 
   /// What the person should be offered, or nothing from artists they asked not to hear or left again and again.
   static bool welcome(TrackRef track, Taste taste, Blocklist block) =>

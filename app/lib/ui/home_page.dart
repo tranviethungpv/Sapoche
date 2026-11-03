@@ -143,6 +143,7 @@ class _HomePageState extends State<HomePage> {
             library.discover,
             library.context,
             library.blocked,
+            library.tasteProfile,
             library.listens,
             library.downloads,
             library.playlists,
@@ -158,6 +159,7 @@ class _HomePageState extends State<HomePage> {
           }
           _madeFrom = from;
           final home = buildHome(
+            taste: library.tasteProfile,
             recent: library.recent,
             liked: library.liked,
             forYou: library.forYou,

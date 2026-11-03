@@ -2,6 +2,7 @@ package app.sapoche
 
 import app.sapoche.core.MusicFeed
 import app.sapoche.core.StreamResolver
+import app.sapoche.sync.ArtistScore
 import app.sapoche.sync.Blocklist
 import app.sapoche.sync.ListenSource
 import app.sapoche.sync.Stamped
@@ -94,6 +95,14 @@ class SuggestionFeed(
         }
     }
 
+    /** What the listening says about the person: how much each artist and each song is loved, and how each source fared. */
+    suspend fun profile(): Profile {
+        val taste = taste()
+        return Profile(taste.artistScores(), taste.songScores(), sourceStats())
+    }
+
+    data class Profile(val artists: List<ArtistScore>, val songs: Map<String, Double>, val stats: List<LibraryStore.SourceStats>)
+
     /** How the songs of each source fared in the last [STATS_MS]: heard, and left after a few seconds. */
     suspend fun sourceStats(): List<LibraryStore.SourceStats> = store.sourceStats(now() - STATS_MS)
 
@@ -128,11 +137,13 @@ class SuggestionFeed(
     suspend fun after(videoId: String, exclude: Set<String>, count: Int): List<TrackRef> {
         val taste = taste()
         val block = blocklist()
-        return Suggestions.mix(
+        val pool = Suggestions.mix(
             listOf(radioOf(videoId)),
             exclude + videoId + store.heardSince(now() - RECENT_MS),
-            count,
+            count * POOL_FACTOR,
         ) { Suggestions.welcome(it, taste, block) }
+        // YouTube's order, put in the order that suits this person
+        return Suggestions.rank(pool, taste).take(count)
     }
 
     /** The radio YouTube Music makes of the song, or what YouTube lists beside it when that cannot be had. */
@@ -161,6 +172,8 @@ class SuggestionFeed(
         const val FRESH_MS = 12L * 60 * 60 * 1000
         const val SONG = "song"
         const val ARTIST = "artist"
+        /** Songs looked at for each one that is given, so ranking has a choice. */
+        private const val POOL_FACTOR = 4
         const val STATS_MS = 30L * 24 * 60 * 60 * 1000
         private const val RECENT_MS = 7L * 24 * 60 * 60 * 1000
     }

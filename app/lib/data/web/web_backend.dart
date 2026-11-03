@@ -1279,7 +1279,7 @@ class WebBackend extends BackendDefaults {
   Future<List<Track>> discover() async => [for (final t in _suggestions.discover()) _track(t)];
 
   @override
-  Future<TasteProfile> tasteProfile() async => TasteProfile(stats: _suggestions.sourceStats());
+  Future<TasteProfile> tasteProfile() async => _suggestions.profile();
 
   @override
   Future<ContextMix> contextMix() async {

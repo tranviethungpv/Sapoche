@@ -9,6 +9,8 @@ actor SuggestionFeed {
     static let contextCount = 20
     static let seedCount = 8
     static let freshMs: Int64 = 12 * 60 * 60 * 1000
+    /// Songs looked at for each one that is given, so ranking has a choice.
+    private static let poolFactor = 4
     static let statsMs: Int64 = 30 * 24 * 60 * 60 * 1000
     static let song = "song"
     static let artist = "artist"
@@ -144,9 +146,17 @@ actor SuggestionFeed {
         let taste = try await loadTaste()
         let block = try await blocklist()
         let heard = try await store.heardSince(now() - Self.recentMs)
-        return Suggestions.mix([try await radioOf(videoId)], exclude: exclude.union([videoId]).union(heard), limit: count) {
+        let pool = Suggestions.mix([try await radioOf(videoId)], exclude: exclude.union([videoId]).union(heard), limit: count * Self.poolFactor) {
             Suggestions.welcome($0, taste: taste, block: block)
         }
+        // YouTube's order, put in the order that suits this person
+        return Array(Suggestions.rank(pool, taste: taste).prefix(count))
+    }
+
+    /// What the listening says about the person: how much each artist and each song is loved, and how each source fared.
+    func profile() async throws -> (artists: [ArtistScore], songs: [String: Double], stats: [LibraryStore.SourceStats]) {
+        let taste = try await loadTaste()
+        return (taste.artistScores(), taste.songScores(), try await sourceStats())
     }
 
     /// The radio YouTube Music makes of the song, or what YouTube lists beside it when that cannot be had.

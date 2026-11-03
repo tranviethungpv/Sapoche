@@ -595,13 +595,35 @@ class FakeBackend implements Backend {
   List<MusicTrack> videoSearchResult = const [];
   List<SeedList> seedListsResult = const [];
 
-  /// What [tasteProfile] gives back.
-  TasteProfile tasteProfileResult = const TasteProfile();
+  /// What [tasteProfile] gives back; when a test does not say, what the recent and liked songs make of it: a play is a
+  /// point, a like two more.
+  TasteProfile? tasteProfileResult;
 
   @override
   Future<TasteProfile> tasteProfile() async {
     await _record('tasteProfile');
-    return tasteProfileResult;
+    final given = tasteProfileResult;
+    if (given != null) return given;
+    final songs = <String, double>{};
+    final artists = <String, double>{};
+    final labels = <String, String>{};
+    void add(Track t, double points) {
+      songs.update(t.videoId, (v) => v + points, ifAbsent: () => points);
+      final key = mainArtist(t.artist);
+      artists.update(key, (v) => v + points, ifAbsent: () => points);
+      labels[key] = displayArtist(t.artist);
+    }
+
+    for (final e in recentSongs) {
+      add(e.track, e.plays.toDouble());
+    }
+    for (final t in likedSongs) {
+      add(t, 2);
+    }
+    return TasteProfile(
+      artists: [for (final e in artists.entries) ArtistRank(key: e.key, label: labels[e.key]!, score: e.value)],
+      songs: songs,
+    );
   }
 
   @override
