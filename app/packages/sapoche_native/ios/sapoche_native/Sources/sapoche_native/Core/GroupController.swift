@@ -129,6 +129,21 @@ final class GroupController {
 
     private var client: RoomClient?
     private var session: GroupSession?
+    /// Which songs of the queue autoplay or a shelf put there, so a listen can say where it came from.
+    private let sources = ListenSources()
+
+    /// Where the queue item now playing came from; see `ListenSource`.
+    func listenSource(_ item: QueueItem) -> String {
+        guard let session else { return sources.of(item.videoId) }
+        return sources.of(item.videoId, item: item, you: session.snapshot.value.you)
+    }
+
+    /// The song that was just left was skipped by another member of the room, not by this device.
+    func leftByOther() -> Bool {
+        guard let session else { return false }
+        return !session.isSolo && session.changedByOther
+    }
+
     private var autoplayJob: Job?
     private var radioJob: Job?
     private var idle: IdleWatch?
@@ -292,7 +307,7 @@ final class GroupController {
     private(set) var videoMode: Bool
 
     init(engine: PlayerEngine, prefs: KeyValueStore, queueFile: QueueFile, config: @escaping () -> ServerConfig,
-         recordListen: @escaping (TrackRef) -> Void = { _ in }, recordSkip: @escaping (TrackRef) -> Void = { _ in },
+         recordListen: @escaping (TrackRef, String) -> Void = { _, _ in }, recordSkip: @escaping (TrackRef, String) -> Void = { _, _ in },
          time: TimeSource? = nil, sockets: SocketFactory? = nil,
          moreLike: @escaping (String, Set<String>, Int) async throws -> [TrackRef] = { _, _, _ in [] },
          secrets: RoomSecretStore = MemorySecrets()) {
@@ -330,7 +345,11 @@ final class GroupController {
             fade: { [weak engine] in engine?.setVolume($0) },
             pauseAtSongEnd: { [weak engine] in engine?.setPauseAtSongEnd($0) }
         )
-        recorder = ListenRecorder(engine: engine, time: self.time, scope: ownScope, record: recordListen, recordSkip: recordSkip)
+        recorder = ListenRecorder(
+            engine: engine, time: self.time, scope: ownScope, record: recordListen, recordSkip: recordSkip,
+            sourceOf: { [weak self] in self?.listenSource($0) ?? ListenSource.chosen },
+            leftByOther: { [weak self] in self?.leftByOther() ?? false }
+        )
         local.attach()
         engine.setVideoMode(videoMode)
         view.set(View(local: local.snapshot.value))
@@ -398,6 +417,7 @@ final class GroupController {
                 EventLog.d("local", "autoplay adds \(more.count) songs like '\(like.title)'")
                 // Carrying on only adds: what has been played makes room when the new songs would not fit
                 self.local.dropPlayed(self.local.snapshot.value.queue.count + more.count - LocalSession.maxQueue)
+                self.sources.mark(more.map(\.videoId), source: ListenSource.auto)
                 self.local.add(more, next: false)
             } catch is CancellationError {
                 throw CancellationError()
@@ -443,6 +463,7 @@ final class GroupController {
                 let queue = self.local.snapshot.value.queue
                 if more.isEmpty || self.session != nil || queue.count != 1 || queue[0].videoId != videoId { return }
                 EventLog.d("local", "radio adds \(more.count) songs like \(videoId)")
+                self.sources.mark(more.map(\.videoId), source: ListenSource.auto)
                 self.local.add(more, next: false)
             } catch is CancellationError {
                 throw CancellationError()
@@ -834,8 +855,9 @@ final class GroupController {
         }
     }
     @discardableResult func requestRepeat(_ mode: String) -> Bool { onQueue({ $0.setRepeat(mode) }) { send(Wire.repeatMode(mode)) } }
-    @discardableResult func requestAddMany(_ tracks: [TrackRef], playNext: Bool) -> Bool {
-        onQueue({ $0.add(tracks, next: playNext) }) {
+    @discardableResult func requestAddMany(_ tracks: [TrackRef], playNext: Bool, source: String = ListenSource.chosen) -> Bool {
+        sources.mark(tracks.map(\.videoId), source: source)
+        return onQueue({ $0.add(tracks, next: playNext) }) {
             // What is waiting in the room's queue is not added twice
             let fresh = Queues.fresh(tracks, queue: queue(), index: session?.snapshot.value.state?.index ?? 0)
             return fresh.isEmpty || send(Wire.queueAddMany(fresh, playNext: playNext))
@@ -986,21 +1008,31 @@ final class ListenRecorder {
     private let engine: PlayerEngine
     private let time: TimeSource
     private let scope: Scope
-    private let record: (TrackRef) -> Void
-    private let recordSkip: (TrackRef) -> Void
+    private let record: (TrackRef, String) -> Void
+    private let recordSkip: (TrackRef, String) -> Void
+    private let sourceOf: (QueueItem) -> String
+    private let leftByOther: () -> Bool
     private var tracker: ListenTracker!
 
     /// The song being followed; kept whole so its details are not read from a player that has moved on.
     private var item: QueueItem?
+
+    /// Where `item` came from, worked out when it started, because by the time it is left the queue has moved on.
+    private var source = ListenSource.chosen
     private var due: Job?
 
-    init(engine: PlayerEngine, time: TimeSource, scope: Scope, record: @escaping (TrackRef) -> Void,
-         recordSkip: @escaping (TrackRef) -> Void = { _ in }) {
+    /// [sourceOf] says where a song came from when it starts; [leftByOther] whether the song just left was skipped by
+    /// another member of the room, which is not a skip of this person's.
+    init(engine: PlayerEngine, time: TimeSource, scope: Scope, record: @escaping (TrackRef, String) -> Void,
+         recordSkip: @escaping (TrackRef, String) -> Void = { _, _ in },
+         sourceOf: @escaping (QueueItem) -> String = { _ in ListenSource.chosen }, leftByOther: @escaping () -> Bool = { false }) {
         self.engine = engine
         self.time = time
         self.scope = scope
         self.record = record
         self.recordSkip = recordSkip
+        self.sourceOf = sourceOf
+        self.leftByOther = leftByOther
         tracker = ListenTracker(
             heard: { [weak self] id, durationMs in self?.heard(id, durationMs) },
             skipped: { [weak self] id, durationMs in self?.skipped(id, durationMs) }
@@ -1016,6 +1048,7 @@ final class ListenRecorder {
             // Counts the song that is ending, if it just passed the mark, so `item` still has to be that one
             tracker.begin(songId: next?.videoId, durationMs: info.durationMs, now: time.nowMs())
             item = next
+            source = next.map(sourceOf) ?? ListenSource.chosen
         }
         if item != nil {
             tracker.setDuration(info.durationMs)
@@ -1038,13 +1071,17 @@ final class ListenRecorder {
     /// The song was left after a few seconds: the suggestions learn not to offer more of it.
     private func skipped(_ id: String, _ durationMs: Int64) {
         guard let item, item.videoId == id else { return }
-        EventLog.d("library", "skipped '\(item.title)'")
-        recordSkip(TrackRef(videoId: id, title: item.title, artist: item.artist, thumb: item.thumb, durMs: durationMs))
+        if leftByOther() {
+            EventLog.d("library", "'\(item.title)' was skipped by another member: not counted")
+            return
+        }
+        EventLog.d("library", "skipped '\(item.title)' (\(source))")
+        recordSkip(TrackRef(videoId: id, title: item.title, artist: item.artist, thumb: item.thumb, durMs: durationMs), source)
     }
 
     private func heard(_ id: String, _ durationMs: Int64) {
         guard let item, item.videoId == id else { return }
-        EventLog.d("library", "heard '\(item.title)'")
-        record(TrackRef(videoId: id, title: item.title, artist: item.artist, thumb: item.thumb, durMs: durationMs))
+        EventLog.d("library", "heard '\(item.title)' (\(source))")
+        record(TrackRef(videoId: id, title: item.title, artist: item.artist, thumb: item.thumb, durMs: durationMs), source)
     }
 }

@@ -127,6 +127,49 @@ class TasteTest {
     }
 
     @Test
+    fun `a song another member picked counts for less than one chosen`() {
+        val others = Stamped(song("o"), now, ListenSource.weight(ListenSource.ROOM_OTHER))
+        // Half a point is just the line for an artist to be known; a skipped one of theirs does not weigh a whole skip
+        assertTrue(taste(heard = listOf(others)).knows("Artist o"))
+        assertFalse(taste(heard = listOf(others.copy(weight = 0.4))).knows("Artist o"))
+        val skipped = Stamped(song("s", "Same"), now - day, ListenSource.weight(ListenSource.ROOM_OTHER))
+        assertFalse(taste(skipped = listOf(skipped, skipped.copy(track = song("t", "Same")), skipped.copy(track = song("u", "Same")))).dislikes("Same"))
+        assertTrue(taste(skipped = listOf(heard("s", 1, "Same"), heard("t", 1, "Same"), heard("u", 1, "Same"))).dislikes("Same"))
+    }
+
+    @Test
+    fun `only songs another member picked are weighed down`() {
+        assertEquals(0.5, ListenSource.weight(ListenSource.ROOM_OTHER))
+        for (source in listOf(null, ListenSource.CHOSEN, ListenSource.AUTO, ListenSource.SHELF)) assertEquals(1.0, ListenSource.weight(source))
+    }
+
+    @Test
+    fun `listen sources remember what autoplay and the shelves put on the queue`() {
+        val sources = ListenSources(keep = 3)
+        assertEquals(ListenSource.CHOSEN, sources.of("a"))
+        sources.mark(listOf("a", "b"), ListenSource.AUTO)
+        sources.mark(listOf("c"), ListenSource.SHELF)
+        assertEquals(listOf(ListenSource.AUTO, ListenSource.AUTO, ListenSource.SHELF), listOf("a", "b", "c").map { sources.of(it) })
+        // Put on the queue by hand later, it is a choice again
+        sources.mark(listOf("a"), ListenSource.CHOSEN)
+        assertEquals(ListenSource.CHOSEN, sources.of("a"))
+        // The oldest is forgotten past the limit
+        sources.mark(listOf("d", "e"), ListenSource.AUTO)
+        assertEquals(ListenSource.CHOSEN, sources.of("b"))
+        assertEquals(ListenSource.AUTO, sources.of("e"))
+    }
+
+    @Test
+    fun `in a room the queue item says whether it was autoplay's or another member's`() {
+        val sources = ListenSources()
+        sources.mark(listOf("v"), ListenSource.SHELF)
+        fun item(by: String, auto: Boolean = false) = QueueItem("i", "v", "T", "A", null, 1000, by, auto)
+        assertEquals(ListenSource.AUTO, sources.of("v", item("dev-b", auto = true), "dev-a"))
+        assertEquals(ListenSource.ROOM_OTHER, sources.of("v", item("dev-b"), "dev-a"))
+        assertEquals(ListenSource.SHELF, sources.of("v", item("dev-a"), "dev-a"), "this person's own pick keeps the source it was started from")
+    }
+
+    @Test
     fun `an artist is a name in plain letters`() {
         assertEquals("sơn tùng m tp", Taste.artistKey("Sơn Tùng M-TP"))
         assertEquals("jack", Taste.artistKey("Jack & K-ICM"))

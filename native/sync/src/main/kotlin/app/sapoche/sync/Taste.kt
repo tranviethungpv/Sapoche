@@ -3,8 +3,11 @@ package app.sapoche.sync
 import java.util.Calendar
 import kotlin.math.pow
 
-/** A song with the moment something happened to it: it was heard, liked or left after a few seconds. */
-data class Stamped(val track: TrackRef, val at: Long)
+/**
+ * A song with the moment something happened to it: it was heard, liked or left after a few seconds. [weight] is how
+ * much it counts (see [ListenSource.weight]).
+ */
+data class Stamped(val track: TrackRef, val at: Long, val weight: Double = 1.0)
 
 /** Songs and artists the person asked not to be offered, by video id and by [Taste.artistKey]. */
 class Blocklist(private val songs: Set<String> = emptySet(), private val artists: Set<String> = emptySet()) {
@@ -30,7 +33,7 @@ class Taste(
     init {
         fun add(list: List<Stamped>, weight: Double, halfLifeMs: Long) {
             for (s in list) {
-                val value = weight * decay(now - s.at, halfLifeMs)
+                val value = weight * s.weight * decay(now - s.at, halfLifeMs)
                 songs.merge(s.track.videoId, value, Double::plus)
                 artists.merge(artistKey(s.track.artist), value, Double::plus)
                 tracks.putIfAbsent(s.track.videoId, s.track)

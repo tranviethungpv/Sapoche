@@ -174,6 +174,23 @@ void main() {
     });
   });
 
+  test("a skip by someone else is remembered, and our own is not", () {
+    run(() {
+      session.onMessage(stateOf(room(phase: 'playing', startedAt: 10000)));
+      async.elapse(const Duration(seconds: 1));
+      expect(session.changedByOther, isFalse);
+      session.onMessage(PrepareMessage(epoch: 3, index: 0, item: item('1'), seekToMs: 0, by: 'other'));
+      async.elapse(const Duration(milliseconds: 10));
+      expect(session.changedByOther, isTrue);
+      session.onMessage(PrepareMessage(epoch: 4, index: 0, item: item('1'), seekToMs: 0, by: session.snapshot.you));
+      async.elapse(const Duration(milliseconds: 10));
+      expect(session.changedByOther, isFalse, reason: "this device's own skip");
+      session.onMessage(PrepareMessage(epoch: 5, index: 0, item: item('1'), seekToMs: 0));
+      async.elapse(const Duration(milliseconds: 10));
+      expect(session.changedByOther, isFalse, reason: 'the room moving on by itself');
+    });
+  });
+
   test('pause stops the player and puts it at the room position', () {
     run(() {
       session.onMessage(stateOf(room(phase: 'playing', startedAt: 10000)));

@@ -562,6 +562,25 @@ abstract final class S {
   static String get wontSuggest =>
       _t('Got it, we won’t suggest that again', 'Đã hiểu, sẽ không gợi ý lại');
   static String get suggestionsTitle => _t('Suggestions', 'Gợi ý');
+  static String get tasteStatsHeading => _t('Last 30 days', '30 ngày qua');
+  static String get tasteStatsHelp => _t(
+    'How often a song was left in its first seconds, by where it came from.',
+    'Tần suất một bài bị bỏ qua ngay những giây đầu, theo nguồn của bài.',
+  );
+  static String get tasteStatsNone => _t(
+    'Not enough listening yet to compare.',
+    'Chưa đủ lượt nghe để so sánh.',
+  );
+  static String tasteStatsAuto(int percent) =>
+      _t('Autoplay songs skipped: $percent%', 'Bài tự phát bị bỏ qua: $percent%');
+  static String tasteStatsShelf(int percent) => _t(
+    'Suggested songs skipped: $percent%',
+    'Bài gợi ý bị bỏ qua: $percent%',
+  );
+  static String tasteStatsChosen(int percent) => _t(
+    'Songs you picked skipped: $percent%',
+    'Bài bạn chọn bị bỏ qua: $percent%',
+  );
   static String get blockedHeading => _t('Not interested', 'Không quan tâm');
   static String get blockedHelp => _t(
     'Songs and artists you asked not to be offered. Tap one to offer it again.',

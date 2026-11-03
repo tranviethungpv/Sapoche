@@ -1162,14 +1162,14 @@ class RoomController extends ChangeNotifier {
   // ------------------------------------------------------------------ queue
 
   /// Songs that are waiting in the queue already are not added again.
-  Future<void> add(Track track, {bool playNext = false}) async {
+  Future<void> add(Track track, {bool playNext = false, String source = ListenSource.chosen}) async {
     if (_snapshot.isQueued(track)) return;
     // The others in a room do not have the file
     if (_snapshot.inRoom && track.isLocal) {
       _messages.add(S.localNoRoom);
       return;
     }
-    await _run(() => _backend.add(track, playNext: playNext));
+    await _run(() => _backend.add(track, playNext: playNext, source: source));
   }
 
   /// Plays [track] now in a room: a song that waits in the queue is jumped to, any other is put next and then jumped to.
@@ -1225,7 +1225,7 @@ class RoomController extends ChangeNotifier {
 
   /// Puts [tracks] on the queue and says how many went on: those that were there already, those from files in a room
   /// and those past what the queue holds are left out.
-  Future<int> addMany(List<Track> tracks, {bool playNext = false}) async {
+  Future<int> addMany(List<Track> tracks, {bool playNext = false, String source = ListenSource.chosen}) async {
     var fresh = _snapshot.fresh(tracks);
     final inRoom = _snapshot.inRoom;
     // The others in a room do not have the files: only what is on YouTube goes in, and the rest is said
@@ -1248,7 +1248,7 @@ class RoomController extends ChangeNotifier {
     if (fresh.length > space) fresh = fresh.sublist(0, space);
     if (fresh.isEmpty) return 0;
     if (!inRoom) {
-      await _run(() => _backend.addMany(fresh, playNext: playNext));
+      await _run(() => _backend.addMany(fresh, playNext: playNext, source: source));
       return fresh.length;
     }
     // The server takes so many at a time. Each lot goes right after the song playing when they play next, so the
@@ -1258,15 +1258,15 @@ class RoomController extends ChangeNotifier {
         fresh.sublist(i, min(i + _serverAddMany, fresh.length)),
     ];
     for (final lot in playNext ? lots.reversed : lots) {
-      await _run(() => _backend.addMany(lot, playNext: playNext));
+      await _run(() => _backend.addMany(lot, playNext: playNext, source: source));
     }
     return fresh.length;
   }
 
   /// Outside a room: replaces the queue with [tracks] and starts them. In a room the queue belongs
   /// to everybody, so they are only added to it. Says how many are on the queue now.
-  Future<int> playTracks(List<Track> tracks) {
-    if (_snapshot.inRoom) return addMany(tracks);
+  Future<int> playTracks(List<Track> tracks, {String source = ListenSource.chosen}) {
+    if (_snapshot.inRoom) return addMany(tracks, source: source);
     final songs = uniqueSongs(tracks);
     final kept = songs.length > queueMax(inRoom: false)
         ? songs.sublist(0, queueMax(inRoom: false))
@@ -1276,15 +1276,15 @@ class RoomController extends ChangeNotifier {
     // the emptied queue, the snapshot still holds the old one, and every song in it would be left out
     _replacing = _replacing.then((_) async {
       await _run(_backend.clear);
-      await _run(() => _backend.addMany(kept));
+      await _run(() => _backend.addMany(kept, source: source));
     });
     return _replacing.then((_) => kept.length);
   }
 
   /// Outside a room: plays [track] in place of the queue and lets songs like it follow, as YouTube Music does
   /// when a song is tapped.
-  Future<void> playSong(Track track) async {
-    await playTracks([track]);
+  Future<void> playSong(Track track, {String source = ListenSource.chosen}) async {
+    await playTracks([track], source: source);
     // A song from a file has no radio
     if (track.isLocal) return;
     await _run(() => _backend.fillRadio(track.videoId));

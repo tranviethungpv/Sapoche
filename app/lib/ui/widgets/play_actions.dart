@@ -10,14 +10,15 @@ import 'queue_actions.dart';
 
 /// What a touch on a song does. Outside a room the song starts in place of the queue, as YouTube Music does, and
 /// the queue fills with songs like it; in a room the queue belongs to everybody, so it is put on the queue instead.
-void playNow(BuildContext context, Track track) {
+/// [source] says where it was chosen: a shelf of the home page passes [ListenSource.shelf].
+void playNow(BuildContext context, Track track, {String source = ListenSource.chosen}) {
   HapticFeedback.selectionClick();
   final room = AppScope.roomOf(context);
   if (room.snapshot.inRoom) {
-    queueTrack(context, track);
+    queueTrack(context, track, source: source);
     return;
   }
-  room.playSong(track);
+  room.playSong(track, source: source);
 }
 
 /// A touch on song [index] of [tracks] (a playlist, a search for a playlist): outside a room it plays from there
@@ -45,17 +46,17 @@ Future<void> startMix(BuildContext context, Track seed) async {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(S.mixFailed)));
   }
-  await scope.room.playTracks(songs);
+  await scope.room.playTracks(songs, source: ListenSource.shelf);
 }
 
 /// Plays [tracks], a mix that was made for the person: outside a room it takes the place of the queue, in a room
 /// it is put on the queue.
 Future<void> playMix(BuildContext context, List<Track> tracks) async {
   if (AppScope.roomOf(context).snapshot.inRoom) {
-    return queueTracks(context, tracks);
+    return queueTracks(context, tracks, source: ListenSource.shelf);
   }
   HapticFeedback.selectionClick();
-  await AppScope.roomOf(context).playTracks(tracks);
+  await AppScope.roomOf(context).playTracks(tracks, source: ListenSource.shelf);
 }
 
 /// Plays the songs of [playlists] (the playlists of a folder) as one list: the playlists one after the other, or with

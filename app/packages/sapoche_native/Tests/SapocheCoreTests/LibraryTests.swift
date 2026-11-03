@@ -300,6 +300,8 @@ final class LibraryStoreTests: XCTestCase {
             // The tables as version 6 had them
             let old = try SQLite(path: path)
             try old.run("CREATE TABLE tracks(video_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, thumb TEXT, dur_ms INTEGER NOT NULL)")
+            try old.run("CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), played_at INTEGER NOT NULL)")
+            try old.run("CREATE TABLE skips(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), skipped_at INTEGER NOT NULL)")
             try old.run("CREATE TABLE playlists(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
             try old.run("CREATE TABLE playlist_items(playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, video_id TEXT NOT NULL REFERENCES tracks(video_id), position INTEGER NOT NULL, PRIMARY KEY(playlist_id, video_id))")
             try old.run("INSERT INTO tracks VALUES('a', 'Old song', 'Old artist', NULL, 1000)")
@@ -320,6 +322,52 @@ final class LibraryStoreTests: XCTestCase {
     }
 
     // ------------------------------------------------------------------ suggestions
+
+    func testListensAndSkipsKeepTheirSourceAndRowsFromBeforeCountAsChosen() async throws {
+        try await store.recordListen(song("a"), at: 100)
+        try await store.recordListen(song("b"), at: 200, source: "auto")
+        try await store.recordListen(song("c"), at: 300, source: "auto")
+        try await store.recordSkip(song("d"), at: 400, source: "auto")
+        try await store.recordSkip(song("e"), at: 500, source: "shelf")
+        let listens = try await store.listens()
+        XCTAssertEqual(listens.map(\.source), ["auto", "auto", nil])
+        // The listen of a is older than the window
+        let stats = Dictionary(uniqueKeysWithValues: try await store.sourceStats(since: 150).map { ($0.source, $0) })
+        XCTAssertEqual(Set(stats.keys), ["auto", "shelf"])
+        XCTAssertEqual([stats["auto"]?.heard, stats["auto"]?.skipped], [2, 1])
+        XCTAssertEqual([stats["shelf"]?.heard, stats["shelf"]?.skipped], [0, 1])
+        let all = try await store.sourceStats(since: 0)
+        XCTAssertEqual(all.first { $0.source == "chosen" }?.heard, 1)
+    }
+
+    func testADatabaseFromVersionSevenGainsSourcesAndKeepsEveryRow() async throws {
+        let path = NSTemporaryDirectory() + "library-\(UUID().uuidString).db"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        do {
+            let old = try SQLite(path: path)
+            try old.run("CREATE TABLE tracks(video_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, thumb TEXT, dur_ms INTEGER NOT NULL)")
+            try old.run("CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), played_at INTEGER NOT NULL)")
+            try old.run("CREATE TABLE skips(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), skipped_at INTEGER NOT NULL)")
+            try old.run("CREATE TABLE likes(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), liked_at INTEGER NOT NULL)")
+            try old.run("CREATE TABLE playlists(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            try old.run("CREATE TABLE playlist_items(playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, video_id TEXT NOT NULL REFERENCES tracks(video_id), position INTEGER NOT NULL, PRIMARY KEY(playlist_id, video_id))")
+            try old.run("CREATE TABLE downloads(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), state TEXT NOT NULL, bytes INTEGER NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL)")
+            try old.run("CREATE TABLE local_files(video_id TEXT PRIMARY KEY REFERENCES tracks(video_id), source_key TEXT NOT NULL UNIQUE, uri TEXT NOT NULL, album TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, added_at INTEGER NOT NULL, missing INTEGER NOT NULL DEFAULT 0)")
+            try old.run("INSERT INTO tracks VALUES('old', 'Old song', 'Old artist', NULL, 1000)")
+            try old.run("INSERT INTO history(video_id, played_at) VALUES('old', 5)")
+            try old.run("INSERT INTO skips(video_id, skipped_at) VALUES('old', 6)")
+            old.version = 7
+        }
+        let upgraded = try LibraryStore(path: path)
+        let before = try await upgraded.listens()
+        XCTAssertEqual(before.map(\.track.videoId), ["old"])
+        XCTAssertNil(before[0].source)
+        let skipped = try await upgraded.skipped().map(\.track.videoId)
+        XCTAssertEqual(skipped, ["old"])
+        try await upgraded.recordListen(song("new"), at: 9, source: "shelf")
+        let after = try await upgraded.listens()
+        XCTAssertEqual(after.map(\.source), ["shelf", nil])
+    }
 
     func testEveryListenComesBackWithItsOwnTime() async throws {
         try await store.recordListen(song("a"), at: 10)

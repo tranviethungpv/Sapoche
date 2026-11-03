@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../models.dart';
 import 'library_store.dart';
 import 'taste.dart';
 import 'wire.dart';
@@ -28,9 +29,13 @@ class SuggestionFeed {
 
   /// What the library says about the person, as of now.
   Taste _taste() => Taste(
-    heard: [for (final e in store.listens()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch)],
+    heard: [
+      for (final e in store.listens()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch, ListenSource.weight(e.source)),
+    ],
     liked: [for (final e in store.likedEntries()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch)],
-    skipped: [for (final e in store.skipped()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch)],
+    skipped: [
+      for (final e in store.skipped()) Stamped(TrackRef.of(e.track), e.at.millisecondsSinceEpoch, ListenSource.weight(e.source)),
+    ],
     now: _now(),
   );
 
@@ -41,6 +46,9 @@ class SuggestionFeed {
       artists: {for (final b in blocked) if (b.kind == artist) b.key},
     );
   }
+
+  /// How the songs of each source fared in the last [statsMs]: heard, and left after a few seconds.
+  List<SourceStats> sourceStats() => store.sourceStats(_now() - statsMs);
 
   /// The lists kept for [seeds], the best loved seed first; a seed without a list is left out.
   List<List<TrackRef>> _kept(List<String> seeds) => [
@@ -152,6 +160,7 @@ class SuggestionFeed {
   static const contextCount = 20;
   static const seedCount = 8;
   static const freshMs = 12 * 60 * 60 * 1000;
+  static const statsMs = 30 * 24 * 60 * 60 * 1000;
   static const song = 'song';
   static const artist = 'artist';
   static const _recentMs = 7 * 24 * 60 * 60 * 1000;

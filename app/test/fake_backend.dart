@@ -110,17 +110,17 @@ class FakeBackend implements Backend {
   Future<void> keepPlaying() => _record('keepPlaying');
 
   @override
-  Future<void> add(Track track, {bool playNext = false}) =>
-      _record('add ${track.videoId} next=$playNext');
+  Future<void> add(Track track, {bool playNext = false, String source = ListenSource.chosen}) =>
+      _record('add ${track.videoId} next=$playNext${source == ListenSource.chosen ? '' : ' source=$source'}');
 
   /// The songs of the last [addMany], as they were given.
   List<Track> lastAddedMany = const [];
 
   @override
-  Future<void> addMany(List<Track> tracks, {bool playNext = false}) {
+  Future<void> addMany(List<Track> tracks, {bool playNext = false, String source = ListenSource.chosen}) {
     lastAddedMany = tracks;
     return _record(
-      'addMany ${tracks.map((t) => t.videoId).join(',')} next=$playNext',
+      'addMany ${tracks.map((t) => t.videoId).join(',')} next=$playNext${source == ListenSource.chosen ? '' : ' source=$source'}',
     );
   }
 
@@ -594,6 +594,15 @@ class FakeBackend implements Backend {
   List<MusicTrack> songSearchResult = const [];
   List<MusicTrack> videoSearchResult = const [];
   List<SeedList> seedListsResult = const [];
+
+  /// What [tasteProfile] gives back.
+  TasteProfile tasteProfileResult = const TasteProfile();
+
+  @override
+  Future<TasteProfile> tasteProfile() async {
+    await _record('tasteProfile');
+    return tasteProfileResult;
+  }
 
   @override
   Future<List<MusicShelf>> musicTrending() =>

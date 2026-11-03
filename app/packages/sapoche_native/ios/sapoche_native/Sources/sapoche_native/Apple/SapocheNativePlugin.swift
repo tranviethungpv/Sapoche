@@ -102,14 +102,14 @@ final class SapocheRuntime {
             prefs: prefs,
             queueFile: QueueFile(url: support.appendingPathComponent("local_queue.json")),
             config: { ServerConfig.load(prefs) },
-            recordListen: { track in
+            recordListen: { track, source in
                 Task {
-                    do { try await store.recordListen(track) } catch { EventLog.d("library", "could not write the history: \(error.localizedDescription)") }
+                    do { try await store.recordListen(track, source: source) } catch { EventLog.d("library", "could not write the history: \(error.localizedDescription)") }
                 }
             },
-            recordSkip: { track in
+            recordSkip: { track, source in
                 Task {
-                    do { try await store.recordSkip(track) } catch { EventLog.d("library", "could not write the skip: \(error.localizedDescription)") }
+                    do { try await store.recordSkip(track, source: source) } catch { EventLog.d("library", "could not write the skip: \(error.localizedDescription)") }
                 }
             },
             moreLike: { videoId, exclude, count in try await suggestions.after(videoId, exclude: exclude, count: count) },

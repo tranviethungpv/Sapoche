@@ -35,6 +35,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import app.sapoche.core.OkHttpDownloader
+import app.sapoche.sync.ListenSource
 import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.IdleAction
 import app.sapoche.sync.QueueFile
@@ -111,7 +112,13 @@ class PlaybackService : MediaLibraryService() {
         player.setPreloadConfiguration(ExoPlayer.PreloadConfiguration(10_000_000L))
         player.addListener(PlayerEvents())
         player.addAnalyticsListener(LoadEvents())
-        history = ListenHistory(player, SapocheApp.library, scope) { EventLog.d("library", it) }.also { it.start() }
+        history = ListenHistory(
+            player,
+            SapocheApp.library,
+            scope,
+            sourceOf = { id -> if (::group.isInitialized) group.listenSource(id) else ListenSource.CHOSEN },
+            leftByOther = { ::group.isInitialized && group.leftByOther() },
+        ) { EventLog.d("library", it) }.also { it.start() }
 
         group = GroupController(
             this,

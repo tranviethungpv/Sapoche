@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/web/taste.dart';
 import 'package:sapoche/data/web/wire.dart';
 
@@ -23,6 +24,50 @@ List<String> ids(List<TrackRef> list) => [for (final t in list) t.videoId];
 
 void main() {
   group('taste', () {
+    test('a song another member picked counts for less than one chosen', () {
+      final others = Stamped(song('o'), now, ListenSource.weight(ListenSource.roomOther));
+      // Half a point is just the line for an artist to be known; a skipped one of theirs does not weigh a whole skip
+      expect(taste(heard: [others]).knows('Artist o'), isTrue);
+      expect(taste(heard: [Stamped(song('o'), now, 0.4)]).knows('Artist o'), isFalse);
+      final skipped = [
+        for (final id in ['s', 't', 'u']) Stamped(song(id, 'Same'), now - day, ListenSource.weight(ListenSource.roomOther)),
+      ];
+      expect(taste(skipped: skipped).dislikes('Same'), isFalse);
+      expect(taste(skipped: [heard('s', 1, 'Same'), heard('t', 1, 'Same'), heard('u', 1, 'Same')]).dislikes('Same'), isTrue);
+    });
+
+    test('only songs another member picked are weighed down', () {
+      expect(ListenSource.weight(ListenSource.roomOther), 0.5);
+      for (final source in [null, ListenSource.chosen, ListenSource.auto, ListenSource.shelf]) {
+        expect(ListenSource.weight(source), 1.0);
+      }
+    });
+
+    test('listen sources remember what autoplay and the shelves put on the queue', () {
+      final sources = ListenSources(keep: 3);
+      expect(sources.of('a'), ListenSource.chosen);
+      sources
+        ..mark(['a', 'b'], ListenSource.auto)
+        ..mark(['c'], ListenSource.shelf);
+      expect(['a', 'b', 'c'].map(sources.of), [ListenSource.auto, ListenSource.auto, ListenSource.shelf]);
+      // Put on the queue by hand later, it is a choice again
+      sources.mark(['a'], ListenSource.chosen);
+      expect(sources.of('a'), ListenSource.chosen);
+      // The oldest is forgotten past the limit
+      sources.mark(['d', 'e'], ListenSource.auto);
+      expect(sources.of('b'), ListenSource.chosen);
+      expect(sources.of('e'), ListenSource.auto);
+    });
+
+    test("in a room the queue item says whether it was autoplay's or another member's", () {
+      final sources = ListenSources()..mark(['v'], ListenSource.shelf);
+      QueueEntry item(String by, {bool auto = false}) =>
+          QueueEntry(id: 'i', videoId: 'v', title: 'T', artist: 'A', durMs: 1000, addedBy: by, auto: auto);
+      expect(sources.of('v', item: item('dev-b', auto: true), you: 'dev-a'), ListenSource.auto);
+      expect(sources.of('v', item: item('dev-b'), you: 'dev-a'), ListenSource.roomOther);
+      expect(sources.of('v', item: item('dev-a'), you: 'dev-a'), ListenSource.shelf);
+    });
+
     test('an artist is known once listened to', () {
       final t = taste(heard: [heard('a', 1, 'Jack, K-ICM')]);
       expect(t.knows('Jack'), isTrue);

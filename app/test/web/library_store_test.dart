@@ -222,6 +222,28 @@ void main() {
       expect(library.skipped().first.track.videoId, 's304');
     });
 
+    test('listens and skips keep their source, and a row from before counts as chosen', () {
+      var t = 0;
+      library = LibraryStore(nowMs: () => t);
+      t = 100;
+      library.recordListen(song('a'));
+      t = 200;
+      library
+        ..recordListen(song('b'), source: ListenSource.auto)
+        ..recordListen(song('c'), source: ListenSource.auto);
+      t = 400;
+      library.recordSkip(song('d'), source: ListenSource.auto);
+      t = 500;
+      library.recordSkip(song('e'), source: ListenSource.shelf);
+      expect(library.listens().map((e) => e.source), [ListenSource.auto, ListenSource.auto, null]);
+      // The listen of a is older than the window
+      final stats = {for (final s in library.sourceStats(150)) s.source: s};
+      expect(stats.keys.toSet(), {ListenSource.auto, ListenSource.shelf});
+      expect([stats[ListenSource.auto]!.heard, stats[ListenSource.auto]!.skipped], [2, 1]);
+      expect([stats[ListenSource.shelf]!.heard, stats[ListenSource.shelf]!.skipped], [0, 1]);
+      expect(library.sourceStats(0).firstWhere((s) => s.source == ListenSource.chosen).heard, 1);
+    });
+
     test('forgetting the history forgets the skips and the songs only they kept', () {
       library
         ..recordSkip(song('a'))
@@ -276,6 +298,13 @@ void main() {
       expect(second.skipped().single.track.videoId, 'a');
       expect(second.blocked().single.key, 'artist');
       expect(second.cachedSuggestions('s')!.tracks.single.thumb, 'https://img/x');
+      // Version 2 wrote a listen and a skip as [id, time], with no source
+      final v2 = LibraryStore(
+        stored:
+            '{"v":2,"next":1,"tracks":[["a","A","x",null,1000]],"likes":[],"history":[["a",5]],"skips":[["a",6]],"playlists":[],"folders":[]}',
+      );
+      expect(v2.listens().single.source, isNull);
+      expect(v2.skipped().single.track.videoId, 'a');
       final old = LibraryStore(
         stored: '{"v":1,"next":1,"tracks":[],"likes":[],"history":[],"playlists":[],"folders":[]}',
       );

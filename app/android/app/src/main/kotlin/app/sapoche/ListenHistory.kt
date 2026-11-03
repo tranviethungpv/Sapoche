@@ -5,6 +5,7 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import app.sapoche.sync.ListenSource
 import app.sapoche.sync.ListenTracker
 import app.sapoche.sync.TrackRef
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +20,10 @@ class ListenHistory(
     private val player: Player,
     private val store: LibraryStore,
     private val scope: CoroutineScope,
+    /** Where the song with this id came from, see [ListenSource]; asked when it starts playing. */
+    private val sourceOf: (String) -> String = { ListenSource.CHOSEN },
+    /** The song now playing was left because another member of the room skipped it: not a skip of this person's. */
+    private val leftByOther: () -> Boolean = { false },
     private val log: (String) -> Unit = {},
 ) : Player.Listener {
 
@@ -27,6 +32,9 @@ class ListenHistory(
 
     /** The song being followed; kept whole so its details are not read from a player that has moved on. */
     private var item: MediaItem? = null
+
+    /** Where [item] came from, worked out when it started, because by the time it is left the queue has moved on. */
+    private var source = ListenSource.CHOSEN
 
     private val due = Runnable {
         tracker.check(now())
@@ -48,6 +56,7 @@ class ListenHistory(
             // Counts the song that is ending, if it just passed the mark, so `item` still has to be that one
             tracker.begin(next?.mediaId, player.duration.coerceAtLeast(0), now())
             item = next
+            source = next?.let { sourceOf(it.mediaId) } ?: ListenSource.CHOSEN
         }
         if (item != null) {
             tracker.setDuration(player.duration.coerceAtLeast(0))
@@ -75,10 +84,15 @@ class ListenHistory(
     /** The song was left after a few seconds: the suggestions learn not to offer more of it. */
     private fun skip(id: String, durationMs: Long) {
         val track = trackOf(id, durationMs) ?: return
-        log("skipped '${track.title}'")
+        if (leftByOther()) {
+            log("'${track.title}' was skipped by another member: not counted")
+            return
+        }
+        val source = source
+        log("skipped '${track.title}' ($source)")
         scope.launch {
             try {
-                store.recordSkip(track)
+                store.recordSkip(track, source = source)
             } catch (e: Exception) {
                 log("could not write the skip: ${e.message}")
             }
@@ -87,10 +101,11 @@ class ListenHistory(
 
     private fun record(id: String, durationMs: Long) {
         val track = trackOf(id, durationMs) ?: return
-        log("heard '${track.title}'")
+        val source = source
+        log("heard '${track.title}' ($source)")
         scope.launch {
             try {
-                store.recordListen(track)
+                store.recordListen(track, source = source)
             } catch (e: Exception) {
                 log("could not write the history: ${e.message}")
             }

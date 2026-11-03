@@ -920,6 +920,21 @@ class GroupSessionTest {
     }
 
     @Test
+    fun `a skip by someone else is remembered, and our own is not`() = runTest {
+        val h = playingFirstOfTwo()
+        assertFalse(h.session.changedByOther)
+        h.session.onMessage(ServerMessage.Prepare(epoch = 2, index = 1, item = item2, seekToMs = 0, by = "dev-b"))
+        step(100)
+        assertTrue(h.session.changedByOther)
+        h.session.onMessage(ServerMessage.Prepare(epoch = 3, index = 0, item = item, seekToMs = 0, by = "dev-a"))
+        step(100)
+        assertFalse(h.session.changedByOther, "this device's own skip")
+        h.session.onMessage(ServerMessage.Prepare(epoch = 4, index = 1, item = item2, seekToMs = 0, by = null))
+        step(100)
+        assertFalse(h.session.changedByOther, "the room moving on by itself")
+    }
+
+    @Test
     fun `this device failing to load the room's song is told, once however often it retries`() = runTest {
         val h = harness()
         val seen = mutableListOf<GroupSession.RoomEvent>()

@@ -100,6 +100,10 @@ final class GroupSession {
     private var state: RoomState?
     private var handledEpoch: Int64 = -1
 
+    /// The song now playing was started by another member's skip, jump or play, not by this device or by the room moving
+    /// on by itself: a song left now was not this person's to skip.
+    private(set) var changedByOther = false
+
     /// Server time of position 0 of the current item while playing in sync, else nil.
     private var startedAtServer: Int64?
 
@@ -493,6 +497,7 @@ final class GroupSession {
             return
         }
         if epoch < handledEpoch { return }
+        if epoch != handledEpoch { changedByOther = by != nil && by != snapshot.value.you }
         if let by, by != snapshot.value.you, epoch != handledEpoch {
             events.emit(.skipped(byId: by, title: item.title))
         }

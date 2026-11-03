@@ -47,9 +47,9 @@ class LibraryStore {
   // Liked songs by id, with the time they were liked
   final _likes = <String, int>{};
   // One entry per listen, oldest first
-  final _history = <(String, int)>[];
+  final _history = <(String, int, String?)>[];
   // Songs left after a few seconds, oldest first
-  final _skips = <(String, int)>[];
+  final _skips = <(String, int, String?)>[];
   // What was asked not to be offered, the latest last
   final _blocked = <_Blocked>[];
   // What YouTube listed beside a seed song, by the seed's id
@@ -102,7 +102,7 @@ class LibraryStore {
   List<HistoryEntry> recent({int limit = recentLimit}) {
     final last = <String, int>{};
     final plays = <String, int>{};
-    for (final (id, at) in _history) {
+    for (final (id, at, _) in _history) {
       if (at >= (last[id] ?? 0)) last[id] = at;
       plays[id] = (plays[id] ?? 0) + 1;
     }
@@ -118,9 +118,9 @@ class LibraryStore {
   }
 
   /// [track] was heard. Only the last [historyKeep] listens are kept.
-  void recordListen(Track track) {
+  void recordListen(Track track, {String? source}) {
     _remember(track);
-    _history.add((track.videoId, _now()));
+    _history.add((track.videoId, _now(), source));
     if (_history.length > historyKeep) _history.removeRange(0, _history.length - historyKeep);
     _dropUnused();
     _changed();
@@ -128,20 +128,20 @@ class LibraryStore {
 
   /// Every listen, the latest first, each with its own time: what the taste is worked out from.
   List<HistoryEntry> listens({int limit = historyKeep}) => [
-    for (final (id, at) in _history.reversed.take(limit))
-      HistoryEntry(track: _tracks[id]!, at: DateTime.fromMillisecondsSinceEpoch(at), plays: 1),
+    for (final (id, at, source) in _history.reversed.take(limit))
+      HistoryEntry(track: _tracks[id]!, at: DateTime.fromMillisecondsSinceEpoch(at), plays: 1, source: source),
   ];
 
   /// Ids of the songs heard since [since] (ms since the epoch).
   Set<String> heardSince(int since) => {
-    for (final (id, at) in _history)
+    for (final (id, at, _) in _history)
       if (at >= since) id,
   };
 
   /// [track] was left after a few seconds. Only the last [skipsKeep] are kept. It is not announced: nothing shows it.
-  void recordSkip(Track track) {
+  void recordSkip(Track track, {String? source}) {
     _remember(track);
-    _skips.add((track.videoId, _now()));
+    _skips.add((track.videoId, _now(), source));
     if (_skips.length > skipsKeep) _skips.removeRange(0, _skips.length - skipsKeep);
     _dropUnused();
     _save();
@@ -149,9 +149,26 @@ class LibraryStore {
 
   /// Songs left after a few seconds, the latest first, each time one entry.
   List<HistoryEntry> skipped() => [
-    for (final (id, at) in _skips.reversed)
-      HistoryEntry(track: _tracks[id]!, at: DateTime.fromMillisecondsSinceEpoch(at), plays: 1),
+    for (final (id, at, source) in _skips.reversed)
+      HistoryEntry(track: _tracks[id]!, at: DateTime.fromMillisecondsSinceEpoch(at), plays: 1, source: source),
   ];
+
+  /// For each source, the songs heard and the songs left after a few seconds since [since] (ms since the epoch); a row
+  /// from before sources is [ListenSource.chosen].
+  List<SourceStats> sourceStats(int since) {
+    final heard = <String, int>{};
+    final skipped = <String, int>{};
+    for (final (_, at, source) in _history) {
+      if (at >= since) heard.update(source ?? ListenSource.chosen, (n) => n + 1, ifAbsent: () => 1);
+    }
+    for (final (_, at, source) in _skips) {
+      if (at >= since) skipped.update(source ?? ListenSource.chosen, (n) => n + 1, ifAbsent: () => 1);
+    }
+    return [
+      for (final source in {...heard.keys, ...skipped.keys}.toList()..sort())
+        SourceStats(source: source, heard: heard[source] ?? 0, skipped: skipped[source] ?? 0),
+    ];
+  }
 
   void clearHistory() {
     _history.clear();
@@ -379,8 +396,8 @@ class LibraryStore {
   void _dropUnused() {
     final used = {
       ..._likes.keys,
-      for (final (id, _) in _history) id,
-      for (final (id, _) in _skips) id,
+      for (final (id, _, _) in _history) id,
+      for (final (id, _, _) in _skips) id,
       for (final p in _playlists) ...p.items,
     };
     _tracks.removeWhere((id, _) => !used.contains(id));
@@ -408,14 +425,14 @@ class LibraryStore {
   }
 
   Map<String, Object?> _toJson() => {
-    'v': 2,
+    'v': 3,
     'next': _nextId,
     'tracks': [
       for (final t in _tracks.values) [t.videoId, t.title, t.artist, t.thumb, t.durMs],
     ],
     'likes': [for (final e in _likes.entries) [e.key, e.value]],
-    'history': [for (final (id, at) in _history) [id, at]],
-    'skips': [for (final (id, at) in _skips) [id, at]],
+    'history': [for (final (id, at, source) in _history) [id, at, source]],
+    'skips': [for (final (id, at, source) in _skips) [id, at, source]],
     'blocked': [
       for (final b in _blocked) [b.kind, b.key, b.label, b.at],
     ],
@@ -452,12 +469,13 @@ class LibraryStore {
     }
     for (final row in json['history'] as List) {
       final h = row as List;
-      _history.add((h[0] as String, (h[1] as num).toInt()));
+      // A row written before version 3 has no source
+      _history.add((h[0] as String, (h[1] as num).toInt(), h.length > 2 ? h[2] as String? : null));
     }
     // A document written before the taste had none of these
     for (final row in json['skips'] as List? ?? const []) {
       final h = row as List;
-      _skips.add((h[0] as String, (h[1] as num).toInt()));
+      _skips.add((h[0] as String, (h[1] as num).toInt(), h.length > 2 ? h[2] as String? : null));
     }
     for (final row in json['blocked'] as List? ?? const []) {
       final b = row as List;

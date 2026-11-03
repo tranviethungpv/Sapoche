@@ -4,12 +4,45 @@ import 'dart:math';
 import '../models.dart';
 import 'wire.dart';
 
-/// A song with the moment something happened to it: it was heard, liked or left after a few seconds.
+/// A song with the moment something happened to it: it was heard, liked or left after a few seconds. [weight] is how
+/// much it counts (see [ListenSource.weight]).
 class Stamped {
-  const Stamped(this.track, this.at);
+  const Stamped(this.track, this.at, [this.weight = 1.0]);
 
   final TrackRef track;
   final int at;
+  final double weight;
+}
+
+/// Remembers which songs of the queue were put there by autoplay or from a shelf, so a listen can say where it came
+/// from. A song put on the queue by hand is forgotten here, because [ListenSource.chosen] is what is left. Only the
+/// latest [keep] songs are kept. Dart counterpart of `ListenSources` in `ListenSource.kt`.
+class ListenSources {
+  ListenSources({this.keep = 400});
+
+  final int keep;
+  // Insertion order is the order they were marked in
+  final _marked = <String, String>{};
+
+  void mark(Iterable<String> ids, String source) {
+    for (final id in ids) {
+      _marked.remove(id);
+      if (source != ListenSource.chosen) _marked[id] = source;
+    }
+    while (_marked.length > keep) {
+      _marked.remove(_marked.keys.first);
+    }
+  }
+
+  /// The source of [videoId]. In a room, [item] is the queue item playing and [you] this device's public id: what
+  /// autoplay put there and what others put there say so themselves.
+  String of(String videoId, {QueueEntry? item, String? you}) {
+    if (item != null) {
+      if (item.auto) return ListenSource.auto;
+      if (you != null && item.addedBy != you) return ListenSource.roomOther;
+    }
+    return _marked[videoId] ?? ListenSource.chosen;
+  }
 }
 
 /// Songs and artists the person asked not to be offered, by video id and by [Taste.artistKey].
@@ -37,7 +70,7 @@ class Taste {
        _hourOf = hourOf ?? _localHour {
     void add(List<Stamped> list, double weight, int halfLifeMs) {
       for (final s in list) {
-        final value = weight * _decay(now - s.at, halfLifeMs);
+        final value = weight * s.weight * _decay(now - s.at, halfLifeMs);
         _songs.update(s.track.videoId, (v) => v + value, ifAbsent: () => value);
         _artists.update(artistKey(s.track.artist), (v) => v + value, ifAbsent: () => value);
         _tracks.putIfAbsent(s.track.videoId, () => s.track);

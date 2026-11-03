@@ -312,7 +312,7 @@ class _HomePageState extends State<HomePage> {
       title: title,
       cards: [
         for (final t in tracks)
-          SongCard.track(context, t, onTap: () => playNow(context, t)),
+          SongCard.track(context, t, onTap: () => playNow(context, t, source: ListenSource.shelf)),
       ],
     );
     return {
@@ -1237,7 +1237,7 @@ class _QuickRow extends StatelessWidget {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     return InkWell(
-      onTap: () => playNow(context, track),
+      onTap: () => playNow(context, track, source: ListenSource.shelf),
       child: SizedBox(
         height: _QuickPicks._rowHeight,
         child: Padding(

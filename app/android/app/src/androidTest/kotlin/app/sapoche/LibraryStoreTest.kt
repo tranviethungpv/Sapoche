@@ -392,6 +392,55 @@ class LibraryStoreTest {
     }
 
     @Test
+    fun listensAndSkipsKeepTheirSourceAndRowsFromBeforeCountAsChosen() = runTest {
+        store.recordListen(song("a"), at = 100)
+        store.recordListen(song("b"), at = 200, source = "auto")
+        store.recordListen(song("c"), at = 300, source = "auto")
+        store.recordSkip(song("d"), at = 400, source = "auto")
+        store.recordSkip(song("e"), at = 500, source = "shelf")
+        assertEquals(listOf("auto", "auto", null), store.listens().map { it.source })
+        val stats = store.sourceStats(since = 150).associateBy { it.source }
+        // The listen of a is older than the window
+        assertEquals(setOf("auto", "shelf"), stats.keys)
+        assertEquals(2 to 1, stats.getValue("auto").let { it.heard to it.skipped })
+        assertEquals(0 to 1, stats.getValue("shelf").let { it.heard to it.skipped })
+        assertEquals(1, store.sourceStats(since = 0).first { it.source == "chosen" }.heard)
+    }
+
+    @Test
+    fun aDatabaseFromVersionSevenGainsSourcesAndKeepsEveryRow() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = "upgrade-test7.db"
+        context.deleteDatabase(file)
+        // A version 7 database has every table but the source columns and the taste marks
+        LibraryStore(context, file).close()
+        context.openOrCreateDatabase(file, android.content.Context.MODE_PRIVATE, null).use { db ->
+            db.execSQL("ALTER TABLE history RENAME TO history_new")
+            db.execSQL("CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), played_at INTEGER NOT NULL)")
+            db.execSQL("DROP TABLE history_new")
+            db.execSQL("ALTER TABLE skips RENAME TO skips_new")
+            db.execSQL("CREATE TABLE skips(id INTEGER PRIMARY KEY AUTOINCREMENT, video_id TEXT NOT NULL REFERENCES tracks(video_id), skipped_at INTEGER NOT NULL)")
+            db.execSQL("DROP TABLE skips_new")
+            db.execSQL("DROP TABLE taste_marks")
+            db.execSQL("INSERT INTO tracks VALUES('old', 'Old song', 'Old artist', NULL, 1000)")
+            db.execSQL("INSERT INTO history(video_id, played_at) VALUES('old', 5)")
+            db.execSQL("INSERT INTO skips(video_id, skipped_at) VALUES('old', 6)")
+            db.version = 7
+        }
+        val upgraded = LibraryStore(context, file)
+        try {
+            assertEquals(listOf("old" to null), upgraded.listens().map { it.track.videoId to it.source })
+            assertEquals(listOf("old"), upgraded.skipped().map { it.track.videoId })
+            upgraded.recordListen(song("new"), at = 9, source = "shelf")
+            assertEquals(listOf("shelf", null), upgraded.listens().map { it.source })
+            assertEquals(2, upgraded.sourceStats(0).sumOf { it.heard })
+        } finally {
+            upgraded.close()
+            context.deleteDatabase(file)
+        }
+    }
+
+    @Test
     fun whatWasFetchedForASeedComesBackWithItsTime() = runTest {
         assertNull(store.cachedSuggestions("seed"))
         store.putSuggestions("seed", listOf(song("a"), song("b").copy(thumb = null, title = "Quote \" and, comma")), at = 42)

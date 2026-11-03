@@ -377,6 +377,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// What was blocked from the suggestions, to be let back one by one.
   static List<Widget> _suggestions(BuildContext context, AppModel model) => [
+    ListenableBuilder(
+      listenable: model.library,
+      builder: (context, _) => _Group(
+        title: S.tasteStatsHeading,
+        footer: S.tasteStatsHelp,
+        children: [_TasteStats(stats: model.library.tasteProfile.stats)],
+      ),
+    ),
     _Group(
       title: S.blockedHeading,
       footer: S.blockedHelp,
@@ -1752,6 +1760,48 @@ class _Swatch extends StatelessWidget {
                 : null,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// How often songs were left in their first seconds, for each source that has enough listens to say.
+class _TasteStats extends StatelessWidget {
+  const _TasteStats({required this.stats});
+
+  /// A source with fewer listens than this says nothing: two or three skips are not a rate.
+  static const minListens = 20;
+
+  final List<SourceStats> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = <String>[];
+    for (final (source, line) in <(String, String Function(int))>[
+      (ListenSource.auto, S.tasteStatsAuto),
+      (ListenSource.shelf, S.tasteStatsShelf),
+      (ListenSource.chosen, S.tasteStatsChosen),
+    ]) {
+      final found = stats.where((s) => s.source == source && s.total >= minListens).firstOrNull;
+      if (found != null) lines.add(line((found.skipRate! * 100).round()));
+    }
+    return Padding(
+      key: const ValueKey('taste-stats'),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final line in lines.isEmpty ? [S.tasteStatsNone] : lines)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text(
+                line,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: lines.isEmpty ? context.palette.textSecondary : null,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -14,6 +14,7 @@ import app.sapoche.core.TrackInfo
 import app.sapoche.core.YoutubeLinks
 import app.sapoche.sync.ChatCipher
 import app.sapoche.sync.ChatQuote
+import app.sapoche.sync.ListenSource
 import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.MissedReactions
 import app.sapoche.sync.Taste
@@ -498,6 +499,9 @@ class SapocheBridge(
                 mapOf("seed" to seed, "tracks" to tracks.map { it.toMap() })
             }
             "discover" -> return SapocheApp.suggestions.discover().map { it.toMap() }
+            "tasteProfile" -> return mapOf(
+                "stats" to SapocheApp.suggestions.sourceStats().map { mapOf("source" to it.source, "heard" to it.heard, "skipped" to it.skipped) },
+            )
             "contextMix" -> {
                 val (bucket, tracks) = SapocheApp.suggestions.contextMix()
                 return mapOf("bucket" to bucket, "tracks" to tracks.map { it.toMap() })
@@ -876,6 +880,7 @@ class SapocheBridge(
                     "addMany" -> group.requestAddMany(
                         call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map(::trackRef),
                         call.argument<Boolean>("next") ?: false,
+                        call.argument<String>("source") ?: ListenSource.CHOSEN,
                     )
                     "swap" -> group.requestSwap(call.argument<String>("id").orEmpty(), trackRef(call.argument<Map<String, Any?>>("track")!!))
                     "remove" -> group.requestRemove(call.argument<String>("id").orEmpty())
@@ -883,6 +888,7 @@ class SapocheBridge(
                     "add" -> group.requestAddMany(
                         listOf(trackRef(call.arguments()!!)),
                         call.argument<Boolean>("next") ?: false,
+                        call.argument<String>("source") ?: ListenSource.CHOSEN,
                     )
                     else -> throw UnsupportedOperationException(call.method)
                 }

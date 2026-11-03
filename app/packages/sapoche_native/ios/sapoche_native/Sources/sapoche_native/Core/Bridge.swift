@@ -409,6 +409,7 @@ final class Bridge {
         func string(_ key: String) -> String { args[key] as? String ?? "" }
         func bool(_ key: String) -> Bool { args[key] as? Bool == true }
         func int(_ key: String) -> Int { JSON(args[key]).int ?? 0 }
+        func sourceArg() -> String { (args["source"] as? String) ?? ListenSource.chosen }
         func int64(_ key: String) -> Int64 { JSON(args[key]).int64 ?? 0 }
         func tracks(_ key: String = "tracks") -> [TrackRef] {
             (args[key] as? [Any] ?? []).compactMap { ($0 as? [String: Any]).flatMap(TrackRef.init(map:)) }
@@ -462,6 +463,9 @@ final class Bridge {
             return try await suggestions.forYou().map { $0.toMap() }
         case "discover":
             return try await suggestions.discover().map { $0.toMap() }
+        case "tasteProfile":
+            let stats = try await suggestions.sourceStats().map { ["source": $0.source, "heard": $0.heard, "skipped": $0.skipped] as [String: Any] }
+            return ["stats": stats] as [String: Any]
         case "contextMix":
             let mix = try await suggestions.contextMix()
             return ["bucket": mix.bucket, "tracks": mix.tracks.map { $0.toMap() }] as [String: Any]
@@ -798,11 +802,11 @@ final class Bridge {
         case "setShuffle": controller.requestShuffleMode(bool("on"))
         case "radio": controller.requestRadio(string("videoId"))
         case "repeat": controller.requestRepeat(string("mode"))
-        case "addMany": controller.requestAddMany(tracks(), playNext: bool("next"))
+        case "addMany": controller.requestAddMany(tracks(), playNext: bool("next"), source: sourceArg())
         case "swap": controller.requestSwap(string("id"), try track(args["track"] as? [String: Any]))
         case "remove": controller.requestRemove(string("id"))
         case "move": controller.requestMove(string("id"), int("to"))
-        case "add": controller.requestAddMany([try track(args)], playNext: bool("next"))
+        case "add": controller.requestAddMany([try track(args)], playNext: bool("next"), source: sourceArg())
         default:
             throw BridgeError(code: "failed", message: "Unknown command \(method)")
         }

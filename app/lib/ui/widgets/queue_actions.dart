@@ -12,13 +12,14 @@ Future<void> queueTrack(
   BuildContext context,
   Track track, {
   bool playNext = false,
+  String source = ListenSource.chosen,
 }) async {
   HapticFeedback.selectionClick();
   final room = AppScope.roomOf(context);
   final messenger = ScaffoldMessenger.of(context);
   final queued = room.snapshot.isQueued(track);
   final undo = queued ? null : undoAddAction(room, track);
-  if (!queued) await room.add(track, playNext: playNext);
+  if (!queued) await room.add(track, playNext: playNext, source: source);
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(
@@ -75,6 +76,7 @@ Future<void> queueTracks(
   BuildContext context,
   List<Track> tracks, {
   bool playNext = false,
+  String source = ListenSource.chosen,
 }) async {
   HapticFeedback.selectionClick();
   final room = AppScope.roomOf(context);
@@ -83,7 +85,7 @@ Future<void> queueTracks(
   // What the queue has room for; a full one is told by the room itself
   final space =
       queueMax(inRoom: room.snapshot.inRoom) - room.snapshot.queue.length;
-  if (fresh.isNotEmpty) await room.addMany(fresh, playNext: playNext);
+  if (fresh.isNotEmpty) await room.addMany(fresh, playNext: playNext, source: source);
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(

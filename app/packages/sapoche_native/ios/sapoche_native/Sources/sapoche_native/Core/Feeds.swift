@@ -9,6 +9,7 @@ actor SuggestionFeed {
     static let contextCount = 20
     static let seedCount = 8
     static let freshMs: Int64 = 12 * 60 * 60 * 1000
+    static let statsMs: Int64 = 30 * 24 * 60 * 60 * 1000
     static let song = "song"
     static let artist = "artist"
     private static let recentMs: Int64 = 7 * 24 * 60 * 60 * 1000
@@ -32,9 +33,9 @@ actor SuggestionFeed {
 
     /// What the library says about the person, as of now.
     private func loadTaste() async throws -> Taste {
-        let heard = try await store.listens().map { Stamped(track: $0.track, at: $0.at) }
+        let heard = try await store.listens().map { Stamped(track: $0.track, at: $0.at, weight: ListenSource.weight($0.source)) }
         let liked = try await store.liked().map { Stamped(track: $0.track, at: $0.at) }
-        let skipped = try await store.skipped().map { Stamped(track: $0.track, at: $0.at) }
+        let skipped = try await store.skipped().map { Stamped(track: $0.track, at: $0.at, weight: ListenSource.weight($0.source)) }
         return Taste(heard: heard, liked: liked, skipped: skipped, now: now())
     }
 
@@ -103,6 +104,11 @@ actor SuggestionFeed {
             log("could not fetch suggestions for \(seed): \(error.localizedDescription)")
             return false
         }
+    }
+
+    /// How the songs of each source fared in the last `statsMs`: heard, and left after a few seconds.
+    func sourceStats() async throws -> [LibraryStore.SourceStats] {
+        try await store.sourceStats(since: now() - Self.statsMs)
     }
 
     /// The songs kept for each seed, for the screens that say "because you listened to".

@@ -768,6 +768,20 @@ final class GroupSessionTests: XCTestCase {
         XCTAssertEqual(seen, [.skipped(byId: "dev-b", title: "Song 2")])
     }
 
+    func testASkipBySomeoneElseIsRememberedAndOurOwnIsNot() async {
+        let h = await playingFirstOfTwo()
+        XCTAssertFalse(h.session.changedByOther)
+        h.message(prepare(2, item2, index: 1, by: "dev-b"))
+        await h.step(100)
+        XCTAssertTrue(h.session.changedByOther)
+        h.message(prepare(3, item, index: 0, by: "dev-a"))
+        await h.step(100)
+        XCTAssertFalse(h.session.changedByOther, "this device's own skip")
+        h.message(prepare(4, item2, index: 1))
+        await h.step(100)
+        XCTAssertFalse(h.session.changedByOther, "the room moving on by itself")
+    }
+
     func testThisDeviceFailingToLoadTheRoomsSongIsToldOnceHoweverOftenItRetries() async {
         let h = harness()
         var seen: [GroupSession.RoomEvent] = []

@@ -135,6 +135,14 @@ class GroupSession(
     private var state: RoomState? = null
     private var handledEpoch = -1L
 
+    /**
+     * The song now playing was started by another member's skip, jump or play, not by this device or by the room
+     * moving on by itself: a song left now was not this person's to skip.
+     */
+    @Volatile
+    var changedByOther = false
+        private set
+
     /** Server time of position 0 of the current item while playing in sync, else null. */
     private var startedAtServer: Long? = null
 
@@ -508,6 +516,7 @@ class GroupSession(
         }
         if (msg.epoch < handledEpoch) return
         val by = msg.by
+        if (msg.epoch != handledEpoch) changedByOther = by != null && by != _snapshot.value.you
         if (by != null && by != _snapshot.value.you && msg.epoch != handledEpoch) {
             _events.tryEmit(RoomEvent.Skipped(by, msg.item.title))
         }

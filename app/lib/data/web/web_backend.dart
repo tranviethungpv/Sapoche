@@ -710,11 +710,13 @@ class WebBackend extends BackendDefaults {
   );
 
   @override
-  Future<void> add(Track track, {bool playNext = false}) => addMany([track], playNext: playNext);
+  Future<void> add(Track track, {bool playNext = false, String source = ListenSource.chosen}) =>
+      addMany([track], playNext: playNext, source: source);
 
   @override
-  Future<void> addMany(List<Track> tracks, {bool playNext = false}) async {
+  Future<void> addMany(List<Track> tracks, {bool playNext = false, String source = ListenSource.chosen}) async {
     final refs = [for (final t in tracks) TrackRef.of(t)];
+    _sources.mark([for (final t in tracks) t.videoId], source);
     _onQueue(outside: () => _local.add(refs, next: playNext), inRoom: () => Wire.queueAddMany(refs, playNext: playNext));
   }
 
@@ -817,6 +819,7 @@ class WebBackend extends BackendDefaults {
         _note("local: autoplay adds ${more.length} songs like '${last.title}'");
         // Carrying on only adds: what has been played makes room when the new songs would not fit
         _local.dropPlayed(_local.snapshot.queue.length + more.length - LocalSession.maxQueue);
+        _sources.mark([for (final t in more) t.videoId], ListenSource.auto);
         _local.add(more, next: false);
       } on Object catch (e) {
         _note('local: autoplay found nothing: $e');
@@ -844,6 +847,7 @@ class WebBackend extends BackendDefaults {
       final queue = _local.snapshot.queue;
       if (turn != _radioFor || more.isEmpty || _session != null || queue.length != 1 || queue.first.videoId != videoId) return;
       _note('local: radio adds ${more.length} songs like $videoId');
+      _sources.mark([for (final t in more) t.videoId], ListenSource.auto);
       _local.add(more, next: false);
     } on Object catch (e) {
       _note('local: no radio for $videoId: $e');
@@ -1275,6 +1279,9 @@ class WebBackend extends BackendDefaults {
   Future<List<Track>> discover() async => [for (final t in _suggestions.discover()) _track(t)];
 
   @override
+  Future<TasteProfile> tasteProfile() async => TasteProfile(stats: _suggestions.sourceStats());
+
+  @override
   Future<ContextMix> contextMix() async {
     final (bucket, tracks) = await _suggestions.contextMix();
     return ContextMix(bucket: bucket, tracks: [for (final t in tracks) _track(t)]);
@@ -1590,6 +1597,12 @@ class WebBackend extends BackendDefaults {
         : state?.current;
   }
 
+  /// Which songs of the queue autoplay or a shelf put there, so a listen can say where it came from.
+  final _sources = ListenSources();
+
+  /// Where [_listened] came from, worked out when it started, because by the time it is left the queue has moved on.
+  var _listenSource = ListenSource.chosen;
+
   /// Hands the listening to the tracker, which says when a song has been heard long enough for the history.
   void _watchListening(QueueEntry? item, bool playing) {
     final now = _now();
@@ -1597,6 +1610,7 @@ class WebBackend extends BackendDefaults {
     if (item?.videoId != _listened?.videoId) {
       _listens.begin(item?.videoId, player.durationMs() > 0 ? player.durationMs() : item?.durMs ?? 0, now);
       _listened = item;
+      _listenSource = item == null ? ListenSource.chosen : _sources.of(item.videoId, item: _session == null ? null : item, you: _session?.snapshot.you);
     }
     if (item != null) {
       _listens.setDuration(player.durationMs());
@@ -1605,12 +1619,19 @@ class WebBackend extends BackendDefaults {
     }
   }
 
-  /// A song was left after a few seconds, before it counted: the person did not want it, which the taste takes in.
+  /// A song was left after a few seconds, before it counted: the person did not want it, which the taste takes in. Not
+  /// when another member of the room skipped it: that was not this person's to skip.
   void _skipped(String id, int durationMs) {
     final item = _listened;
     if (item == null || item.videoId != id) return;
+    final session = _session;
+    if (session != null && !session.isSolo && session.changedByOther) {
+      _note("library: '${item.title}' was skipped by another member: not counted");
+      return;
+    }
     _library.recordSkip(
       Track(videoId: id, title: item.title, artist: item.artist, thumb: item.thumb, durMs: durationMs > 0 ? durationMs : item.durMs),
+      source: _listenSource,
     );
   }
 
@@ -1619,6 +1640,7 @@ class WebBackend extends BackendDefaults {
     if (item == null || item.videoId != id) return;
     _library.recordListen(
       Track(videoId: id, title: item.title, artist: item.artist, thumb: item.thumb, durMs: durationMs > 0 ? durationMs : item.durMs),
+      source: _listenSource,
     );
   }
 

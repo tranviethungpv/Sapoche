@@ -46,6 +46,7 @@ class LibraryController extends ChangeNotifier {
   List<Track> _discover = const [];
   ContextMix _context = const ContextMix();
   List<BlockedItem> _blocked = const [];
+  TasteProfile _profile = const TasteProfile();
   List<DownloadEntry> _downloads = const [];
   Map<String, DownloadState> _downloadStates = const {};
   LocalStatus _localStatus = const LocalStatus();
@@ -120,6 +121,9 @@ class LibraryController extends ChangeNotifier {
   /// The songs and artists the person asked not to be offered, the latest first.
   List<BlockedItem> get blocked => _blocked;
 
+  /// What the listening says about the person, as of the last read.
+  TasteProfile get tasteProfile => _profile;
+
   /// The songs of a playlist that [openPlaylist] loaded.
   List<Track> playlistTracks(int id) => _items[id] ?? const [];
 
@@ -184,6 +188,7 @@ class LibraryController extends ChangeNotifier {
       // Suggestions are extras: if they cannot be read, the library is still shown
       final discover = await _backend.discover().catchError((_) => _discover);
       final blocked = await _backend.blocked().catchError((_) => _blocked);
+      final profile = await _backend.tasteProfile().catchError((_) => _profile);
       final downloads = await _backend.downloads();
       // The music on the phone is extra, and its list is only read while someone looks at it
       final localStatus = await _backend.localStatus().catchError(
@@ -238,6 +243,10 @@ class LibraryController extends ChangeNotifier {
       }
       if (!_same(_blocked, blocked, _sameBlocked)) {
         _blocked = blocked;
+        changed = true;
+      }
+      if (profile != _profile) {
+        _profile = profile;
         changed = true;
       }
       if (!_same(_downloads, downloads, _sameDownload)) {

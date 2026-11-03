@@ -21,6 +21,8 @@ import app.sapoche.sync.ChatReceipt
 import app.sapoche.sync.ClockSync
 import app.sapoche.sync.Connection
 import app.sapoche.sync.GroupSession
+import app.sapoche.sync.ListenSource
+import app.sapoche.sync.ListenSources
 import app.sapoche.sync.LoadFailure
 import app.sapoche.sync.LocalSession
 import app.sapoche.sync.QueueItem
@@ -89,6 +91,20 @@ class GroupController(
         log = { EventLog.d("local", it) },
         onQueueEnd = ::autoplay,
     )
+
+    /** Which songs of the queue autoplay or a shelf put there, so a listen can say where it came from. */
+    private val sources = ListenSources()
+
+    /** Where the song [videoId], now playing, came from; see [ListenSource]. */
+    fun listenSource(videoId: String): String {
+        val s = session ?: return sources.of(videoId)
+        val state = s.snapshot.value.state ?: return sources.of(videoId)
+        val item = state.queue.getOrNull(state.index)?.takeIf { it.videoId == videoId } ?: state.queue.firstOrNull { it.videoId == videoId }
+        return sources.of(videoId, item, s.snapshot.value.you)
+    }
+
+    /** The song that was just left was skipped by another member of the room, not by this device. */
+    fun leftByOther(): Boolean = session?.let { !it.isSolo && it.changedByOther } ?: false
 
     private var autoplayJob: Job? = null
     private var radioJob: Job? = null
@@ -327,6 +343,7 @@ class GroupController(
                 EventLog.d("local", "autoplay adds ${more.size} songs like '${like.title}'")
                 // Carrying on only adds: what has been played makes room when the new songs would not fit
                 local.dropPlayed(local.snapshot.value.queue.size + more.size - LocalSession.MAX_QUEUE)
+                sources.mark(more.map { it.videoId }, ListenSource.AUTO)
                 local.add(more, next = false)
             } catch (e: CancellationException) {
                 throw e
@@ -372,6 +389,7 @@ class GroupController(
                 val queue = local.snapshot.value.queue
                 if (more.isEmpty() || session != null || queue.singleOrNull()?.videoId != videoId) return@launch
                 EventLog.d("local", "radio adds ${more.size} songs like $videoId")
+                sources.mark(more.map { it.videoId }, ListenSource.AUTO)
                 local.add(more, next = false)
             } catch (e: CancellationException) {
                 throw e
@@ -795,7 +813,12 @@ class GroupController(
         }
     }
     fun requestRepeat(mode: String) = onQueue({ it.setRepeat(mode) }) { send(Protocol.repeat(mode)) }
-    fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean) = onQueue({ it.add(tracks, playNext) }) {
+    fun requestAddMany(tracks: List<TrackRef>, playNext: Boolean, source: String = ListenSource.CHOSEN): Boolean {
+        sources.mark(tracks.map { it.videoId }, source)
+        return addToQueue(tracks, playNext)
+    }
+
+    private fun addToQueue(tracks: List<TrackRef>, playNext: Boolean) = onQueue({ it.add(tracks, playNext) }) {
         // What is waiting in the room's queue is not added twice
         val fresh = Queues.fresh(tracks, queue(), session?.snapshot?.value?.state?.index ?: 0)
         fresh.isEmpty() || send(Protocol.queueAddMany(fresh, playNext))

@@ -38,6 +38,45 @@ final class TasteTests: XCTestCase {
         XCTAssertFalse(make(heard: [heard("c", 1, "Same")], skipped: skips).dislikes("Same"))
     }
 
+    func testASongAnotherMemberPickedCountsForLessThanOneChosen() {
+        let others = Stamped(track: song("o"), at: now, weight: ListenSource.weight(ListenSource.roomOther))
+        // Half a point is just the line for an artist to be known; a skipped one of theirs does not weigh a whole skip
+        XCTAssertTrue(make(heard: [others]).knows("Artist o"))
+        XCTAssertFalse(make(heard: [Stamped(track: song("o"), at: now, weight: 0.4)]).knows("Artist o"))
+        let skipped = (["s", "t", "u"]).map { Stamped(track: song($0, "Same"), at: now - day, weight: ListenSource.weight(ListenSource.roomOther)) }
+        XCTAssertFalse(make(skipped: skipped).dislikes("Same"))
+        XCTAssertTrue(make(skipped: [heard("s", 1, "Same"), heard("t", 1, "Same"), heard("u", 1, "Same")]).dislikes("Same"))
+    }
+
+    func testOnlySongsAnotherMemberPickedAreWeighedDown() {
+        XCTAssertEqual(ListenSource.weight(ListenSource.roomOther), 0.5)
+        for source in [nil, ListenSource.chosen, ListenSource.auto, ListenSource.shelf] { XCTAssertEqual(ListenSource.weight(source), 1) }
+    }
+
+    func testListenSourcesRememberWhatAutoplayAndTheShelvesPutOnTheQueue() {
+        let sources = ListenSources(keep: 3)
+        XCTAssertEqual(sources.of("a"), ListenSource.chosen)
+        sources.mark(["a", "b"], source: ListenSource.auto)
+        sources.mark(["c"], source: ListenSource.shelf)
+        XCTAssertEqual(["a", "b", "c"].map { sources.of($0) }, [ListenSource.auto, ListenSource.auto, ListenSource.shelf])
+        // Put on the queue by hand later, it is a choice again
+        sources.mark(["a"], source: ListenSource.chosen)
+        XCTAssertEqual(sources.of("a"), ListenSource.chosen)
+        // The oldest is forgotten past the limit
+        sources.mark(["d", "e"], source: ListenSource.auto)
+        XCTAssertEqual(sources.of("b"), ListenSource.chosen)
+        XCTAssertEqual(sources.of("e"), ListenSource.auto)
+    }
+
+    func testInARoomTheQueueItemSaysWhetherItWasAutoplaysOrAnotherMembers() {
+        let sources = ListenSources()
+        sources.mark(["v"], source: ListenSource.shelf)
+        func item(_ by: String, auto: Bool = false) -> QueueItem { QueueItem(id: "i", videoId: "v", title: "T", artist: "A", thumb: nil, durMs: 1000, addedBy: by, auto: auto) }
+        XCTAssertEqual(sources.of("v", item: item("dev-b", auto: true), you: "dev-a"), ListenSource.auto)
+        XCTAssertEqual(sources.of("v", item: item("dev-b"), you: "dev-a"), ListenSource.roomOther)
+        XCTAssertEqual(sources.of("v", item: item("dev-a"), you: "dev-a"), ListenSource.shelf)
+    }
+
     func testALikeWeighsMoreThanAListen() {
         let taste = make(heard: [heard("a"), heard("b"), heard("b", 2)], liked: [heard("a")])
         XCTAssertEqual(taste.seeds(2), ["a", "b"], "a: 1 listen and a like beat b: 2 listens")

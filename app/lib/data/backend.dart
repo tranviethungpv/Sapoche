@@ -239,8 +239,10 @@ abstract class Backend {
   /// The room stopped but this device carries on by itself.
   Future<void> keepPlaying();
 
-  Future<void> add(Track track, {bool playNext = false});
-  Future<void> addMany(List<Track> tracks, {bool playNext = false});
+  /// Puts [track] on the queue. [source] says where it was chosen (see [ListenSource]): the home page's shelves
+  /// say `shelf`, so the listen can be counted against them.
+  Future<void> add(Track track, {bool playNext = false, String source = ListenSource.chosen});
+  Future<void> addMany(List<Track> tracks, {bool playNext = false, String source = ListenSource.chosen});
   Future<void> setRepeat(Repeat mode);
   Future<void> remove(String itemId);
 
@@ -393,6 +395,9 @@ abstract class Backend {
 
   /// A mix for this time of day; no songs until enough was heard at this hour.
   Future<ContextMix> contextMix();
+
+  /// What the listening says about the person: how the songs of each source fared lately.
+  Future<TasteProfile> tasteProfile();
 
   /// Asks not to be offered [track], or with [artistOnly] its artist, any more.
   Future<void> block(Track track, {bool artistOnly = false});
@@ -762,14 +767,15 @@ class NativeBackend implements Backend {
   Future<void> keepPlaying() => _call('keepPlaying');
 
   @override
-  Future<void> add(Track track, {bool playNext = false}) =>
-      _call('add', {...track.toMap(), 'next': playNext});
+  Future<void> add(Track track, {bool playNext = false, String source = ListenSource.chosen}) =>
+      _call('add', {...track.toMap(), 'next': playNext, 'source': source});
 
   @override
-  Future<void> addMany(List<Track> tracks, {bool playNext = false}) =>
+  Future<void> addMany(List<Track> tracks, {bool playNext = false, String source = ListenSource.chosen}) =>
       _call('addMany', {
         'tracks': [for (final t in tracks) t.toMap()],
         'next': playNext,
+        'source': source,
       });
 
   @override
@@ -1011,6 +1017,11 @@ class NativeBackend implements Backend {
     for (final e in await _call<List<Object?>>('discover') ?? const [])
       Track.fromMap(e as Map<Object?, Object?>),
   ];
+
+  @override
+  Future<TasteProfile> tasteProfile() async => TasteProfile.fromMap(
+    await _call<Map<Object?, Object?>>('tasteProfile') ?? const {},
+  );
 
   @override
   Future<ContextMix> contextMix() async => ContextMix.fromMap(

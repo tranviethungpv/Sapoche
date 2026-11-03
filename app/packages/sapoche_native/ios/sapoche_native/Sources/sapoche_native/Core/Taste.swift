@@ -1,9 +1,11 @@
 import Foundation
 
-/// A song with the moment something happened to it: it was heard, liked or left after a few seconds.
+/// A song with the moment something happened to it: it was heard, liked or left after a few seconds. [weight] is how
+/// much it counts (see `ListenSource.weight`).
 struct Stamped: Equatable {
     let track: TrackRef
     let at: Int64
+    var weight = 1.0
 }
 
 /// Songs and artists the person asked not to be offered, by video id and by [Taste.artistKey].
@@ -52,7 +54,7 @@ struct Taste {
 
     private mutating func add(_ list: [Stamped], weight: Double, halfLifeMs: Int64) {
         for stamped in list {
-            let value = weight * Taste.decay(now - stamped.at, halfLifeMs)
+            let value = weight * stamped.weight * Taste.decay(now - stamped.at, halfLifeMs)
             songs[stamped.track.videoId, default: 0] += value
             artists[Taste.artistKey(stamped.track.artist), default: 0] += value
             if tracks[stamped.track.videoId] == nil { tracks[stamped.track.videoId] = stamped.track }

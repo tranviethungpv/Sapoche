@@ -139,6 +139,11 @@ class GroupSession {
   RoomState? _state;
   int _handledEpoch = -1;
 
+  /// The song now playing was started by another member's skip, jump or play, not by this device or by the room moving
+  /// on by itself: a song left now was not this person's to skip.
+  bool get changedByOther => _changedByOther;
+  var _changedByOther = false;
+
   /// Server time of position 0 of the current item while playing in sync, else null.
   int? _startedAtServer;
 
@@ -476,6 +481,7 @@ class GroupSession {
     }
     if (msg.epoch < _handledEpoch) return;
     final by = msg.by;
+    if (msg.epoch != _handledEpoch) _changedByOther = by != null && by != _snapshot.you;
     if (by != null && by != _snapshot.you && msg.epoch != _handledEpoch) {
       _events.add(SkippedEvent(by, msg.item.title));
     }

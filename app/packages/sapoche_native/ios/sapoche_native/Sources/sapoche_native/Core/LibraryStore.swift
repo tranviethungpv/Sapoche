@@ -11,6 +11,22 @@ actor LibraryStore {
         let track: TrackRef
         let at: Int64
         var plays = 0
+        var source: String?
+    }
+
+    /// How the songs from one [source] fared lately: heard for long enough, and left after a few seconds.
+    struct SourceStats: Equatable {
+        let source: String
+        let heard: Int
+        let skipped: Int
+    }
+
+    /// A mark the person put on the taste: [kind] is `quiet_artist`, `quiet_song` or `starter`; see [Taste].
+    struct TasteMark: Equatable {
+        let kind: String
+        let key: String
+        let label: String
+        let at: Int64
     }
 
     /// A song or an artist the person asked not to be offered: [kind] is `song` (the key is its video id) or `artist`.
@@ -98,7 +114,7 @@ actor LibraryStore {
     static let done = "done"
     static let failed = "failed"
     static let maxTries = 3
-    private static let version = 7
+    private static let version = 8
 
     private let db: SQLite
     private let onChange: @Sendable () -> Void
@@ -156,6 +172,13 @@ actor LibraryStore {
                 try db.run("CREATE TABLE folders(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
                 try db.run("ALTER TABLE playlists ADD COLUMN folder_id INTEGER REFERENCES folders(id)")
             }
+            if found < 8 {
+                // Where each listen and skip came from. Rows from before have no source (null) and count as chosen
+                try db.run("ALTER TABLE history ADD COLUMN source TEXT")
+                try db.run("ALTER TABLE skips ADD COLUMN source TEXT")
+                // What the person told the taste: artists to hear less of, songs not to count, and the artists a new person started with
+                try db.run("CREATE TABLE taste_marks(kind TEXT NOT NULL, key TEXT NOT NULL, label TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(kind, key))")
+            }
         }
         db.version = version
     }
@@ -198,10 +221,10 @@ actor LibraryStore {
     }
 
     /// [track] was heard. Only the last [historyKeep] listens are kept.
-    func recordListen(_ track: TrackRef, at: Int64 = LibraryStore.now()) throws {
+    func recordListen(_ track: TrackRef, at: Int64 = LibraryStore.now(), source: String? = nil) throws {
         try db.transaction {
             try upsertTrack(track)
-            try db.run("INSERT INTO history(video_id, played_at) VALUES(?, ?)", [.text(track.videoId), .int(at)])
+            try db.run("INSERT INTO history(video_id, played_at, source) VALUES(?, ?, ?)", [.text(track.videoId), .int(at), SQLValue(source)])
             try db.run("DELETE FROM history WHERE id <= (SELECT id FROM history ORDER BY id DESC LIMIT 1 OFFSET \(Self.historyKeep))")
             try dropUnusedTracks()
         }
@@ -211,16 +234,16 @@ actor LibraryStore {
     /// Every listen, the latest first, each with its own time: what the taste is worked out from.
     func listens(limit: Int = LibraryStore.historyKeep) throws -> [Entry] {
         try entries(db.rows("""
-            SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 1
+            SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 1, h.source
             FROM history h JOIN tracks t ON t.video_id = h.video_id ORDER BY h.played_at DESC, h.id DESC LIMIT ?
             """, [.int(Int64(limit))]))
     }
 
     /// [track] was left after a few seconds. Only the last [skipsKeep] are kept. It is not announced: nothing shows it.
-    func recordSkip(_ track: TrackRef, at: Int64 = LibraryStore.now()) throws {
+    func recordSkip(_ track: TrackRef, at: Int64 = LibraryStore.now(), source: String? = nil) throws {
         try db.transaction {
             try upsertTrack(track)
-            try db.run("INSERT INTO skips(video_id, skipped_at) VALUES(?, ?)", [.text(track.videoId), .int(at)])
+            try db.run("INSERT INTO skips(video_id, skipped_at, source) VALUES(?, ?, ?)", [.text(track.videoId), .int(at), SQLValue(source)])
             try db.run("DELETE FROM skips WHERE id <= (SELECT id FROM skips ORDER BY id DESC LIMIT 1 OFFSET \(Self.skipsKeep))")
             try dropUnusedTracks()
         }
@@ -229,9 +252,23 @@ actor LibraryStore {
     /// Songs left after a few seconds, the latest first, each time one entry.
     func skipped() throws -> [Entry] {
         try entries(db.rows("""
-            SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, s.skipped_at, 1
+            SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, s.skipped_at, 1, s.source
             FROM skips s JOIN tracks t ON t.video_id = s.video_id ORDER BY s.skipped_at DESC, s.id DESC
             """))
+    }
+
+    /// For each source, the songs heard and the songs left after a few seconds since [since]; a row from before sources is `chosen`.
+    func sourceStats(since: Int64) throws -> [SourceStats] {
+        func count(_ table: String, _ column: String) throws -> [String: Int] {
+            var counts: [String: Int] = [:]
+            for row in try db.rows("SELECT COALESCE(source, '\(ListenSource.chosen)'), COUNT(*) FROM \(table) WHERE \(column) >= ? GROUP BY 1", [.int(since)]) {
+                counts[row[0].text ?? ListenSource.chosen] = Int(row[1].int)
+            }
+            return counts
+        }
+        let heard = try count("history", "played_at")
+        let skipped = try count("skips", "skipped_at")
+        return Set(heard.keys).union(skipped.keys).sorted().map { SourceStats(source: $0, heard: heard[$0] ?? 0, skipped: skipped[$0] ?? 0) }
     }
 
     func clearHistory() throws {
@@ -724,6 +761,6 @@ actor LibraryStore {
     }
 
     private func entries(_ rows: [[SQLValue]]) -> [Entry] {
-        rows.map { Entry(track: track($0), at: $0[5].int, plays: Int($0[6].int)) }
+        rows.map { Entry(track: track($0), at: $0[5].int, plays: Int($0[6].int), source: $0.count > 7 ? $0[7].text : nil) }
     }
 }

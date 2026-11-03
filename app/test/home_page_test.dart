@@ -314,7 +314,7 @@ void main() {
       backend.calls,
       containsAllInOrder([
         'clear',
-        'addMany ${beck.videoId} next=false',
+        'addMany ${beck.videoId} next=false source=shelf',
         'radio ${beck.videoId}',
       ]),
     );
@@ -332,7 +332,7 @@ void main() {
     await tester.pump();
     expect(backend.calls, isNot(contains('clear')));
     expect(backend.calls.where((c) => c.startsWith('radio')), isEmpty);
-    expect(backend.calls, contains('add ${anna.videoId} next=false'));
+    expect(backend.calls, contains('add ${anna.videoId} next=false source=shelf'));
     await tester.pump(const Duration(seconds: 2));
   });
 
@@ -367,7 +367,7 @@ void main() {
       backend.calls,
       containsAllInOrder([
         'clear',
-        'addMany ${anna.videoId},r1aaaaaaaaa next=false',
+        'addMany ${anna.videoId},r1aaaaaaaaa next=false source=shelf',
       ]),
     );
   });
@@ -389,7 +389,7 @@ void main() {
       expect(find.text('Couldn’t start the mix'), findsOneWidget);
       expect(
         backend.calls,
-        containsAllInOrder(['clear', 'addMany ${anna.videoId} next=false']),
+        containsAllInOrder(['clear', 'addMany ${anna.videoId} next=false source=shelf']),
       );
     },
   );
@@ -573,6 +573,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.calls, contains('unblock artist adele'));
     expect(find.textContaining('Nothing here'), findsOneWidget);
+  });
+
+  testWidgets('the suggestions page says how often songs of each source were skipped, once there are enough', (
+    tester,
+  ) async {
+    await openHome(
+      tester,
+      prepare: (b) {
+        b.tasteProfileResult = const TasteProfile(
+          stats: [
+            SourceStats(source: ListenSource.auto, heard: 30, skipped: 10),
+            // Too few listens to say anything
+            SourceStats(source: ListenSource.shelf, heard: 5, skipped: 5),
+            SourceStats(source: ListenSource.chosen, heard: 90, skipped: 10),
+          ],
+        );
+      },
+    );
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('settings-suggestions')));
+    await tester.pumpAndSettle();
+    expect(find.text('Autoplay songs skipped: 25%'), findsOneWidget);
+    expect(find.text('Songs you picked skipped: 10%'), findsOneWidget);
+    expect(find.textContaining('Suggested songs skipped'), findsNothing);
   });
 
   group('the Room chip', () {

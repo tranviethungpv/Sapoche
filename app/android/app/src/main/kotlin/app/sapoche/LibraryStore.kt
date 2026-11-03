@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import app.sapoche.sync.KnownLocal
 import app.sapoche.sync.LocalFile
+import app.sapoche.sync.ListenSource
 import app.sapoche.sync.LocalMusic
 import app.sapoche.sync.TrackRef
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -30,7 +31,13 @@ import java.util.concurrent.Executors
 class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenHelper(context, name, null, VERSION) {
 
     /** A song with the time it was liked or last heard, and how often it was heard. */
-    data class Entry(val track: TrackRef, val at: Long, val plays: Int = 0)
+    data class Entry(val track: TrackRef, val at: Long, val plays: Int = 0, val source: String? = null)
+
+    /** How the songs from one [source] fared lately: heard for long enough, and left after a few seconds. */
+    data class SourceStats(val source: String, val heard: Int, val skipped: Int)
+
+    /** A mark the person put on the taste: [kind] is `quiet_artist`, `quiet_song` or `starter`; see [Taste]. */
+    data class TasteMark(val kind: String, val key: String, val label: String, val at: Long)
 
     /** A song or an artist the person asked not to be offered: [kind] is `song` (the key is its video id) or `artist`. */
     data class Blocked(val kind: String, val key: String, val label: String)
@@ -92,6 +99,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         createTasteTables(db)
         createLocalFilesTable(db)
         createFolders(db)
+        createSources(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -102,6 +110,22 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         if (oldVersion < 5) createTasteTables(db)
         if (oldVersion < 6) createLocalFilesTable(db)
         if (oldVersion < 7) createFolders(db)
+        if (oldVersion < 8) createSources(db)
+    }
+
+    /** Where each listen and skip came from. Rows from before have no source (null) and count as chosen. */
+    private fun createSources(db: SQLiteDatabase) {
+        db.execSQL("ALTER TABLE history ADD COLUMN source TEXT")
+        db.execSQL("ALTER TABLE skips ADD COLUMN source TEXT")
+        createTasteMarks(db)
+    }
+
+    /** What the person told the taste: artists to hear less of, songs not to count, and the artists a new person started with. */
+    private fun createTasteMarks(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE taste_marks(kind TEXT NOT NULL, key TEXT NOT NULL, label TEXT NOT NULL, at INTEGER NOT NULL, " +
+                "PRIMARY KEY(kind, key))",
+        )
     }
 
     /** Folders of playlists: a playlist points to its folder, or to none. */
@@ -205,13 +229,14 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     /** [track] was heard. Only the last [HISTORY_KEEP] listens are kept. */
-    suspend fun recordListen(track: TrackRef, at: Long = System.currentTimeMillis()) = withContext(io) {
+    suspend fun recordListen(track: TrackRef, at: Long = System.currentTimeMillis(), source: String? = null) = withContext(io) {
         val db = writableDatabase
         db.transaction {
             upsertTrack(track)
             db.insert("history", null, ContentValues().apply {
                 put("video_id", track.videoId)
                 put("played_at", at)
+                put("source", source)
             })
             db.execSQL(
                 "DELETE FROM history WHERE id <= (SELECT id FROM history ORDER BY id DESC LIMIT 1 OFFSET $HISTORY_KEEP)",
@@ -224,20 +249,21 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** Every listen, the latest first, each with its own time: what the taste is worked out from. */
     suspend fun listens(limit: Int = HISTORY_KEEP): List<Entry> = withContext(io) {
         readableDatabase.rawQuery(
-            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 1 " +
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, h.played_at, 1, h.source " +
                 "FROM history h JOIN tracks t ON t.video_id = h.video_id ORDER BY h.played_at DESC, h.id DESC LIMIT ?",
             arrayOf(limit.toString()),
         ).use(::entries)
     }
 
     /** [track] was left after a few seconds. Only the last [SKIPS_KEEP] are kept. It is not announced: nothing shows it. */
-    suspend fun recordSkip(track: TrackRef, at: Long = System.currentTimeMillis()) = withContext(io) {
+    suspend fun recordSkip(track: TrackRef, at: Long = System.currentTimeMillis(), source: String? = null) = withContext(io) {
         val db = writableDatabase
         db.transaction {
             upsertTrack(track)
             db.insert("skips", null, ContentValues().apply {
                 put("video_id", track.videoId)
                 put("skipped_at", at)
+                put("source", source)
             })
             db.execSQL("DELETE FROM skips WHERE id <= (SELECT id FROM skips ORDER BY id DESC LIMIT 1 OFFSET $SKIPS_KEEP)")
             dropUnusedTracks()
@@ -247,10 +273,23 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     /** Songs left after a few seconds, the latest first, each time one entry. */
     suspend fun skipped(): List<Entry> = withContext(io) {
         readableDatabase.rawQuery(
-            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, s.skipped_at, 1 " +
+            "SELECT t.video_id, t.title, t.artist, t.thumb, t.dur_ms, s.skipped_at, 1, s.source " +
                 "FROM skips s JOIN tracks t ON t.video_id = s.video_id ORDER BY s.skipped_at DESC, s.id DESC",
             null,
         ).use(::entries)
+    }
+
+    /** For each source, the songs heard and the songs left after a few seconds since [since]; a row from before sources is [ListenSource.CHOSEN]. */
+    suspend fun sourceStats(since: Long): List<SourceStats> = withContext(io) {
+        fun count(table: String, column: String): Map<String, Int> = readableDatabase.rawQuery(
+            "SELECT COALESCE(source, '${ListenSource.CHOSEN}'), COUNT(*) FROM $table WHERE $column >= ? GROUP BY 1",
+            arrayOf(since.toString()),
+        ).use { c ->
+            buildMap { while (c.moveToNext()) put(c.getString(0), c.getInt(1)) }
+        }
+        val heard = count("history", "played_at")
+        val skipped = count("skips", "skipped_at")
+        (heard.keys + skipped.keys).sorted().map { SourceStats(it, heard[it] ?: 0, skipped[it] ?: 0) }
     }
 
     suspend fun clearHistory() = withContext(io) {
@@ -940,13 +979,14 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
                 ),
                 at = cursor.getLong(5),
                 plays = cursor.getInt(6),
+                source = if (cursor.columnCount > 7) cursor.getString(7) else null,
             )
         }
         return list
     }
 
     companion object {
-        private const val VERSION = 7
+        private const val VERSION = 8
         const val RECENT_LIMIT = 100
         const val HISTORY_KEEP = 2000
         const val MAX_PLAYLIST = 500

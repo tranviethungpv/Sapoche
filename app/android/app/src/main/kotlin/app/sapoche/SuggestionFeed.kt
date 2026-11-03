@@ -3,6 +3,7 @@ package app.sapoche
 import app.sapoche.core.MusicFeed
 import app.sapoche.core.StreamResolver
 import app.sapoche.sync.Blocklist
+import app.sapoche.sync.ListenSource
 import app.sapoche.sync.Stamped
 import app.sapoche.sync.Suggestions
 import app.sapoche.sync.Taste
@@ -28,9 +29,9 @@ class SuggestionFeed(
 
     /** What the library says about the person, as of now. */
     private suspend fun taste(): Taste = Taste(
-        heard = store.listens().map { Stamped(it.track, it.at) },
+        heard = store.listens().map { Stamped(it.track, it.at, ListenSource.weight(it.source)) },
         liked = store.liked().map { Stamped(it.track, it.at) },
-        skipped = store.skipped().map { Stamped(it.track, it.at) },
+        skipped = store.skipped().map { Stamped(it.track, it.at, ListenSource.weight(it.source)) },
         now = now(),
     )
 
@@ -92,6 +93,9 @@ class SuggestionFeed(
             false
         }
     }
+
+    /** How the songs of each source fared in the last [STATS_MS]: heard, and left after a few seconds. */
+    suspend fun sourceStats(): List<LibraryStore.SourceStats> = store.sourceStats(now() - STATS_MS)
 
     /** The songs kept for each seed, for the screens that say "because you listened to". */
     suspend fun seedLists(): List<Pair<String, List<TrackRef>>> {
@@ -157,6 +161,7 @@ class SuggestionFeed(
         const val FRESH_MS = 12L * 60 * 60 * 1000
         const val SONG = "song"
         const val ARTIST = "artist"
+        const val STATS_MS = 30L * 24 * 60 * 60 * 1000
         private const val RECENT_MS = 7L * 24 * 60 * 60 * 1000
     }
 }

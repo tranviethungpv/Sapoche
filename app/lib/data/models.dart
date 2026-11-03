@@ -3,6 +3,8 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 import 'song_key.dart';
 
 /// A song found by search or a pasted link, not yet in the room's queue.
@@ -216,9 +218,12 @@ class PlaylistFolder {
 
 /// A song from the history: when it was last heard and how often.
 class HistoryEntry {
-  const HistoryEntry({required this.track, required this.at, this.plays = 1});
+  const HistoryEntry({required this.track, required this.at, this.plays = 1, this.source});
 
   final Track track;
+
+  /// Where the listen came from (see `ListenSource`); null for a row from before sources were kept, which counts as chosen.
+  final String? source;
 
   /// When it was last heard.
   final DateTime at;
@@ -1332,4 +1337,74 @@ class LocalScan {
     total: (map['total'] as num?)?.toInt() ?? 0,
     unsupported: (map['unsupported'] as num?)?.toInt() ?? 0,
   );
+}
+
+/// Where a song that plays came from, kept beside every listen and skip so the suggestions can be judged by their
+/// source. Dart counterpart of `ListenSource.kt` and `ListenSource.swift`.
+abstract final class ListenSource {
+  /// Picked on purpose: a search, the library, a playlist. Also what an old row without a source is taken for.
+  static const chosen = 'chosen';
+
+  /// Added by autoplay or by a radio, in the personal queue or in a room.
+  static const auto = 'auto';
+
+  /// Started from a shelf of the home page (Quick picks, a mix, Discover...).
+  static const shelf = 'shelf';
+
+  /// In a room, a song another member put on the queue.
+  static const roomOther = 'room_other';
+
+  /// What a song somebody else picked says about this person's taste, next to one they picked themselves (1).
+  static const otherWeight = 0.5;
+
+  static double weight(String? source) => source == roomOther ? otherWeight : 1.0;
+}
+
+/// What the listening says about the person, as the native side works it out.
+class TasteProfile {
+  const TasteProfile({this.stats = const []});
+
+  /// How the songs of each source fared in the last 30 days.
+  final List<SourceStats> stats;
+
+  factory TasteProfile.fromMap(Map<Object?, Object?> map) => TasteProfile(
+    stats: [
+      for (final e in map['stats'] as List<Object?>? ?? const []) SourceStats.fromMap(e as Map<Object?, Object?>),
+    ],
+  );
+
+  @override
+  bool operator ==(Object other) => other is TasteProfile && listEquals(stats, other.stats);
+
+  @override
+  int get hashCode => Object.hashAll(stats);
+}
+
+/// How the songs from one [source] fared lately: heard for long enough, and left after a few seconds.
+class SourceStats {
+  const SourceStats({required this.source, required this.heard, required this.skipped});
+
+  final String source;
+  final int heard;
+  final int skipped;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SourceStats && other.source == source && other.heard == heard && other.skipped == skipped;
+
+  @override
+  int get hashCode => Object.hash(source, heard, skipped);
+
+  factory SourceStats.fromMap(Map<Object?, Object?> map) => SourceStats(
+    source: map['source'] as String? ?? ListenSource.chosen,
+    heard: (map['heard'] as num?)?.toInt() ?? 0,
+    skipped: (map['skipped'] as num?)?.toInt() ?? 0,
+  );
+
+  Map<String, Object?> toMap() => {'source': source, 'heard': heard, 'skipped': skipped};
+
+  /// The share of the songs that were left, 0 to 1; null when there were none.
+  double? get skipRate => heard + skipped == 0 ? null : skipped / (heard + skipped);
+
+  int get total => heard + skipped;
 }
