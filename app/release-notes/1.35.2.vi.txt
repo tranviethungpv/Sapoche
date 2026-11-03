@@ -1,0 +1,2 @@
+Nút lật video trên iPhone
+- Video đang chờ gửi trong chat trên iPhone nay cũng có nút lật, để lật lại video selfie cho đúng chiều (như ảnh, và như video trên Android).

@@ -33,9 +33,9 @@ final class FakePlatform: PlatformServices {
     func pickMusicFiles() async throws -> [URL] { picked }
 
     var video: Result<PreparedVideo, BridgeError> = .failure(BridgeError(code: "video_unreadable", message: "No"))
-    var videoAsked: [(String, Int)] = []
-    func prepareVideo(path: String, maxBytes: Int) async throws -> PreparedVideo {
-        videoAsked.append((path, maxBytes))
+    var videoAsked: [(String, Int, Bool)] = []
+    func prepareVideo(path: String, maxBytes: Int, mirror: Bool) async throws -> PreparedVideo {
+        videoAsked.append((path, maxBytes, mirror))
         return try video.get()
     }
 
@@ -447,6 +447,13 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(made["poster"] as? Data, Data([9, 8]))
         XCTAssertEqual(platform.videoAsked.first?.0, "/tmp/in.mov")
         XCTAssertEqual(platform.videoAsked.first?.1, 10_485_760)
+        XCTAssertEqual(platform.videoAsked.first?.2, false)
+    }
+
+    func testAVideoIsAskedTurnedLeftToRightForASelfie() async throws {
+        platform.video = .success(PreparedVideo(path: "/tmp/out.mp4", w: 720, h: 1280, durMs: 1_000, poster: Data([1])))
+        _ = try await call("prepareVideo", ["path": "/tmp/in.mov", "maxBytes": 10_485_760, "mirror": true])
+        XCTAssertEqual(platform.videoAsked.first?.2, true)
     }
 
     func testAVideoThePhoneCannotReadIsToldWithItsCode() async throws {

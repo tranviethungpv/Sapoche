@@ -1,0 +1,2 @@
+Flip button for videos on iPhone
+- A video waiting in the chat on iPhone now has the flip button too, to turn a selfie video back the right way round (as photos do, and videos on Android).

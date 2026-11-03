@@ -216,7 +216,7 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
         (AVAssetExportPresetLowQuality, 240, 250_000),
     ]
 
-    func prepareVideo(path: String, maxBytes: Int) async throws -> PreparedVideo {
+    func prepareVideo(path: String, maxBytes: Int, mirror: Bool) async throws -> PreparedVideo {
         let unreadable = BridgeError(code: "video_unreadable", message: "Cannot read the video")
         let source = URL(fileURLWithPath: path)
         let asset = AVURLAsset(url: source)
@@ -238,7 +238,7 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
         let frame: CGImage? = await withCheckedContinuation { done in
             generator.generateCGImagesAsynchronously(forTimes: [at]) { _, image, _, _, _ in done.resume(returning: image) }
         }
-        guard let frame, let poster = UIImage(cgImage: frame).jpegData(compressionQuality: 0.75) else { throw unreadable }
+        guard let frame, let poster = Self.posterJPEG(frame, mirror: mirror) else { throw unreadable }
 
         let budget = Double(maxBytes) * 0.93
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("video-\(UUID().uuidString).mp4")
@@ -247,7 +247,7 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
         // Already an MP4 or MOV of H.264 that is light (1.5 MB) and no bigger than 480p: nothing is gained by squeezing it again
         let formats = (try? await track.load(.formatDescriptions)) ?? []
         let isH264 = formats.contains { CMFormatDescriptionGetMediaSubType($0) == kCMVideoCodecType_H264 }
-        if isH264, ["mp4", "m4v", "mov"].contains(source.pathExtension.lowercased()), size <= 1_500_000,
+        if !mirror, isH264, ["mp4", "m4v", "mov"].contains(source.pathExtension.lowercased()), size <= 1_500_000,
            min(width, height) <= 480 {
             try FileManager.default.copyItem(at: source, to: out)
             return PreparedVideo(path: out.path, w: width, h: height, durMs: Int(seconds * 1000), poster: poster)
@@ -262,6 +262,16 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
             session.outputURL = out
             session.outputFileType = .mp4
             session.shouldOptimizeForNetworkUse = true
+            // The size is the composition's, not the preset's: turned and scaled here, in one pass
+            let scale = min(1, Double(step.shortSide) / Double(min(width, height)))
+            func even(_ v: Double) -> Int { (Int(v) + 1) / 2 * 2 }
+            if mirror {
+                let fps = Double((try? await track.load(.nominalFrameRate)) ?? 30)
+                session.videoComposition = Self.mirroredComposition(
+                    track: track, transform: transform, shown: (width, height),
+                    size: (even(Double(width) * scale), even(Double(height) * scale)), scale: scale,
+                    length: length, framesPerSecond: min(max(fps, 24), 30))
+            }
             await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
                 session.exportAsynchronously { done.resume() }
             }
@@ -269,13 +279,44 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
             let made = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? Int.max
             guard made <= maxBytes else { continue }
             // The presets scale to their own size and keep the shape
-            let scale = min(1, Double(step.shortSide) / Double(min(width, height)))
-            func even(_ v: Double) -> Int { (Int(v) + 1) / 2 * 2 }
             return PreparedVideo(path: out.path, w: even(Double(width) * scale), h: even(Double(height) * scale),
                                  durMs: Int(seconds * 1000), poster: poster)
         }
         try? FileManager.default.removeItem(at: out)
         throw BridgeError(code: "video_too_big", message: "The video is too long to fit")
+    }
+
+    /// A JPEG of [frame] for the poster, turned left to right where the video is.
+    private static func posterJPEG(_ frame: CGImage, mirror: Bool) -> Data? {
+        let image = UIImage(cgImage: frame)
+        guard mirror else { return image.jpegData(compressionQuality: 0.75) }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: image.size, format: format).jpegData(withCompressionQuality: 0.75) { context in
+            context.cgContext.translateBy(x: image.size.width, y: 0)
+            context.cgContext.scaleBy(x: -1, y: 1)
+            image.draw(at: .zero)
+        }
+    }
+
+    /// A composition that draws [track] upright (its preferred transform), turned left to right, and scaled by [scale] into
+    /// a picture of [size]; [shown] is the upright size before that.
+    private static func mirroredComposition(
+        track: AVAssetTrack, transform: CGAffineTransform, shown: (Int, Int), size: (Int, Int), scale: Double,
+        length: CMTime, framesPerSecond: Double
+    ) -> AVMutableVideoComposition {
+        let turn = CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: CGFloat(shown.0), ty: 0)
+        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+        layer.setTransform(
+            transform.concatenating(turn).concatenating(CGAffineTransform(scaleX: scale, y: scale)), at: .zero)
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: length)
+        instruction.layerInstructions = [layer]
+        let composition = AVMutableVideoComposition()
+        composition.renderSize = CGSize(width: size.0, height: size.1)
+        composition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
+        composition.instructions = [instruction]
+        return composition
     }
 
     // ------------------------------------------------------------------ the clipboard

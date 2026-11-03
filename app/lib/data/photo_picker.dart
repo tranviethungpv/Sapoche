@@ -189,8 +189,10 @@ Future<bool> noPhotosOnClipboard() async => false;
 
 Future<List<PickedPhoto>> readNoClipboardPhotos() async => const [];
 
-/// Whether a video can be turned left to right when it is made ready: native does it on Android only.
-bool get chatVideoMirrorAvailable => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+/// Whether a video can be turned left to right when it is made ready: native does it on the phones (Android, iPhone); a
+/// browser sends the video as it is.
+bool get chatVideoMirrorAvailable =>
+    !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
 
 /// Whether the camera can be asked for a photo: on the phones; a browser's picker has no camera of its own to ask for.
 bool get chatCameraAvailable =>

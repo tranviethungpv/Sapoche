@@ -70,8 +70,10 @@ protocol PlatformServices: AnyObject {
     func clipboardPhotos() -> [ClipboardPhoto]
 
     /// Squeezes the video at [path] to an MP4 (H.264 and AAC) of no more than [maxBytes], as good as the length allows.
-    /// Throws a [BridgeError] with the code `video_unreadable` (cannot be read) or `video_too_big` (too long to fit).
-    func prepareVideo(path: String, maxBytes: Int) async throws -> PreparedVideo
+    /// With [mirror] the picture is turned left to right, as a selfie needs (the camera saves it the other way round from
+    /// its preview). Throws a [BridgeError] with the code `video_unreadable` (cannot be read) or `video_too_big` (too long
+    /// to fit).
+    func prepareVideo(path: String, maxBytes: Int, mirror: Bool) async throws -> PreparedVideo
 }
 
 /// A video squeezed for the chat: [path] is the MP4 (the caller deletes it), [w] and [h] its size as shown (upright),
@@ -759,7 +761,7 @@ final class Bridge {
         case "downloadMedia":
             return await downloadMedia(room: string("room"), m: string("m"))
         case "prepareVideo":
-            let made = try await platform.prepareVideo(path: string("path"), maxBytes: Int(int64("maxBytes")))
+            let made = try await platform.prepareVideo(path: string("path"), maxBytes: Int(int64("maxBytes")), mirror: bool("mirror"))
             return ["path": made.path, "w": made.w, "h": made.h, "durMs": made.durMs, "poster": made.poster] as [String: Any]
         case "clipboardHasPhotos":
             return platform.clipboardHasPhotos
