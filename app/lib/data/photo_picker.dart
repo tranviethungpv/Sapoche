@@ -169,12 +169,28 @@ Future<Uint8List?> cutWallpaperAway(
   [photo, left, top, width, height],
 );
 
-/// Where the photos for the chat come from.
-enum PhotoSource { gallery, camera }
+/// Where the photos for the chat come from, or the video: the library of the phone or its camera.
+enum PhotoSource { gallery, camera, videoGallery, videoCamera }
 
 /// Lets the person pick photos to send in the chat (one to [AlbumExtra.maxItems], in the order picked); empty when they
 /// back out. The photos are handed over as they are: [ChatMedia.prepare] turns them upright and makes them smaller.
 typedef ChatPhotoPicker = Future<List<PickedPhoto>> Function(PhotoSource source);
+
+/// Lets the person pick a video to send in the chat ([PhotoSource.videoGallery] or [PhotoSource.videoCamera]); null when they
+/// back out. The file is handed over as it is: [ChatMedia.prepareVideo] squeezes it.
+typedef ChatVideoPicker = Future<PickedVideo?> Function(PhotoSource source);
+
+/// Whether the clipboard holds a picture, and the pictures on it; what the chat asks to paste. Where there is no clipboard
+/// to ask (a browser tells the page what is pasted) these say there is nothing.
+typedef ClipboardCheck = Future<bool> Function();
+typedef ClipboardReader = Future<List<PickedPhoto>> Function();
+
+Future<bool> noPhotosOnClipboard() async => false;
+
+Future<List<PickedPhoto>> readNoClipboardPhotos() async => const [];
+
+/// Whether a video can be turned left to right when it is made ready: native does it on Android only.
+bool get chatVideoMirrorAvailable => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
 /// Whether the camera can be asked for a photo: on the phones; a browser's picker has no camera of its own to ask for.
 bool get chatCameraAvailable =>
@@ -200,5 +216,23 @@ Future<List<PickedPhoto>> pickChatPhotos(PhotoSource source) async {
   } on Object {
     // No permission for the camera, or no camera: nothing was picked
     return const [];
+  }
+}
+
+/// The system's picker of videos, which needs no permission; the camera asks for its own and records for three minutes at
+/// most. On a phone the video is a file ([PickedVideo.path]); in a browser it is read into memory.
+Future<PickedVideo?> pickChatVideo(PhotoSource source) async {
+  try {
+    final file = await ImagePicker().pickVideo(
+      source: source == PhotoSource.videoCamera ? ImageSource.camera : ImageSource.gallery,
+      maxDuration: source == PhotoSource.videoCamera ? const Duration(minutes: 3) : null,
+    );
+    if (file == null) return null;
+    return kIsWeb
+        ? PickedVideo(bytes: await file.readAsBytes(), name: file.name)
+        : PickedVideo(path: file.path, name: file.name);
+  } on Object {
+    // No permission for the camera, or no camera: nothing was picked
+    return null;
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:sapoche/data/backend.dart';
+import 'package:sapoche/data/chat_media.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/data/song_key.dart';
@@ -47,6 +48,30 @@ class FakeBackend implements Backend {
 
   @override
   Future<String?> cacheFolder() async => cacheDir;
+
+  /// What [prepareVideo] answers, by the path it is asked about; a path not here is a video the phone cannot read. A
+  /// [BackendException] among them is thrown.
+  final Map<String, Object> videos = {};
+
+  @override
+  Future<VideoFile> prepareVideo(String path, int maxBytes, {bool mirror = false}) async {
+    await _record('prepareVideo $path${mirror ? ' mirror' : ''}');
+    final made = videos[path];
+    if (made is VideoFile) return made;
+    throw made is BackendException ? made : BackendException('video_unreadable', 'Cannot read it');
+  }
+
+  /// The pictures on the clipboard.
+  List<PickedPhoto> clipboard = [];
+
+  @override
+  Future<bool> clipboardHasPhotos() async => clipboard.isNotEmpty;
+
+  @override
+  Future<List<PickedPhoto>> clipboardPhotos() async {
+    await _record('clipboardPhotos');
+    return clipboard;
+  }
 
   @override
   Future<String> createRoom(String name) async {

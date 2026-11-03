@@ -59,6 +59,8 @@ Future<void> main() async {
         music: MusicController(backend),
         update: UpdateController(backend),
         stickers: stickers,
+        clipboardHasPhotos: backend.clipboardHasPhotos,
+        clipboardPhotos: backend.clipboardPhotos,
       ),
     ),
   );

@@ -413,8 +413,11 @@ void main() {
       final item = await inBucket('fff', [4, 5, 6]);
       expect(await media.open('ABC234', item), [4, 5, 6]);
       await settle();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
       final file = File('${folder.path}/chat-media/fff');
+      // The file is written in the background: wait for it rather than for a fixed time, which a busy machine outlasts
+      for (var i = 0; i < 100 && !file.existsSync(); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
       expect(file.readAsBytesSync(), [4, 5, 6]);
 
       backend.calls.clear();

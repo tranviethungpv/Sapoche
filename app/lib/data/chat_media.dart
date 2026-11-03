@@ -10,6 +10,7 @@ import 'backend.dart';
 import 'chat_extra.dart';
 import 'media_crypto.dart';
 import 'models.dart';
+import 'video_probe.dart';
 
 /// A photo as the person picked it: its bytes untouched, and the name of the file.
 class PickedPhoto {
@@ -43,6 +44,43 @@ class PhotoUnreadable extends PhotoError {
   String toString() => 'PhotoUnreadable($name)';
 }
 
+/// A video that cannot be squeezed under [ChatMedia.maxVideoBytes]: too long for that, or (in a browser, which does not
+/// squeeze) bigger than it already.
+class VideoTooLarge extends PhotoError {
+  const VideoTooLarge(super.name, {this.squeezable = true});
+
+  /// The device could squeeze videos, and this one is too long even so; false in a browser, where it is not tried.
+  final bool squeezable;
+
+  @override
+  String toString() => 'VideoTooLarge($name)';
+}
+
+/// A video this device cannot read (a format it has no decoder for, or a damaged file).
+class VideoUnreadable extends PhotoError {
+  const VideoUnreadable(super.name);
+
+  @override
+  String toString() => 'VideoUnreadable($name)';
+}
+
+/// A video as the person picked it: a file on the phone, or its bytes where there are no files (a browser).
+class PickedVideo {
+  const PickedVideo({this.path, this.bytes, required this.name});
+
+  final String? path;
+  final Uint8List? bytes;
+  final String name;
+}
+
+/// A video of the room ready to be played: a file on a phone (named as a player wants it), the bytes in a browser.
+class VideoSource {
+  const VideoSource({this.path, this.bytes});
+
+  final String? path;
+  final Uint8List? bytes;
+}
+
 /// A photo ready to go: what is sent, sealed, and what the bubble shows meanwhile.
 class PreparedPhoto {
   const PreparedPhoto({
@@ -53,6 +91,7 @@ class PreparedPhoto {
     required this.h,
     required this.th,
     required this.sealed,
+    this.durMs = 0,
   });
 
   final String name;
@@ -71,7 +110,11 @@ class PreparedPhoto {
   /// [bytes] under a key of their own.
   final SealedFile sealed;
 
-  bool get animated => mime != 'image/jpeg';
+  /// How long a video is, in milliseconds; 0 for a picture.
+  final int durMs;
+
+  bool get animated => mime == 'image/gif' || mime == 'image/webp';
+  bool get isVideo => mime.startsWith('video/');
 }
 
 /// What [ChatMedia.prepare] made of a batch: the photos that are ready, in the order picked, and the ones it refused.
@@ -224,6 +267,7 @@ class AlbumUpload extends ChangeNotifier {
             w: photos[i].w,
             h: photos[i].h,
             th: photos[i].th,
+            d: photos[i].durMs,
           );
           _sealed[i] = null; // nothing to try again
           _store(_tickets[i]!.m, photos[i].bytes);
@@ -259,6 +303,9 @@ class ChatMedia {
   /// A GIF or an animated WebP is sent as it is, and so can be no bigger than this.
   static const maxAnimatedBytes = 3 * 1024 * 1024;
 
+  /// The most a video can weigh once squeezed, in bytes (the room takes a file of 10 MiB and a little more).
+  static const maxVideoBytes = 10 * 1024 * 1024;
+
   /// Pictures kept decrypted in memory: this many, and no more bytes than [_memoryBytes].
   static const _memoryCount = 24;
   static const _memoryBytes = 24 * 1024 * 1024;
@@ -278,6 +325,67 @@ class ChatMedia {
       if (error != null) refused.add(error);
     }
     return PrepareResult(photos, refused);
+  }
+
+  /// Makes [video] ready to send: squeezed to no more than [maxVideoBytes] where the device can (a browser sends what is
+  /// small enough already, as it is), with its poster, sealed. Gives back the video and its poster, in this order, as the
+  /// two files of an album that is a video; throws a [PhotoError] when it cannot be sent.
+  Future<List<PreparedPhoto>> prepareVideo(PickedVideo video, {bool mirror = false}) async {
+    final Uint8List bytes;
+    final int w, h, durMs;
+    final Uint8List posterBytes;
+    if (kIsWeb) {
+      final raw = video.bytes;
+      if (raw == null || raw.isEmpty) throw VideoUnreadable(video.name);
+      if (raw.length > maxVideoBytes) throw VideoTooLarge(video.name, squeezable: false);
+      final probe = await probeVideo(raw, video.name);
+      if (probe == null) throw VideoUnreadable(video.name);
+      (bytes, w, h, durMs, posterBytes) = (raw, probe.w, probe.h, probe.durMs, probe.poster);
+    } else {
+      final path = video.path;
+      if (path == null) throw VideoUnreadable(video.name);
+      final VideoFile made;
+      try {
+        made = await _backend.prepareVideo(path, maxVideoBytes, mirror: mirror);
+      } on BackendException catch (e) {
+        throw switch (e.code) {
+          'video_too_big' => VideoTooLarge(video.name),
+          _ => VideoUnreadable(video.name),
+        };
+      }
+      final file = File(made.path);
+      try {
+        bytes = await file.readAsBytes();
+      } finally {
+        // What native wrote to be read is not kept
+        await file.delete().catchError((Object _) => file);
+      }
+      if (bytes.isEmpty) throw VideoUnreadable(video.name);
+      if (bytes.length > maxVideoBytes) throw VideoTooLarge(video.name);
+      (w, h, durMs, posterBytes) = (made.w, made.h, made.durMs, made.poster);
+    }
+    final poster = await prepareOne(PickedPhoto(posterBytes, 'poster.jpg'));
+    final sealed = await compute(_sealAway, bytes);
+    final thumb = PreparedPhoto(
+      name: video.name,
+      bytes: bytes,
+      mime: 'video/mp4',
+      w: w,
+      h: h,
+      th: poster.th,
+      sealed: sealed,
+      durMs: durMs,
+    );
+    return [thumb, poster];
+  }
+
+  /// [photo] turned left to right, made ready again: what a selfie needs, since the camera saves it the other way round
+  /// from what the preview showed. A moving picture (GIF, animated WebP) is not turned: it is given back as it is.
+  static Future<PreparedPhoto> mirror(PreparedPhoto photo) async {
+    if (photo.animated || photo.isVideo) return photo;
+    final flipped = await compute(_flipAway, photo.bytes);
+    if (flipped == null) return photo;
+    return prepareOne(PickedPhoto(flipped, photo.name));
   }
 
   /// The same for one photo; throws a [PhotoError] when it cannot be sent.
@@ -308,6 +416,24 @@ class ChatMedia {
     return _inflight[item.m] ??= _fetch(room, item).whenComplete(() {
       _inflight.remove(item.m);
     });
+  }
+
+  /// The video [item] of [room] ready to be played, fetched and decrypted like a picture; null when it cannot be had.
+  Future<VideoSource?> videoSource(String room, AlbumItem item) async {
+    if (!_safeName.hasMatch(item.m)) return null;
+    final bytes = await open(room, item);
+    if (bytes == null) return null;
+    // Where there is no cache folder of the app, the temporary one of the system: a player wants a file
+    final folder = kIsWeb ? null : await _directory() ?? Directory.systemTemp;
+    if (folder == null) return VideoSource(bytes: bytes);
+    try {
+      // With the name of an MP4: some players go by it
+      final file = File('${folder.path}${Platform.pathSeparator}${item.m}.mp4');
+      if (!await file.exists() || await file.length() != bytes.length) await file.writeAsBytes(bytes, flush: true);
+      return VideoSource(path: file.path);
+    } on Object {
+      return null;
+    }
   }
 
   /// Keeps [bytes], the decrypted picture [m], so it is not fetched again.
@@ -393,6 +519,24 @@ class ChatMedia {
 
 /// What [ChatMedia.open] does away from the screen: the file opened with its key, or null when it does not check out.
 Future<Uint8List?> _openAway((Uint8List, String, String) job) => MediaCrypto.open(job.$1, job.$2, sha: job.$3);
+
+/// [bytes] (a picture) turned left to right as a good JPEG, away from the screen; null when it is not a picture.
+Uint8List? _flipAway(Uint8List bytes) {
+  try {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return null;
+    // Upright first, so that left and right are the ones the person sees
+    final upright = img.bakeOrientation(decoded);
+    img.flipHorizontal(upright);
+    upright.exif = img.ExifData();
+    return img.encodeJpg(upright, quality: 92);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// [bytes] sealed, away from the screen: sealing ten megabytes takes seconds.
+Future<SealedFile> _sealAway(Uint8List bytes) => MediaCrypto.seal(bytes);
 
 /// What [ChatMedia.prepare] does to one photo away from the screen: the photo or the reason it is refused, given back
 /// rather than thrown.

@@ -44,7 +44,7 @@ class AlbumSlot {
   final AlbumItem? item;
   final Uint8List? bytes;
 
-  bool get animated => mime != 'image/jpeg';
+  bool get animated => mime == 'image/gif' || mime == 'image/webp';
 
   /// The picture itself, null when it cannot be had.
   Future<Uint8List?> load(ChatMedia media, String room) {

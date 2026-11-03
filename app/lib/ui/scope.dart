@@ -25,6 +25,9 @@ class AppModel {
     this.photoPicker = pickPhoto,
     this.wallpaperPicker = pickWallpaper,
     this.chatPhotoPicker = pickChatPhotos,
+    this.chatVideoPicker = pickChatVideo,
+    this.clipboardHasPhotos = noPhotosOnClipboard,
+    this.clipboardPhotos = readNoClipboardPhotos,
     this.photoSaver = savePhoto,
   });
 
@@ -57,6 +60,15 @@ class AppModel {
 
   /// Where the photos to send in the chat come from.
   final ChatPhotoPicker chatPhotoPicker;
+
+  /// Where the video to send in the chat comes from.
+  final ChatVideoPicker chatVideoPicker;
+
+  /// Whether the clipboard holds a picture, for the chat to offer to paste it.
+  final ClipboardCheck clipboardHasPhotos;
+
+  /// The pictures on the clipboard, to be sent in the chat.
+  final ClipboardReader clipboardPhotos;
 
   /// Where a picture of the chat is saved to: the gallery, or the downloads of a browser.
   final PhotoSaver photoSaver;

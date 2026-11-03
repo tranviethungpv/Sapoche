@@ -205,6 +205,124 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
         }
     }
 
+    // ------------------------------------------------------------------ videos for the chat
+
+    /// What an export preset is: its short side and about the bits a second it makes (the presets give no way to ask), from
+    /// the best to the least. The first that should fit is tried; one that did not fit gives way to the next.
+    /// Soft on purpose: a chat video is watched on a phone for a few seconds, so nothing above 480p.
+    private static let videoSteps: [(preset: String, shortSide: Int, bps: Double)] = [
+        (AVAssetExportPreset640x480, 480, 1_000_000),
+        (AVAssetExportPresetMediumQuality, 360, 600_000),
+        (AVAssetExportPresetLowQuality, 240, 250_000),
+    ]
+
+    func prepareVideo(path: String, maxBytes: Int) async throws -> PreparedVideo {
+        let unreadable = BridgeError(code: "video_unreadable", message: "Cannot read the video")
+        let source = URL(fileURLWithPath: path)
+        let asset = AVURLAsset(url: source)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let length = try? await asset.load(.duration), length.seconds > 0, length.seconds.isFinite,
+              let natural = try? await track.load(.naturalSize),
+              let transform = try? await track.load(.preferredTransform) else { throw unreadable }
+        let shown = natural.applying(transform)
+        let width = Int(abs(shown.width)), height = Int(abs(shown.height))
+        guard width > 0, height > 0 else { throw unreadable }
+        let seconds = length.seconds
+
+        // A frame a little way in (the first is often black), at most 480 px on its longer side
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 480, height: 480)
+        let at = NSValue(time: CMTime(seconds: min(1, seconds / 10), preferredTimescale: 600))
+        // (The version of this that waits is for iOS 16 and later; the app takes 15)
+        let frame: CGImage? = await withCheckedContinuation { done in
+            generator.generateCGImagesAsynchronously(forTimes: [at]) { _, image, _, _, _ in done.resume(returning: image) }
+        }
+        guard let frame, let poster = UIImage(cgImage: frame).jpegData(compressionQuality: 0.75) else { throw unreadable }
+
+        let budget = Double(maxBytes) * 0.93
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("video-\(UUID().uuidString).mp4")
+        let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? Int.max
+
+        // Already an MP4 or MOV of H.264 that is light (1.5 MB) and no bigger than 480p: nothing is gained by squeezing it again
+        let formats = (try? await track.load(.formatDescriptions)) ?? []
+        let isH264 = formats.contains { CMFormatDescriptionGetMediaSubType($0) == kCMVideoCodecType_H264 }
+        if isH264, ["mp4", "m4v", "mov"].contains(source.pathExtension.lowercased()), size <= 1_500_000,
+           min(width, height) <= 480 {
+            try FileManager.default.copyItem(at: source, to: out)
+            return PreparedVideo(path: out.path, w: width, h: height, durMs: Int(seconds * 1000), poster: poster)
+        }
+
+        // Start with the best step that should fit, and go down while it does not
+        let start = Self.videoSteps.firstIndex { $0.bps * seconds / 8 <= budget && ($0.shortSide <= min(width, height) || $0.shortSide == 240) }
+            ?? Self.videoSteps.count - 1
+        for step in Self.videoSteps[start...] {
+            try? FileManager.default.removeItem(at: out)
+            guard let session = AVAssetExportSession(asset: asset, presetName: step.preset) else { continue }
+            session.outputURL = out
+            session.outputFileType = .mp4
+            session.shouldOptimizeForNetworkUse = true
+            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                session.exportAsynchronously { done.resume() }
+            }
+            guard session.status == .completed else { continue }
+            let made = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? Int.max
+            guard made <= maxBytes else { continue }
+            // The presets scale to their own size and keep the shape
+            let scale = min(1, Double(step.shortSide) / Double(min(width, height)))
+            func even(_ v: Double) -> Int { (Int(v) + 1) / 2 * 2 }
+            return PreparedVideo(path: out.path, w: even(Double(width) * scale), h: even(Double(height) * scale),
+                                 durMs: Int(seconds * 1000), poster: poster)
+        }
+        try? FileManager.default.removeItem(at: out)
+        throw BridgeError(code: "video_too_big", message: "The video is too long to fit")
+    }
+
+    // ------------------------------------------------------------------ the clipboard
+
+    /// The pictures of a clip are many at most, and no more than the chat has room for in a message.
+    private static let clipboardMax = 10
+
+    /// What the app reads as it is; a GIF that moves must not be touched. The rest is turned into a picture it reads.
+    private static let kept: [UTType] = [.gif, .png, .jpeg, .webP, .bmp]
+
+    var clipboardHasPhotos: Bool { UIPasteboard.general.hasImages }
+
+    func clipboardPhotos() -> [ClipboardPhoto] {
+        let board = UIPasteboard.general
+        guard board.hasImages else { return [] }
+        var found: [ClipboardPhoto] = []
+        for item in board.items {
+            // The kinds a copied picture comes in; the one the app reads as it is comes first
+            let types = item.keys.compactMap { key in UTType(key).map { (key, $0) } }.filter { $0.1.conforms(to: .image) }
+            guard let (key, type) = types.first(where: { pair in Self.kept.contains { pair.1.conforms(to: $0) } }) ?? types.first
+            else { continue }
+            let bytes: Data?
+            switch item[key] {
+            case let data as Data where Self.kept.contains(where: { type.conforms(to: $0) }):
+                bytes = data
+            case let data as Data:
+                bytes = Self.converted(UIImage(data: data))
+            case let image as UIImage:
+                bytes = Self.converted(image)
+            default:
+                bytes = nil
+            }
+            guard let bytes, !bytes.isEmpty else { continue }
+            found.append(ClipboardPhoto(name: "pasted-\(found.count + 1).\(type.preferredFilenameExtension ?? "img")", bytes: bytes))
+            if found.count >= Self.clipboardMax { break }
+        }
+        return found
+    }
+
+    /// [image] as a PNG where it has see-through places, a JPEG where it has none; nil when there is no picture.
+    private static func converted(_ image: UIImage?) -> Data? {
+        guard let image, let cg = image.cgImage else { return nil }
+        let alpha = cg.alphaInfo
+        let seeThrough = alpha == .first || alpha == .last || alpha == .premultipliedFirst || alpha == .premultipliedLast
+        return seeThrough ? image.pngData() : image.jpegData(compressionQuality: 0.95)
+    }
+
     // ------------------------------------------------------------------ where the sound goes
 
     func setVolume(_ level: Float) {

@@ -14,8 +14,8 @@ export const MEDIA_ROUTE = /^\/media\/([A-Za-z0-9]{6})\/([A-Za-z0-9_-]{22})$/;
 
 /** Files in one album. */
 export const MEDIA_ALBUM_MAX = 10;
-/** A file takes this many bytes at most (3 MB of picture, plus the nonce and the tag of the encryption). */
-const MEDIA_FILE_MAX = 3 * 1024 * 1024 + 64;
+/** A file takes this many bytes at most (10 MB of video, plus the nonce and the tag of the encryption; pictures stay far under it, the apps shrink them). */
+const MEDIA_FILE_MAX = 10 * 1024 * 1024 + 64;
 /** Per room, and for the whole account: the free plan of R2 is 10 GB, 3 of which are left to the releases. */
 const MEDIA_ROOM_MAX = 1024 * 1024 * 1024;
 const MEDIA_ACCOUNT_MAX = 7 * 1024 * 1024 * 1024;

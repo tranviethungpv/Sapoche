@@ -1,0 +1,7 @@
+Videos, pasted pictures and song links in the room chat
+- Send a video: the new "Video library" and "Record a video" choices next to the photo button. The video is squeezed on your phone to a light, soft MP4 (480p at most, usually 1 to 4 MB, never more than 10 MB) and goes with its first picture; tap it in the chat to play it full screen, and save it from there. A video too long to fit is refused with a message.
+- Paste pictures: copy one or several pictures anywhere and paste them into the chat (Paste image in the menu of the field, Ctrl+V in a browser, or the clipboard of your keyboard). They wait above the field, with the words you write as their caption, until you press send. More can be added before that.
+- Selfies and the camera: the camera of the phone saves a selfie the other way round from its preview. Every waiting picture (and, on Android, video) now has a flip button along its foot to turn it back.
+- A link to a song of YouTube in a message becomes the song's card, with play, add to queue and like; other links in messages can now be tapped.
+- The song card is now a record sleeve with the record turning out of it while the song plays, and smaller; the stack of an album is bigger and square, and a single picture is smaller.
+- Videos need the server of this release, which is already running. Older apps show a video as two pictures.

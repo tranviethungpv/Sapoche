@@ -1,8 +1,10 @@
+import 'dart:math';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../data/calm.dart';
 import '../../data/chat_extra.dart';
 import '../../data/models.dart';
 import '../../data/room_controller.dart';
@@ -17,14 +19,16 @@ import 'artwork.dart';
 import 'cached_cover.dart';
 import 'equalizer.dart';
 
-/// A song shared in the chat, drawn as a card instead of a bubble: its cover blurred behind it, the song, and the ways to
-/// play it, queue it or like it. Over the cover goes a dark veil, so that the white words on it can be read whatever the
-/// cover is (a contrast of 4.5 to 1 against a white one).
+/// A song shared in the chat, drawn as a square card: a record sleeve with the cover, and the record itself half out of it
+/// (it turns while the song plays), then the song, and small round buttons to play it, queue it or like it. Behind it the
+/// cover blurred; over that a dark veil, so that the white words on it can be read whatever the cover is (a contrast of
+/// 4.5 to 1 against a white one).
 class ChatSongCard extends StatelessWidget {
   const ChatSongCard({super.key, required this.controller, required this.song});
 
-  /// How much of the width of the screen the card takes, as the pictures of the chat do.
-  static const widthFactor = 0.72;
+  /// How much of the width of the screen the card takes, up to [maxWidth] dp.
+  static const widthFactor = 0.42;
+  static const maxWidth = 150.0;
 
   /// The veil over the cover and the colour of the chat: 0.58 of black leaves a white cover at about 0.15 of luminance.
   static const _veil = 0.58;
@@ -32,12 +36,14 @@ class ChatSongCard extends StatelessWidget {
   final RoomController controller;
   final SongExtra song;
 
+  static double widthIn(BuildContext context) => min(maxWidth, MediaQuery.sizeOf(context).width * widthFactor);
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final look = ChatLookScope.of(context);
     return SizedBox(
-      width: MediaQuery.sizeOf(context).width * widthFactor,
+      width: widthIn(context),
       child: ClipRRect(
         key: const ValueKey('song-card'),
         borderRadius: BorderRadius.circular(18),
@@ -46,24 +52,32 @@ class ChatSongCard extends StatelessWidget {
             Positioned.fill(
               child: _Backdrop(url: song.art, tint: look?.from ?? p.primary),
             ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  GestureDetector(
-                    key: const ValueKey('song-card-body'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => showSongInfo(context, _entry),
-                    child: _Heading(song: song),
-                  ),
-                  const SizedBox(height: 10),
-                  ListenableBuilder(
-                    listenable: controller,
-                    builder: (context, _) => _Actions(controller: controller, song: song),
-                  ),
-                ],
+            // The buttons are inside, and win the touch where they are
+            GestureDetector(
+              key: const ValueKey('song-card-body'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showSongInfo(context, _entry),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: ListenableBuilder(
+                        listenable: controller,
+                        builder: (context, _) => _Record(art: song.art, spinning: _isPlaying(controller, song.track)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _Details(song: song),
+                    const SizedBox(height: 6),
+                    ListenableBuilder(
+                      listenable: controller,
+                      builder: (context, _) => _Actions(controller: controller, song: song),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -83,6 +97,17 @@ class ChatSongCard extends StatelessWidget {
     thumb: song.art,
   );
 }
+
+/// Whether [track] is the song the room has at the front, and it is not idle.
+bool _isCurrent(RoomController controller, Track track) {
+  final snapshot = controller.snapshot;
+  return snapshot.isQueued(track) &&
+      snapshot.phase != 'idle' &&
+      snapshot.current != null &&
+      sameSong(snapshot.current!, track);
+}
+
+bool _isPlaying(RoomController controller, Track track) => _isCurrent(controller, track) && controller.isPlaying;
 
 /// The cover enlarged and blurred, the colour of the chat over it, and the veil that makes white words readable.
 class _Backdrop extends StatelessWidget {
@@ -125,9 +150,9 @@ class _Backdrop extends StatelessWidget {
   static final _blur = ImageFilter.blur(sigmaX: 12, sigmaY: 12, tileMode: TileMode.mirror);
 }
 
-/// Cover with a play mark, and the song beside it.
-class _Heading extends StatelessWidget {
-  const _Heading({required this.song});
+/// The song's name, and its artist and length.
+class _Details extends StatelessWidget {
+  const _Details({required this.song});
 
   final SongExtra song;
 
@@ -139,45 +164,163 @@ class _Heading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context).textTheme;
-    return Row(
+    final length = song.durMs > 0 ? formatDuration(song.durMs) : null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            Artwork(url: song.art, size: 64, radius: 12),
-            Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), shape: BoxShape.circle),
-              child: const Icon(Icons.play_arrow_rounded, size: 20, color: ink),
-            ),
-          ],
+        Text(
+          song.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.titleSmall?.copyWith(color: ink, fontWeight: FontWeight.w700),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                song.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.titleSmall?.copyWith(color: ink, fontWeight: FontWeight.w700),
-              ),
-              if (song.artist.isNotEmpty)
-                Text(
-                  song.artist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.bodyMedium?.copyWith(color: soft),
-                ),
-              if (song.durMs > 0) Text(formatDuration(song.durMs), style: theme.bodySmall?.copyWith(color: soft)),
-            ],
+        if (song.artist.isNotEmpty || length != null)
+          Text(
+            [if (song.artist.isNotEmpty) song.artist, ?length].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.bodySmall?.copyWith(color: soft),
           ),
-        ),
       ],
     );
   }
+}
+
+/// The record sleeve (the cover, square) with the record half out of it on the right; the record turns while [spinning].
+class _Record extends StatefulWidget {
+  const _Record({required this.art, required this.spinning});
+
+  final String? art;
+  final bool spinning;
+
+  /// The side of the sleeve, and how far the record comes out of it.
+  static const sleeve = 80.0;
+  static const out = 43.0;
+
+  @override
+  State<_Record> createState() => _RecordState();
+}
+
+class _RecordState extends State<_Record> with SingleTickerProviderStateMixin {
+  late final AnimationController _turn = AnimationController(vsync: this, duration: const Duration(seconds: 6));
+
+  @override
+  void initState() {
+    super.initState();
+    Calm.on.addListener(_sync);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_Record old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    Calm.on.removeListener(_sync);
+    _turn.dispose();
+    super.dispose();
+  }
+
+  /// Turns while the song plays, unless the system or the app wants calm; stays where it is when it stops.
+  void _sync() {
+    final move = widget.spinning && !MediaQuery.disableAnimationsOf(context) && !Calm.on.value;
+    if (move && !_turn.isAnimating) {
+      _turn.repeat();
+    } else if (!move && _turn.isAnimating) {
+      _turn.stop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const sleeve = _Record.sleeve;
+    const disc = sleeve - 6;
+    return SizedBox(
+      key: const ValueKey('song-card-record'),
+      width: sleeve + _Record.out,
+      height: sleeve,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: _Record.out,
+            top: 3,
+            child: RotationTransition(
+              turns: _turn,
+              child: SizedBox(
+                width: disc,
+                height: disc,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Positioned.fill(child: CustomPaint(painter: _DiscPainter())),
+                    // The label of the record is a piece of the cover
+                    Artwork(url: widget.art, size: disc * 0.38, radius: disc),
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(2, 3)),
+                ],
+              ),
+              child: Artwork(url: widget.art, size: sleeve, radius: 8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The black vinyl: a dark disc with a faint sheen and the fine rings of its grooves.
+class _DiscPainter extends CustomPainter {
+  const _DiscPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.width / 2;
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = const SweepGradient(
+          colors: [Color(0xFF111111), Color(0xFF2A2A2A), Color(0xFF111111), Color(0xFF2A2A2A), Color(0xFF111111)],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
+    final groove = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.6
+      ..color = Colors.white.withValues(alpha: 0.07);
+    for (var r = radius * 0.46; r < radius * 0.97; r += radius * 0.075) {
+      canvas.drawCircle(center, r, groove);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DiscPainter old) => false;
 }
 
 /// Play now, add to queue and like, each only for whoever may use it, and as the room stands for the song.
@@ -192,45 +335,39 @@ class _Actions extends StatelessWidget {
     final snapshot = controller.snapshot;
     final track = song.track;
     final queued = snapshot.isQueued(track);
-    final current =
-        queued && snapshot.phase != 'idle' && snapshot.current != null && sameSong(snapshot.current!, track);
+    final current = _isCurrent(controller, track);
     return Row(
       children: [
         if (current)
-          Expanded(
-            child: _Pill(
+          Flexible(
+            child: _Playing(
               key: const ValueKey('song-card-playing'),
-              label: S.chatSongPlaying,
-              leading: Equalizer(active: controller.isPlaying, color: Colors.white, size: 14),
+              child: Equalizer(active: controller.isPlaying, color: Colors.white, size: 14),
             ),
           )
         else ...[
           // Whoever may only add songs is not offered to play one
-          if (snapshot.canControl) ...[
-            Expanded(
-              child: _Pill(
-                key: const ValueKey('song-card-play'),
-                label: S.chatSongPlayNow,
-                filled: true,
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  controller.playNowInRoom(track);
-                },
-              ),
+          if (snapshot.canControl)
+            _Round(
+              key: const ValueKey('song-card-play'),
+              label: S.chatSongPlayNow,
+              icon: Icons.play_arrow_rounded,
+              filled: true,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                controller.playNowInRoom(track);
+              },
             ),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: _Pill(
-              key: const ValueKey('song-card-add'),
-              label: queued ? S.chatSongQueued : S.addToQueue,
-              onTap: queued
-                  ? null
-                  : () {
-                      HapticFeedback.selectionClick();
-                      controller.add(track);
-                    },
-            ),
+          _Round(
+            key: const ValueKey('song-card-add'),
+            label: queued ? S.chatSongQueued : S.addToQueue,
+            icon: queued ? Icons.playlist_add_check_rounded : Icons.playlist_add_rounded,
+            onTap: queued
+                ? null
+                : () {
+                    HapticFeedback.selectionClick();
+                    controller.add(track);
+                  },
           ),
         ],
         _Heart(track: track),
@@ -239,50 +376,82 @@ class _Actions extends StatelessWidget {
   }
 }
 
-class _Pill extends StatelessWidget {
-  const _Pill({super.key, required this.label, this.onTap, this.leading, this.filled = false});
+/// A round button of the card: [filled] white with a dark mark for the main one, glass for the others, and dimmer when it
+/// has nothing to do ([onTap] is null).
+class _Round extends StatelessWidget {
+  const _Round({super.key, required this.label, required this.icon, this.onTap, this.filled = false});
 
   final String label;
+  final IconData icon;
   final VoidCallback? onTap;
-  final Widget? leading;
-
-  /// The main one of the buttons: white, with dark words.
   final bool filled;
 
   @override
   Widget build(BuildContext context) {
     final on = onTap != null;
-    final ink = filled && on ? Colors.black87 : Colors.white.withValues(alpha: on || leading != null ? 1 : 0.7);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
+    return Tooltip(
+      message: label,
       child: Semantics(
         button: on,
         label: label,
         excludeSemantics: true,
-        child: Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: filled && on ? Colors.white : Colors.white.withValues(alpha: on ? 0.22 : 0.12),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          // A long word in another language shrinks to fit rather than overflow
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (leading != null) ...[leading!, const SizedBox(width: 6)],
-                Text(
-                  label,
-                  maxLines: 1,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(color: ink, fontWeight: FontWeight.w600),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          // Without a use it still takes the touch, so that it does not open the song behind it
+          onTap: onTap ?? () {},
+          // The touch is wider than the circle, as the thumb is
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Center(
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: filled && on ? Colors.white : Colors.white.withValues(alpha: on ? 0.22 : 0.12),
                 ),
-              ],
+                child: Icon(
+                  icon,
+                  size: 20,
+                  color: filled && on ? Colors.black87 : Colors.white.withValues(alpha: on ? 1 : 0.7),
+                ),
+              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The song is the one playing: a glass capsule with the equalizer and the word for it, where the buttons were.
+class _Playing extends StatelessWidget {
+  const _Playing({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(16)),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            child,
+            const SizedBox(width: 6),
+            Text(
+              S.chatSongPlaying,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.labelMedium
+                  ?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ),
     );
@@ -301,15 +470,14 @@ class _Heart extends StatelessWidget {
       listenable: library,
       builder: (context, _) {
         final liked = library.isLikedSong(track);
-        return IconButton(
+        return _Round(
           key: const ValueKey('song-card-like'),
-          onPressed: () {
+          label: liked ? S.unlike : S.like,
+          icon: liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          onTap: () {
             HapticFeedback.selectionClick();
             library.toggleLike(track);
           },
-          tooltip: liked ? S.unlike : S.like,
-          visualDensity: VisualDensity.compact,
-          icon: Icon(liked ? Icons.favorite_rounded : Icons.favorite_border_rounded, size: 22, color: Colors.white),
         );
       },
     );

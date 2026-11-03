@@ -84,18 +84,18 @@ void main() {
       await openChat(tester, room([entry('q0', other)]), [songMessage(1, extra)]);
       expect(card, findsOneWidget);
       expect(find.text('Never Gonna'), findsOneWidget);
-      expect(find.text('Rick'), findsOneWidget);
-      expect(find.text('3:20'), findsOneWidget);
+      expect(find.text('Rick · 3:20'), findsOneWidget);
       expect(find.textContaining('music.youtube.com'), findsNothing);
       expect(find.byKey(const ValueKey('song-card-like')), findsOneWidget);
-      // About 72 per cent of the screen (540 dp in the test)
-      expect(tester.getSize(card).width, closeTo(540 * ChatSongCard.widthFactor, 1));
+      // 62 per cent of the screen, but not wider than 224 dp (540 dp in the test)
+      expect(tester.getSize(card).width, closeTo(ChatSongCard.maxWidth, 1));
+      expect(find.byKey(const ValueKey('song-card-record')), findsOneWidget);
     });
 
     testWidgets('the buttons do what they say', (tester) async {
       final (backend, _) = await openChat(tester, room([entry('q0', other)]), [songMessage(1, extra)]);
-      expect(find.text(S.chatSongPlayNow), findsOneWidget);
-      expect(find.text(S.addToQueue), findsOneWidget);
+      expect(find.byTooltip(S.chatSongPlayNow), findsOneWidget);
+      expect(find.byTooltip(S.addToQueue), findsOneWidget);
 
       await tester.tap(add);
       await tester.pump();
@@ -120,7 +120,7 @@ void main() {
       final (backend, _) = await openChat(tester, room([entry('q0', other), entry('q1', song)]), [
         songMessage(1, extra),
       ]);
-      expect(find.text(S.chatSongQueued), findsOneWidget);
+      expect(find.byTooltip(S.chatSongQueued), findsOneWidget);
       await tester.tap(add);
       await tester.pump();
       expect(backend.calls.where((c) => c.startsWith('add')), isEmpty);
@@ -147,7 +147,7 @@ void main() {
         [songMessage(1, extra)],
       );
       expect(play, findsNothing);
-      expect(find.text(S.chatSongPlayNow), findsNothing);
+      expect(find.byTooltip(S.chatSongPlayNow), findsNothing);
       await tester.tap(add);
       await tester.pump();
       expect(backend.calls, contains('add dQw4w9WgXcQ next=false'));

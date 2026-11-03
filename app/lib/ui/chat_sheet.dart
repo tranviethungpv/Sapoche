@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../data/chat_extra.dart';
 import '../data/chat_media.dart';
 import '../data/models.dart';
+import '../data/pasted_photos.dart';
 import '../data/photo_picker.dart';
 import '../data/room_controller.dart';
 import '../strings.dart';
@@ -18,17 +19,20 @@ import 'chat_song_picker.dart';
 import 'chat_theme_sheet.dart';
 import 'member_profile_sheet.dart';
 import 'photo_actions.dart';
-import 'photo_preview_sheet.dart';
 import 'rooms_sheet.dart' show pasteInviteSecret;
 import 'scope.dart';
 import 'sticker_store_page.dart';
 import 'sticker_tray.dart';
+import 'video_page.dart';
 import 'widgets/album_bubble.dart';
 import 'widgets/album_image.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/chat_song_card.dart';
+import 'widgets/linked_text.dart';
+import 'widgets/song_link_card.dart';
 import 'widgets/reactions.dart';
+import 'widgets/staged_photos.dart';
 import 'widgets/sticker_image.dart';
 
 /// The room's chat, over whatever is shown: messages, the reactions, and a field to write in.
@@ -121,6 +125,25 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   /// Photos picked and being made ready to send.
   bool _preparing = false;
 
+  /// The photos picked or pasted that wait above the field, to be sent with the next message.
+  final List<PreparedPhoto> _staged = [];
+
+  /// A video waiting instead of them (never with them): the video and its poster, as ChatMedia.prepareVideo gives them.
+  List<PreparedPhoto>? _stagedVideo;
+
+  /// The video as it was picked, and whether the one waiting is turned left to right, for the flip button to make it again.
+  PickedVideo? _videoSource;
+  bool _videoMirrored = false;
+
+  /// What is being made ready is a video, which takes longer.
+  bool _preparingVideo = false;
+
+  /// The clipboard holds a picture, so the menu of the field offers to paste it.
+  bool _clipboardPhotos = false;
+
+  /// Stops listening for what a browser pastes.
+  void Function()? _stopListening;
+
   /// The song picked to go with the next message, shown above the field.
   Track? _song;
 
@@ -141,9 +164,12 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _focus.addListener(_focusChanged);
     _field.addListener(_fieldChanged);
+    _stopListening = listenForPastedPhotos(_addPhotos);
     // After this frame: what it changes is shown by buttons being built along with the sheet
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _c.setChatOpen(true);
+      if (!mounted) return;
+      _c.setChatOpen(true);
+      _lookAtClipboard();
     });
   }
 
@@ -151,11 +177,14 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // The chat is looked at only while the app is: the others see a message as seen when it was
     _c.setChatOpen(state == AppLifecycleState.resumed);
+    // Something may have been copied while the app was away
+    if (state == AppLifecycleState.resumed) _lookAtClipboard();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _stopListening?.call();
     _c.setChatOpen(false);
     _field.removeListener(_fieldChanged);
     _field.dispose();
@@ -166,7 +195,30 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
 
   /// The keyboard coming up takes the place of the stickers.
   void _focusChanged() {
-    if (_focus.hasFocus && _trayOpen) setState(() => _trayOpen = false);
+    if (!_focus.hasFocus) return;
+    if (_trayOpen) setState(() => _trayOpen = false);
+    _lookAtClipboard();
+  }
+
+  /// Whether the clipboard holds a picture, which the menu of the field
+  /// offers to paste. Asked now and then (the field gets the focus, the app
+  /// comes back) rather than as the menu opens, which cannot wait.
+  Future<void> _lookAtClipboard() async {
+    final has = await AppScope.of(context).clipboardHasPhotos();
+    if (mounted && has != _clipboardPhotos) {
+      setState(() => _clipboardPhotos = has);
+    }
+  }
+
+  /// Paste with a picture on the clipboard puts it with the photos to send.
+  /// False when there is none: then the words are pasted as usual.
+  Future<bool> _pastePhotos() async {
+    final app = AppScope.of(context);
+    if (!await app.clipboardHasPhotos()) return false;
+    final photos = await app.clipboardPhotos();
+    if (photos.isEmpty) return false;
+    if (mounted) await _addPhotos(photos);
+    return true;
   }
 
   /// With nothing written the buttons to add things are all there again.
@@ -203,24 +255,50 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
   void _send() {
     final text = _field.text;
     final song = _song;
-    if (text.trim().isEmpty && song == null) return;
-    final reply = _replyTo;
+    final photos = [..._staged];
+    final video = _stagedVideo;
+    if (text.trim().isEmpty &&
+        song == null &&
+        photos.isEmpty &&
+        video == null) {
+      return;
+    }
+    var reply = _replyTo;
+    // The quote is answered by the first thing sent
+    ChatQuote? answered() {
+      final quote = reply;
+      reply = null;
+      return quote;
+    }
+
     _field.clear();
     setState(() {
       _replyTo = null;
       _song = null;
+      _staged.clear();
+      _stagedVideo = null;
+      _videoSource = null;
+      _videoMirrored = false;
     });
-    if (song == null) {
-      _c.sendChat(text, reply: reply);
-    } else {
-      // The song is a card of its own, which answers the quote; what was written follows as a message by itself
-      _c.sendSong(song, reply: reply);
-      if (text.trim().isNotEmpty) _c.sendChat(text);
+    // The song is a card of its own; what was written follows as a message by itself, or goes under the photos
+    if (song != null) _c.sendSong(song, reply: answered());
+    if (video != null) {
+      _c.sendAlbum(video, caption: _captionOf(text), reply: answered());
+    } else if (photos.isNotEmpty) {
+      _c.sendAlbum(photos, caption: _captionOf(text), reply: answered());
+    } else if (text.trim().isNotEmpty) {
+      _c.sendChat(text, reply: answered());
     }
     // The keyboard stays up for the next one, as it does in the chats of the phone
     _focus.requestFocus();
     _scrollToNewest();
   }
+
+  /// The words go in the message after "📷 7 photos ", which has to fit with
+  /// them in what the room accepts.
+  static String _captionOf(String text) => String.fromCharCodes(
+    text.trim().runes.take(RoomController.maxChatChars - 24),
+  );
 
   /// The song button: a sheet to pick a song from, which is then shown above the field until it is sent.
   Future<void> _pickSong() async {
@@ -240,22 +318,73 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
     }
   }
 
-  /// The photo button: from the photo library, or the camera where the phone has one.
+  /// The photo button: from the photo library or the camera, or a video from
+  /// the library or the camera, where the phone has one.
   Future<void> _pickPhotos() async {
     final source = await _choosePhotoSource();
     if (source == null || !mounted) return;
-    final picked = await AppScope.of(context).chatPhotoPicker(source);
+    final app = AppScope.of(context);
+    if (source == PhotoSource.videoGallery ||
+        source == PhotoSource.videoCamera) {
+      final video = await app.chatVideoPicker(source);
+      if (video == null || !mounted) return;
+      await _addVideo(video);
+      return;
+    }
+    final picked = await app.chatPhotoPicker(source);
     if (picked.isEmpty || !mounted) return;
     await _addPhotos(picked);
   }
 
   Future<PhotoSource?> _choosePhotoSource() {
-    if (!chatCameraAvailable) return Future.value(PhotoSource.gallery);
     return showModalBottomSheet<PhotoSource>(
       context: context,
       useRootNavigator: true,
-      builder: (_) => const _PhotoSourceSheet(),
+      builder: (_) => _PhotoSourceSheet(camera: chatCameraAvailable),
     );
+  }
+
+  /// Squeezes [picked] to what a message holds and puts it above the field,
+  /// where it waits for Send. One video to a message, and never with photos.
+  Future<void> _addVideo(PickedVideo picked, {bool mirror = false}) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    // Making the one that waits again (turned the other way) is not a second video
+    final again = _stagedVideo != null && identical(_videoSource, picked);
+    if (_staged.isNotEmpty || (_stagedVideo != null && !again)) {
+      messenger?.showSnackBar(SnackBar(content: Text(S.chatNoMix)));
+      return;
+    }
+    setState(() {
+      _preparing = true;
+      _preparingVideo = true;
+    });
+    List<PreparedPhoto>? made;
+    String? error;
+    try {
+      made = await _c.media.prepareVideo(picked, mirror: mirror);
+    } on VideoTooLarge catch (e) {
+      error = S.chatVideoTooLarge(e.name, e.squeezable);
+    } on PhotoError catch (e) {
+      error = S.chatVideoUnreadable(e.name);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _preparing = false;
+          _preparingVideo = false;
+        });
+      }
+    }
+    if (!mounted) return;
+    if (error != null) {
+      messenger?.showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    setState(() {
+      _stagedVideo = made;
+      _videoSource = picked;
+      _videoMirrored = mirror;
+    });
+    _scrollToNewest();
   }
 
   /// A picture from the keyboard (a GIF or a sticker of Gboard) is sent like the ones picked.
@@ -265,41 +394,83 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
     _addPhotos([PickedPhoto(bytes, content.uri.split('/').last)]);
   }
 
-  /// Makes [picked] ready, shows what is left of them for the person to look over, and sends it as one message.
+  /// Makes [picked] ready and puts them with the photos waiting above the
+  /// field, as many as a message holds.
   Future<void> _addPhotos(List<PickedPhoto> picked) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
+    if (_stagedVideo != null) {
+      messenger?.showSnackBar(SnackBar(content: Text(S.chatNoMix)));
+      return;
+    }
+    final room = AlbumExtra.maxItems - _staged.length;
+    if (room <= 0) {
+      messenger?.showSnackBar(
+        SnackBar(content: Text(S.chatAlbumFull(AlbumExtra.maxItems))),
+      );
+      return;
+    }
     setState(() => _preparing = true);
     final PrepareResult result;
     try {
-      result = await ChatMedia.prepare(picked);
+      result = await ChatMedia.prepare(picked.take(room).toList());
     } finally {
       if (mounted) setState(() => _preparing = false);
     }
     if (!mounted) return;
-    if (result.refused.isNotEmpty) {
-      messenger?.showSnackBar(
-        SnackBar(
-          content: Text(
-            result.refused
-                .map(
-                  (error) => switch (error) {
-                    PhotoTooLarge() => S.chatPhotoTooLarge(error.name),
-                    PhotoUnreadable() => S.chatPhotoUnreadable(error.name),
-                  },
-                )
-                .join('\n'),
-          ),
-        ),
-      );
+    final errors = [
+      for (final error in result.refused)
+        switch (error) {
+          PhotoTooLarge() => S.chatPhotoTooLarge(error.name),
+          PhotoUnreadable() => S.chatPhotoUnreadable(error.name),
+          VideoTooLarge() => S.chatVideoTooLarge(error.name, error.squeezable),
+          VideoUnreadable() => S.chatVideoUnreadable(error.name),
+        },
+      if (picked.length > room) S.chatAlbumFull(AlbumExtra.maxItems),
+    ];
+    if (errors.isNotEmpty) {
+      messenger?.showSnackBar(SnackBar(content: Text(errors.join('\n'))));
     }
     if (result.photos.isEmpty) return;
-    final draft = await showPhotoPreview(context, result.photos);
-    if (draft == null || !mounted) return;
-    final reply = _replyTo;
-    setState(() => _replyTo = null);
-    _c.sendAlbum(draft.photos, caption: draft.caption, reply: reply);
+    setState(
+      () => _staged.addAll(
+        result.photos.take(AlbumExtra.maxItems - _staged.length),
+      ),
+    );
     _scrollToNewest();
   }
+
+  void _unstage(PreparedPhoto photo) => setState(() => _staged.remove(photo));
+
+  void _unstageVideo() => setState(() {
+    _stagedVideo = null;
+    _videoSource = null;
+    _videoMirrored = false;
+  });
+
+  /// Turns the photo left to right, in the place it is.
+  Future<void> _flipPhoto(PreparedPhoto photo) async {
+    setState(() => _preparing = true);
+    PreparedPhoto flipped;
+    try {
+      flipped = await ChatMedia.mirror(photo);
+    } on Object {
+      flipped = photo;
+    } finally {
+      if (mounted) setState(() => _preparing = false);
+    }
+    if (!mounted) return;
+    final at = _staged.indexOf(photo);
+    if (at >= 0) setState(() => _staged[at] = flipped);
+  }
+
+  /// Makes the waiting video again, turned the other way.
+  Future<void> _flipVideo() async {
+    final source = _videoSource;
+    if (source != null) await _addVideo(source, mirror: !_videoMirrored);
+  }
+
+  void _moveStaged(int from, int to) =>
+      setState(() => _staged.insert(to, _staged.removeAt(from)));
 
   void _replyToMessage(ChatMessage message) {
     if (message.delivery != ChatDelivery.sent) return;
@@ -523,6 +694,18 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                 onCancel: () => setState(() => _song = null),
               ),
             ),
+          if (_staged.isNotEmpty || _stagedVideo != null)
+            TextFieldTapRegion(
+              child: StagedPhotos(
+                photos: _staged,
+                video: _stagedVideo,
+                onRemove: _unstage,
+                onRemoveVideo: _unstageVideo,
+                onFlip: _flipPhoto,
+                onFlipVideo: chatVideoMirrorAvailable ? _flipVideo : null,
+                onMove: _moveStaged,
+              ),
+            ),
           // Without the key of a sealed chat there is nothing to write, and the others could not read it
           _UnlessLocked(
             controller: _c,
@@ -536,6 +719,7 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                     builder: (context, value, _) => _AttachButtons(
                       color: look?.accent ?? p.primary,
                       preparing: _preparing,
+                      preparingVideo: _preparingVideo,
                       // Words in the field make room for it: the buttons fold into one
                       collapsed: value.text.isNotEmpty && !_attachOpen,
                       stickers: _trayOpen,
@@ -546,62 +730,89 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                     ),
                   ),
                   Expanded(
-                    child: TextField(
-                      key: const ValueKey('chat-field'),
-                      controller: _field,
-                      focusNode: _focus,
-                      minLines: 1,
-                      maxLines: 4,
-                      maxLength: RoomController.maxChatChars,
-                      textCapitalization: TextCapitalization.sentences,
-                      textInputAction: TextInputAction.send,
-                      // The keyboard takes the place of the stickers
-                      onTap: () {
-                        if (_trayOpen) setState(() => _trayOpen = false);
+                    // Paste with a picture on the clipboard goes to the photos; words are pasted as the field does
+                    child: Actions(
+                      actions: {
+                        PasteTextIntent: _PastePhotosAction(_pastePhotos),
                       },
-                      // Gboard offers GIFs and stickers to put in the field; only Android has it
-                      contentInsertionConfiguration:
-                          !kIsWeb &&
-                              defaultTargetPlatform == TargetPlatform.android
-                          ? ContentInsertionConfiguration(
-                              onContentInserted: _pasted,
-                              allowedMimeTypes: const [
-                                'image/jpeg',
-                                'image/png',
-                                'image/gif',
-                                'image/webp',
-                              ],
-                            )
-                          : null,
-                      // Handled here, so that the keyboard's Send key does not put the keyboard away as well
-                      onEditingComplete: _send,
-                      // A touch anywhere else puts the keyboard away: its return key makes a new line
-                      onTapOutside: (_) =>
-                          FocusManager.instance.primaryFocus?.unfocus(),
-                      // The count shows only near the end, where it matters
-                      buildCounter:
-                          (
-                            context, {
-                            required currentLength,
-                            required isFocused,
-                            maxLength,
-                          }) => currentLength > RoomController.maxChatChars - 50
-                          ? Text('$currentLength/$maxLength')
-                          : null,
-                      decoration: InputDecoration(
-                        hintText: S.chatHint,
-                        isDense: true,
-                        filled: true,
-                        fillColor: (look?.accent ?? p.primary).withValues(
-                          alpha: 0.10,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(22),
-                          borderSide: BorderSide.none,
+                      child: TextField(
+                        key: const ValueKey('chat-field'),
+                        controller: _field,
+                        focusNode: _focus,
+                        minLines: 1,
+                        maxLines: 4,
+                        maxLength: RoomController.maxChatChars,
+                        // Menu of the field: Paste image, where the clipboard holds one
+                        contextMenuBuilder: (context, editable) {
+                          final items = [...editable.contextMenuButtonItems];
+                          if (_clipboardPhotos) {
+                            items.insert(
+                              0,
+                              ContextMenuButtonItem(
+                                label: S.chatPasteImage,
+                                onPressed: () {
+                                  editable.hideToolbar();
+                                  _pastePhotos();
+                                },
+                              ),
+                            );
+                          }
+                          return AdaptiveTextSelectionToolbar.buttonItems(
+                            anchors: editable.contextMenuAnchors,
+                            buttonItems: items,
+                          );
+                        },
+                        textCapitalization: TextCapitalization.sentences,
+                        textInputAction: TextInputAction.send,
+                        // The keyboard takes the place of the stickers
+                        onTap: () {
+                          if (_trayOpen) setState(() => _trayOpen = false);
+                        },
+                        // Gboard offers GIFs and stickers to put in the field; only Android has it
+                        contentInsertionConfiguration:
+                            !kIsWeb &&
+                                defaultTargetPlatform == TargetPlatform.android
+                            ? ContentInsertionConfiguration(
+                                onContentInserted: _pasted,
+                                allowedMimeTypes: const [
+                                  'image/jpeg',
+                                  'image/png',
+                                  'image/gif',
+                                  'image/webp',
+                                ],
+                              )
+                            : null,
+                        // Handled here, so that the keyboard's Send key does not put the keyboard away as well
+                        onEditingComplete: _send,
+                        // A touch anywhere else puts the keyboard away: its return key makes a new line
+                        onTapOutside: (_) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        // The count shows only near the end, where it matters
+                        buildCounter:
+                            (
+                              context, {
+                              required currentLength,
+                              required isFocused,
+                              maxLength,
+                            }) =>
+                                currentLength > RoomController.maxChatChars - 50
+                                ? Text('$currentLength/$maxLength')
+                                : null,
+                        decoration: InputDecoration(
+                          hintText: S.chatHint,
+                          isDense: true,
+                          filled: true,
+                          fillColor: (look?.accent ?? p.primary).withValues(
+                            alpha: 0.10,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                     ),
@@ -611,13 +822,21 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                     child: ValueListenableBuilder(
                       valueListenable: _field,
                       builder: (context, value, _) => IconButton(
-                        onPressed: value.text.trim().isEmpty && _song == null
+                        onPressed:
+                            value.text.trim().isEmpty &&
+                                _song == null &&
+                                _staged.isEmpty &&
+                                _stagedVideo == null
                             ? null
                             : _send,
                         tooltip: S.chatSend,
                         icon: Icon(
                           Icons.send_rounded,
-                          color: value.text.trim().isEmpty && _song == null
+                          color:
+                              value.text.trim().isEmpty &&
+                                  _song == null &&
+                                  _staged.isEmpty &&
+                                  _stagedVideo == null
                               ? p.textTertiary
                               : look?.accent ?? p.primary,
                         ),
@@ -640,6 +859,24 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
         ],
       ),
     );
+  }
+}
+
+/// Paste in the field: the pictures on the clipboard are put with the photos
+/// to send; with none, the paste goes on as the field would have it.
+class _PastePhotosAction extends Action<PasteTextIntent> {
+  _PastePhotosAction(this.paste);
+
+  final Future<bool> Function() paste;
+
+  @override
+  Object? invoke(PasteTextIntent intent) {
+    // Set while this runs only, and the answer of the clipboard comes later
+    final field = callingAction;
+    paste().then((took) {
+      if (!took) field?.invoke(intent);
+    });
+    return null;
   }
 }
 
@@ -667,6 +904,7 @@ class _AttachButtons extends StatelessWidget {
   const _AttachButtons({
     required this.color,
     required this.preparing,
+    required this.preparingVideo,
     required this.collapsed,
     required this.stickers,
     required this.onExpand,
@@ -679,6 +917,9 @@ class _AttachButtons extends StatelessWidget {
 
   /// Photos picked are being made ready: the button waits.
   final bool preparing;
+
+  /// What is being made ready is a video (the wait is told as such).
+  final bool preparingVideo;
   final bool collapsed;
 
   /// The stickers are open, so their button offers the keyboard.
@@ -707,7 +948,9 @@ class _AttachButtons extends StatelessWidget {
                 children: [
                   if (preparing)
                     Tooltip(
-                      message: S.photoPreparing,
+                      message: preparingVideo
+                          ? S.videoPreparing
+                          : S.photoPreparing,
                       child: const SizedBox(
                         width: 48,
                         height: 48,
@@ -756,7 +999,10 @@ class _AttachButtons extends StatelessWidget {
 
 /// Where the photos come from, on a phone that has a camera.
 class _PhotoSourceSheet extends StatelessWidget {
-  const _PhotoSourceSheet();
+  const _PhotoSourceSheet({required this.camera});
+
+  /// The phone has a camera to ask for a photo or a video.
+  final bool camera;
 
   @override
   Widget build(BuildContext context) {
@@ -771,12 +1017,26 @@ class _PhotoSourceSheet extends StatelessWidget {
             title: Text(S.photoGallery),
             onTap: () => Navigator.of(context).pop(PhotoSource.gallery),
           ),
+          if (camera)
+            ListTile(
+              key: const ValueKey('photo-source-camera'),
+              leading: Icon(Icons.photo_camera_outlined, color: p.primary),
+              title: Text(S.photoCamera),
+              onTap: () => Navigator.of(context).pop(PhotoSource.camera),
+            ),
           ListTile(
-            key: const ValueKey('photo-source-camera'),
-            leading: Icon(Icons.photo_camera_outlined, color: p.primary),
-            title: Text(S.photoCamera),
-            onTap: () => Navigator.of(context).pop(PhotoSource.camera),
+            key: const ValueKey('video-source-gallery'),
+            leading: Icon(Icons.video_library_outlined, color: p.primary),
+            title: Text(S.videoGallery),
+            onTap: () => Navigator.of(context).pop(PhotoSource.videoGallery),
           ),
+          if (camera)
+            ListTile(
+              key: const ValueKey('video-source-camera'),
+              leading: Icon(Icons.videocam_outlined, color: p.primary),
+              title: Text(S.videoRecord),
+              onTap: () => Navigator.of(context).pop(PhotoSource.videoCamera),
+            ),
         ],
       ),
     );
@@ -1441,14 +1701,38 @@ class _Bubble extends StatelessWidget {
                           ),
                         ],
                       )
-                    : Text(
-                        message.text,
+                    : LinkedText(
+                        text: message.text,
                         style: theme.bodyMedium?.copyWith(color: ink),
                       ),
               ],
             ),
           );
-    final bubble = pictures ?? card ?? stickerView ?? words;
+    // A link to a song of YouTube in plain words is the song's card: in place of the words when it is all there is, and
+    // under them when there is more. Until it is looked up the words stand in.
+    final songLink = extra != null || message.locked || bigEmoji != null
+        ? null
+        : songLinkIn(message.text);
+    final linkCard = songLink == null
+        ? null
+        : message.text.trim() == songLink
+        ? SongLinkCard(controller: controller, link: songLink, fallback: words)
+        : Column(
+            crossAxisAlignment: mine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              words,
+              const SizedBox(height: 4),
+              SongLinkCard(
+                controller: controller,
+                link: songLink,
+                fallback: const SizedBox.shrink(),
+              ),
+            ],
+          );
+    final bubble = pictures ?? card ?? stickerView ?? linkCard ?? words;
     final reactions = message.reactions;
     final side = mine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     return Padding(
@@ -1943,9 +2227,13 @@ class _MessageMenu extends StatelessWidget {
               ListTile(
                 key: const ValueKey('message-save-all'),
                 leading: Icon(Icons.download_rounded, color: p.primary),
-                title: Text(S.photoSaveAll),
+                title: Text(extra.isVideo ? S.videoSave : S.photoSaveAll),
                 onTap: () {
                   Navigator.of(context).pop();
+                  if (extra.isVideo) {
+                    saveVideo(context, controller, extra);
+                    return;
+                  }
                   savePhotos(context, controller, [
                     for (final item in extra.items) AlbumSlot.item(item),
                   ]);

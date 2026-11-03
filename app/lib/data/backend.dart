@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../frame_boost.dart';
 
+import 'chat_media.dart' show PickedPhoto;
 import 'models.dart';
 import 'music_models.dart';
 import 'update_info.dart';
@@ -156,6 +157,22 @@ abstract class Backend {
 
   /// The app's cache folder, which the system may empty when it needs the room.
   Future<String?> cacheFolder();
+
+  /// Squeezes the video at [path] (a file of the phone) to a MP4 of H.264 and AAC of no more than [maxBytes], as small in
+  /// size and as good in picture as the length allows, and gives back where it put it, how big it is, how long, and a
+  /// poster of it. Throws [BackendException] `video_unreadable` (the phone cannot read it) or `video_too_big` (too long
+  /// to fit). The caller deletes the file.
+  ///
+  /// With [mirror] the picture is turned left to right (a selfie, which the camera saves the other way round from what the
+  /// preview showed); only Android does that.
+  Future<VideoFile> prepareVideo(String path, int maxBytes, {bool mirror = false});
+
+  /// Whether the clipboard holds a picture. Looks at the kinds of what is there only, so the system tells nobody.
+  Future<bool> clipboardHasPhotos();
+
+  /// The pictures on the clipboard, in order, each as a file the app reads (a format it does not is turned into a JPEG or
+  /// a PNG by native); none when it holds words or nothing. Reading may show the person a note that the app pasted.
+  Future<List<PickedPhoto>> clipboardPhotos();
 
   Future<String> createRoom(String name);
   Future<void> join(String code, String name);
@@ -590,6 +607,41 @@ class NativeBackend implements Backend {
 
   @override
   Future<String?> cacheFolder() => _call<String>('cacheFolder');
+
+  @override
+  Future<VideoFile> prepareVideo(
+    String path,
+    int maxBytes, {
+    bool mirror = false,
+  }) async {
+    final made = await _call<Map<Object?, Object?>>('prepareVideo', {
+      'path': path,
+      'maxBytes': maxBytes,
+      'mirror': mirror,
+    });
+    return VideoFile(
+      path: made!['path'] as String,
+      w: (made['w'] as num).toInt(),
+      h: (made['h'] as num).toInt(),
+      durMs: (made['durMs'] as num).toInt(),
+      poster: made['poster'] as Uint8List,
+    );
+  }
+
+  @override
+  Future<bool> clipboardHasPhotos() async =>
+      await _call<bool>('clipboardHasPhotos') ?? false;
+
+  @override
+  Future<List<PickedPhoto>> clipboardPhotos() async => [
+    for (final photo
+        in await _call<List<Object?>>('clipboardPhotos') ?? const [])
+      if (photo case {
+        'bytes': final Uint8List bytes,
+        'name': final String name,
+      })
+        PickedPhoto(bytes, name),
+  ];
 
   @override
   Future<String> createRoom(String name) async =>
@@ -1213,6 +1265,24 @@ class NativeBackend implements Backend {
   @override
   Future<void> setAutoUpdate(bool on) =>
       _call<void>('setAutoUpdate', {'on': on});
+}
+
+/// A video squeezed by native: the file, its size in pixels as it is shown (turned upright), its length, and a poster
+/// (a JPEG).
+class VideoFile {
+  const VideoFile({
+    required this.path,
+    required this.w,
+    required this.h,
+    required this.durMs,
+    required this.poster,
+  });
+
+  final String path;
+  final int w;
+  final int h;
+  final int durMs;
+  final Uint8List poster;
 }
 
 class BackendException implements Exception {

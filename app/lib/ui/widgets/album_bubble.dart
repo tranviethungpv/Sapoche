@@ -5,8 +5,10 @@ import '../../data/chat_media.dart';
 import '../../data/models.dart';
 import '../../data/room_controller.dart';
 import '../../theme/theme.dart';
+import '../../format.dart';
 import '../album_page.dart';
 import '../photo_viewer.dart';
+import '../video_page.dart';
 import 'album_image.dart';
 import 'photo_stack.dart';
 
@@ -37,10 +39,19 @@ class AlbumBubble extends StatelessWidget {
   /// The pictures going up for a message that the room has not confirmed.
   final AlbumUpload? upload;
 
+  /// A video is shown as its poster alone: the picture of the video, which is the second of its two files.
+  bool get _isVideo => album?.isVideo ?? (upload?.photos.firstOrNull?.isVideo ?? false);
+
+  /// How long the video is, in milliseconds.
+  int get _durMs => album?.video.d ?? upload?.photos.first.durMs ?? 0;
+
   List<AlbumSlot> get _slots {
     final album = this.album;
-    if (album != null) return [for (final item in album.items) AlbumSlot.item(item)];
+    if (album != null) {
+      return album.isVideo ? [AlbumSlot.item(album.poster)] : [for (final item in album.items) AlbumSlot.item(item)];
+    }
     final photos = upload?.photos ?? const <PreparedPhoto>[];
+    if (_isVideo) return [AlbumSlot.photo(photos.last, photos.length - 1)];
     return [for (var i = 0; i < photos.length; i++) AlbumSlot.photo(photos[i], i)];
   }
 
@@ -54,7 +65,9 @@ class AlbumBubble extends StatelessWidget {
     // Pictures on their way are not in the room yet
     if (album == null) return;
     final sender = message.by == controller.snapshot.you ? null : message.name;
-    if (slots.length == 1) {
+    if (album!.isVideo) {
+      showVideoPage(context, controller: controller, album: album!, from: from);
+    } else if (slots.length == 1) {
       showPhotoViewer(context, controller: controller, slots: slots, from: from);
     } else {
       showAlbumPage(
@@ -75,7 +88,8 @@ class AlbumBubble extends StatelessWidget {
     if (slots.isEmpty) return const SizedBox.shrink();
     final room = controller.snapshot.room ?? '';
     final key = ValueKey(message.cid ?? message.id);
-    final overlay = _Overlay(upload: upload, failed: message.delivery == ChatDelivery.failed);
+    final video = _isVideo;
+    final overlay = _Overlay(upload: upload, failed: message.delivery == ChatDelivery.failed, video: video);
     return slots.length == 1
         ? SinglePhoto(
             key: key,
@@ -84,6 +98,7 @@ class AlbumBubble extends StatelessWidget {
             room: room,
             onTap: (from) => _open(context, slots, from),
             overlay: overlay,
+            badge: video ? _PlayBadge(durMs: _durMs, waiting: album == null) : null,
           )
         : PhotoStack(
             key: key,
@@ -97,12 +112,55 @@ class AlbumBubble extends StatelessWidget {
   }
 }
 
+/// Over the poster of a video: the mark to play it and how long it is (while it is on its way, only the length).
+class _PlayBadge extends StatelessWidget {
+  const _PlayBadge({required this.durMs, required this.waiting});
+
+  final int durMs;
+  final bool waiting;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (!waiting)
+          Center(
+            child: Container(
+              key: const ValueKey('video-play-mark'),
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
+              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 32),
+            ),
+          ),
+        if (durMs > 0)
+          Positioned(
+            left: 8,
+            bottom: 8,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(9)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Text(formatDuration(durMs), key: const ValueKey('video-duration'), style: style),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 /// Over the top picture of a message on its way: a ring with how many pictures are up, or a red mark where it failed.
 class _Overlay extends StatelessWidget {
-  const _Overlay({required this.upload, required this.failed});
+  const _Overlay({required this.upload, required this.failed, this.video = false});
 
   final AlbumUpload? upload;
   final bool failed;
+
+  /// The message is a video: its two files are not counted for the person.
+  final bool video;
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +201,7 @@ class _Overlay extends StatelessWidget {
                         backgroundColor: Colors.white24,
                       ),
                     ),
-                    if (upload.total > 1)
+                    if (upload.total > 1 && !video)
                       Text(
                         '${upload.done}/${upload.total}',
                         style: Theme.of(context).textTheme.labelMedium

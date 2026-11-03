@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../frame_boost.dart';
 import '../backend.dart';
+import '../chat_media.dart' show PickedPhoto;
 import '../models.dart';
 import '../music_models.dart';
 
@@ -16,6 +17,17 @@ abstract class BackendDefaults implements Backend {
 
   @override
   Future<String?> cacheFolder() async => null;
+
+  // A browser tells the page what was pasted as it happens (see pasted_photos.dart); it cannot be asked
+  // A browser does not squeeze videos: the chat sends what is small enough (see ChatMedia.prepareVideo)
+  @override
+  Future<VideoFile> prepareVideo(String path, int maxBytes, {bool mirror = false}) async => throw unsupported;
+
+  @override
+  Future<bool> clipboardHasPhotos() async => false;
+
+  @override
+  Future<List<PickedPhoto>> clipboardPhotos() async => const [];
 
   @override
   Future<void> pickOutput() async {}

@@ -91,9 +91,15 @@ Future<void> until(WidgetTester tester, bool Function() done) async {
   expect(done(), isTrue, reason: 'work away from the screen did not finish');
 }
 
-/// Waits for the picked photos to be made ready, and for the preview to be up.
-Future<void> previewShown(WidgetTester tester) async {
-  await until(tester, () => find.byKey(const ValueKey('photo-preview-count')).evaluate().isNotEmpty);
+/// Waits for the picked photos to be made ready, and for them to wait above the field.
+Future<void> stagedShown(WidgetTester tester) async {
+  await until(tester, () => find.byKey(const ValueKey('staged-photos')).evaluate().isNotEmpty);
+  await tester.pumpAndSettle();
+}
+
+/// Presses the send button of the chat.
+Future<void> pressSend(WidgetTester tester) async {
+  await tester.tap(find.byTooltip(S.chatSend));
   await tester.pumpAndSettle();
 }
 
@@ -106,8 +112,18 @@ Future<(FakeBackend, RoomController)> openChat(
   Future<List<ChatMessage>> Function(FakeBackend, RoomController) messages, {
   ChatPhotoPicker? picker,
   PhotoSaver? saver,
+  ClipboardCheck? clipboardHas,
+  ClipboardReader? clipboard,
+  ChatVideoPicker? videoPicker,
 }) async {
-  final (backend, room) = await pumpApp(tester, chatPhotoPicker: picker, photoSaver: saver);
+  final (backend, room) = await pumpApp(
+    tester,
+    chatPhotoPicker: picker,
+    chatVideoPicker: videoPicker,
+    photoSaver: saver,
+    clipboardHasPhotos: clipboardHas,
+    clipboardPhotos: clipboard,
+  );
   backend.emit(StateEvent(sampleRoom()));
   backend.emit(history(await messages(backend, room)));
   await tester.pumpAndSettle();
@@ -139,9 +155,9 @@ void main() {
         );
         expect(tester.widget<Text>(find.byKey(const ValueKey('photo-stack-count'))).data, '$count');
         expect(find.byKey(const ValueKey('photo-stack-gif')), findsNothing);
-        // The top card is 4:5, 60% of the screen wide but not past 240
+        // The top card is a square, 60% of the screen wide but not past 174
         final top = tester.getSize(find.byKey(const ValueKey('photo-stack-top')));
-        expect(top, const Size(240, 300));
+        expect(top, const Size(174, 174));
       });
     }
 
@@ -150,14 +166,14 @@ void main() {
         final album = await makeAlbum(tester, backend, room, 3);
         return [albumMessage(1, album)];
       });
-      expect(dxOf(tester, back(0)), -10);
-      expect(dxOf(tester, back(1)), 10);
+      expect(dxOf(tester, back(0)), -16.5);
+      expect(dxOf(tester, back(1)), 16.5);
       final left = tester.widget<Transform>(back(0)).transform;
       final right = tester.widget<Transform>(back(1)).transform;
-      // Turned about -5 and +4 degrees, within a degree
+      // Turned about -8 and +7 degrees, within a degree
       double degrees(Matrix4 m) => 180 / 3.14159265 * (m.entry(1, 0)).clamp(-1, 1);
-      expect(degrees(left), inInclusiveRange(-6.5, -3.5));
-      expect(degrees(right), inInclusiveRange(2.5, 5.5));
+      expect(degrees(left), inInclusiveRange(-9.5, -6.5));
+      expect(degrees(right), inInclusiveRange(5.5, 8.5));
       // The same picture is turned the same way every time it is drawn
       await tester.pumpAndSettle();
       expect(tester.widget<Transform>(back(0)).transform, left);
@@ -179,8 +195,8 @@ void main() {
       expect(find.byKey(const ValueKey('photo-single')), findsOneWidget);
       expect(stack, findsNothing);
       final size = tester.getSize(find.byKey(const ValueKey('photo-single')));
-      expect(size.width, closeTo(540 * 0.72, 0.5));
-      expect(size.height, closeTo(540 * 0.72 * 3 / 4, 0.5));
+      expect(size.width, closeTo(540 * 0.48, 0.5));
+      expect(size.height, closeTo(540 * 0.48 * 3 / 4, 0.5));
       final bubbles = find.descendant(
         of: find.byKey(const ValueKey('chat-message-1')),
         matching: find.byWidgetPredicate(
@@ -195,15 +211,15 @@ void main() {
       expect(find.byKey(const ValueKey('album-page')), findsNothing);
     });
 
-    testWidgets('a tall picture is not taller than 320', (tester) async {
+    testWidgets('a tall picture is not taller than 213', (tester) async {
       await openChat(tester, (backend, room) async {
         final album = await makeAlbum(tester, backend, room, 1, w: 300, h: 900);
         return [albumMessage(1, album)];
       });
       final size = tester.getSize(find.byKey(const ValueKey('photo-single')));
-      expect(size.height, 320);
+      expect(size.height, 213);
       // 1:2 at most
-      expect(size.width, closeTo(160, 0.5));
+      expect(size.width, closeTo(106.5, 0.5));
     });
 
     testWidgets('the caption is under the pictures, in a bubble', (tester) async {
@@ -287,11 +303,11 @@ void main() {
       backend.emit(arrived(albumMessage(1, album, at: DateTime.now().millisecondsSinceEpoch)));
       await tester.pump();
       await tester.pump();
-      expect(dxOf(tester, back(0)), -10);
+      expect(dxOf(tester, back(0)), -16.5);
       // And a touch does not press it
       final touch = await tester.startGesture(tester.getCenter(stack));
       await tester.pump(const Duration(milliseconds: 150));
-      expect(dxOf(tester, back(0)), -10);
+      expect(dxOf(tester, back(0)), -16.5);
       await touch.up();
       await tester.pumpAndSettle();
     });
@@ -321,8 +337,8 @@ void main() {
         expect(dxOf(tester, back(0)), lessThan(-1));
         await tester.pump(const Duration(milliseconds: 600));
         await tester.pumpAndSettle();
-        expect(dxOf(tester, back(0)), closeTo(-10, 0.01));
-        expect(dxOf(tester, back(1)), closeTo(10, 0.01));
+        expect(dxOf(tester, back(0)), closeTo(-16.5, 0.01));
+        expect(dxOf(tester, back(1)), closeTo(16.5, 0.01));
       });
 
       testWidgets('a touch opens the album with the page growing out of the stack, and going back shrinks it into it', (
@@ -363,7 +379,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip(S.chat));
         await tester.pump();
-        expect(dxOf(tester, back(0)), -10);
+        expect(dxOf(tester, back(0)), -16.5);
         await tester.pumpAndSettle();
       });
 
@@ -384,12 +400,12 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 200));
         // The cards behind close in, and the whole is a little smaller
-        expect(dxOf(tester, back(0)), closeTo(-5, 0.6));
+        expect(dxOf(tester, back(0)), closeTo(-8.25, 1.5));
         expect(widthOf(), lessThan(widthBefore));
         // Letting go without a tap, as when the finger turns into a swipe
         await touch.cancel();
         await tester.pumpAndSettle();
-        expect(dxOf(tester, back(0)), closeTo(-10, 0.01));
+        expect(dxOf(tester, back(0)), closeTo(-16.5, 0.01));
         expect(widthOf(), closeTo(widthBefore, 0.01));
       });
     });
@@ -560,21 +576,18 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('photo-source-camera')));
       await tester.pumpAndSettle();
       expect(asked, [PhotoSource.camera]);
-      // Nothing picked: no preview
-      expect(find.byKey(const ValueKey('photo-preview-count')), findsNothing);
+      // Nothing picked: nothing waits above the field
+      expect(find.byKey(const ValueKey('staged-photos')), findsNothing);
     });
 
-    testWidgets('picked photos wait on a ring, then show before they are sent; cancel sends nothing', (tester) async {
+    testWidgets('picked photos wait on a ring, then sit above the field; nothing is sent until Send', (tester) async {
       final (backend, room) = await chatWith(tester, (_) async => picked(3));
       await pick(tester);
       expect(find.byKey(const ValueKey('chat-photo-preparing')), findsOneWidget);
-      await previewShown(tester);
+      await stagedShown(tester);
       expect(find.byKey(const ValueKey('chat-photo-preparing')), findsNothing);
-      expect(find.text(S.photoCount(3)), findsOneWidget);
-      expect(find.text(S.photoReorderHint), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('photo-preview-cancel')));
-      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('photo-remove-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('photo-remove-3')), findsNothing);
       expect(room.chat.value, hasLength(1));
       expect(backend.calls.where((c) => c.startsWith('mediaTickets')), isEmpty);
     });
@@ -582,15 +595,15 @@ void main() {
     testWidgets('a photo is taken out with its cross, a caption is written, and Send sends the rest', (tester) async {
       final (backend, room) = await chatWith(tester, (_) async => picked(3));
       await pick(tester);
-      await previewShown(tester);
+      await stagedShown(tester);
       await tester.tap(find.byKey(const ValueKey('photo-remove-1')));
       await tester.pump();
-      expect(find.text(S.photoCount(2)), findsOneWidget);
-      await tester.enterText(find.byKey(const ValueKey('photo-caption')), '  Sunday  ');
-      await tester.tap(find.byKey(const ValueKey('photo-preview-send')));
-      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('photo-remove-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('photo-remove-2')), findsNothing);
+      await tester.enterText(find.byKey(const ValueKey('chat-field')), '  Sunday  ');
+      await pressSend(tester);
 
-      expect(find.byKey(const ValueKey('photo-preview-count')), findsNothing);
+      expect(find.byKey(const ValueKey('staged-photos')), findsNothing);
       expect(backend.calls, contains('sendChat 📷 2 photos Sunday'));
       expect(AlbumExtra.fromJson(backend.lastExtra!).items, hasLength(2));
       expect(AlbumExtra.fromJson(backend.lastExtra!).caption, 'Sunday');
@@ -600,10 +613,21 @@ void main() {
       await endWait(tester);
     });
 
+    testWidgets('photos alone are enough to send: the button wakes up without any words', (tester) async {
+      final (backend, _) = await chatWith(tester, (_) async => picked(1));
+      expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.send_rounded)).onPressed, isNull);
+      await pick(tester);
+      await stagedShown(tester);
+      expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.send_rounded)).onPressed, isNotNull);
+      await pressSend(tester);
+      expect(backend.calls, contains('sendChat 📷 Photo'));
+      await endWait(tester);
+    });
+
     testWidgets('dragging a photo changes the order they are sent in', (tester) async {
       final (_, room) = await chatWith(tester, (_) async => picked(3));
       await pick(tester);
-      await previewShown(tester);
+      await stagedShown(tester);
       final first = tester.getCenter(find.byKey(const ValueKey('photo-remove-0'))) + const Offset(-20, 40);
       final touch = await tester.startGesture(first);
       await tester.pump(const Duration(milliseconds: 700));
@@ -613,8 +637,7 @@ void main() {
       }
       await touch.up();
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('photo-preview-send')));
-      await tester.pumpAndSettle();
+      await pressSend(tester);
       final names = room.albumUploads.value.values.single.photos.map((p) => p.name).toList();
       expect(names, hasLength(3));
       expect(names.first, isNot('a.png'), reason: 'the first photo was moved off the first place');
@@ -628,18 +651,30 @@ void main() {
         (_) async => [...await picked(1), PickedPhoto(Uint8List.fromList(List.filled(40, 7)), 'bad.bin')],
       );
       await pick(tester);
-      await previewShown(tester);
+      await stagedShown(tester);
       expect(find.text(S.chatPhotoUnreadable('bad.bin')), findsOneWidget);
-      expect(find.text(S.photoCount(1)), findsOneWidget);
+      expect(find.byKey(const ValueKey('photo-remove-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('photo-remove-1')), findsNothing);
     });
 
-    testWidgets('removing every photo closes the preview', (tester) async {
+    testWidgets('taking out every photo clears the row', (tester) async {
       await chatWith(tester, (_) async => picked(1));
       await pick(tester);
-      await previewShown(tester);
+      await stagedShown(tester);
       await tester.tap(find.byKey(const ValueKey('photo-remove-0')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('photo-preview-count')), findsNothing);
+      expect(find.byKey(const ValueKey('staged-photos')), findsNothing);
+    });
+
+    testWidgets('picking again adds to the photos that wait, up to what a message holds', (tester) async {
+      await chatWith(tester, (_) async => picked(6));
+      await pick(tester);
+      await stagedShown(tester);
+      await pick(tester);
+      await until(tester, () => find.text(S.chatAlbumFull(AlbumExtra.maxItems)).evaluate().isNotEmpty);
+      await tester.pump();
+      expect(find.text(S.chatAlbumFull(AlbumExtra.maxItems)), findsOneWidget);
+      expect(tester.widget<ReorderableListView>(find.byType(ReorderableListView)).itemCount, AlbumExtra.maxItems);
     });
 
     testWidgets('the quote above the field goes with the pictures', (tester) async {
@@ -648,28 +683,125 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('chat-reply-banner')), findsOneWidget);
       await pick(tester);
-      await previewShown(tester);
-      await tester.tap(find.byKey(const ValueKey('photo-preview-send')));
-      await tester.pumpAndSettle();
+      await stagedShown(tester);
+      await pressSend(tester);
       expect(find.byKey(const ValueKey('chat-reply-banner')), findsNothing);
       expect(backend.calls, contains('sendChat 📷 2 photos reply 1'));
       expect(room.chat.value.last.reply?.id, 1);
       await endWait(tester);
     });
 
-    testWidgets('a GIF pasted from the keyboard goes through the same preview, and stays a GIF', (tester) async {
+    testWidgets('a GIF pasted from the keyboard waits with the photos, and stays a GIF', (tester) async {
       final (backend, _) = await chatWith(tester, (_) async => const []);
       final gif = img.encodeGif(img.Image(width: 20, height: 10));
       final config = tester.widget<TextField>(find.byKey(const ValueKey('chat-field'))).contentInsertionConfiguration!;
       expect(config.allowedMimeTypes, contains('image/gif'));
       config.onContentInserted(KeyboardInsertedContent(mimeType: 'image/gif', uri: 'content://x/fun.gif', data: gif));
       await tester.pump();
-      await previewShown(tester);
+      await stagedShown(tester);
       expect(find.text('GIF'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('photo-preview-send')));
-      await tester.pumpAndSettle();
+      await pressSend(tester);
       expect(AlbumExtra.fromJson(backend.lastExtra!).items.single.mime, 'image/gif');
       await endWait(tester);
+    });
+  });
+
+  group('pasting pictures', () {
+    List<PickedPhoto> onClipboard(int n) => [
+      for (var i = 0; i < n; i++) PickedPhoto(solidPng(30 * i, 120, 60, side: 12), 'pasted-$i.png'),
+    ];
+
+    Future<(FakeBackend, RoomController)> chatWithClipboard(WidgetTester tester, List<PickedPhoto> photos) => openChat(
+      tester,
+      (backend, room) async => [ChatMessage(id: 1, by: 'b', name: 'Binh', text: 'hi', at: 1790660600000)],
+      clipboardHas: () async => photos.isNotEmpty,
+      clipboard: () async => photos,
+    );
+
+    /// What the keyboard's Ctrl+V or Cmd+V asks of the field in focus.
+    Future<void> paste(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('chat-field')));
+      await tester.pump();
+      Actions.invoke(
+        FocusManager.instance.primaryFocus!.context!,
+        const PasteTextIntent(SelectionChangedCause.keyboard),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('paste puts every picture on the clipboard above the field, and Send sends them as one album', (
+      tester,
+    ) async {
+      final (backend, _) = await chatWithClipboard(tester, onClipboard(3));
+      await paste(tester);
+      await stagedShown(tester);
+      expect(find.byKey(const ValueKey('photo-remove-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('photo-remove-3')), findsNothing);
+      await tester.enterText(find.byKey(const ValueKey('chat-field')), 'look');
+      await pressSend(tester);
+      expect(backend.calls, contains('sendChat 📷 3 photos look'));
+      expect(AlbumExtra.fromJson(backend.lastExtra!).items, hasLength(3));
+      await endWait(tester);
+    });
+
+    testWidgets('paste once more adds to what waits, before anything is sent', (tester) async {
+      final photos = onClipboard(2);
+      final (backend, _) = await chatWithClipboard(tester, photos);
+      await paste(tester);
+      await stagedShown(tester);
+      await paste(tester);
+      await until(tester, () => find.byKey(const ValueKey('photo-remove-3')).evaluate().isNotEmpty);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('photo-remove-3')), findsOneWidget);
+      expect(backend.calls.where((c) => c.startsWith('mediaTickets')), isEmpty);
+      await pressSend(tester);
+      expect(AlbumExtra.fromJson(backend.lastExtra!).items, hasLength(4));
+      await endWait(tester);
+    });
+
+    testWidgets('with no picture on the clipboard, paste is the field’s own and puts the words in', (tester) async {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.getData') return <String, Object?>{'text': 'from the clipboard'};
+        if (call.method == 'Clipboard.hasStrings') return <String, Object?>{'value': true};
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+      await chatWithClipboard(tester, const []);
+      await paste(tester);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('staged-photos')), findsNothing);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('chat-field'))).controller!.text, 'from the clipboard');
+    });
+
+    testWidgets('the menu of the field offers Paste image where the clipboard holds a picture', (tester) async {
+      await chatWithClipboard(tester, onClipboard(1));
+      // The field is touched, which is when the clipboard is looked at
+      await tester.tap(find.byKey(const ValueKey('chat-field')));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.byKey(const ValueKey('chat-field')));
+      await tester.pumpAndSettle();
+      expect(find.text(S.chatPasteImage), findsOneWidget);
+      await tester.tap(find.text(S.chatPasteImage));
+      await stagedShown(tester);
+      expect(find.byKey(const ValueKey('photo-remove-0')), findsOneWidget);
+    });
+
+    testWidgets('the menu has no Paste image when the clipboard holds no picture', (tester) async {
+      await chatWithClipboard(tester, const []);
+      await tester.tap(find.byKey(const ValueKey('chat-field')));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.byKey(const ValueKey('chat-field')));
+      await tester.pumpAndSettle();
+      expect(find.text(S.chatPasteImage), findsNothing);
+    });
+
+    testWidgets('more pictures than a message holds: the first ones are kept, and it is said', (tester) async {
+      await chatWithClipboard(tester, onClipboard(AlbumExtra.maxItems + 2));
+      await paste(tester);
+      await until(tester, () => find.text(S.chatAlbumFull(AlbumExtra.maxItems)).evaluate().isNotEmpty);
+      await tester.pumpAndSettle();
+      expect(find.text(S.chatAlbumFull(AlbumExtra.maxItems)), findsOneWidget);
+      expect(tester.widget<ReorderableListView>(find.byType(ReorderableListView)).itemCount, AlbumExtra.maxItems);
     });
   });
 

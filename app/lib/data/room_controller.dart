@@ -673,7 +673,8 @@ class RoomController extends ChangeNotifier {
   Future<void> sendAlbum(List<PreparedPhoto> photos, {String? caption, ChatQuote? reply}) async {
     if (photos.isEmpty || !hasChat) return;
     final note = caption?.trim() ?? '';
-    final text = note.isEmpty ? S.chatPhotoText(photos.length) : '${S.chatPhotoText(photos.length)} $note';
+    final stand = photos.first.isVideo ? S.chatVideoText : S.chatPhotoText(photos.length);
+    final text = note.isEmpty ? stand : '$stand $note';
     final upload = media.upload(photos, caption: note.isEmpty ? null : note);
     final cid = _addPending(text, reply, null);
     albumUploads.value = {...albumUploads.value, cid: upload};
@@ -1315,6 +1316,25 @@ class RoomController extends ChangeNotifier {
     int? limit,
   }) => _backend.search(query, songsOnly: songsOnly, limit: limit);
   Future<LinkResult?> lookup(String text) => _backend.lookup(text);
+
+  final _linkSongs = <String, Future<Track?>>{};
+
+  /// The song a link of YouTube points to, for the chat to show it as a card; null when it is no song (a playlist) or
+  /// cannot be looked up. Asked once for a link: the answer is kept, and a failure is forgotten so that a later try may work.
+  Future<Track?> songOfLink(String link) {
+    final known = _linkSongs[link];
+    if (known != null) return known;
+    final asked = lookup(link).then<Track?>((found) {
+      final track = found == null || found.isPlaylist || found.tracks.isEmpty ? null : found.tracks.first;
+      if (track == null) _linkSongs.remove(link);
+      return track;
+    }, onError: (Object _) {
+      _linkSongs.remove(link);
+      return null;
+    });
+    if (_linkSongs.length >= 200) _linkSongs.remove(_linkSongs.keys.first);
+    return _linkSongs[link] = asked;
+  }
 
   /// Whether the music carries on with similar songs when the queue runs out.
   bool get autoplay => _profile.autoplay;

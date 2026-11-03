@@ -1,0 +1,7 @@
+Video, ảnh dán và link bài hát trong chat phòng
+- Gửi video: thêm "Thư viện video" và "Quay video" cạnh nút ảnh. Video được nén ngay trên điện thoại thành một tệp MP4 nhẹ và hơi mờ (tối đa 480p, thường 1 đến 4 MB, không bao giờ quá 10 MB) kèm ảnh bìa; chạm vào trong chat để xem toàn màn hình và lưu từ đó. Video quá dài không nén đủ nhỏ sẽ bị từ chối kèm thông báo.
+- Dán ảnh: sao chép một hay nhiều ảnh ở bất kỳ đâu rồi dán vào chat (mục Dán ảnh trong menu của ô nhập, Ctrl+V trên trình duyệt, hoặc bộ nhớ tạm của bàn phím). Ảnh chờ phía trên ô nhập, chữ bạn viết là chú thích, cho tới khi bấm gửi; có thể dán thêm trước đó.
+- Selfie và camera: camera của điện thoại lưu ảnh selfie ngược với lúc xem trước. Mỗi ảnh đang chờ (và video, trên Android) nay có nút lật dọc theo đáy để lật lại.
+- Link một bài hát YouTube trong tin nhắn trở thành thẻ bài hát, có phát, thêm vào hàng đợi và thả tim; các link khác trong tin nhắn nay chạm được.
+- Thẻ bài hát nay là bìa đĩa với đĩa than quay ra khỏi bìa khi bài đang phát, và nhỏ hơn; chồng ảnh album to hơn và vuông, ảnh đơn nhỏ hơn.
+- Video cần máy chủ của bản này, hiện đã chạy sẵn. App cũ thấy video thành hai ảnh.

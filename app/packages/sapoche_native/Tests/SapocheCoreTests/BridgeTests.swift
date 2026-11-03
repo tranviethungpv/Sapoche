@@ -32,6 +32,17 @@ final class FakePlatform: PlatformServices {
 
     func pickMusicFiles() async throws -> [URL] { picked }
 
+    var video: Result<PreparedVideo, BridgeError> = .failure(BridgeError(code: "video_unreadable", message: "No"))
+    var videoAsked: [(String, Int)] = []
+    func prepareVideo(path: String, maxBytes: Int) async throws -> PreparedVideo {
+        videoAsked.append((path, maxBytes))
+        return try video.get()
+    }
+
+    var clipboard: [ClipboardPhoto] = []
+    var clipboardHasPhotos: Bool { !clipboard.isEmpty }
+    func clipboardPhotos() -> [ClipboardPhoto] { clipboard }
+
     func pickOutput() { outputPicked += 1 }
 
     func setVolume(_ level: Float) { volume.set(level) }
@@ -406,6 +417,40 @@ final class BridgeTests: XCTestCase {
     func testTheCacheFolderIsNamed() async throws {
         let folder = try await call("cacheFolder") as? String
         XCTAssertFalse(folder?.isEmpty ?? true)
+    }
+
+    func testThePicturesOnTheClipboardAreHandedOverWithTheirNames() async throws {
+        XCTAssertEqual(try await call("clipboardHasPhotos") as? Bool, false)
+        XCTAssertEqual((try await call("clipboardPhotos") as? [[String: Any]])?.count, 0)
+
+        platform.clipboard = [
+            ClipboardPhoto(name: "pasted-1.png", bytes: Data([1, 2, 3])),
+            ClipboardPhoto(name: "pasted-2.gif", bytes: Data([4, 5])),
+        ]
+        XCTAssertEqual(try await call("clipboardHasPhotos") as? Bool, true)
+        let photos = try XCTUnwrap(try await call("clipboardPhotos") as? [[String: Any]])
+        XCTAssertEqual(photos.map { $0["name"] as? String }, ["pasted-1.png", "pasted-2.gif"])
+        XCTAssertEqual(photos.map { $0["bytes"] as? Data }, [Data([1, 2, 3]), Data([4, 5])])
+    }
+
+    func testAVideoIsSqueezedAndHandedBackWithItsPoster() async throws {
+        platform.video = .success(PreparedVideo(path: "/tmp/out.mp4", w: 720, h: 1280, durMs: 31_000, poster: Data([9, 8])))
+        let made = try XCTUnwrap(try await call("prepareVideo", ["path": "/tmp/in.mov", "maxBytes": 10_485_760]) as? [String: Any])
+        XCTAssertEqual(made["path"] as? String, "/tmp/out.mp4")
+        XCTAssertEqual(made["w"] as? Int, 720)
+        XCTAssertEqual(made["durMs"] as? Int, 31_000)
+        XCTAssertEqual(made["poster"] as? Data, Data([9, 8]))
+        XCTAssertEqual(platform.videoAsked.first?.0, "/tmp/in.mov")
+        XCTAssertEqual(platform.videoAsked.first?.1, 10_485_760)
+    }
+
+    func testAVideoThePhoneCannotReadIsToldWithItsCode() async throws {
+        do {
+            _ = try await call("prepareVideo", ["path": "/tmp/in.avi", "maxBytes": 10_485_760])
+            XCTFail("an unreadable video is an error")
+        } catch let error as BridgeError {
+            XCTAssertEqual(error.code, "video_unreadable")
+        }
     }
 
     func testNoPositionIsSentWhileTheSongStandsStill() async throws {

@@ -46,6 +46,13 @@ Future<(FakeBackend, RoomController)> pumpApp(
   /// Stands in for saving a picture to the gallery.
   PhotoSaver? photoSaver,
 
+  /// Stands in for the picker of the video to send in the chat.
+  ChatVideoPicker? chatVideoPicker,
+
+  /// Stands in for the clipboard: by default there are no pictures on it.
+  ClipboardCheck? clipboardHasPhotos,
+  ClipboardReader? clipboardPhotos,
+
   /// The sticker packs; by default a server that has none, so that no test reaches for the network.
   StickerStore? stickers,
 
@@ -96,6 +103,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
         photoPicker: photoPicker ?? () async => null,
         wallpaperPicker: wallpaperPicker ?? () async => null,
         chatPhotoPicker: chatPhotoPicker ?? (_) async => const [],
+        chatVideoPicker: chatVideoPicker ?? (_) async => null,
+        clipboardHasPhotos: clipboardHasPhotos ?? noPhotosOnClipboard,
+        clipboardPhotos: clipboardPhotos ?? readNoClipboardPhotos,
         photoSaver:
             photoSaver ?? (_, _, _) async => PhotoSaveResult.saved,
       ),

@@ -61,6 +61,33 @@ protocol PlatformServices: AnyObject {
 
     /// Lets the person choose music files; gives back copies of them that are theirs to keep, nothing when they backed out.
     func pickMusicFiles() async throws -> [URL]
+
+    /// Whether the clipboard holds a picture. Asking the kinds of what is there tells the person nothing.
+    var clipboardHasPhotos: Bool { get }
+
+    /// The pictures on the clipboard, in order, each as a file the app reads (a format it does not is turned into a JPEG or
+    /// a PNG); none when the clipboard holds words or nothing.
+    func clipboardPhotos() -> [ClipboardPhoto]
+
+    /// Squeezes the video at [path] to an MP4 (H.264 and AAC) of no more than [maxBytes], as good as the length allows.
+    /// Throws a [BridgeError] with the code `video_unreadable` (cannot be read) or `video_too_big` (too long to fit).
+    func prepareVideo(path: String, maxBytes: Int) async throws -> PreparedVideo
+}
+
+/// A video squeezed for the chat: [path] is the MP4 (the caller deletes it), [w] and [h] its size as shown (upright),
+/// [durMs] its length and [poster] a JPEG of a frame.
+struct PreparedVideo: Equatable {
+    var path: String
+    var w: Int
+    var h: Int
+    var durMs: Int
+    var poster: Data
+}
+
+/// A picture read off the clipboard: [name] is a guess at what it was called, [bytes] the file.
+struct ClipboardPhoto: Equatable {
+    var name: String
+    var bytes: Data
 }
 
 /// Where the sound goes. [kind] is `speaker`, `headphones`, `bluetooth`, `airplay`, `car` or `other`; [name] is what the
@@ -731,6 +758,13 @@ final class Bridge {
             return await uploadMedia(url: string("url"), token: string("token"), bytes: bytes)
         case "downloadMedia":
             return await downloadMedia(room: string("room"), m: string("m"))
+        case "prepareVideo":
+            let made = try await platform.prepareVideo(path: string("path"), maxBytes: Int(int64("maxBytes")))
+            return ["path": made.path, "w": made.w, "h": made.h, "durMs": made.durMs, "poster": made.poster] as [String: Any]
+        case "clipboardHasPhotos":
+            return platform.clipboardHasPhotos
+        case "clipboardPhotos":
+            return platform.clipboardPhotos().map { ["name": $0.name, "bytes": $0.bytes] as [String: Any] }
         case "enableEncryption":
             try requireRoom()
             return controller.enableEncryption()

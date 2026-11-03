@@ -751,6 +751,8 @@ abstract final class S {
     'Hãy mở liên kết mời của phòng này, có kèm khoá, để đọc và nhắn ở đây.',
   );
   static String get chatLocked => _t('Cannot be read', 'Không đọc được');
+  static String get linkCannotOpen =>
+      _t('Could not open this link', 'Không mở được liên kết này');
 
   static String get chatNotSent =>
       _t('Not sent · tap to try again', 'Chưa gửi được · chạm để thử lại');
@@ -835,14 +837,42 @@ abstract final class S {
   static String get songSentToChat =>
       _t('Sent to the chat', 'Đã gửi vào chat');
   static String get photoGallery => _t('Photo library', 'Thư viện ảnh');
+  static String get photoFlip => _t('Flip left to right', 'Lật ngang');
+  static String get videoGallery => _t('Video library', 'Thư viện video');
+  static String get videoRecord => _t('Record a video', 'Quay video');
+  static String get chatVideoText => _t('🎬 Video', '🎬 Video');
+  static String get videoPreparing =>
+      _t('Squeezing the video…', 'Đang nén video…');
+  static String get chatNoMix => _t(
+    'Photos and a video cannot go in the same message',
+    'Ảnh và video không gửi chung một tin được',
+  );
+  static String chatVideoTooLarge(String name, bool squeezable) => squeezable
+      ? _t(
+          '$name is too long to fit in 10 MB, even squeezed',
+          '$name quá dài để nén xuống 10 MB',
+        )
+      : _t(
+          '$name is over 10 MB: squeeze it on your phone first',
+          '$name nặng hơn 10 MB: hãy nén trên điện thoại trước',
+        );
+  static String chatVideoUnreadable(String name) => _t(
+    '$name is not a video that can be sent',
+    '$name không phải video có thể gửi',
+  );
+  static String get videoSave => _t('Save video', 'Lưu video');
+  static String get videoSaved => _t('Video saved', 'Đã lưu video');
+  static String get videoCannotPlay =>
+      _t('This video cannot be played', 'Không phát được video này');
   static String get photoCamera => _t('Camera', 'Máy ảnh');
   static String get photoPreparing =>
       _t('Preparing photos…', 'Đang chuẩn bị ảnh…');
-  static String get photoCaptionHint =>
-      _t('Add a caption…', 'Thêm chú thích…');
   static String get photoRemove => _t('Remove photo', 'Bỏ ảnh này');
-  static String get photoReorderHint =>
-      _t('Hold a photo and drag to reorder', 'Giữ và kéo ảnh để đổi thứ tự');
+  static String get chatPasteImage => _t('Paste image', 'Dán ảnh');
+  static String chatAlbumFull(int max) => _t(
+    'A message holds $max photos at most',
+    'Một tin nhắn chứa tối đa $max ảnh',
+  );
   static String photoCount(int count) => count == 1
       ? _t('1 photo', '1 ảnh')
       : _t('$count photos', '$count ảnh');

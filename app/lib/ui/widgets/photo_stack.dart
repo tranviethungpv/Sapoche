@@ -29,6 +29,7 @@ class SinglePhoto extends StatelessWidget {
     required this.room,
     required this.onTap,
     this.overlay,
+    this.badge,
   });
 
   final AlbumSlot slot;
@@ -41,11 +42,14 @@ class SinglePhoto extends StatelessWidget {
   /// Drawn over the picture (how far it has gone up, that it failed).
   final Widget? overlay;
 
-  static const maxHeight = 320.0;
+  /// Drawn over the picture, under [overlay] (the play mark of a video).
+  final Widget? badge;
+
+  static const maxHeight = 213.0;
 
   @override
   Widget build(BuildContext context) {
-    var width = MediaQuery.sizeOf(context).width * 0.72;
+    var width = MediaQuery.sizeOf(context).width * 0.48;
     var height = width / slot.aspect;
     if (height > maxHeight) {
       height = maxHeight;
@@ -71,6 +75,7 @@ class SinglePhoto extends StatelessWidget {
                   playing: _mayPlay(context, visible, slot),
                 ),
               ),
+              ?badge,
               ?overlay,
             ],
           ),
@@ -94,7 +99,8 @@ class _Back {
 }
 
 /// Two to ten pictures as a stack of photos, the way Messenger shows an album: the first one on top, the next two
-/// peeking out from behind it, and the number of pictures at its corner. A new one fans out; a touch presses it.
+/// fanned out from behind it, all in a square, and the number of pictures at its corner. A new one fans out; a touch
+/// presses it.
 class PhotoStack extends StatefulWidget {
   const PhotoStack({
     super.key,
@@ -124,12 +130,12 @@ class PhotoStack extends StatefulWidget {
 }
 
 class _PhotoStackState extends State<PhotoStack> with TickerProviderStateMixin {
-  static const _radius = 18.0;
-  static const _ratio = 1.25; // 4:5
-  static const _room = 12.0; // what the cards behind reach out sideways
+  static const _radius = 16.0;
+  static const _side = 174.0; // the top card is a square, no wider than this
+  static const _room = 27.0; // what the cards behind reach out sideways
 
   /// Left and right behind the top card; the angles get a degree or so of their own from the picture's id.
-  static final _backs = [_Back(-5 * pi / 180, -10, 0.94, 0.08), _Back(4 * pi / 180, 10, 0.90, 0.14)];
+  static final _backs = [_Back(-8 * pi / 180, -16.5, 0.94, 0.08), _Back(7 * pi / 180, 16.5, 0.90, 0.14)];
 
   static final _spring = SpringDescription.withDampingRatio(mass: 1, stiffness: 300, ratio: 0.6);
 
@@ -225,7 +231,7 @@ class _PhotoStackState extends State<PhotoStack> with TickerProviderStateMixin {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(_radius),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 5)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.28), blurRadius: 12, offset: const Offset(0, 4)),
           ],
         ),
         child: ClipRRect(
@@ -272,8 +278,8 @@ class _PhotoStackState extends State<PhotoStack> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final still = MediaQuery.disableAnimationsOf(context);
-    final width = min(240.0, MediaQuery.sizeOf(context).width * 0.6);
-    final height = width * _ratio;
+    final width = min(_side, MediaQuery.sizeOf(context).width * 0.6);
+    final height = width;
     return Semantics(
       button: true,
       label: S.photoCount(widget.slots.length),
@@ -288,7 +294,7 @@ class _PhotoStackState extends State<PhotoStack> with TickerProviderStateMixin {
           behavior: HitTestBehavior.opaque,
           onTap: () => widget.onTap(_topRect(context, width, height)),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: _room, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: _room, vertical: 12),
             child: still
                 ? _layout(width, height, 1, 0)
                 : AnimatedBuilder(
@@ -318,17 +324,17 @@ class _Count extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = Theme.of(context).textTheme.labelMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700);
     return DecoratedBox(
-      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(11)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.photo_library_outlined, size: 14, color: Colors.white),
+            const Icon(Icons.photo_library_outlined, size: 13, color: Colors.white),
             const SizedBox(width: 4),
             Text('${slots.length}', key: const ValueKey('photo-stack-count'), style: style),
             if (slots.any((s) => s.animated)) ...[
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
               Text('GIF', key: const ValueKey('photo-stack-gif'), style: style),
             ],
           ],

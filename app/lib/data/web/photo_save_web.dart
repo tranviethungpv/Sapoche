@@ -24,5 +24,6 @@ Future<bool?> saveToDevice(Uint8List bytes, String name, String mime) async {
 String _extension(String mime) => switch (mime) {
   'image/gif' => 'gif',
   'image/webp' => 'webp',
+  'video/mp4' => 'mp4',
   _ => 'jpg',
 };

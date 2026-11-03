@@ -94,6 +94,8 @@ class SapocheBridge(
     private val display = SmoothDisplay(activity)
 
     private val outputs = AudioOutputs(activity)
+    private val clipboard = ClipboardPhotos(activity)
+    private val videos = VideoCompressor(activity)
 
     /** Where the player's picture is drawn for Flutter's Texture widget; made when first asked for. */
     private var picture: TextureRegistry.SurfaceProducer? = null
@@ -428,6 +430,20 @@ class SapocheBridge(
                 return null
             }
             "cacheFolder" -> return activity.cacheDir.path
+            "prepareVideo" -> {
+                val made = try {
+                    videos.prepare(
+                        call.argument<String>("path").orEmpty(),
+                        (call.argument<Number>("maxBytes") ?: 0).toLong(),
+                        call.argument<Boolean>("mirror") == true,
+                    )
+                } catch (e: VideoCompressor.Failure) {
+                    throw CodedException(e.code, e.code)
+                }
+                return mapOf("path" to made.path, "w" to made.w, "h" to made.h, "durMs" to made.durMs, "poster" to made.poster)
+            }
+            "clipboardHasPhotos" -> return clipboard.hasPhotos()
+            "clipboardPhotos" -> return clipboard.read().map { mapOf("name" to it.name, "bytes" to it.bytes) }
             "smooth" -> {
                 display.pace(call.argument<String>("pace") ?: "free")
                 return null
