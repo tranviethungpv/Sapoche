@@ -1,0 +1,6 @@
+Gợi ý nhạc hay hơn, và gu nhạc do bạn chỉnh
+- Bài bạn không tự chọn được tính đúng mức: bài người khác thêm vào hàng đợi phòng tính một nửa, và bài người khác bấm bỏ qua không còn bị tính là bạn bỏ qua.
+- Tự động phát nay xếp bài theo gu của bạn và bỏ những bài bạn hay bỏ qua. Trang chủ dùng cùng một điểm số, nên bài bạn hay bỏ qua không còn lọt vào các mix.
+- Khi phòng hết bài, tự động phát tìm bài giống bài của nhiều thành viên, không chỉ bài cuối. Mỗi người có thể chia sẻ vài bài mình thích (bật sẵn, chỉnh ở Cài đặt > Gợi ý; phòng mã hoá thì server không đọc được).
+- Cài đặt > Gợi ý hiện các nghệ sĩ bạn nghe nhiều nhất và các cụm gu. Bạn có thể bớt gợi ý một nghệ sĩ, cho app không tính một bài vào gu, hoặc chặn nghệ sĩ. Trang này cũng cho biết bài bị bỏ qua nhiều hay ít theo nguồn.
+- Mới dùng app? Chọn vài nghệ sĩ bạn thích ngay ở Trang chủ để bắt đầu.

@@ -1,0 +1,6 @@
+Better suggestions, and a taste you can shape
+- Songs you did not choose count for what they are: a song another member put on the room's queue counts half, and a song someone else skipped is no longer counted as skipped by you.
+- Autoplay now puts songs in the order that suits you, and drops songs you keep skipping. The home page uses the same score, so a song you skip a lot stays out of your mixes.
+- When a room runs out of songs, autoplay looks for songs like those of several members, not only the last song. Each member can share a few songs they love (on by default, in Settings > Suggestions; in an encrypted room the server cannot read them).
+- Settings > Suggestions shows the artists you listen to most and your tastes. You can suggest less of an artist, tell the app not to count a song, or block an artist. It also shows how often songs are skipped, by where they came from.
+- New to the app? Pick a few artists you like on the home page to get started.
