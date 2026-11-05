@@ -424,6 +424,7 @@ class SapocheBridge(
 "autoplay" to prefs.getBoolean("autoplay", true),
                 "shareTaste" to prefs.getBoolean("share_taste", true),
                 "audioQuality" to SapocheApp.audioQuality.level,
+                "normalizeVolume" to prefs.getBoolean("normalize_volume", true),
             )
             "setupLink" -> return Config.setupLink()
             // The server of this build is the one built in; only the key of a build for the public is taken from the link
@@ -489,6 +490,10 @@ class SapocheBridge(
                 val quality = AudioQuality.of((call.argument<Number>("level") ?: AudioQuality.MAX.level).toInt())
                 SapocheApp.audioQuality = quality
                 prefs.edit().putInt("audio_quality", quality.level).apply()
+                return null
+            }
+            "setNormalizeVolume" -> {
+                prefs.edit().putBoolean("normalize_volume", call.argument<Boolean>("on") == true).apply()
                 return null
             }
             "forYou" -> return SapocheApp.suggestions.forYou().map { it.toMap() }

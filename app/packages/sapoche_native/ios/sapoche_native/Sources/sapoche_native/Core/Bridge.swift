@@ -186,6 +186,16 @@ final class Bridge {
             guard let self, self.visible else { return }
             self.emit(UiJson.volume(level))
         }
+        // How loud a song is comes with its stream; it is kept for hearing the song without a network
+        controller.loudnessLookup = { [store] id in try? await store.loudness(id) }
+        let controller = controller
+        let store = store
+        Task {
+            await streams.onLoudness { id, db in
+                Task { @MainActor in controller.loudnessLearned(id, db) }
+                Task { try? await store.setLoudness(id, db: db) }
+            }
+        }
         // A message, an answer or a reaction that comes while nobody looks at the app is told as a notification
         noticeSubscription = controller.chatNotices.observe { [weak self] notice in self?.tell(notice) }
     }
@@ -424,7 +434,7 @@ final class Bridge {
             var profile: [String: Any] = [
                 "device": platform.deviceModel, "trimMs": controller.trimMs, "videoHeight": videoHeight,
                 "server": settings.server, "autoplay": controller.autoplayOn, "shareTaste": controller.shareTasteOn, "configured": settings.isSet, "key": !settings.key.isEmpty,
-                "audioQuality": audioQuality.rawValue,
+                "audioQuality": audioQuality.rawValue, "normalizeVolume": controller.normalizeVolumeOn,
             ]
             // Only a name the person chose: the phone's own name would be shown to everybody in the room
             if let name = prefs.string(Self.keyRoomName) { profile["name"] = name }
@@ -461,6 +471,9 @@ final class Bridge {
         case "setAudioQuality":
             // Songs already kept on disk stay in the stream they were fetched in, so nothing is dropped here
             prefs.set(Int64(AudioQuality(level: JSON(args["level"]).int ?? AudioQuality.max.rawValue).rawValue), for: "audio_quality")
+            return nil
+        case "setNormalizeVolume":
+            controller.normalizeVolumeOn = bool("on")
             return nil
         case "forYou":
             return try await suggestions.forYou().map { $0.toMap() }

@@ -328,6 +328,15 @@ void main() {
     'the sound quality is the best until the native side says otherwise',
     () {
       expect(Profile.fromMap({'name': 'Anna'}).audioQuality, AudioQuality.max);
+      expect(Profile.fromMap({'name': 'Anna'}).normalizeVolume, isTrue);
+      expect(
+        Profile.fromMap({'normalizeVolume': false}).normalizeVolume,
+        isFalse,
+      );
+      expect(
+        const Profile(normalizeVolume: false).withAutoplay(false).normalizeVolume,
+        isFalse,
+      );
       expect(
         Profile.fromMap({'audioQuality': 0}).audioQuality,
         AudioQuality.low,

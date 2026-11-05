@@ -2787,6 +2787,23 @@ void main() {
       expect(checked('max'), isFalse);
     });
 
+    testWidgets('the switch that evens out loudness is on until turned off', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await openTopic(tester, 'playback');
+
+      final switchKey = find.byKey(const ValueKey('normalize-volume-switch'));
+      await tester.ensureVisible(switchKey);
+      expect(tester.widget<SwitchListTile>(switchKey).value, isTrue);
+      await tester.tap(switchKey);
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('normalizeVolume false'));
+      expect(tester.widget<SwitchListTile>(switchKey).value, isFalse);
+    });
+
     testWidgets('the autoplay switch in settings tells the native side', (
       tester,
     ) async {

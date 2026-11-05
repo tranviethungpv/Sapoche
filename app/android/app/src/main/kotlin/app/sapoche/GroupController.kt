@@ -112,12 +112,20 @@ class GroupController(
     private var autoplayJob: Job? = null
     private var radioJob: Job? = null
 
-    /** Stops this device after a while, or when the song is over; the fade is the player's own volume. */
+    /** Songs of different loudness are played at one level, unless the person turned that off. */
+    private val balance = VolumeBalance(exo, SapocheApp.loudness, ownScope) { prefs.getBoolean(KEY_NORMALIZE, true) }
+
+    /** The screen turns the evening out on or off by writing the choice; the song that plays follows at once. (Kept in a field: preferences hold their listeners weakly.) */
+    private val normalizeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == KEY_NORMALIZE) balance.changed()
+    }.also { prefs.registerOnSharedPreferenceChangeListener(it) }
+
+    /** Stops this device after a while, or when the song is over; the fade is a share of the song's own volume. */
     val sleep = SleepTimer(
         ownScope,
         wallClock = System::currentTimeMillis,
         stop = ::stopForSleep,
-        fade = { exo.volume = it },
+        fade = balance::fade,
         pauseAtSongEnd = { exo.setPauseAtEndOfMediaItems(it) },
     )
 
@@ -1058,6 +1066,7 @@ class GroupController(
         const val KEY_ROOM_SOLO_ITEM = "room_solo_item"
         const val KEY_LAST_ACTIVE = "room_last_active"
         const val KEY_VIDEO = "video_mode"
+        const val KEY_NORMALIZE = "normalize_volume"
         const val KEY_AUTOPLAY = "autoplay"
         const val KEY_SHARE_TASTE = "share_taste"
         const val TASTE_PROTOCOL = 19

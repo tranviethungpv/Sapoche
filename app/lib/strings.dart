@@ -1034,6 +1034,13 @@ abstract final class S {
     'Áp dụng từ bài sau. YouTube không có gì cao hơn khoảng 160 kbps, nên Cao nhất là mức tốt nhất có thể. Bài đã lưu sẵn trên máy giữ chất lượng lúc lấy cho đến khi xóa ở Bộ nhớ, và bài đã tải về giữ nguyên như lúc tải. iPhone chỉ phát được AAC nên ở đó vài mức có thể nghe giống nhau.',
   );
 
+  static String get normalizeVolume =>
+      _t('Even out loudness', 'Cân bằng âm lượng');
+  static String get normalizeVolumeHelp => _t(
+    'Loud songs are turned down to the level YouTube plays them at, so that songs sound about equally loud. Quiet songs are left as they are. Turn it off to hear songs as they were mastered. Songs from files on this phone are not changed.',
+    'Bài to được hạ xuống đúng mức YouTube vẫn phát, để các bài nghe to bằng nhau. Bài nhỏ giữ nguyên. Tắt đi để nghe bài đúng như lúc được thu. Bài từ tệp trên máy không bị đổi.',
+  );
+
   // Picture
   static String get modeAudio => _t('Audio', 'Âm thanh');
   static String get modeVideo => _t('Video', 'Video');

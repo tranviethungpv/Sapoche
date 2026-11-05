@@ -24,12 +24,12 @@ data class ProbeResult(
  * not just the first bytes. A broken part shows in the status of the answer, so
  * each part is small: on a slow network the probe comes before the first sound.
  */
-class Probe(private val client: OkHttpClient = OkHttpDownloader.defaultClient()) {
+open class Probe(private val client: OkHttpClient = OkHttpDownloader.defaultClient()) {
 
-    suspend fun check(source: AudioSource, userAgent: String = OkHttpDownloader.USER_AGENT): ProbeResult =
+    open suspend fun check(source: AudioSource, userAgent: String = OkHttpDownloader.USER_AGENT): ProbeResult =
         check(source.url, source.contentLength, userAgent)
 
-    suspend fun check(url: String, contentLength: Long, userAgent: String = OkHttpDownloader.USER_AGENT): ProbeResult =
+    open suspend fun check(url: String, contentLength: Long, userAgent: String = OkHttpDownloader.USER_AGENT): ProbeResult =
         withContext(Dispatchers.IO) {
             val t0 = System.nanoTime()
             val head = async { range(url, 0, PART_BYTES - 1, userAgent) to (System.nanoTime() - t0) / 1_000_000 }

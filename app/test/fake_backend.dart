@@ -556,6 +556,9 @@ class FakeBackend implements Backend {
   Future<void> setAudioQuality(AudioQuality quality) =>
       _record('audioQuality ${quality.name}');
 
+  @override
+  Future<void> setNormalizeVolume(bool on) => _record('normalizeVolume $on');
+
   SongRadio radioResult = const SongRadio();
   RelatedPage relatedResult = const RelatedPage();
   ArtistPage artistResult = const ArtistPage(id: 'UC1', name: 'Artist');

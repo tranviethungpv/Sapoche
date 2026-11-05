@@ -3,7 +3,10 @@ package app.sapoche
 import app.sapoche.core.AudioPicker
 import app.sapoche.core.AudioQuality
 import app.sapoche.core.AudioSource
+import app.sapoche.core.InnertubePlayer
 import app.sapoche.core.Probe
+import app.sapoche.core.ProbeResult
+import app.sapoche.core.Resolved
 import app.sapoche.core.StreamResolver
 import app.sapoche.core.VideoPicker
 import app.sapoche.core.VideoSource
@@ -52,7 +55,7 @@ class StreamCache(
     }
 
     /** An audio stream to read a song from: its address, which stream it is, and whether the pinned one was followed. */
-    data class AudioPick(val url: String, val itag: Int, val honoursPin: Boolean)
+    data class AudioPick(val url: String, val itag: Int, val honoursPin: Boolean, val loudnessDb: Double? = null)
     private data class VideoEntry(val url: String, val resolvedAtMs: Long)
 
     private val entries = ConcurrentHashMap<String, Entry>()
@@ -73,13 +76,13 @@ class StreamCache(
         val entry = entry(videoId)
         val pick = AudioPicker.pick(entry.audio, pinnedItag, quality) ?: throw IOException("$videoId has no audio stream")
         // The best stream was probed when it was resolved; another one has not been looked at yet
-        if (pick.source.itag == entry.best.itag) return AudioPick(pick.source.url, pick.source.itag, pick.honoursPin)
+        if (pick.source.itag == entry.best.itag) return AudioPick(pick.source.url, pick.source.itag, pick.honoursPin, pick.source.loudnessDb)
         val probed = runBlocking { probe.check(pick.source) }
         EventLog.d("resolve", "$videoId pinned itag=${pick.source.itag} probe=${probed.headStatus}/${probed.midStatus}/${probed.tailStatus}")
         return if (probed.ok) {
-            AudioPick(pick.source.url, pick.source.itag, pick.honoursPin)
+            AudioPick(pick.source.url, pick.source.itag, pick.honoursPin, pick.source.loudnessDb)
         } else {
-            AudioPick(entry.best.url, entry.best.itag, false)
+            AudioPick(entry.best.url, entry.best.itag, false, entry.best.loudnessDb)
         }
     }
 
@@ -190,18 +193,18 @@ class StreamCache(
         for (attempt in 1..MAX_ATTEMPTS) {
             try {
                 val resolved = resolver.resolve(videoId)
-                val probed = probe.check(resolved.best)
-                EventLog.d(
-                    "resolve",
-                    "$videoId attempt=$attempt resolve=${resolved.resolveMs}ms itag=${resolved.best.itag} " +
-                        "${resolved.best.codec} ${resolved.best.bitrateKbps}kbps " +
-                        "probe=${probed.headStatus}/${probed.midStatus}/${probed.tailStatus} " +
-                        "firstByte=${probed.firstByteMs}ms ${if (probed.ok) "OK" else "POISONED"}",
-                )
-                if (probed.ok) {
-                    return Entry(resolved.best, resolved.all, resolved.videos, System.currentTimeMillis())
-                        .also { entries[videoId] = it }
+                val entry = Entry(resolved.best, resolved.all, resolved.videos, System.currentTimeMillis())
+                if (resolved.via == InnertubePlayer.VIA) {
+                    // The addresses of the app API have not been seen to break, so the song starts at once and the probe runs
+                    // beside it; if it finds the address broken, the address is dropped and the player's own retry (see
+                    // [PatientLoadErrorPolicy]) fetches a new one when the break is reached
+                    entries[videoId] = entry
+                    scope.launch { verify(videoId, entry, resolved, attempt) }
+                    return entry
                 }
+                val probed = probe.check(resolved.best)
+                logResolve(videoId, attempt, resolved, probed)
+                if (probed.ok) return entry.also { entries[videoId] = it }
                 lastProblem = "probe ${probed.headStatus}/${probed.midStatus}/${probed.tailStatus}"
                 lastError = null
             } catch (e: CancellationException) {
@@ -221,6 +224,29 @@ class StreamCache(
         if (isOffline(lastError)) throw LoadFailure(LoadFailure.Reason.OFFLINE, "No network to get $videoId ($lastProblem)", lastError)
         throw ResolveFailed("Could not get a working stream for $videoId after $MAX_ATTEMPTS attempts ($lastProblem)")
     }
+
+    /** The probe of an address that is already in use; a broken one is forgotten, unless something newer took its place. */
+    private suspend fun verify(videoId: String, entry: Entry, resolved: Resolved, attempt: Int) {
+        val probed = try {
+            probe.check(resolved.best)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Not being able to look says nothing about the address
+            EventLog.d("resolve", "$videoId probe failed: ${e.javaClass.simpleName}")
+            return
+        }
+        logResolve(videoId, attempt, resolved, probed)
+        if (!probed.ok) entries.remove(videoId, entry)
+    }
+
+    private fun logResolve(videoId: String, attempt: Int, resolved: Resolved, probed: ProbeResult) = EventLog.d(
+        "resolve",
+        "$videoId attempt=$attempt via=${resolved.via} resolve=${resolved.resolveMs}ms${resolved.steps.let { if (it.isEmpty()) "" else " ($it)" }} " +
+            "itag=${resolved.best.itag} ${resolved.best.codec} ${resolved.best.bitrateKbps}kbps " +
+            "probe=${probed.headStatus}/${probed.midStatus}/${probed.tailStatus} " +
+            "firstByte=${probed.firstByteMs}ms ${if (probed.ok) "OK" else "POISONED"}",
+    )
 
     /** The tries to get a working stream were all used up; the player does not try again by itself, see [PatientLoadErrorPolicy]. */
     class ResolveFailed(message: String) : IOException(message)

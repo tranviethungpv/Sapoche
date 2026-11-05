@@ -1,0 +1,5 @@
+Phát nhanh hơn, và các bài nghe to đều nhau
+- Bài bạn chạm lần đầu nay bắt đầu nhanh hơn nhiều trên Android: app lấy thứ cần để phát bài trong một phần nhỏ thời gian trước đây, và phát ngay mà không đợi các bước kiểm tra phụ. Nếu có gì trục trặc, app quay về cách cũ nên không có gì ngừng hoạt động.
+- Những bài đầu của kết quả tìm kiếm, Quick picks, album và playlist được chuẩn bị sẵn, nên chạm vào chúng là phát gần như ngay.
+- Công tắc mới "Cân bằng âm lượng" ở Cài đặt > Phát, bật sẵn. Bài to được hạ xuống đúng mức YouTube vẫn phát, để các bài nghe to bằng nhau và bạn khỏi phải chỉnh âm lượng liên tục. Bài nhỏ giữ nguyên, nên một số bài có thể nghe nhỏ hơn trước: tăng âm lượng máy một lần, hoặc tắt công tắc đi. Bài đã tải về cũng được cân bằng khi không có mạng. (Không áp dụng trên web, nơi trình phát của YouTube đã tự làm việc này.)
+- Trên iPhone, bài không còn bắt đầu rồi đứt sau vài giây khi lần lấy bài đầu tiên bị lỗi.

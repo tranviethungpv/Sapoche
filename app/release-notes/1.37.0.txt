@@ -1,0 +1,5 @@
+Faster to play, and songs at an even volume
+- Songs you tap for the first time now start much faster on Android: the app gets what it needs to play a song in a fraction of the time it took before, and it starts playing without waiting for its extra checks. If anything goes wrong it falls back to the old way, so nothing stops working.
+- The first songs of your search results, quick picks, albums and playlists are prepared ahead of time, so tapping one of them starts almost at once.
+- New "Even out loudness" switch in Settings > Playback, on by default. Loud songs are turned down to the level YouTube plays them at, so songs sound about equally loud and you stop reaching for the volume. Quiet songs are left as they are, so some songs may sound a little quieter than before: turn the volume up once, or turn the switch off. It also works for downloaded songs without a network. (Not on the web, where YouTube's own player already does it.)
+- On iPhone, a song can no longer start and then cut out after a few seconds when the first attempt to get it fails.

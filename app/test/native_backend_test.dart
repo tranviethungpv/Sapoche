@@ -59,6 +59,22 @@ void main() {
     },
   );
 
+  test(
+    'the switch of loudness crosses as a flag, and comes back in the profile',
+    () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(control, (call) async {
+        calls.add(call);
+        return call.method == 'profile' ? {'normalizeVolume': false} : null;
+      });
+      final backend = NativeBackend();
+      await backend.setNormalizeVolume(false);
+      expect(calls.single.method, 'setNormalizeVolume');
+      expect(calls.single.arguments, {'on': false});
+      expect((await backend.profile()).normalizeVolume, isFalse);
+    },
+  );
+
   test('everyone who listens shares one platform subscription', () async {
     var listens = 0;
     messenger.setMockStreamHandler(

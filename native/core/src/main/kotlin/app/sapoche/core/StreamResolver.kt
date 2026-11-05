@@ -28,6 +28,8 @@ data class AudioSource(
     val bitrateKbps: Int,
     val contentLength: Long,
     val itag: Int,
+    /** How many dB the song is above YouTube's reference level (negative when below), when the answer says. */
+    val loudnessDb: Double? = null,
 )
 
 /** A video-only stream, played together with an audio stream when the picture is wanted. */
@@ -49,6 +51,10 @@ data class Resolved(
     val resolveMs: Long,
     /** Video-only streams found beside the audio, best first; empty when the video cannot be played. */
     val videos: List<VideoSource> = emptyList(),
+    /** Which way the streams were found, for the log. */
+    val via: String = "newpipe",
+    /** How long the steps of the resolve took, for the log; empty when it is not told. */
+    val steps: String = "",
 )
 
 /**

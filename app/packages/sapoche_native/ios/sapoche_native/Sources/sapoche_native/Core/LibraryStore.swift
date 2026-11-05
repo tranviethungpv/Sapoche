@@ -114,7 +114,7 @@ actor LibraryStore {
     static let done = "done"
     static let failed = "failed"
     static let maxTries = 3
-    private static let version = 8
+    private static let version = 9
 
     private let db: SQLite
     private let onChange: @Sendable () -> Void
@@ -178,6 +178,10 @@ actor LibraryStore {
                 try db.run("ALTER TABLE skips ADD COLUMN source TEXT")
                 // What the person told the taste: artists to hear less of, songs not to count, and the artists a new person started with
                 try db.run("CREATE TABLE taste_marks(kind TEXT NOT NULL, key TEXT NOT NULL, label TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(kind, key))")
+            }
+            if found < 9 {
+                // How loud each song is against YouTube's reference level, in hundredths of a dB; null until a stream of it said so
+                try db.run("ALTER TABLE tracks ADD COLUMN loudness_cdb INTEGER")
             }
         }
         db.version = version
@@ -747,6 +751,17 @@ actor LibraryStore {
     /// Where the file of a local song is, or nil when it has none or is gone.
     func localUri(_ videoId: String) throws -> String? {
         try db.rows("SELECT uri FROM local_files WHERE video_id = ? AND missing = 0", [.text(videoId)]).first?[0].text
+    }
+
+    /// Keeps how loud [videoId] is, for hearing it without a network. A song that has no row yet gets it when it has one.
+    func setLoudness(_ videoId: String, db loudness: Double) throws {
+        try db.run("UPDATE tracks SET loudness_cdb = ? WHERE video_id = ?", [.int(Int64((loudness * 100).rounded())), .text(videoId)])
+    }
+
+    /// How many dB above YouTube's reference level the song was when last heard, or nil when that is not known.
+    func loudness(_ videoId: String) throws -> Double? {
+        guard let row = try db.rows("SELECT loudness_cdb FROM tracks WHERE video_id = ? AND loudness_cdb IS NOT NULL", [.text(videoId)]).first else { return nil }
+        return Double(row[0].int) / 100
     }
 
     // ------------------------------------------------------------------ helpers

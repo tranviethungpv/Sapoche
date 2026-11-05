@@ -103,6 +103,15 @@ void main() {
       expect(tester.getRect(find.text('The Album')).right, lessThan(one.left));
     });
 
+    testWidgets('has the streams of its first songs looked up while it opens', (
+      tester,
+    ) async {
+      final (backend, context) = await start(tester);
+      backend.collectionResult = album;
+      await openAlbum(tester, context);
+      expect(backend.warmed, ['a1aaaaaaaaa,a2aaaaaaaaa,a3aaaaaaaaa']);
+    });
+
     testWidgets('has its cover facts, numbered songs and rows below', (
       tester,
     ) async {

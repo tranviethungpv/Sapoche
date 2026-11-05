@@ -427,6 +427,10 @@ abstract class Backend {
   /// How much sound to fetch for the songs that are not kept yet; from the next song on.
   Future<void> setAudioQuality(AudioQuality quality);
 
+  /// Whether loud songs are turned down to the level of the others (on unless the person turned it off); at once for the
+  /// song that plays. A browser does nothing: YouTube's player does it by itself.
+  Future<void> setNormalizeVolume(bool on);
+
   /// The person's playlists, the one changed last first.
   Future<List<SavedPlaylist>> playlists();
   Future<List<Track>> playlistTracks(int id);
@@ -1074,6 +1078,10 @@ class NativeBackend implements Backend {
   @override
   Future<void> setAudioQuality(AudioQuality quality) =>
       _call('setAudioQuality', {'level': quality.index});
+
+  @override
+  Future<void> setNormalizeVolume(bool on) =>
+      _call('setNormalizeVolume', {'on': on});
 
   @override
   Future<SongRadio> musicNext(String videoId) async => SongRadio.fromMap(

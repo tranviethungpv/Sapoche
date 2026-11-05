@@ -345,7 +345,7 @@ final class GroupController {
             time: self.time,
             wallClock: { Int64(Date().timeIntervalSince1970 * 1000) },
             stop: { [weak self] in self?.stopForSleep() },
-            fade: { [weak engine] in engine?.setVolume($0) },
+            fade: { [weak self] in self?.fadeVolume($0) },
             pauseAtSongEnd: { [weak engine] in engine?.setPauseAtSongEnd($0) }
         )
         recorder = ListenRecorder(
@@ -369,6 +369,7 @@ final class GroupController {
         engine.onResumeAfterInterruption = { [weak self] in self?.requestPlay() }
         engine.onChange = { [weak self] in
             guard let self else { return }
+            self.applyVolume()
             self.recorder?.changed()
             self.playerChanged.emit(())
             self.updateIdle()
@@ -1001,6 +1002,59 @@ final class GroupController {
     /// The room's current queue, for callers that need item ids.
     func queue() -> [QueueItem] { session?.snapshot.value.state?.queue ?? [] }
 
+    // ------------------------------------------------------------------ volume
+
+    /// Songs are played at the same loudness (see [Loudness]) unless the person turned that off.
+    var normalizeVolumeOn: Bool {
+        get { prefs.bool(Self.keyNormalizeVolume, default: true) }
+        set {
+            prefs.set(newValue, for: Self.keyNormalizeVolume)
+            applyVolume()
+        }
+    }
+
+    /// Where the loudness of a song is found when this run has not heard of it yet (kept from an earlier listen).
+    var loudnessLookup: (@Sendable (String) async -> Double?)?
+
+    /// How loud [videoId] is, from a stream of it. Applied at once when it is the song that is loaded.
+    func loudnessLearned(_ videoId: String, _ db: Double) {
+        loudness[videoId] = db
+        if engine.loadedItem?.videoId == videoId { applyVolume() }
+    }
+
+    /// The sleep timer's fade: the share (1 is full) of the volume that the loudness of the song allows.
+    private func fadeVolume(_ share: Float) {
+        fade = share
+        applyVolume()
+    }
+
+    /// The player's volume is the song's own factor (from its loudness) times the fade of the sleep timer.
+    private func applyVolume() {
+        let id = engine.loadedItem?.videoId
+        var gain: Float = 1
+        if normalizeVolumeOn, let id {
+            if let db = loudness[id] {
+                gain = Loudness.gain(db)
+            } else if let lookup = loudnessLookup, !looked.contains(id) {
+                // Heard before, perhaps without a network now: the library has it
+                looked.insert(id)
+                Task { [weak self] in
+                    guard let db = await lookup(id) else { return }
+                    self?.loudnessLearned(id, db)
+                }
+            }
+        }
+        let volume = fade * gain
+        if volume == appliedVolume { return }
+        appliedVolume = volume
+        engine.setVolume(volume)
+    }
+
+    private var fade: Float = 1
+    private var appliedVolume: Float = 1
+    private var loudness: [String: Double] = [:]
+    private var looked: Set<String> = []
+
     func setTrim(_ ms: Int64) {
         trimMs = min(max(ms, -Self.maxTrimMs), Self.maxTrimMs)
         prefs.set(trimMs, for: Self.keyTrimMs)
@@ -1053,6 +1107,7 @@ final class GroupController {
     private static let keyRoomSoloItem = "room_solo_item"
     private static let keyLastActive = "room_last_active"
     private static let keyAutoplay = "autoplay"
+    private static let keyNormalizeVolume = "normalize_volume"
     private static let keyShareTaste = "share_taste"
     private static let tasteProtocol = 19
     private static let tasteText = 200

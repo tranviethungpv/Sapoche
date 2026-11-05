@@ -1,0 +1,368 @@
+{
+ "playabilityStatus": {
+  "status": "OK",
+  "playableInEmbed": true
+ },
+ "videoDetails": {
+  "videoId": "bNp9pn0ni3I",
+  "title": "Ch\u00fang Ta C\u1ee7a Hi\u1ec7n T\u1ea1i",
+  "lengthSeconds": "302",
+  "author": "S\u01a1n T\u00f9ng M-TP - Topic",
+  "thumbnail": {
+   "thumbnails": [
+    {
+     "url": "https://i.ytimg.com/vi/bNp9pn0ni3I/mqdefault.jpg",
+     "width": 320,
+     "height": 180
+    },
+    {
+     "url": "https://i.ytimg.com/vi/bNp9pn0ni3I/hq720.jpg",
+     "width": 1280,
+     "height": 720
+    }
+   ]
+  },
+  "isLiveContent": false
+ },
+ "streamingData": {
+  "expiresInSeconds": "21540",
+  "adaptiveFormats": [
+   {
+    "itag": 137,
+    "url": "https://example.invalid/videoplayback?itag=137",
+    "mimeType": "video/mp4; codecs=\"avc1.640020\"",
+    "bitrate": 158064,
+    "averageBitrate": 155107,
+    "width": 1080,
+    "height": 1080,
+    "contentLength": "5845997",
+    "initRange": {
+     "start": "0",
+     "end": "742"
+    },
+    "indexRange": {
+     "start": "743",
+     "end": "1290"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_1080P"
+   },
+   {
+    "itag": 248,
+    "url": "https://example.invalid/videoplayback?itag=248",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 199464,
+    "averageBitrate": 185776,
+    "width": 1080,
+    "height": 1080,
+    "contentLength": "7001899",
+    "initRange": {
+     "start": "0",
+     "end": "219"
+    },
+    "indexRange": {
+     "start": "220",
+     "end": "944"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_1080P"
+   },
+   {
+    "itag": 136,
+    "url": "https://example.invalid/videoplayback?itag=136",
+    "mimeType": "video/mp4; codecs=\"avc1.4D401F\"",
+    "bitrate": 29076,
+    "averageBitrate": 27812,
+    "width": 720,
+    "height": 720,
+    "contentLength": "1048265",
+    "initRange": {
+     "start": "0",
+     "end": "739"
+    },
+    "indexRange": {
+     "start": "740",
+     "end": "1287"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_720P"
+   },
+   {
+    "itag": 247,
+    "url": "https://example.invalid/videoplayback?itag=247",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 78715,
+    "averageBitrate": 78246,
+    "width": 720,
+    "height": 720,
+    "contentLength": "2949108",
+    "initRange": {
+     "start": "0",
+     "end": "219"
+    },
+    "indexRange": {
+     "start": "220",
+     "end": "944"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_720P"
+   },
+   {
+    "itag": 135,
+    "url": "https://example.invalid/videoplayback?itag=135",
+    "mimeType": "video/mp4; codecs=\"avc1.4D401E\"",
+    "bitrate": 20740,
+    "averageBitrate": 19370,
+    "width": 480,
+    "height": 480,
+    "contentLength": "730065",
+    "initRange": {
+     "start": "0",
+     "end": "739"
+    },
+    "indexRange": {
+     "start": "740",
+     "end": "1287"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_480P"
+   },
+   {
+    "itag": 244,
+    "url": "https://example.invalid/videoplayback?itag=244",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 37813,
+    "averageBitrate": 36283,
+    "width": 480,
+    "height": 480,
+    "contentLength": "1367518",
+    "initRange": {
+     "start": "0",
+     "end": "218"
+    },
+    "indexRange": {
+     "start": "219",
+     "end": "941"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_480P"
+   },
+   {
+    "itag": 134,
+    "url": "https://example.invalid/videoplayback?itag=134",
+    "mimeType": "video/mp4; codecs=\"avc1.4D4015\"",
+    "bitrate": 16545,
+    "averageBitrate": 14829,
+    "width": 360,
+    "height": 360,
+    "contentLength": "558911",
+    "initRange": {
+     "start": "0",
+     "end": "740"
+    },
+    "indexRange": {
+     "start": "741",
+     "end": "1288"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_360P"
+   },
+   {
+    "itag": 243,
+    "url": "https://example.invalid/videoplayback?itag=243",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 29898,
+    "averageBitrate": 28526,
+    "width": 360,
+    "height": 360,
+    "contentLength": "1075170",
+    "initRange": {
+     "start": "0",
+     "end": "218"
+    },
+    "indexRange": {
+     "start": "219",
+     "end": "941"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_360P"
+   },
+   {
+    "itag": 133,
+    "url": "https://example.invalid/videoplayback?itag=133",
+    "mimeType": "video/mp4; codecs=\"avc1.4D400C\"",
+    "bitrate": 12781,
+    "averageBitrate": 11353,
+    "width": 240,
+    "height": 240,
+    "contentLength": "427930",
+    "initRange": {
+     "start": "0",
+     "end": "738"
+    },
+    "indexRange": {
+     "start": "739",
+     "end": "1286"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_240P"
+   },
+   {
+    "itag": 242,
+    "url": "https://example.invalid/videoplayback?itag=242",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 17761,
+    "averageBitrate": 16776,
+    "width": 240,
+    "height": 240,
+    "contentLength": "632322",
+    "initRange": {
+     "start": "0",
+     "end": "216"
+    },
+    "indexRange": {
+     "start": "217",
+     "end": "937"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_240P"
+   },
+   {
+    "itag": 160,
+    "url": "https://example.invalid/videoplayback?itag=160",
+    "mimeType": "video/mp4; codecs=\"avc1.4D400B\"",
+    "bitrate": 9624,
+    "averageBitrate": 8229,
+    "width": 144,
+    "height": 144,
+    "contentLength": "310176",
+    "initRange": {
+     "start": "0",
+     "end": "738"
+    },
+    "indexRange": {
+     "start": "739",
+     "end": "1286"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_144P"
+   },
+   {
+    "itag": 278,
+    "url": "https://example.invalid/videoplayback?itag=278",
+    "mimeType": "video/webm; codecs=\"vp9\"",
+    "bitrate": 16340,
+    "averageBitrate": 15111,
+    "width": 144,
+    "height": 144,
+    "contentLength": "569552",
+    "initRange": {
+     "start": "0",
+     "end": "216"
+    },
+    "indexRange": {
+     "start": "217",
+     "end": "937"
+    },
+    "qualityOrdinal": "QUALITY_ORDINAL_144P"
+   },
+   {
+    "itag": 139,
+    "url": "https://example.invalid/videoplayback?itag=139",
+    "mimeType": "audio/mp4; codecs=\"mp4a.40.5\"",
+    "bitrate": 50600,
+    "averageBitrate": 48833,
+    "contentLength": "1840984",
+    "initRange": {
+     "start": "0",
+     "end": "767"
+    },
+    "indexRange": {
+     "start": "768",
+     "end": "1171"
+    },
+    "loudnessDb": 6.55,
+    "trackAbsoluteLoudnessLkfs": -7.45,
+    "audioQuality": "AUDIO_QUALITY_LOW",
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   },
+   {
+    "itag": 140,
+    "url": "https://example.invalid/videoplayback?itag=140",
+    "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+    "bitrate": 131357,
+    "averageBitrate": 129532,
+    "contentLength": "4882365",
+    "initRange": {
+     "start": "0",
+     "end": "758"
+    },
+    "indexRange": {
+     "start": "759",
+     "end": "1162"
+    },
+    "loudnessDb": 6.55,
+    "trackAbsoluteLoudnessLkfs": -7.45,
+    "audioQuality": "AUDIO_QUALITY_MEDIUM",
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   },
+   {
+    "itag": 249,
+    "url": "https://example.invalid/videoplayback?itag=249",
+    "mimeType": "audio/webm; codecs=\"opus\"",
+    "bitrate": 62529,
+    "averageBitrate": 53720,
+    "contentLength": "2024997",
+    "initRange": {
+     "start": "0",
+     "end": "258"
+    },
+    "indexRange": {
+     "start": "259",
+     "end": "782"
+    },
+    "loudnessDb": 6.55,
+    "trackAbsoluteLoudnessLkfs": -7.45,
+    "audioQuality": "AUDIO_QUALITY_LOW",
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   },
+   {
+    "itag": 250,
+    "url": "https://example.invalid/videoplayback?itag=250",
+    "mimeType": "audio/webm; codecs=\"opus\"",
+    "bitrate": 82128,
+    "averageBitrate": 71148,
+    "contentLength": "2681959",
+    "initRange": {
+     "start": "0",
+     "end": "258"
+    },
+    "indexRange": {
+     "start": "259",
+     "end": "782"
+    },
+    "loudnessDb": 6.55,
+    "trackAbsoluteLoudnessLkfs": -7.45,
+    "audioQuality": "AUDIO_QUALITY_LOW",
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   },
+   {
+    "itag": 251,
+    "url": "https://example.invalid/videoplayback?itag=251",
+    "mimeType": "audio/webm; codecs=\"opus\"",
+    "bitrate": 158866,
+    "averageBitrate": 139717,
+    "contentLength": "5266682",
+    "initRange": {
+     "start": "0",
+     "end": "258"
+    },
+    "indexRange": {
+     "start": "259",
+     "end": "782"
+    },
+    "loudnessDb": 6.55,
+    "trackAbsoluteLoudnessLkfs": -7.45,
+    "audioQuality": "AUDIO_QUALITY_MEDIUM",
+    "qualityOrdinal": "QUALITY_ORDINAL_UNKNOWN"
+   }
+  ]
+ },
+ "playerConfig": {
+  "audioConfig": {
+   "perceptualLoudnessDb": -7.45,
+   "enablePerFormatLoudness": true,
+   "trackAbsoluteLoudnessLkfs": -7.45,
+   "loudnessTargetLkfs": -14
+  }
+ }
+}

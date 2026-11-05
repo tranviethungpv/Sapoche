@@ -279,6 +279,38 @@ class LibraryStoreTest {
     }
 
     @Test
+    fun aDatabaseFromVersionEightGainsLoudnessAndKeepsEverySong() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = "upgrade-eight-test.db"
+        context.deleteDatabase(file)
+        context.openOrCreateDatabase(file, android.content.Context.MODE_PRIVATE, null).use { db ->
+            db.execSQL("CREATE TABLE tracks(video_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, thumb TEXT, dur_ms INTEGER NOT NULL)")
+            db.execSQL("INSERT INTO tracks VALUES('old', 'Old song', 'Old artist', NULL, 1000)")
+            db.version = 8
+        }
+        val upgraded = LibraryStore(context, file)
+        try {
+            assertEquals(null, upgraded.loudness("old"))
+            upgraded.setLoudness("old", 6.55)
+            assertEquals(6.55, upgraded.loudness("old")!!, 0.001)
+        } finally {
+            upgraded.close()
+            context.deleteDatabase(file)
+        }
+    }
+
+    @Test
+    fun howLoudASongIsIsKeptForSongsInTheLibraryAndSurvivesNewDetails() = runTest {
+        store.setLiked(song("a"), true, at = 1)
+        store.setLoudness("a", -1.99)
+        store.setLoudness("nobody", 4.0) // a song that is in no list has no row to keep it in
+        assertEquals(-1.99, store.loudness("a")!!, 0.001)
+        assertEquals(null, store.loudness("nobody"))
+        store.setLiked(song("a"), true, at = 2) // writes the song's details again
+        assertEquals(-1.99, store.loudness("a")!!, 0.001)
+    }
+
+    @Test
     fun aPlaylistIsInOneFolderAtMostAndLeavesWithoutLosingSongs() = runTest {
         val trip = store.createPlaylist("Trip", listOf(song("a"), song("b")), at = 10)
         val gym = store.createPlaylist("Gym", listOf(song("c")), at = 20)

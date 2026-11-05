@@ -278,6 +278,12 @@ actor StreamCache {
     private var pending: [String: Task<Resolved, Error>] = [:]
 
     private let quality: () -> AudioQuality
+    private var loudnessHeard: (@Sendable (String, Double) -> Void)?
+
+    /// [heard] is told how loud a song is (see [Loudness]) whenever a resolve of it says.
+    func onLoudness(_ heard: @escaping @Sendable (String, Double) -> Void) {
+        loudnessHeard = heard
+    }
 
     init(resolver: StreamResolver, quality: @escaping () -> AudioQuality = { .max }) {
         self.resolver = resolver
@@ -342,6 +348,7 @@ actor StreamCache {
         defer { pending[videoId] = nil }
         let found = try await task.value
         entries[videoId] = Entry(resolved: found, at: Date())
+        if let db = found.best.loudnessDb { loudnessHeard?(videoId, db) }
         return found
     }
 }

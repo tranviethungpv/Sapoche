@@ -55,7 +55,11 @@ class _CollectionScreenState extends State<CollectionScreen> {
   Future<CollectionPage>? _page;
 
   void _load() {
-    _page = AppScope.of(context).music.collection(widget.id);
+    final room = AppScope.roomOf(context);
+    final page = AppScope.of(context).music.collection(widget.id);
+    _page = page;
+    // The first songs of an album or playlist are the likely first touch: their streams are looked up while the page is read
+    page.then((found) => room.warmUp(found.tracks.take(3).toList())).ignore();
   }
 
   @override

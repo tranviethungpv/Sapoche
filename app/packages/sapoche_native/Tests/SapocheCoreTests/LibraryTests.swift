@@ -369,6 +369,36 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(after.map(\.source), ["shelf", nil])
     }
 
+    func testADatabaseFromVersionEightGainsLoudnessAndKeepsEverySong() async throws {
+        let path = NSTemporaryDirectory() + "library-\(UUID().uuidString).db"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        do {
+            let old = try SQLite(path: path)
+            try old.run("CREATE TABLE tracks(video_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, thumb TEXT, dur_ms INTEGER NOT NULL)")
+            try old.run("INSERT INTO tracks VALUES('old', 'Old song', 'Old artist', NULL, 1000)")
+            old.version = 8
+        }
+        let upgraded = try LibraryStore(path: path)
+        let before = try await upgraded.loudness("old")
+        XCTAssertNil(before, "a song heard before has no loudness until a stream of it says")
+        try await upgraded.setLoudness("old", db: 6.55)
+        let after = try await upgraded.loudness("old")
+        XCTAssertEqual(try XCTUnwrap(after), 6.55, accuracy: 0.001)
+    }
+
+    func testHowLoudASongIsIsKeptForTheSongsThatAreInTheLibraryAndSurvivesNewDetails() async throws {
+        try await store.setLiked(song("a"), true, at: 1)
+        try await store.setLoudness("a", db: -1.99)
+        try await store.setLoudness("nobody", db: 4) // a song that is in no list has no row to keep it in
+        let a = try await store.loudness("a")
+        XCTAssertEqual(try XCTUnwrap(a), -1.99, accuracy: 0.001)
+        let nobody = try await store.loudness("nobody")
+        XCTAssertNil(nobody)
+        try await store.setLiked(song("a"), true, at: 2) // writes the song's details again
+        let still = try await store.loudness("a")
+        XCTAssertEqual(try XCTUnwrap(still), -1.99, accuracy: 0.001)
+    }
+
     func testWhatThePersonToldTheTasteIsKeptReplacedAndTakenOff() async throws {
         try await store.setTasteMark(kind: "quiet_artist", key: "beck", label: "Beck", on: true, at: 5)
         try await store.setTasteMark(kind: "quiet_song", key: "bNp9pn0ni3I", label: "Song", on: true, at: 6)

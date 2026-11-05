@@ -1078,6 +1078,7 @@ class Profile {
     this.configured = true,
     this.hasKey = true,
     this.audioQuality = AudioQuality.max,
+    this.normalizeVolume = true,
     this.libraryLost = false,
   });
 
@@ -1097,6 +1098,9 @@ class Profile {
 
   /// How much sound a song that is not kept yet is fetched in.
   final AudioQuality audioQuality;
+
+  /// Loud songs are turned down to the level of the others. A browser has nothing to say in it: YouTube's player does it.
+  final bool normalizeVolume;
 
   /// The address of the room server is known. On Android it is built into the app; on iOS the person enters it.
   final bool configured;
@@ -1118,6 +1122,7 @@ class Profile {
     configured: configured,
     hasKey: hasKey,
     audioQuality: audioQuality,
+    normalizeVolume: normalizeVolume,
     libraryLost: libraryLost,
   );
 
@@ -1131,6 +1136,7 @@ class Profile {
     configured: configured,
     hasKey: hasKey,
     audioQuality: audioQuality,
+    normalizeVolume: normalizeVolume,
     libraryLost: libraryLost,
   );
 
@@ -1144,6 +1150,21 @@ class Profile {
     configured: configured,
     hasKey: hasKey,
     audioQuality: value,
+    normalizeVolume: normalizeVolume,
+    libraryLost: libraryLost,
+  );
+
+  Profile withNormalizeVolume(bool value) => Profile(
+    name: name,
+    device: device,
+    trimMs: trimMs,
+    server: server,
+    autoplay: autoplay,
+    shareTaste: shareTaste,
+    configured: configured,
+    hasKey: hasKey,
+    audioQuality: audioQuality,
+    normalizeVolume: value,
     libraryLost: libraryLost,
   );
 
@@ -1157,6 +1178,7 @@ class Profile {
     configured: map['configured'] as bool? ?? true,
     hasKey: map['key'] as bool? ?? true,
     audioQuality: AudioQuality.of((map['audioQuality'] as num?)?.toInt()),
+    normalizeVolume: map['normalizeVolume'] as bool? ?? true,
     libraryLost: map['libraryLost'] as bool? ?? false,
   );
 }

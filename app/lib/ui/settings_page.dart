@@ -705,6 +705,25 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
+    // A browser plays through YouTube's own player, which evens songs out by itself and cannot be told not to
+    if (!kIsWeb)
+      _Group(
+        footer: S.normalizeVolumeHelp,
+        children: [
+          ListenableBuilder(
+            listenable: model.room,
+            builder: (context, _) => Material(
+              type: MaterialType.transparency,
+              child: SwitchListTile(
+                key: const ValueKey('normalize-volume-switch'),
+                title: Text(S.normalizeVolume),
+                value: model.room.normalizeVolume,
+                onChanged: model.room.setNormalizeVolume,
+              ),
+            ),
+          ),
+        ],
+      ),
     _Group(
       title: S.videoSection,
       footer: kIsWeb ? S.videoQualityHelpWeb : S.videoQualityHelp,

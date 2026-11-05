@@ -100,6 +100,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         createLocalFilesTable(db)
         createFolders(db)
         createSources(db)
+        createLoudness(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -111,6 +112,12 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         if (oldVersion < 6) createLocalFilesTable(db)
         if (oldVersion < 7) createFolders(db)
         if (oldVersion < 8) createSources(db)
+        if (oldVersion < 9) createLoudness(db)
+    }
+
+    /** How loud each song is against YouTube's reference level, in hundredths of a dB; null until a stream of it said so. */
+    private fun createLoudness(db: SQLiteDatabase) {
+        db.execSQL("ALTER TABLE tracks ADD COLUMN loudness_cdb INTEGER")
     }
 
     /** Where each listen and skip came from. Rows from before have no source (null) and count as chosen. */
@@ -946,6 +953,18 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         }
     }
 
+    /** Keeps how loud [videoId] is, for hearing it without a network. A song that has no row yet gets it when it has one. */
+    suspend fun setLoudness(videoId: String, db: Double) = withContext(io) {
+        writableDatabase.execSQL("UPDATE tracks SET loudness_cdb = ? WHERE video_id = ?", arrayOf<Any>(Math.round(db * 100), videoId))
+    }
+
+    /** How many dB above YouTube's reference level the song was when last heard, or null when that is not known. */
+    suspend fun loudness(videoId: String): Double? = withContext(io) {
+        readableDatabase.rawQuery("SELECT loudness_cdb FROM tracks WHERE video_id = ?", arrayOf(videoId)).use {
+            if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) / 100.0 else null
+        }
+    }
+
     // ------------------------------------------------------------------ helpers
 
     /** Adds the song's details, or brings them up to date. A length that is not known does not erase one that is. */
@@ -1009,7 +1028,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
     }
 
     companion object {
-        private const val VERSION = 8
+        private const val VERSION = 9
         const val RECENT_LIMIT = 100
         const val HISTORY_KEEP = 2000
         const val MAX_PLAYLIST = 500

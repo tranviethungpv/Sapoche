@@ -2,13 +2,20 @@ package app.sapoche
 
 import android.app.Application
 import app.sapoche.core.AudioQuality
+import app.sapoche.core.FreshVisitors
+import app.sapoche.core.InnertubePlayer
 import app.sapoche.core.LyricsClient
 import app.sapoche.core.LyricsStore
 import app.sapoche.core.MusicClient
 import app.sapoche.core.MusicFeed
 import app.sapoche.core.NewPipeResolver
+import app.sapoche.core.PrefetchedVisitors
 import app.sapoche.core.Probe
+import app.sapoche.core.QuickFirstResolver
 import app.sapoche.core.UpdateClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -26,12 +33,17 @@ class SapocheApp : Application() {
         audioQuality = AudioQuality.of(getSharedPreferences("sapoche", MODE_PRIVATE).getInt("audio_quality", AudioQuality.MAX.level))
         language.value = getSharedPreferences("sapoche", MODE_PRIVATE).getString("language", null) ?: "en"
         resolver = NewPipeResolver(region = phoneRegion())
-        streams = StreamCache(resolver, Probe())
+        val innertube = InnertubePlayer(
+            region = ::phoneRegion,
+            visitors = PrefetchedVisitors(FreshVisitors(region = ::phoneRegion), CoroutineScope(SupervisorJob() + Dispatchers.IO)),
+        )
+        streams = StreamCache(QuickFirstResolver(innertube::resolve, resolver) { EventLog.d("resolve", it) }, Probe())
         library = LibraryStore(this)
         deviceMusic = DeviceMusic(this, library)
         val limitMb = getSharedPreferences("sapoche", MODE_PRIVATE).getInt("cache_limit_mb", DEFAULT_CACHE_MB)
         caches = MediaCaches(this, limitMb * 1024L * 1024L)
-        mediaData = MediaData(caches, streams, { videoMaxHeight }, { audioQuality }, deviceMusic) { EventLog.d("cache", it) }
+        loudness = LoudnessBook(library, CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        mediaData = MediaData(caches, streams, { videoMaxHeight }, { audioQuality }, deviceMusic, loudness) { EventLog.d("cache", it) }
         downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
@@ -61,6 +73,10 @@ class SapocheApp : Application() {
         lateinit var resolver: NewPipeResolver
             private set
         lateinit var streams: StreamCache
+            private set
+
+        /** How loud songs are, learned from their streams and kept in the library. */
+        lateinit var loudness: LoudnessBook
             private set
 
         /** Liked songs and listening history; opened when first used. */

@@ -136,7 +136,7 @@ void main() {
       for (var i = 0; i < 5; i++)
         Track(videoId: 'video$i', title: 'Song $i', artist: '', durMs: 1),
     ]);
-    expect(backend.warmed, ['video0,video1,video2']);
+    expect(backend.warmed, ['video0,video1,video2,video3,video4']);
   });
 
   test('the check of the server asks the backend, and a backend that fails says the server is not there', () async {
@@ -766,6 +766,16 @@ void main() {
       await controller.setAudioQuality(AudioQuality.low);
       expect(controller.audioQuality, AudioQuality.low);
       expect(backend.calls.last, 'audioQuality low');
+    },
+  );
+
+  test(
+    'loudness is evened out until turned off, and the choice goes to the native side',
+    () async {
+      expect(controller.normalizeVolume, isTrue);
+      await controller.setNormalizeVolume(false);
+      expect(controller.normalizeVolume, isFalse);
+      expect(backend.calls.last, 'normalizeVolume false');
     },
   );
 

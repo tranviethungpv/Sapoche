@@ -124,6 +124,9 @@ abstract class BackendDefaults implements Backend {
   Future<void> setAudioQuality(AudioQuality quality) async {}
 
   @override
+  Future<void> setNormalizeVolume(bool on) async {}
+
+  @override
   Future<BackupCounts?> exportBackup() async => null;
 
   @override

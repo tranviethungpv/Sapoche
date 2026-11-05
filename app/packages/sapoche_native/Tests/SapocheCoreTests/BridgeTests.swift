@@ -326,6 +326,14 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(saved["local"] as? Int, 1)
     }
 
+    func testTheVolumeBalanceIsOnUntilTheSwitchSaysOtherwise() async throws {
+        var profile = try await result("profile", as: [String: Any].self)
+        XCTAssertEqual(profile["normalizeVolume"] as? Bool, true)
+        _ = try await call("setNormalizeVolume", ["on": false])
+        profile = try await result("profile", as: [String: Any].self)
+        XCTAssertEqual(profile["normalizeVolume"] as? Bool, false)
+    }
+
     func testTheProfileTellsWhatTheUIAsksFor() async throws {
         let profile = try await result("profile", as: [String: Any].self)
         XCTAssertNil(profile["name"], "the name of the phone is not offered to the room")
@@ -1152,6 +1160,45 @@ final class GroupControllerTests: XCTestCase {
         await time.advance(100)
         XCTAssertEqual(asked, [])
         XCTAssertTrue(controller.local.snapshot.value.finished)
+    }
+
+    func testASongAboveTheReferenceLevelIsPlayedQuieterAndTheSwitchTurnsThatOff() async {
+        controller.requestAddMany([song(1)], playNext: false)
+        await time.advance(100)
+        XCTAssertEqual(engine.volume, 1, "nothing is known of the song yet")
+        controller.loudnessLearned("other", 9) // another song's loudness changes nothing
+        XCTAssertEqual(engine.volume, 1)
+        controller.loudnessLearned("video000001", 6.55)
+        XCTAssertEqual(engine.volume, 0.4704, accuracy: 0.0001)
+        controller.normalizeVolumeOn = false
+        XCTAssertEqual(engine.volume, 1)
+        controller.normalizeVolumeOn = true
+        XCTAssertEqual(engine.volume, 0.4704, accuracy: 0.0001)
+    }
+
+    func testTheFadeOfTheSleepTimerIsTakenOfTheSongsOwnVolumeNotOfFull() async {
+        controller.requestAddMany([song(1)], playNext: false)
+        await time.advance(100)
+        controller.loudnessLearned("video000001", 6.55)
+        controller.sleep.startIn(minutes: 1)
+        await time.advance(60_000 - SleepTimer.fadeMs + 1)
+        XCTAssertEqual(engine.volume, 0.4704, accuracy: 0.0001, "the fade starts from the song's own volume")
+        await time.advance(SleepTimer.fadeMs / 2)
+        XCTAssertLessThan(engine.volume, 0.3)
+        XCTAssertGreaterThan(engine.volume, 0.1)
+    }
+
+    func testAnotherSongTakesItsOwnFactorAndOneHeardBeforeIsLookedUpInTheLibrary() async {
+        controller.loudnessLookup = { id in id == "video000002" ? 3 : nil }
+        controller.requestAddMany([song(1), song(2)], playNext: false)
+        await time.advance(100)
+        controller.loudnessLearned("video000001", 6.55)
+        engine.onEnded?()
+        await time.advance(100)
+        XCTAssertEqual(engine.loaded?.videoId, "video000002")
+        engine.onChange?()
+        await time.advance(100)
+        XCTAssertEqual(engine.volume, 0.7079, accuracy: 0.0001)
     }
 
     func testTheSleepTimerAtTheEndOfTheLastSongStopsTheMusicInsteadOfCarryingOn() async {

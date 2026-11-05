@@ -55,6 +55,8 @@ struct AudioSource: Equatable {
     let contentLength: Int64
     let itag: Int
     var index: DashRanges? = nil
+    /// How many dB the song is above YouTube's reference level (negative when below), when the answer says.
+    var loudnessDb: Double? = nil
 }
 
 /// A picture-only stream, played together with an audio stream when the picture is wanted.
@@ -184,8 +186,8 @@ enum YoutubeLinks {
 }
 
 /// How this device introduces itself to YouTube. The visionOS app of YouTube is what gives audio streams that
-/// need no sign-in and no proof-of-origin token; the iPhone app is the second choice. If YouTube retires one, this
-/// is the one place to change.
+/// need no sign-in and no proof-of-origin token (the iPhone app's streams break with 403 after their first 8 KB). If
+/// YouTube retires it, this is the one place to change.
 struct InnertubeClient {
     let name: String
     let id: Int
@@ -198,10 +200,6 @@ struct InnertubeClient {
     static let visionOS = InnertubeClient(
         name: "VISIONOS", id: 101, version: "1.02", model: "RealityDevice14,1", osName: "visionOS", osVersion: "25.6.0",
         userAgent: "com.google.visionos.youtube/1.02(RealityDevice14,1; U; CPU visionOS 25_6_0 like Mac OS X;)")
-
-    static let iPhone = InnertubeClient(
-        name: "IOS", id: 5, version: "21.03.2", model: "iPhone16,2", osName: "iPhone", osVersion: "18.7.2.22H124",
-        userAgent: "com.google.ios.youtube/21.03.2(iPhone16,2; U; CPU iOS 18_7_2 like Mac OS X;)")
 
     func context(region: String, visitorData: String?) -> [String: Any] {
         var client: [String: Any] = [
@@ -226,13 +224,18 @@ actor YouTubeResolver: StreamResolver {
     private let music: MusicSource
     private let region: String
     private let clients: [InnertubeClient]
+    private let now: @Sendable () -> Date
+    /// An identity asked for in advance, and the ask that is under way for the next one.
+    private var spare: (id: String, askedAt: Date)?
+    private var refill: Task<Void, Never>?
 
     init(http: HTTPClient = URLSessionHTTP(), music: MusicSource? = nil, region: String = "US",
-         clients: [InnertubeClient] = [.visionOS, .iPhone]) {
+         clients: [InnertubeClient] = [.visionOS], now: @escaping @Sendable () -> Date = { Date() }) {
         self.http = http
         self.music = music ?? MusicClient(region: { region }, http: http)
         self.region = region
         self.clients = clients
+        self.now = now
     }
 
     // ------------------------------------------------------------------ streams
@@ -242,9 +245,11 @@ actor YouTubeResolver: StreamResolver {
         var lastError: Error?
         // Every client was told the video does not play: no other try will play it
         var unplayable = true
-        for client in clients + [clients[0]] {
+        // The first try is the one that takes the identity asked for in advance; a second one, after anything went
+        // wrong, asks for its own
+        for (attempt, client) in (clients + [clients[0]]).enumerated() {
             do {
-                let visitorData = try await visitorData(for: client)
+                let visitorData = try await visitorData(for: client, fresh: attempt > 0)
                 let answer = try await http.postJSON(
                     "https://youtubei.googleapis.com/youtubei/v1/player?prettyPrint=false",
                     body: [
@@ -278,11 +283,39 @@ actor YouTubeResolver: StreamResolver {
                 .internationalRoamingOff].contains(error.code)
     }
 
-    /// An identity YouTube gives to a visitor; asking for streams with one is what keeps it from calling us a robot. A
-    /// new one is asked for every time, as Android's extractor does: one kept across many songs was seen to get only
-    /// streams that broke with 403 after their first moments, however often they were resolved again, until the app
-    /// was restarted.
-    private func visitorData(for client: InnertubeClient) async throws -> String? {
+    /// An identity YouTube gives to a visitor; asking for streams with one is what keeps it from calling us a robot. One
+    /// is asked for in advance and given out once, so that a song costs only its `player` request; one that has waited
+    /// longer than [spareMaxAge] is not used. An identity kept for an hour and used for many songs was seen to get only
+    /// streams that broke with 403 after their first moments, however often they were resolved again, until the app was
+    /// restarted: none is used twice.
+    private func visitorData(for client: InnertubeClient, fresh: Bool) async throws -> String? {
+        let kept = spare
+        spare = nil
+        if !fresh, let kept, now().timeIntervalSince(kept.askedAt) < Self.spareMaxAge {
+            askForSpare(client)
+            return kept.id
+        }
+        defer { askForSpare(client) }
+        return try await askForVisitor(client)
+    }
+
+    /// Asks for the next identity in the background, unless one is kept or already being asked for.
+    private func askForSpare(_ client: InnertubeClient) {
+        guard spare == nil, refill == nil else { return }
+        refill = Task {
+            if let id = try? await askForVisitor(client) { spare = (id, now()) }
+            refill = nil
+        }
+    }
+
+    /// Waits until the identity being asked for in the background has come, or failed to.
+    func idle() async {
+        await refill?.value
+    }
+
+    private static let spareMaxAge: TimeInterval = 10 * 60
+
+    private func askForVisitor(_ client: InnertubeClient) async throws -> String? {
         let answer = try await http.postJSON(
             "https://youtubei.googleapis.com/youtubei/v1/visitor_id?prettyPrint=false",
             body: ["context": client.context(region: region, visitorData: nil)],
@@ -303,11 +336,15 @@ actor YouTubeResolver: StreamResolver {
         let length = details.at("lengthSeconds").int64 ?? 0
         if details.at("isLive").bool == true || length <= 0 { throw ResolveFailure(message: "Live streams cannot be played", unplayable: true) }
 
+        let trackLoudness = Self.trackLoudness(answer)
         let sources: [AudioSource] = answer.at("streamingData", "adaptiveFormats").array.compactMap { format in
             guard let mime = format.at("mimeType").string, mime.hasPrefix("audio/mp4"), let url = format.at("url").string else { return nil }
+            // A video with dubbed sound lists one stream per language: the song is the original one
+            if format.at("audioTrack", "audioIsDefault").bool == false { return nil }
             let bitrate = format.at("averageBitrate").int ?? format.at("bitrate").int ?? 0
             return AudioSource(url: url, mimeType: mime, bitrateKbps: bitrate / 1000, contentLength: format.at("contentLength").int64 ?? -1,
-                               itag: format.at("itag").int ?? -1, index: DashRanges.of(format))
+                               itag: format.at("itag").int ?? -1, index: DashRanges.of(format),
+                               loudnessDb: format.at("loudnessDb").double ?? trackLoudness)
         }.sorted { $0.bitrateKbps > $1.bitrateKbps }
         guard let best = sources.first else { throw ResolveFailure(message: "No audio stream available for \(videoId)", unplayable: true) }
 
@@ -328,6 +365,14 @@ actor YouTubeResolver: StreamResolver {
                                contentLength: format.at("contentLength").int64 ?? -1, index: DashRanges.of(format))
         }
         return Resolved(track: track, best: best, all: sources, videos: videos)
+    }
+
+    /// How far above YouTube's reference level (the `loudnessTargetLkfs` of the answer, -14) the song is, for a stream that
+    /// does not say so itself: the answer gives the loudness of the whole song as an absolute number of LKFS.
+    private static func trackLoudness(_ answer: JSON) -> Double? {
+        let config = answer.at("playerConfig", "audioConfig")
+        guard let absolute = config.at("perceptualLoudnessDb").double else { return nil }
+        return absolute - (config.at("loudnessTargetLkfs").double ?? -14)
     }
 
     // ------------------------------------------------------------------ lists

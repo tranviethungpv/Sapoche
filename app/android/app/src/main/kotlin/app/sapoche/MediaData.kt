@@ -34,6 +34,7 @@ class MediaData(
     private val maxVideoHeight: () -> Int,
     private val audioQuality: () -> AudioQuality,
     private val device: DeviceMusic,
+    private val loudness: LoudnessBook,
     private val log: (String) -> Unit = {},
 ) {
 
@@ -52,6 +53,7 @@ class MediaData(
                     caches.forget(videoId)
                 }
                 if (pinned != pick.itag) caches.pin(writeTo, videoId, pick.itag)
+                pick.loudnessDb?.let { loudness.heard(videoId, it) }
                 spec.withUri(Uri.parse(pick.url))
             }
             SapocheMediaSourceFactory.VIDEO_SCHEME -> spec.withUri(Uri.parse(streams.getVideo(videoId, maxVideoHeight())))

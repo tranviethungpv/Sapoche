@@ -14,6 +14,8 @@ final class FakeHTTP: HTTPClient, @unchecked Sendable {
 
     var answers: [(contains: String, status: Int, body: Data)] = []
     var calls: [Call] = []
+    /// Answers every `visitor_id` with a different identity, VISITOR1, VISITOR2, ...
+    var numberedVisitors = false
 
     func answer(_ contains: String, status: Int = 200, fixture name: String) throws {
         answers.append((contains, status, try fixture(name)))
@@ -23,14 +25,33 @@ final class FakeHTTP: HTTPClient, @unchecked Sendable {
         answers.append((contains, status, Data(text.utf8)))
     }
 
+    /// The background ask for the next identity and a resolve send at the same time.
+    private let lock = NSLock()
+
     func send(_ request: URLRequest) async throws -> HTTPReply {
         let url = request.url?.absoluteString ?? ""
         let body = (request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
         let headers = Dictionary(uniqueKeysWithValues: (request.allHTTPHeaderFields ?? [:]).map { ($0.key.lowercased(), $0.value) })
-        calls.append(Call(url: url, headers: headers, body: body))
+        let number: Int? = lock.withLock {
+            calls.append(Call(url: url, headers: headers, body: body))
+            return numberedVisitors && url.contains("visitor_id") ? calls.filter { $0.url.contains("visitor_id") }.count : nil
+        }
+        if let number {
+            return HTTPReply(status: 200, data: Data(#"{"responseContext":{"visitorData":"VISITOR\#(number)"}}"#.utf8), headers: [:])
+        }
         guard let found = answers.first(where: { url.contains($0.contains) }) else { throw URLError(.notConnectedToInternet) }
         return HTTPReply(status: found.status, data: found.body, headers: [:])
     }
+}
+
+/// A clock the test moves by hand.
+final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seconds: TimeInterval = 1_000
+
+    var now: Date { lock.withLock { Date(timeIntervalSince1970: seconds) } }
+
+    func advance(_ by: TimeInterval) { lock.withLock { seconds += by } }
 }
 
 final class YouTubeTests: XCTestCase {
@@ -53,6 +74,29 @@ final class YouTubeTests: XCTestCase {
         XCTAssertEqual(resolved.all.map(\.itag), [140, 139], "only what an iPhone can play, best first")
         XCTAssertTrue(resolved.all.allSatisfy { $0.mimeType.hasPrefix("audio/mp4") })
         XCTAssertGreaterThan(resolved.best.contentLength, 0)
+    }
+
+    func testEachStreamCarriesHowLoudTheSongIs() throws {
+        let loud = try YouTubeResolver.resolved(XCTUnwrap(JSON.parse(data: fixture("player_visionos_loud"))), videoId: "bNp9pn0ni3I")
+        XCTAssertEqual(try XCTUnwrap(loud.best.loudnessDb), 6.55, accuracy: 0.001)
+        let quiet = try YouTubeResolver.resolved(XCTUnwrap(JSON.parse(data: fixture("player_visionos"))), videoId: "dQw4w9WgXcQ")
+        XCTAssertEqual(try XCTUnwrap(quiet.best.loudnessDb), 0.99, accuracy: 0.001)
+    }
+
+    func testWithoutALoudnessOfItsOwnAStreamTakesTheOneOfTheWholeSongAgainstTheReferenceLevel() throws {
+        var text = String(decoding: try fixture("player_visionos_loud"), as: UTF8.self)
+        text = text.replacingOccurrences(of: #""loudnessDb": "#, with: #""unusedKey": "#)
+        let resolved = try YouTubeResolver.resolved(XCTUnwrap(JSON.parse(text)), videoId: "x")
+        XCTAssertEqual(try XCTUnwrap(resolved.best.loudnessDb), 6.55, accuracy: 0.001, "-7.45 LKFS against the target of -14")
+        let unknown = try YouTubeResolver.resolved(XCTUnwrap(JSON.parse(text.replacingOccurrences(of: #""perceptualLoudnessDb""#, with: #""unusedKey2""#))), videoId: "x")
+        XCTAssertNil(unknown.best.loudnessDb)
+    }
+
+    func testADubbedTrackIsNotTheSong() throws {
+        let text = #"{"playabilityStatus":{"status":"OK"},"videoDetails":{"lengthSeconds":"60"},"streamingData":{"adaptiveFormats":["# +
+            #"{"itag":140,"url":"https://example.invalid/a","mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","averageBitrate":129000,"audioTrack":{"audioIsDefault":false}},"# +
+            #"{"itag":139,"url":"https://example.invalid/b","mimeType":"audio/mp4; codecs=\"mp4a.40.5\"","averageBitrate":48000,"audioTrack":{"audioIsDefault":true}}]}}"#
+        XCTAssertEqual(try YouTubeResolver.resolved(XCTUnwrap(JSON.parse(text)), videoId: "x").all.map(\.itag), [139])
     }
 
     func testAVideoThatCannotBePlayedSaysWhy() throws {
@@ -82,20 +126,52 @@ final class YouTubeTests: XCTestCase {
         XCTAssertEqual(player.body["videoId"] as? String, "dQw4w9WgXcQ")
     }
 
-    func testEveryResolveAsksForANewVisitorIdentity() async throws {
+    func testNoVisitorIdentityIsUsedForTwoResolves() async throws {
         let http = FakeHTTP()
-        http.answer("visitor_id", text: visitorAnswer())
+        http.numberedVisitors = true
         try http.answer("/player", fixture: "player_visionos")
         let resolver = resolver(http)
-        _ = try await resolver.resolve("dQw4w9WgXcQ")
-        _ = try await resolver.resolve("dQw4w9WgXcQ")
-        XCTAssertEqual(http.calls.filter { $0.url.contains("visitor_id") }.count, 2, "an identity is not kept from one resolve to the next")
+        for _ in 0..<3 {
+            _ = try await resolver.resolve("dQw4w9WgXcQ")
+            await resolver.idle()
+        }
+        let used = http.calls.filter { $0.url.contains("/player") }.compactMap { $0.headers["x-goog-visitor-id"] }
+        XCTAssertEqual(used.count, 3)
+        XCTAssertEqual(Set(used).count, 3, "an identity is not kept from one resolve to the next: \(used)")
     }
 
-    func testWhenTheFirstClientIsTurnedDownTheNextOneIsTried() async throws {
+    func testTheIdentityOfTheNextResolveIsAskedForInAdvance() async throws {
         let http = FakeHTTP()
-        http.answer("visitor_id", text: visitorAnswer())
-        // The visionOS app gets the bot check, the iPhone app gets through
+        http.numberedVisitors = true
+        try http.answer("/player", fixture: "player_visionos")
+        let resolver = resolver(http)
+        _ = try await resolver.resolve("dQw4w9WgXcQ") // the first one has none in advance, and asks for the next
+        await resolver.idle()
+        _ = try await resolver.resolve("dQw4w9WgXcQ")
+        let used = http.calls.filter { $0.url.contains("/player") }.compactMap { $0.headers["x-goog-visitor-id"] }
+        XCTAssertEqual(used, ["VISITOR1", "VISITOR2"], "the second resolve used the identity that was asked for after the first")
+        await resolver.idle()
+        XCTAssertEqual(http.calls.filter { $0.url.contains("visitor_id") }.count, 3, "and one more was asked for after it")
+    }
+
+    func testAnIdentityThatWaitedTooLongIsNotUsed() async throws {
+        let http = FakeHTTP()
+        http.numberedVisitors = true
+        try http.answer("/player", fixture: "player_visionos")
+        let clock = TestClock()
+        let resolver = YouTubeResolver(http: http, music: MusicClient(http: http), region: "US", now: { clock.now })
+        _ = try await resolver.resolve("dQw4w9WgXcQ")
+        await resolver.idle()
+        clock.advance(11 * 60)
+        _ = try await resolver.resolve("dQw4w9WgXcQ")
+        let used = http.calls.filter { $0.url.contains("/player") }.compactMap { $0.headers["x-goog-visitor-id"] }
+        XCTAssertEqual(used, ["VISITOR1", "VISITOR3"], "VISITOR2 was asked for in advance but is too old")
+    }
+
+    func testWhenTheFirstTryIsTurnedDownTheNextOneAsksWithItsOwnIdentity() async throws {
+        let http = FakeHTTP()
+        http.numberedVisitors = true
+        // The first identity gets the bot check, the second gets through
         let answers = [
             #"{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in"}}"#,
             String(decoding: try fixture("player_visionos"), as: UTF8.self),
@@ -104,7 +180,9 @@ final class YouTubeTests: XCTestCase {
         let flaky = FlakyHTTP(base: http, answers: answers, counter: counter)
         let resolved = try await YouTubeResolver(http: flaky, music: MusicClient(http: http), region: "US").resolve("dQw4w9WgXcQ")
         XCTAssertEqual(resolved.best.itag, 140)
-        XCTAssertEqual(flaky.playerNames, ["VISIONOS", "IOS"])
+        XCTAssertEqual(flaky.playerNames, ["VISIONOS", "VISIONOS"], "the iPhone app's streams break after 8 KB, so it is not a way out")
+        XCTAssertEqual(flaky.visitors.count, 2)
+        XCTAssertNotEqual(flaky.visitors[0], flaky.visitors[1], "the second try does not use what was turned down")
     }
 
     func testAnEveryClientThatFailsGivesAnErrorTheUserCanRead() async throws {
@@ -232,6 +310,7 @@ final class FlakyHTTP: HTTPClient, @unchecked Sendable {
     var answers: [String]
     let counter: Collected
     var playerNames: [String] = []
+    var visitors: [String] = []
 
     init(base: FakeHTTP, answers: [String], counter: Collected) {
         self.base = base
@@ -243,6 +322,7 @@ final class FlakyHTTP: HTTPClient, @unchecked Sendable {
         guard request.url?.absoluteString.contains("/player") == true else { return try await base.send(request) }
         let body = (request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
         playerNames.append(((body["context"] as? [String: Any])?["client"] as? [String: Any])?["clientName"] as? String ?? "")
+        visitors.append(request.value(forHTTPHeaderField: "X-Goog-Visitor-Id") ?? "")
         let text = answers.isEmpty ? "{}" : answers.removeFirst()
         return HTTPReply(status: 200, data: Data(text.utf8), headers: [:])
     }

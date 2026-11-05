@@ -27,7 +27,7 @@ const _serverAddMany = 100;
 const serverProtocolNeeded = 17;
 
 /// How many songs of a list on the screen have their streams looked up ahead, see [RoomController.warmUp].
-const _warmCount = 3;
+const _warmCount = 5;
 
 /// `key=` in the address of a room, `#key=` in a setup link, `#k=` in an invitation.
 final _secretInLink = RegExp(r'([?&#](?:key|k)=)[^&#\s]+');
@@ -1371,6 +1371,15 @@ class RoomController extends ChangeNotifier {
     _profile = _profile.withAudioQuality(quality);
     notifyListeners();
     return _run(() => _backend.setAudioQuality(quality));
+  }
+
+  /// Whether loud songs are turned down to the level of the others.
+  bool get normalizeVolume => _profile.normalizeVolume;
+
+  Future<void> setNormalizeVolume(bool on) {
+    _profile = _profile.withNormalizeVolume(on);
+    notifyListeners();
+    return _run(() => _backend.setNormalizeVolume(on));
   }
 
   /// What YouTube would complete a half-typed search to.
