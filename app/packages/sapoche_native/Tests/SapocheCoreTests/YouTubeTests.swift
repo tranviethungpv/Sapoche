@@ -185,6 +185,45 @@ final class YouTubeTests: XCTestCase {
         XCTAssertNotEqual(flaky.visitors[0], flaky.visitors[1], "the second try does not use what was turned down")
     }
 
+    func testWhenTheMainClientIsTurnedDownTwiceTheQuestClientIsAsked() async throws {
+        let http = FakeHTTP()
+        http.numberedVisitors = true
+        let turnedDown = #"{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm you're not a bot"}}"#
+        let answers = [turnedDown, turnedDown, String(decoding: try fixture("player_visionos"), as: UTF8.self)]
+        let flaky = FlakyHTTP(base: http, answers: answers, counter: Collected())
+        let resolved = try await YouTubeResolver(http: flaky, music: MusicClient(http: http), region: "US").resolve("dQw4w9WgXcQ")
+        XCTAssertEqual(resolved.best.itag, 140)
+        XCTAssertEqual(flaky.playerNames, ["VISIONOS", "VISIONOS", "ANDROID_VR"], "the main client gets its second try before another one is asked")
+        XCTAssertEqual(Set(flaky.visitors).count, 3, "each try has an identity of its own")
+        XCTAssertTrue(resolved.userAgent.hasPrefix("com.google.android.apps.youtube.vr.oculus/"),
+                      "the stream is fetched the way the client that gave it fetches: \(resolved.userAgent)")
+    }
+
+    func testTheQuestClientIntroducesItselfAsAQuest() {
+        let client = try! XCTUnwrap(InnertubeClient.androidVR.context(region: "US", visitorData: "V")["client"] as? [String: Any])
+        XCTAssertEqual(client["clientName"] as? String, "ANDROID_VR")
+        XCTAssertEqual(client["deviceMake"] as? String, "Oculus")
+        XCTAssertEqual(client["androidSdkVersion"] as? Int, 32)
+        let visionOS = try! XCTUnwrap(InnertubeClient.visionOS.context(region: "US", visitorData: nil)["client"] as? [String: Any])
+        XCTAssertEqual(visionOS["deviceMake"] as? String, "Apple")
+        XCTAssertNil(visionOS["androidSdkVersion"])
+    }
+
+    func testTheIdentityKeptInAdvanceIsAlwaysAskedForByTheMainClient() async throws {
+        let http = FakeHTTP()
+        http.numberedVisitors = true
+        let turnedDown = #"{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in"}}"#
+        let answers = [turnedDown, turnedDown, String(decoding: try fixture("player_visionos"), as: UTF8.self)]
+        let flaky = FlakyHTTP(base: http, answers: answers, counter: Collected())
+        let resolver = YouTubeResolver(http: flaky, music: MusicClient(http: http), region: "US")
+        _ = try await resolver.resolve("dQw4w9WgXcQ")
+        await resolver.idle()
+        let askers = http.calls.filter { $0.url.contains("visitor_id") }
+            .compactMap { (($0.body["context"] as? [String: Any])?["client"] as? [String: Any])?["clientName"] as? String }
+        XCTAssertEqual(askers.last, "VISIONOS", "what the Quest client's try left in advance is not for the next song: \(askers)")
+        XCTAssertEqual(askers.filter { $0 == "ANDROID_VR" }.count, 1, "the Quest client asked only for its own try: \(askers)")
+    }
+
     func testAnEveryClientThatFailsGivesAnErrorTheUserCanRead() async throws {
         let http = FakeHTTP()
         http.answer("visitor_id", text: visitorAnswer())

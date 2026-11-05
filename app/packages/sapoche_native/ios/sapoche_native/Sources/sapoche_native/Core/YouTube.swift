@@ -187,7 +187,7 @@ enum YoutubeLinks {
 
 /// How this device introduces itself to YouTube. The visionOS app of YouTube is what gives audio streams that
 /// need no sign-in and no proof-of-origin token (the iPhone app's streams break with 403 after their first 8 KB). If
-/// YouTube retires it, this is the one place to change.
+/// YouTube retires it, this is the one place to change; `androidVR` is what is asked when it has turned us down twice.
 struct InnertubeClient {
     let name: String
     let id: Int
@@ -196,16 +196,26 @@ struct InnertubeClient {
     let osName: String
     let osVersion: String
     let userAgent: String
+    var make = "Apple"
+    var androidSdk: Int?
 
     static let visionOS = InnertubeClient(
         name: "VISIONOS", id: 101, version: "1.02", model: "RealityDevice14,1", osName: "visionOS", osVersion: "25.6.0",
         userAgent: "com.google.visionos.youtube/1.02(RealityDevice14,1; U; CPU visionOS 25_6_0 like Mac OS X;)")
 
+    /// The YouTube app of the Meta Quest. Also needs no sign-in or token and its streams last (checked 2026-11-05), but
+    /// YouTube answers it with the bot check for many videos from some networks, so it is only the way out, not the way in.
+    static let androidVR = InnertubeClient(
+        name: "ANDROID_VR", id: 28, version: "1.62.27", model: "Quest 3", osName: "Android", osVersion: "12L",
+        userAgent: "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+        make: "Oculus", androidSdk: 32)
+
     func context(region: String, visitorData: String?) -> [String: Any] {
         var client: [String: Any] = [
-            "clientName": name, "clientVersion": version, "deviceMake": "Apple", "deviceModel": model,
+            "clientName": name, "clientVersion": version, "deviceMake": make, "deviceModel": model,
             "osName": osName, "osVersion": osVersion, "hl": "en", "gl": region,
         ]
+        if let androidSdk { client["androidSdkVersion"] = androidSdk }
         if let visitorData { client["visitorData"] = visitorData }
         return ["client": client]
     }
@@ -230,7 +240,7 @@ actor YouTubeResolver: StreamResolver {
     private var refill: Task<Void, Never>?
 
     init(http: HTTPClient = URLSessionHTTP(), music: MusicSource? = nil, region: String = "US",
-         clients: [InnertubeClient] = [.visionOS], now: @escaping @Sendable () -> Date = { Date() }) {
+         clients: [InnertubeClient] = [.visionOS, .androidVR], now: @escaping @Sendable () -> Date = { Date() }) {
         self.http = http
         self.music = music ?? MusicClient(region: { region }, http: http)
         self.region = region
@@ -245,9 +255,9 @@ actor YouTubeResolver: StreamResolver {
         var lastError: Error?
         // Every client was told the video does not play: no other try will play it
         var unplayable = true
-        // The first try is the one that takes the identity asked for in advance; a second one, after anything went
-        // wrong, asks for its own
-        for (attempt, client) in (clients + [clients[0]]).enumerated() {
+        // The first try is the one that takes the identity asked for in advance; the main client has a second one, after
+        // anything went wrong, that asks for its own; the other clients are tried only after that
+        for (attempt, client) in ([clients[0]] + clients).enumerated() {
             do {
                 let visitorData = try await visitorData(for: client, fresh: attempt > 0)
                 let answer = try await http.postJSON(
@@ -292,16 +302,18 @@ actor YouTubeResolver: StreamResolver {
         let kept = spare
         spare = nil
         if !fresh, let kept, now().timeIntervalSince(kept.askedAt) < Self.spareMaxAge {
-            askForSpare(client)
+            askForSpare()
             return kept.id
         }
-        defer { askForSpare(client) }
+        defer { askForSpare() }
         return try await askForVisitor(client)
     }
 
-    /// Asks for the next identity in the background, unless one is kept or already being asked for.
-    private func askForSpare(_ client: InnertubeClient) {
+    /// Asks for the next identity in the background, unless one is kept or already being asked for. The main client
+    /// asks for it, whoever has used the last one.
+    private func askForSpare() {
         guard spare == nil, refill == nil else { return }
+        let client = clients[0]
         refill = Task {
             if let id = try? await askForVisitor(client) { spare = (id, now()) }
             refill = nil
