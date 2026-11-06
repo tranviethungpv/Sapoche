@@ -1,0 +1,6 @@
+A room that holds together on a weak network, and autoplay that keeps going
+- When a phone in a room has a weak connection, it no longer stutters again and again trying to catch up. It catches up within what it has already loaded, and when it has to jump it waits until it can start at the right moment, together with the room.
+- On a weak connection the app picks a quality of sound the connection can carry, in a room and on your own. The member list shows who is on a weak network, and the player says how far behind they are.
+- New "Wait for slow connections" switch in the room's settings: the room can pause for a few seconds for a friend whose connection stalls, at most a couple of times for each song.
+- Autoplay in a room no longer stops at the end of its songs. If the phone that was asked for more songs is busy, offline or finds nothing, the room asks another phone, and when the radios only offer songs you heard this week it takes songs you did not hear in the last hour.
+- On iPhone, songs the first video client cannot give are now asked for from another client before giving up.

@@ -1,0 +1,6 @@
+Phòng giữ nhịp khi mạng yếu, và autoplay không còn dừng giữa chừng
+- Khi một máy trong phòng có mạng yếu, máy không còn khựng đi khựng lại liên tục khi đuổi theo phòng. Máy đuổi theo trong phần đã tải, và khi buộc phải nhảy thì đợi đến lúc có thể bắt đầu đúng nhịp, cùng với phòng.
+- Khi mạng yếu, app chọn chất lượng âm thanh mà đường truyền gánh được, trong phòng cũng như khi nghe riêng. Danh sách thành viên cho biết ai đang mạng yếu, và trình phát cho biết họ chậm bao lâu.
+- Công tắc mới "Đợi người mạng yếu" trong cài đặt phòng: phòng có thể dừng vài giây để chờ bạn bị đứt mạng, tối đa vài lần cho mỗi bài.
+- Autoplay trong phòng không còn dừng sau các bài của nó. Nếu máy được hỏi thêm bài đang bận, mất mạng hoặc không tìm ra bài, phòng hỏi một máy khác; và khi radio chỉ có những bài bạn đã nghe trong tuần, app lấy những bài bạn chưa nghe trong 1 giờ qua.
+- Trên iPhone, bài mà trình lấy video đầu tiên không đưa được nay được hỏi qua trình khác trước khi bỏ cuộc.
