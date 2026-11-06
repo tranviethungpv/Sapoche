@@ -448,7 +448,14 @@ final class GroupController {
                 // The songs of the queue, and a song of each member who offered some, going round with each time the room runs out
                 let seeds = Queues.blend(Queues.seeds(self.queue(), ask: videoId), offers: self.openOffers(tastes), epoch: epoch)
                 let more = try await self.moreLike(seeds, Set(self.queue().map(\.videoId)), Self.autoplayCount)
-                if more.isEmpty || self.session?.snapshot.value.state?.epoch != epoch { return }
+                if more.isEmpty {
+                    EventLog.d("sync", "autoplay found nothing for the room, the room asks another device")
+                    return
+                }
+                if self.session?.snapshot.value.state?.epoch != epoch {
+                    EventLog.d("sync", "autoplay found \(more.count) songs but the room had moved on")
+                    return
+                }
                 EventLog.d("sync", "autoplay adds \(more.count) songs like '\(title)' and \(seeds.count - 1) more to the room")
                 // Marked as autoplay's, so the room keeps them apart from the songs its members chose
                 self.send(Wire.queueAddMany(more, auto: true))

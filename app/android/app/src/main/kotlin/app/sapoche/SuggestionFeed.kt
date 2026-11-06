@@ -172,11 +172,21 @@ class SuggestionFeed(
                 null
             }
         }
-        val pool = Suggestions.mix(
+        var pool = Suggestions.mix(
             lists,
             exclude + seeds + store.heardSince(now() - RECENT_MS),
             count * POOL_FACTOR,
         ) { Suggestions.welcome(it, taste, block) }
+        if (pool.isEmpty() && lists.any { it.isNotEmpty() }) {
+            // Radios that give nothing new this week would leave the music at a stop: what was not heard in the last hour
+            // will do, by any artist but those the person blocked
+            log("nothing new in the radios of ${seeds.size} seeds, taking what was not heard in the last hour")
+            pool = Suggestions.mix(
+                lists,
+                exclude + seeds + store.heardSince(now() - TIRED_MS),
+                count * POOL_FACTOR,
+            ) { Suggestions.isSong(it) && block.allows(it) }
+        }
         // YouTube's order, put in the order that suits this person
         return Suggestions.rank(pool, taste).take(count)
     }
@@ -212,5 +222,7 @@ class SuggestionFeed(
         private const val POOL_FACTOR = 4
         const val STATS_MS = 30L * 24 * 60 * 60 * 1000
         private const val RECENT_MS = 7L * 24 * 60 * 60 * 1000
+        /** When the radios hold nothing but songs heard this week, songs heard longer ago than this are given again. */
+        private const val TIRED_MS = 60L * 60 * 1000
     }
 }

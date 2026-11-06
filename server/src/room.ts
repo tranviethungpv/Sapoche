@@ -56,6 +56,14 @@ const EMPTY_BARE_ROOM_TTL_MS = 60 * 60 * 1000;
 /** How often a room with members looks for devices past DROP_AFTER_MS, so a room of dead connections still empties. Overridable for tests through SWEEP_MS. */
 const DROP_CHECK_MS = 5 * 60 * 1000;
 
+/**
+ * How long the device asked for songs by autoplay has to answer before the room asks another. Overridable for tests
+ * through FILL_MS. A device that finds nothing sends nothing, so silence is the only sign the room gets.
+ */
+const FILL_RETRY_MS = 12_000;
+/** How many devices one run-out of the queue is put to in all, the first included. */
+const FILL_ASKS_MAX = 3;
+
 const MAX_MEMBERS = 12;
 const MAX_ROOM_NAME = 32;
 /** A theme is a short name the apps know; the server only checks its shape, so a new look needs no deploy. */
@@ -1271,6 +1279,8 @@ export class Room extends DurableObject<Env> {
   private async begin(index: number, seekToMs: number, by?: string): Promise<void> {
     this.endWait(true);
     delete this.s.waits; // a new song, a new count of waits
+    delete this.s.fill; // the room is playing again: nobody needs to be asked for songs
+    delete this.s.alarms.fill;
     this.s.index = index;
     this.s.epoch++;
     this.s.phase = "preparing";
@@ -1496,27 +1506,45 @@ export class Room extends DurableObject<Env> {
     if (typeof on !== "boolean" || on === this.s.autoplay) return;
     this.s.autoplay = on;
     // Turned off, what it already added and the room has not got to is no longer wanted
-    if (!on) this.s.queue = this.s.queue.filter((q, i) => !q.auto || i <= this.s.index);
+    if (!on) {
+      this.s.queue = this.s.queue.filter((q, i) => !q.auto || i <= this.s.index);
+      delete this.s.fill;
+      delete this.s.alarms.fill;
+    }
     await this.save();
     this.broadcastState();
   }
 
   /**
    * The queue ran out. The server cannot fetch songs itself (YouTube blocks it), so one device that is here is asked to:
-   * the owner's if it is a device following the room, else whoever has been here longest.
+   * the owner's if it is a device following the room, else whoever has been here longest. A device that has been quiet
+   * for long is asked only when no other is here. The question is put again to the next device when nobody answers
+   * (see [askAgainForMoreSongs]), so one device that is busy, offline or finds nothing cannot leave the room at a stop.
    */
-  private async askForMoreSongs(last: QueueItem): Promise<void> {
+  private async askForMoreSongs(last: { videoId: string; title: string }): Promise<void> {
     if (!this.s.autoplay) return;
     const limit = Number(this.env.STALE_MS) || AWAY_AFTER_MS;
     const now = Date.now();
+    const before = this.s.fill?.asked ?? [];
     const rank = (att: Attachment) => (att.solo ? 2 : 0) + (att.id === this.s.ownerId ? 0 : 1);
     const asked = this.ctx
       .getWebSockets()
       .filter((ws) => ws.readyState === WebSocket.OPEN)
       .map((ws) => ({ ws, att: ws.deserializeAttachment() as Attachment | null }))
-      .filter((c): c is { ws: WebSocket; att: Attachment } => c.att !== null && now - c.att.lastSeen <= limit)
-      .sort((x, y) => rank(x.att) - rank(y.att) || (x.att.joinedAt ?? 0) - (y.att.joinedAt ?? 0))[0];
-    if (!asked) return;
+      .filter((c): c is { ws: WebSocket; att: Attachment } => c.att !== null)
+      .sort(
+        (x, y) =>
+          Number(now - x.att.lastSeen > limit) - Number(now - y.att.lastSeen > limit) ||
+          Number(before.includes(x.att.id)) - Number(before.includes(y.att.id)) ||
+          rank(x.att) - rank(y.att) ||
+          (x.att.joinedAt ?? 0) - (y.att.joinedAt ?? 0),
+      )[0];
+    if (!asked) return this.stopAsking();
+    this.s.fill = { videoId: last.videoId, title: last.title, asked: [...before, asked.att.id] };
+    if (this.s.fill.asked.length < FILL_ASKS_MAX) this.s.alarms.fill = now + millis(this.env.FILL_MS, FILL_RETRY_MS);
+    else delete this.s.alarms.fill;
+    await this.save();
+    await this.armAlarm();
     const tastes = await this.tastesOf(asked.att.id);
     this.send(asked.ws, {
       t: "autoplay.fill",
@@ -1525,6 +1553,19 @@ export class Room extends DurableObject<Env> {
       title: last.title,
       ...(tastes.length ? { tastes } : {}),
     });
+  }
+
+  /** The device asked for songs did not send any in time: the room is still idle, so it is put to the next. */
+  private async askAgainForMoreSongs(): Promise<void> {
+    const fill = this.s.fill;
+    if (!fill || this.s.phase !== "idle" || !this.s.autoplay) return this.stopAsking();
+    await this.askForMoreSongs(fill);
+  }
+
+  private async stopAsking(): Promise<void> {
+    delete this.s.fill;
+    delete this.s.alarms.fill;
+    await this.save();
   }
 
   private async onRepeat(mode: Repeat): Promise<void> {
@@ -1603,6 +1644,7 @@ export class Room extends DurableObject<Env> {
       if (this.s.phase === "preparing" && this.members().length > 0) await this.startPlayback();
     }
     if (due.includes("wait") && this.s.waiting) await this.resumeFromWait();
+    if (due.includes("fill")) await this.askAgainForMoreSongs();
     if (due.includes("end") && this.s.phase === "playing") await this.onFinished();
     if (due.includes("gc") && this.members().length === 0) {
       this.pruneChat(true);
@@ -1752,7 +1794,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private publicState(): PublicState {
-    const { readyIds: _r, failedIds: _f, alarms: _a, shuffleOrder: _o, bgSealed: _s, ...rest } = this.s;
+    const { readyIds: _r, failedIds: _f, alarms: _a, shuffleOrder: _o, bgSealed: _s, fill: _fill, ...rest } = this.s;
     return { ...rest, theme: rest.theme ?? "default" };
   }
 

@@ -16,6 +16,8 @@ actor SuggestionFeed {
     static let song = "song"
     static let artist = "artist"
     private static let recentMs: Int64 = 7 * 24 * 60 * 60 * 1000
+    /// When the radios hold nothing but songs heard this week, songs heard longer ago than this are given again.
+    private static let tiredMs: Int64 = 60 * 60 * 1000
 
     private let store: LibraryStore
     private let resolver: StreamResolver
@@ -171,8 +173,17 @@ actor SuggestionFeed {
                 log("no radio for \(seed): \(error.localizedDescription)")
             }
         }
-        let pool = Suggestions.mix(lists, exclude: exclude.union(seeds).union(heard), limit: count * Self.poolFactor) {
+        var pool = Suggestions.mix(lists, exclude: exclude.union(seeds).union(heard), limit: count * Self.poolFactor) {
             Suggestions.welcome($0, taste: taste, block: block)
+        }
+        if pool.isEmpty && lists.contains(where: { !$0.isEmpty }) {
+            // Radios that give nothing new this week would leave the music at a stop: what was not heard in the last hour
+            // will do, by any artist but those the person blocked
+            log("nothing new in the radios of \(seeds.count) seeds, taking what was not heard in the last hour")
+            let tired = try await store.heardSince(now() - Self.tiredMs)
+            pool = Suggestions.mix(lists, exclude: exclude.union(seeds).union(tired), limit: count * Self.poolFactor) {
+                Suggestions.isSong($0) && block.allows($0)
+            }
         }
         // YouTube's order, put in the order that suits this person
         return Array(Suggestions.rank(pool, taste: taste).prefix(count))

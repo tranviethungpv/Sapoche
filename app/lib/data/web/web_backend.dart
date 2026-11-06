@@ -948,7 +948,14 @@ class WebBackend extends BackendDefaults {
       // The songs of the queue, and a song of each member who offered some, going round with each time the room runs out
       final seeds = Queues.blend(Queues.seeds(entries, ask.videoId), await _openOffers(ask.tastes), ask.epoch);
       final more = await _moreLike(seeds, {for (final e in entries) e.videoId}, _autoplayCount);
-      if (more.isEmpty || _session?.snapshot.state?.epoch != ask.epoch) return;
+      if (more.isEmpty) {
+        _note('sync: autoplay found nothing for the room, the room asks another device');
+        return;
+      }
+      if (_session?.snapshot.state?.epoch != ask.epoch) {
+        _note('sync: autoplay found ${more.length} songs but the room had moved on');
+        return;
+      }
       _note("sync: autoplay adds ${more.length} songs like '${ask.title}' and ${seeds.length - 1} more to the room");
       // Marked as autoplay's, so the room keeps them apart from the songs its members chose
       _send(Wire.queueAddMany(more, auto: true));

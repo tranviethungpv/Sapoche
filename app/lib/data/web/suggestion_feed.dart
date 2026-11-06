@@ -173,12 +173,23 @@ class SuggestionFeed {
         _log('no radio for $seed: $e');
       }
     }
-    final pool = Suggestions.mix(
+    var pool = Suggestions.mix(
       lists,
       {...exclude, ...seeds, ...store.heardSince(_now() - _recentMs)},
       count * _poolFactor,
       (t) => Suggestions.welcome(t, taste, block),
     );
+    if (pool.isEmpty && lists.any((l) => l.isNotEmpty)) {
+      // Radios that give nothing new this week would leave the music at a stop: what was not heard in the last hour
+      // will do, by any artist but those the person blocked
+      _log('nothing new in the radios of ${seeds.length} seeds, taking what was not heard in the last hour');
+      pool = Suggestions.mix(
+        lists,
+        {...exclude, ...seeds, ...store.heardSince(_now() - _tiredMs)},
+        count * _poolFactor,
+        (t) => Suggestions.isSong(t) && block.allows(t),
+      );
+    }
     // YouTube's order, put in the order that suits this person
     return Suggestions.rank(pool, taste).take(count).toList();
   }
@@ -213,4 +224,6 @@ class SuggestionFeed {
   static const song = 'song';
   static const artist = 'artist';
   static const _recentMs = 7 * 24 * 60 * 60 * 1000;
+  /// When the radios hold nothing but songs heard this week, songs heard longer ago than this are given again.
+  static const _tiredMs = 60 * 60 * 1000;
 }

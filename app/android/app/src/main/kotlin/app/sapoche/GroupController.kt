@@ -379,7 +379,14 @@ class GroupController(
                 // The songs of the queue, and a song of each member who offered some, going round with each time the room runs out
                 val seeds = Queues.blend(Queues.seeds(queue(), ask.videoId), openOffers(ask.tastes), ask.epoch)
                 val more = moreLike(seeds, queue().map { it.videoId }.toSet(), AUTOPLAY_COUNT)
-                if (more.isEmpty() || session?.snapshot?.value?.state?.epoch != ask.epoch) return@launch
+                if (more.isEmpty()) {
+                    EventLog.d("sync", "autoplay found nothing for the room, the room asks another device")
+                    return@launch
+                }
+                if (session?.snapshot?.value?.state?.epoch != ask.epoch) {
+                    EventLog.d("sync", "autoplay found ${more.size} songs but the room had moved on")
+                    return@launch
+                }
                 EventLog.d("sync", "autoplay adds ${more.size} songs like '${ask.title}' and ${seeds.size - 1} more to the room")
                 // Marked as autoplay's, so the room keeps them apart from the songs its members chose
                 send(Protocol.queueAddMany(more, auto = true))

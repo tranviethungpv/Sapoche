@@ -286,6 +286,7 @@ async function main() {
   await autoplaySection();
   await weakNetworkSection();
   await tasteSection();
+  if (process.env.SIM_FILL_MS) await autoplayRetrySection(Number(process.env.SIM_FILL_MS));
   await crossfireSection();
   await conformanceSection();
   await soloAndPresenceSection(Number(process.env.SIM_STALE_MS) || 0);
@@ -1397,6 +1398,73 @@ async function autoplaySection() {
   const refused = await b.waitFor((m) => m.t === "error");
   check("guests that may only add songs cannot change it", refused.code === "forbidden");
   [a, b].forEach((x) => x.close());
+}
+
+/** A device asked for songs that sends none (offline, in the background, nothing found) must not leave the room at a stop. */
+async function autoplayRetrySection(fillMs) {
+  console.log("Autoplay: when nobody answers");
+  const [a, b, c] = await freshRoom(["Ra", "Rb", "Rc"]); // Ra came first, so it owns the room, then Rb, then Rc
+  const track = (videoId, title) => ({ videoId, title, artist: "x", durMs: 200000 });
+  const quiet = () => [a, b, c].forEach((x) => (x.inbox.length = 0));
+  // Every device speaks now and then, so none counts as gone quiet while the test waits
+  const beat = setInterval(() => [a, b, c].forEach((x) => x.send({ t: "ping", c0: Date.now() })), 500);
+  const playing = async (followers) => {
+    const p = await all(followers, (x) => x.waitFor((m) => m.t === "prepare"));
+    await all(followers, (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    await all(followers, (x) => x.waitFor((m) => m.t === "start"));
+    return p[0];
+  };
+  const isFill = (m) => m.t === "autoplay.fill";
+  /** Plays one song to its end: the room is idle and asks. */
+  const runOut = async (videoId, title) => {
+    a.send({ t: "queue.addMany", tracks: [track(videoId, title)] });
+    await playing([a, b, c]);
+    quiet();
+    b.send({ t: "next" });
+    return a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  };
+
+  const idle = await runOut(VIDEO_A, "One");
+  const first = await a.waitFor(isFill);
+  check("the owner's device is asked first", first.epoch === idle.state.epoch);
+  check("the question is not in the state the members see", !("fill" in idle.state));
+  // Rb and Rc joined together, so which of them has been here longer is not known: one is asked now, the other next
+  const gotFill = (x) => x.inbox.some(isFill);
+  await sleep(fillMs + 800);
+  check("when it does not answer another device is asked of the same song", gotFill(b) !== gotFill(c));
+  const [next, last] = gotFill(b) ? [b, c] : [c, b];
+  const second = next.inbox.find(isFill);
+  check("the question is the same as the first", second.videoId === VIDEO_A && second.epoch === first.epoch);
+  await sleep(fillMs);
+  check("and then the one not asked yet", gotFill(last) && last.inbox.find(isFill).videoId === VIDEO_A);
+  check("a device that was asked is not asked again while others were not", !a.inbox.some(isFill) && next.inbox.filter(isFill).length === 1);
+  quiet(); // the questions counted above are not new ones
+  check("three devices are asked at most", (await all([a, b, c], (x) => x.stays(isFill, fillMs * 2))).every(Boolean));
+
+  // An answer ends it: the room plays and nobody is asked again
+  quiet();
+  b.send({ t: "queue.addMany", tracks: [track(VIDEO_B, "Two")], auto: true });
+  await playing([a, b, c]);
+  quiet();
+  b.send({ t: "next" });
+  await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  await a.waitFor(isFill);
+  quiet();
+  c.send({ t: "queue.addMany", tracks: [track(VIDEO_C, "Three")], auto: true });
+  await playing([a, b, c]);
+  check("a room that carries on is not asked again", (await all([a, b, c], (x) => x.stays(isFill, fillMs * 2))).every(Boolean));
+
+  // Turned off while the question is out: no one else is asked
+  quiet();
+  b.send({ t: "next" });
+  await a.waitFor((m) => m.t === "state" && m.state.phase === "idle");
+  await a.waitFor(isFill);
+  a.send({ t: "autoplay", on: false });
+  await a.waitFor((m) => m.t === "state" && m.state.autoplay === false);
+  check("with autoplay turned off in the meantime nobody else is asked", (await all([b, c], (x) => x.stays(isFill, fillMs * 2))).every(Boolean));
+
+  clearInterval(beat);
+  [a, b, c].forEach((x) => x.close());
 }
 
 /** The songs members offer for autoplay to start from (protocol 19): kept per member, handed only to the device asked. */

@@ -31,7 +31,7 @@ export type Repeat = "off" | "all" | "one";
 export type GuestControl = "all" | "add";
 
 /** The jobs a room can have pending. The Durable Object has one alarm, always set to the earliest of them. */
-export type AlarmKind = "barrier" | "end" | "gc" | "sweep" | "wait";
+export type AlarmKind = "barrier" | "end" | "gc" | "sweep" | "wait" | "fill";
 
 /** A song as clients send it; the server adds the id and who added it. */
 export interface TrackInput {
@@ -78,6 +78,8 @@ export interface RoomState {
   waiting?: string;
   /** The waits of the current song, so that no device and no song holds the room up for long; kept apart from the clients' view. Protocol 20. */
   waits?: { itemId: string; total: number; per: Record<string, number> };
+  /** The question autoplay asked while the room is idle, and the devices it went to, so an unanswered one is asked of the next; kept apart from the clients' view. */
+  fill?: { videoId: string; title: string; asked: string[] };
   /** Whether the songs still to come are mixed up and stay mixed as songs are added. Protocol 11. */
   shuffle: boolean;
   /** The ids of the queue in the order it had when shuffle was turned on; turning it off puts the songs back in it. */
@@ -323,4 +325,4 @@ export type ServerMessage =
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */
-export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder" | "theme" | "bgSealed" | "waiting" | "waits"> & { theme: string };
+export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder" | "theme" | "bgSealed" | "waiting" | "waits" | "fill"> & { theme: string };

@@ -32,6 +32,8 @@ interface Env {
   PUSH_FRESH_MS?: string;
   /** Overrides how long a silent device stays present before it is marked away (milliseconds); only the tests set it. */
   STALE_MS?: string;
+  /** How long the device asked for songs by autoplay has to answer before the next is asked (milliseconds); only the tests set it. */
+  FILL_MS?: string;
   /**
    * Timers the tests shorten, in milliseconds: how long a silent device is kept before it is dropped,
    * how often a room looks for such devices, and how long an empty room is kept with and without songs queued.

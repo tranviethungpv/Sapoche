@@ -91,6 +91,17 @@ void main() {
     expect(more.map((t) => t.videoId), ['k']);
   });
 
+  test('when the radio holds only what was heard this week, what was not heard in the last hour is given again', () async {
+    library.recordListen(song('old', 'Old'));
+    clock += 2 * hour;
+    library
+      ..recordListen(song('new', 'New'))
+      ..block(SuggestionFeed.artist, 'blocked', 'Blocked');
+    radios['s'] = [ref('old', 'Old'), ref('new', 'New'), ref('b', 'Blocked')];
+    final more = await feed.after('s', {}, 10);
+    expect(more.map((t) => t.videoId), ['old']);
+  });
+
   test('what plays on after several songs takes them in turns, and a seed that has no radio does not stop the rest', () async {
     radios['s1'] = [ref('a1', 'A1'), ref('a2', 'A2')];
     radios['s2'] = [ref('b1', 'B1'), ref('b2', 'B2')];
