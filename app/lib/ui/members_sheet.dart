@@ -166,6 +166,8 @@ class _FollowCard extends StatelessWidget {
     ? (S.statusAway, p.textTertiary)
     : member.solo
     ? (S.statusAlone, p.primary)
+    : member.weak
+    ? (S.statusWeak, p.textSecondary)
     : loading
     ? (S.statusLoading, p.textSecondary)
     : (S.statusListening, p.success);

@@ -55,6 +55,10 @@ abstract class PlayerPort {
   int positionMs();
   bool isPlaying();
 
+  /// The furthest place, in ms into the item, that the player holds without a gap from where it is now: a seek no
+  /// further than this is quick, any other one makes it load again. A player that cannot tell holds everything.
+  int bufferedPositionMs() => 0x7fffffffffff;
+
   /// A song is loaded and waiting for data; only for the progress bar, so a player may leave it false.
   bool isBuffering() => false;
 

@@ -1317,6 +1317,10 @@ class _SyncChip extends StatelessWidget {
     } else if (controller.isStarting) {
       label = S.buffering;
       color = p.textSecondary;
+    } else if (player.weak && player.lagMs > _inSyncMs) {
+      // The network, not the app: this device plays a little behind the room until it can catch up
+      label = S.weakNetwork(formatLag(player.lagMs));
+      color = p.textSecondary;
     } else if (drift == null) {
       label = S.syncing;
       color = p.textSecondary;

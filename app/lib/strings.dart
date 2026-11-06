@@ -168,6 +168,15 @@ abstract final class S {
     'The owner lets guests add songs only',
     'Chủ phòng chỉ cho khách thêm bài',
   );
+  static String get waitWeak =>
+      _t('Wait for slow connections', 'Đợi người mạng yếu');
+  static String get waitWeakHelp => _t(
+    'When someone\'s music stops loading, the room pauses for up to 15 seconds so they can keep up.',
+    'Khi nhạc của ai đó ngừng tải, phòng dừng tối đa 15 giây để người đó theo kịp.',
+  );
+  static String waitingFor(String name) =>
+      _t('Waiting for $name to load the music…', 'Đang đợi $name tải nhạc…');
+  static String get statusWeak => _t('Weak network', 'Mạng yếu');
   static String get owner => _t('Owner', 'Chủ phòng');
   static String get removeFromRoom =>
       _t('Remove from room', 'Mời ra khỏi phòng');
@@ -696,6 +705,8 @@ abstract final class S {
   static String get pausedHere =>
       _t('Paused here · room plays on', 'Đã dừng ở máy này · phòng vẫn phát');
   static String get catchingUp => _t('Catching up', 'Đang bắt kịp');
+  static String weakNetwork(String behind) =>
+      _t('Weak network · $behind behind', 'Mạng yếu · chậm $behind');
   static String get soloOut => _t('Waiting for others', 'Đang đợi người khác');
   static String get onYourOwn => _t('On your own', 'Nghe riêng');
   static String get rejoin => _t('Rejoin', 'Nghe cùng lại');
@@ -1030,8 +1041,8 @@ abstract final class S {
       _t('about 128 kbps', 'khoảng 128 kbps');
   static String get audioQualityMaxRate => _t('up to 160 kbps', 'đến 160 kbps');
   static String get audioQualityHelp => _t(
-    'Applies from the next song. YouTube offers nothing above about 160 kbps, so Highest is the best there is. Songs already saved on this phone keep the quality they were fetched in until they are cleared in Storage, and downloaded songs stay as they were downloaded. An iPhone plays only AAC, so some steps can sound the same there.',
-    'Áp dụng từ bài sau. YouTube không có gì cao hơn khoảng 160 kbps, nên Cao nhất là mức tốt nhất có thể. Bài đã lưu sẵn trên máy giữ chất lượng lúc lấy cho đến khi xóa ở Bộ nhớ, và bài đã tải về giữ nguyên như lúc tải. iPhone chỉ phát được AAC nên ở đó vài mức có thể nghe giống nhau.',
+    'Applies from the next song. YouTube offers nothing above about 160 kbps, so Highest is the best there is. Songs already saved on this phone keep the quality they were fetched in until they are cleared in Storage, and downloaded songs stay as they were downloaded. An iPhone plays only AAC, so some steps can sound the same there. This is the most: when the network is weak, songs are fetched in a lower quality by themselves.',
+    'Áp dụng từ bài sau. YouTube không có gì cao hơn khoảng 160 kbps, nên Cao nhất là mức tốt nhất có thể. Bài đã lưu sẵn trên máy giữ chất lượng lúc lấy cho đến khi xóa ở Bộ nhớ, và bài đã tải về giữ nguyên như lúc tải. iPhone chỉ phát được AAC nên ở đó vài mức có thể nghe giống nhau. Đây là mức cao nhất: khi mạng yếu, bài được lấy ở chất lượng thấp hơn một cách tự động.',
   );
 
   static String get normalizeVolume =>

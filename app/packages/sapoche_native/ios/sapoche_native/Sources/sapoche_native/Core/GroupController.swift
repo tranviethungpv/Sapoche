@@ -125,6 +125,9 @@ final class GroupController {
     /// The queue that plays outside a room; it comes back after a restart, paused.
     private(set) var local: LocalSession!
 
+    /// What is known about the network, whether listening in a room or alone: it decides the quality songs are fetched in.
+    private let health = NetworkHealth()
+
     /// Stops this device after a while, or when the song is over; the fade is the player's own volume.
     private(set) var sleep: SleepTimer!
 
@@ -326,6 +329,10 @@ final class GroupController {
         videoMode = prefs.bool(Self.keyVideo, default: false)
         view = StateFlow(View())
 
+        health.onChange = { weak in
+            NetworkState.shared.weak = weak
+            EventLog.d("net", "weak network: \(weak)")
+        }
         local = LocalSession(
             scope: ownScope,
             player: engine,
@@ -338,7 +345,8 @@ final class GroupController {
             },
             log: { EventLog.d("local", $0) },
             onQueueEnd: { [weak self] last in self?.autoplay(after: last) },
-            time: self.time
+            time: self.time,
+            health: health
         )
         sleep = SleepTimer(
             scope: ownScope,
@@ -609,7 +617,7 @@ final class GroupController {
         let settings = config()
 
         let newSession = GroupSession(scope: scope, player: engine, clock: clock, time: time,
-                                      send: { [weak self] text in self?.client?.send(text) }, log: log)
+                                      send: { [weak self] text in self?.client?.send(text) }, log: log, health: health)
         newSession.trimMs = trimMs
         newSession.startBiasMs = prefs.int64(Self.keyStartBiasMs) ?? 0
         newSession.onStartBiasLearned = { [weak self] in self?.prefs.set($0, for: Self.keyStartBiasMs) }
@@ -672,6 +680,7 @@ final class GroupController {
             func nameOf(_ id: String) -> String { members.first { $0.id == id }?.name ?? "" }
             switch event {
             case let .paused(byId): self.notices.emit(Notice(kind: "paused", by: nameOf(byId)))
+            case let .waiting(byId): self.notices.emit(Notice(kind: "waiting", by: nameOf(byId)))
             case let .skipped(byId, title): self.notices.emit(Notice(kind: "skipped", by: nameOf(byId), title: title))
             // Told as the personal queue tells it: the person may be the only one not hearing the song
             case let .loadFailed(title, reason): self.errors.emit(ControllerError(code: Self.loadFailureCode(reason), message: title))
@@ -985,6 +994,7 @@ final class GroupController {
     }
     @discardableResult func requestRoomSettings(_ guestControl: String) -> Bool { send(Wire.roomSettings(guestControl: guestControl)) }
     @discardableResult func requestRoomAutoplay(_ on: Bool) -> Bool { send(Wire.autoplay(on)) }
+    @discardableResult func requestRoomWaitWeak(_ on: Bool) -> Bool { send(Wire.waitWeak(on)) }
 
     /// Runs the action for wherever the buttons act: outside a room, alone in a room, or on the room itself.
     private func act(_ onLocal: (LocalSession) -> Void, _ onSolo: (GroupSession) -> Void, _ onRoom: () -> Bool) -> Bool {

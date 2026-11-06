@@ -117,6 +117,11 @@ async function main() {
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);
   }
+  if (process.env.SIM_ONLY === "weak") {
+    await weakNetworkSection();
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+  }
   if (process.env.SIM_ONLY === "chat") {
     await chatSection();
     console.log(`\n${passed} passed, ${failed} failed`);
@@ -279,6 +284,7 @@ async function main() {
   if (process.env.SIM_RELEASE) await updateSection(JSON.parse(process.env.SIM_RELEASE));
   await playlistAndRepeatSection();
   await autoplaySection();
+  await weakNetworkSection();
   await tasteSection();
   await crossfireSection();
   await conformanceSection();
@@ -1726,6 +1732,129 @@ async function encryptionSection() {
     phone.close();
   }
   [ann, bob, cara].forEach((x) => x.close());
+}
+
+/** A device whose network is weak (protocol 20): shown to the room, and with the setting on the room waits for it, within limits. */
+async function weakNetworkSection() {
+  console.log("Weak network");
+  const [a, b, c] = await freshRoom(["Wa", "Wb", "Wc"]); // Wa owns the room
+  const track = (videoId, title) => ({ videoId, title, artist: "x", durMs: 200000 });
+  const quiet = () => [a, b, c].forEach((x) => (x.inbox.length = 0));
+  const playing = async (followers) => {
+    const p = await all(followers, (x) => x.waitFor((m) => m.t === "prepare"));
+    await all(followers, (x) => x.send({ t: "ready", epoch: p[0].epoch }));
+    const s = await all(followers, (x) => x.waitFor((m) => m.t === "start"));
+    return { epoch: p[0].epoch, start: s[0] };
+  };
+
+  // What the room shows
+  a.send({ t: "resync" });
+  const first = await a.waitFor((m) => m.t === "state");
+  check("a new room does not wait for weak devices", first.state.waitWeak === false);
+  b.send({ t: "net", weak: true });
+  const shown = await a.waitFor((m) => m.t === "members" && m.members.some((x) => x.name === "Wb" && x.weak === true));
+  check("a device that says its network is weak is marked in the member list", !!shown);
+  check("and the others are not", shown.members.filter((x) => x.weak).length === 1);
+  b.send({ t: "net", weak: false });
+  const cleared = await a.waitFor((m) => m.t === "members" && m.members.every((x) => !x.weak));
+  check("the mark goes when it says it is good again", !!cleared);
+
+  a.send({ t: "queue.addMany", tracks: [track(VIDEO_A, "One"), track(VIDEO_B, "Two")] });
+  let { epoch } = await playing([a, b, c]);
+  quiet();
+
+  // With the setting off a stall changes nothing
+  b.send({ t: "buf", epoch, positionMs: 5000 });
+  check("with the setting off the room does not stop for a device that stalls", await a.stays((m) => m.t === "pause", 400));
+
+  // Only the owner may turn it on, while guests may only add
+  a.send({ t: "room.settings", guestControl: "add" });
+  await a.waitFor((m) => m.t === "state" && m.state.guestControl === "add");
+  b.send({ t: "waitWeak", on: true });
+  const refused = await b.waitFor((m) => m.t === "error");
+  check("a guest cannot turn the waiting on when guests may only add songs", refused.code === "forbidden");
+  a.send({ t: "room.settings", guestControl: "all" });
+  await a.waitFor((m) => m.t === "state" && m.state.guestControl === "all");
+  quiet();
+  a.send({ t: "waitWeak", on: true });
+  const on = await a.waitFor((m) => m.t === "state" && m.state.waitWeak === true);
+  check("the setting is part of the state", on.state.waitWeak === true && on.state.waiting === undefined);
+  quiet();
+
+  // A stall of a device that follows stops the room where it stopped
+  b.send({ t: "buf", epoch, positionMs: 100 });
+  const stop = await a.waitFor((m) => m.t === "pause" && m.why === "wait");
+  check("the room stops for a device that stalls, naming it", stop.by === pid("Wb-id") && stop.epoch > epoch);
+  check("it stops no further back than two seconds", stop.positionMs >= 0 && stop.positionMs < 200000);
+  await c.waitFor((m) => m.t === "pause" && m.why === "wait");
+  // The device has data again: the room goes on, saying why
+  b.send({ t: "buf.ok", epoch: stop.epoch });
+  const resumed = await a.waitFor((m) => m.t === "start" && m.why === "wait");
+  check("when it has data again the room starts from where it stopped", resumed.positionMs === stop.positionMs && resumed.epoch > stop.epoch);
+  epoch = resumed.epoch;
+  quiet();
+
+  // Limits: two waits for one device on a song, three for the room
+  b.send({ t: "buf", epoch, positionMs: 1000 });
+  let p2 = await a.waitFor((m) => m.t === "pause" && m.why === "wait");
+  b.send({ t: "buf.ok", epoch: p2.epoch });
+  let r2 = await a.waitFor((m) => m.t === "start" && m.why === "wait");
+  epoch = r2.epoch;
+  quiet();
+  b.send({ t: "buf", epoch, positionMs: 2000 });
+  check("a device holds the room up twice per song, not a third time", await a.stays((m) => m.t === "pause", 500));
+  c.send({ t: "buf", epoch, positionMs: 2000 });
+  const p3 = await a.waitFor((m) => m.t === "pause" && m.why === "wait");
+  check("another device still has its waits", p3.by === pid("Wc-id"));
+
+  // Somebody presses play meanwhile: the room goes, and the device has no waits left on this song
+  a.send({ t: "play" });
+  const pressed = await a.waitFor((m) => m.t === "start");
+  check("pressing play during a wait starts the room without the why", pressed.why === undefined);
+  epoch = pressed.epoch;
+  quiet();
+  c.send({ t: "buf", epoch, positionMs: 3000 });
+  check("and the device that held it up has no wait left", await a.stays((m) => m.t === "pause", 400));
+
+  // A device that went to listen alone, or was never following, is not waited for
+  a.send({ t: "next" });
+  ({ epoch } = await playing([a, b, c]));
+  quiet();
+  b.send({ t: "solo", on: true });
+  await a.waitFor((m) => m.t === "members" && m.members.some((x) => x.name === "Wb" && x.solo));
+  b.send({ t: "buf", epoch, positionMs: 500 });
+  check("a device listening alone does not stop the room", await a.stays((m) => m.t === "pause", 400));
+  b.send({ t: "solo", on: false });
+  quiet();
+
+  // The waiter leaves: the room goes on at once
+  c.send({ t: "buf", epoch, positionMs: 700 });
+  const p4 = await a.waitFor((m) => m.t === "pause" && m.why === "wait");
+  c.send({ t: "solo", on: true });
+  const freed = await a.waitFor((m) => m.t === "start" && m.why === "wait");
+  check("when the device the room waits for starts listening alone, the room goes on", freed.epoch > p4.epoch);
+
+  // A device that never says it has data is waited for 15 seconds, not longer
+  c.send({ t: "solo", on: false });
+  await a.waitFor((m) => m.t === "members" && m.members.every((x) => !x.solo));
+  quiet();
+  a.send({ t: "prev" });
+  ({ epoch } = await playing([a, b, c]));
+  quiet();
+  b.send({ t: "buf", epoch, positionMs: 400 });
+  const p5 = await a.waitFor((m) => m.t === "pause" && m.why === "wait");
+  const late = await a.waitFor((m) => m.t === "start" && m.why === "wait", 18000);
+  check("the room waits at most about 15 seconds for a device that stays silent", late._at - p5._at > 14000 && late._at - p5._at < 17500, `${late._at - p5._at}ms`);
+  quiet();
+
+  // Turning the setting off during a wait lets the room go too
+  ({ epoch } = { epoch: late.epoch });
+  c.send({ t: "buf", epoch, positionMs: 900 });
+  const p6 = await a.waitFor((m) => m.t === "pause" && m.why === "wait");
+  a.send({ t: "waitWeak", on: false });
+  const off = await a.waitFor((m) => m.t === "start" && m.why === "wait");
+  check("turning the setting off during a wait lets the room go", off.epoch > p6.epoch);
+  [a, b, c].forEach((x) => x.close());
 }
 
 /** What autoplay adds stays apart from the songs members chose (protocol 12). */

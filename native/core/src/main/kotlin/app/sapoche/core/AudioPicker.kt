@@ -21,6 +21,29 @@ enum class AudioQuality(val level: Int, private val maxKbps: Int) {
     }
 
     companion object {
+        /** The most a step of the bandwidth that is [kbps] can carry, with room to spare: a song streams at the bitrate it has. */
+        fun forBandwidth(kbps: Long): AudioQuality {
+            val usable = kbps / BANDWIDTH_HEADROOM
+            return when {
+                usable >= 160 -> MAX
+                usable >= 128 -> HIGH
+                usable >= 70 -> NORMAL
+                else -> LOW
+            }
+        }
+
+        /**
+         * What a song is fetched in: the [setting] is the most, and while the network is [weak] no more than what the
+         * [bandwidthKbps] measured can carry (the least stream there is, when nothing was measured).
+         */
+        fun effective(setting: AudioQuality, weak: Boolean, bandwidthKbps: Long): AudioQuality {
+            if (!weak) return setting
+            val auto = if (bandwidthKbps > 0) forBandwidth(bandwidthKbps) else LOW
+            return if (auto.level < setting.level) auto else setting
+        }
+
+        private const val BANDWIDTH_HEADROOM = 1.5
+
         /** The step for a saved [level]; anything unknown is the best, which is what the app did before there was a choice. */
         fun of(level: Int): AudioQuality = entries.firstOrNull { it.level == level } ?: MAX
     }

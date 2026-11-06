@@ -23,6 +23,7 @@ extension type _YtPlayer._(JSObject _) implements JSObject {
   // Before a video is loaded these answer nothing at all
   external num? getCurrentTime();
   external num? getDuration();
+  external num? getVideoLoadedFraction();
   external int? getPlayerState();
   external void setPlaybackRate(num rate);
   external void mute();
@@ -285,6 +286,10 @@ class YoutubePlayer extends PlayerPort {
 
   @override
   int durationMs() => ((_player?.getDuration() ?? 0) * 1000).round();
+
+  // The frame says how much of the video it has loaded as a fraction, which is coarse, but all it tells
+  @override
+  int bufferedPositionMs() => (durationMs() * (_player?.getVideoLoadedFraction() ?? 1)).round();
 }
 
 /// A newer load took the place of this one; nobody waits for it any more.

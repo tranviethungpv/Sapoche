@@ -244,6 +244,8 @@ class RoomController extends ChangeNotifier {
         final who = by.isEmpty ? S.someone : by;
         if (kind == 'paused') {
           _notices.add(Notice(S.pausedBy(who), canKeepPlaying: true));
+        } else if (kind == 'waiting') {
+          _notices.add(Notice(S.waitingFor(who)));
         } else if (kind == 'skipped') {
           _notices.add(Notice(S.skippedBy(who, title ?? '')));
         }
@@ -1083,6 +1085,9 @@ class RoomController extends ChangeNotifier {
 
   Future<void> setRoomAutoplay(bool on) =>
       _run(() => _backend.setRoomAutoplay(on));
+
+  Future<void> setRoomWaitWeak(bool on) =>
+      _run(() => _backend.setRoomWaitWeak(on));
 
   /// Owner only: remove a member from the room.
   Future<void> kick(Member member) => _run(() => _backend.kick(member.id));

@@ -43,7 +43,7 @@ class SapocheApp : Application() {
         val limitMb = getSharedPreferences("sapoche", MODE_PRIVATE).getInt("cache_limit_mb", DEFAULT_CACHE_MB)
         caches = MediaCaches(this, limitMb * 1024L * 1024L)
         loudness = LoudnessBook(library, CoroutineScope(SupervisorJob() + Dispatchers.IO))
-        mediaData = MediaData(caches, streams, { videoMaxHeight }, { audioQuality }, deviceMusic, loudness) { EventLog.d("cache", it) }
+        mediaData = MediaData(caches, streams, { videoMaxHeight }, { AudioQuality.effective(audioQuality, weakNetwork, bandwidthKbps) }, deviceMusic, loudness) { EventLog.d("cache", it) }
         downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
@@ -69,6 +69,14 @@ class SapocheApp : Application() {
         /** How much sound to fetch for a song that is not kept yet; read by the loader thread, so it is volatile. */
         @Volatile
         var audioQuality = AudioQuality.MAX
+
+        /** The network is too weak for the plain rules (see `NetworkHealth`): songs are fetched in a lower quality. */
+        @Volatile
+        var weakNetwork = false
+
+        /** What the player last measured the network to carry, in kbps; 0 until it measured. */
+        @Volatile
+        var bandwidthKbps = 0L
 
         lateinit var resolver: NewPipeResolver
             private set

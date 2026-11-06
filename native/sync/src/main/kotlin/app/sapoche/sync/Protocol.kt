@@ -59,6 +59,8 @@ data class RoomState(
     val autoplay: Boolean? = null,
     /** Whether what is still to come is mixed and stays mixed as songs are added; null when the server is older than protocol 11. */
     val shuffle: Boolean? = null,
+    /** Whether the room stops, for a few seconds at most, for a device that stalls; null when the server is older than protocol 20. */
+    val waitWeak: Boolean? = null,
     /** The chat is end-to-end encrypted: the room passes on sealed messages only (see [ChatCipher]). Protocol 15. */
     val enc: Boolean = false,
     /** The look of the room's chat, a name the apps know, `default` for none; null from a server older than protocol 16. */
@@ -84,6 +86,8 @@ data class Member(
     val av: String? = null,
     /** The version of the app the member uses, like `1.26.0`; null from an app or a server older than protocol 17. */
     val app: String? = null,
+    /** The device said its network is weak; false from an app or a server older than protocol 20. */
+    val weak: Boolean = false,
 )
 
 /** A chat message as the room keeps it. [name] is the sender's name when it was sent; [cid] is the id the sending device gave it. */
@@ -138,10 +142,11 @@ sealed interface ServerMessage {
 
     /** Play so that position [positionMs] is heard at server time [startAt]. */
     @Serializable
-    data class Start(val epoch: Long, val startAt: Long, val positionMs: Long, val by: String? = null) : ServerMessage
+    data class Start(val epoch: Long, val startAt: Long, val positionMs: Long, val by: String? = null, val why: String? = null) : ServerMessage
 
+    /** [why] `wait`: the room stopped for the device [by], which waits for data, not because someone pressed pause. Protocol 20. */
     @Serializable
-    data class Pause(val epoch: Long, val positionMs: Long, val by: String? = null) : ServerMessage
+    data class Pause(val epoch: Long, val positionMs: Long, val by: String? = null, val why: String? = null) : ServerMessage
 
     /** The room moved on to the item at [index]; position 0 of it was heard at server time [startedAt]. */
     @Serializable
@@ -434,6 +439,18 @@ object Protocol {
     fun next(from: String? = null) = msg("next") { if (from != null) put("from", from) }
 
     fun prev(from: String? = null) = msg("prev") { if (from != null) put("from", from) }
+
+    /** The room's waiting for a device that stalls, on or off. Only servers of protocol 20 or newer know it. */
+    fun waitWeak(on: Boolean) = msg("waitWeak") { put("on", on) }
+
+    /** This device's network is weak, or good again (protocol 20). */
+    fun net(weak: Boolean) = msg("net") { put("weak", weak) }
+
+    /** This device stalled for want of data at [positionMs] of [epoch]; a room that waits stops there (protocol 20). */
+    fun buf(epoch: Long, positionMs: Long) = msg("buf") { put("epoch", epoch); put("positionMs", positionMs) }
+
+    /** The device that stalled has data again (protocol 20). */
+    fun bufOk(epoch: Long) = msg("buf.ok") { put("epoch", epoch) }
 
     /** Start or stop listening on one's own; a solo device never holds the room back. */
     fun solo(on: Boolean) = msg("solo") { put("on", on) }

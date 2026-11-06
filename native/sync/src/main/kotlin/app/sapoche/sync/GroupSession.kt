@@ -49,6 +49,15 @@ interface PlayerPort {
     fun positionMs(): Long
     fun isPlaying(): Boolean
 
+    /** The player is meant to play and waits for data: a stall, as opposed to a pause someone asked for. */
+    fun isBuffering(): Boolean
+
+    /**
+     * The furthest place, in ms into the item, that the player holds without a gap from where it is now: a seek no
+     * further than this is quick, any other one makes it load again. Not before [positionMs].
+     */
+    fun bufferedPositionMs(): Long
+
     /** Called when the loaded item played to its end and nothing was queued after it. */
     var onEnded: (() -> Unit)?
 
@@ -91,6 +100,8 @@ class GroupSession(
     private val send: (String) -> Unit,
     private val log: (String) -> Unit = {},
     private val drift: DriftController = DriftController(),
+    /** What is known about the network, shared with whatever else plays on this device. */
+    val health: NetworkHealth = NetworkHealth(),
 ) {
     data class Snapshot(
         val state: RoomState? = null,
@@ -105,6 +116,10 @@ class GroupSession(
         val soloItemId: String? = null,
         /** While [solo], a song is on its way to play on this device. */
         val loading: Boolean = false,
+        /** The network is too weak for the plain rules: the device may run behind the room, see [NetworkHealth]. */
+        val weak: Boolean = false,
+        /** While [weak], how far behind the room this device plays, in ms; 0 when it keeps up. */
+        val lagMs: Long = 0,
     ) {
         /**
          * This device may play, skip and seek the room: the same rule as the server's, which refuses the rest. Buttons
@@ -121,6 +136,9 @@ class GroupSession(
     sealed interface RoomEvent {
         data class Paused(val byId: String) : RoomEvent
         data class Skipped(val byId: String, val title: String) : RoomEvent
+
+        /** The room stopped, for a few seconds at most, because [byId] waits for data to play on. Protocol 20. */
+        data class Waiting(val byId: String) : RoomEvent
 
         /** This device could not load [title], while the room may well be playing it; [reason] when it is known. */
         data class LoadFailed(val title: String, val reason: LoadFailure.Reason?) : RoomEvent
@@ -159,13 +177,25 @@ class GroupSession(
     private var prepareJob: Job? = null
     private var startJob: Job? = null
     private var driftJob: Job? = null
+    private var waitJob: Job? = null
     private val filter = DriftFilter()
+
+    /** What was last told of this device's network, and when, so that a flutter is not told again and again. Protocol 20. */
+    private var netSent = false
+    private var netSentAt = Long.MIN_VALUE / 2
+
+    /** The epoch the room was asked to wait in, so that one stall asks once. */
+    private var bufSentEpoch = -1L
 
     /** Diagnostics: when false, drift is measured and logged but never corrected. */
     @Volatile var correctionEnabled = true
 
-    /** How long the last seek took; used to aim a little ahead when correcting drift by seeking. */
+    /** How long the last seek within the buffer took; used to aim a little ahead when correcting drift by seeking. */
     private var seekCostMs = 150L
+
+    /** While the network is weak, no seek before this moment, and the gap between seeks; a seek that stalls doubles it. */
+    private var nextSeekAt = 0L
+    private var seekGapMs = NetworkHealth.SEEK_GAP_MS
 
     /** Item currently handed to the player as the gapless successor of the loaded one. */
     private var preloaded: QueueItem? = null
@@ -348,7 +378,11 @@ class GroupSession(
 
     /** The connection came back: the server forgot that this device listens alone. */
     fun onReconnected() {
-        scope.launch { if (solo) send(Protocol.solo(true)) }
+        scope.launch {
+            if (solo) send(Protocol.solo(true))
+            // The server forgot this device's network too
+            if (netSent && state?.waitWeak != null) send(Protocol.net(true))
+        }
     }
 
     fun soloPlay() {
@@ -564,6 +598,7 @@ class GroupSession(
         // Keep our own prepare running: a slow device still needs to finish loading
         startJob?.cancel()
         driftJob?.cancel()
+        waitJob?.cancel()
         clearPendingAdopt()
         startedAtServer = null
         player.pause()
@@ -589,10 +624,17 @@ class GroupSession(
         if (msg.epoch < handledEpoch) return
         handledEpoch = msg.epoch
         val by = msg.by
-        if (by != null && by != _snapshot.value.you) _events.tryEmit(RoomEvent.Paused(by))
+        val you = _snapshot.value.you
+        if (msg.why == "wait") {
+            if (by != null && by != you) _events.tryEmit(RoomEvent.Waiting(by))
+        } else if (by != null && by != you) {
+            _events.tryEmit(RoomEvent.Paused(by))
+        }
         updateRoom { it.copy(phase = "paused", epoch = msg.epoch, positionMs = msg.positionMs) }
         cancelPlayback()
         val item = state?.current
+        // The room stopped for this device: it says when it has enough data to go on
+        if (msg.why == "wait" && by != null && by == you) waitJob = scope.launch { waitForData(msg.epoch) }
         startJob = scope.launch {
             if (loadedItemId != null) {
                 player.seekTo(msg.positionMs)
@@ -622,6 +664,12 @@ class GroupSession(
 
         when {
             loadedItemId == item.id -> adopt(msg.startedAt)
+            preloaded?.id == item.id && health.weak && _snapshot.value.lagMs >= TAIL_CUT_LAG_MS -> {
+                // Still behind on a weak network: do not hear out the end of the old song, start the new one with the room
+                log("behind by ${_snapshot.value.lagMs}ms, cutting the end of the song short")
+                cancelPlayback()
+                startJob = scope.launch { catchUpPlaying(item, msg.startedAt) }
+            }
             preloaded?.id == item.id -> {
                 // Our player is still finishing the previous item and will move on within moments
                 driftJob?.cancel()
@@ -794,7 +842,7 @@ class GroupSession(
     private suspend fun catchUpPlaying(item: QueueItem, startedAt: Long) {
         var attempt = 0
         while (true) {
-            val guessed = clock.toServer(nowMs()) - startedAt + CATCH_UP_LOAD_GUESS_MS
+            val guessed = clock.toServer(nowMs()) - startedAt + health.loadMs
             loadPaused(item, guessed.coerceAtLeast(0))
             if (loadedItemId != null) break
             if (++attempt >= CATCH_UP_MAX_ATTEMPTS) {
@@ -819,9 +867,14 @@ class GroupSession(
         } else {
             val late = nowMs() - startLocal
             val target = positionMs + late.coerceAtLeast(0) + seekCostMs + startBiasMs
-            player.seekTo(target)
-            if (!held) player.play()
-            log("${if (held) "held, not playing" else "play()"} late by ${late}ms, skipped to $target")
+            if (target > player.bufferedPositionMs() - IN_BUFFER_MARGIN_MS) {
+                log("late by ${late}ms and the place is not held: jumping")
+                scheduledPlay(startAtServer - positionMs)
+            } else {
+                player.seekTo(target)
+                if (!held) player.play()
+                log("${if (held) "held, not playing" else "play()"} late by ${late}ms, skipped to $target")
+            }
         }
         drift.reset()
         player.setSpeed(1f)
@@ -837,12 +890,26 @@ class GroupSession(
             var settleUntil = 0L
             var tick = 0
             var playingTicks = 0
+            var stalledSince: Long? = null
+            var stallAtMs = 0L
+            var lastSeekAt = 0L
             filter.reset(nowMs())
             while (isActive) {
                 delay(DRIFT_TICK_MS)
                 val started = startedAtServer ?: break
                 if (!player.isPlaying()) {
                     playingTicks = 0
+                    if (stalledSince == null && !held) {
+                        stalledSince = nowMs()
+                        stallAtMs = player.positionMs()
+                    }
+                    // A stall that lasts, in a room that waits: say where it began, and the room stops there
+                    val since = stalledSince
+                    if (since != null && nowMs() - since >= BUF_AFTER_MS && player.isBuffering() && state?.waitWeak == true && bufSentEpoch != handledEpoch) {
+                        bufSentEpoch = handledEpoch
+                        log("stalled at ${stallAtMs}ms, asking the room to wait")
+                        send(Protocol.buf(handledEpoch, stallAtMs))
+                    }
                     _snapshot.update { it.copy(driftMs = null) }
                     // Readings from before a stall say nothing about the position after it
                     filter.reset(nowMs(), _snapshot.value.speed)
@@ -850,9 +917,26 @@ class GroupSession(
                 }
                 if (++playingTicks >= HEALTHY_TICKS) recoveries = 0
                 val now = nowMs()
+                stalledSince?.let { since ->
+                    stalledSince = null
+                    if (now - since >= STALL_MIN_MS) {
+                        learnBias = false // what a stall did to the readings says nothing about how late a start is heard
+                        log("stalled for ${now - since}ms, ${player.bufferedPositionMs() - player.positionMs()}ms buffered now")
+                        if (health.onStall(now)) log("weak network: the room may run ahead of this device")
+                        // A seek that is followed by a stall was too soon: leave more time before the next one
+                        if (now - lastSeekAt < SEEK_STALL_WINDOW_MS) seekGapMs = (seekGapMs * 2).coerceAtMost(MAX_SEEK_GAP_MS)
+                    }
+                }
+                val ahead = (player.bufferedPositionMs() - player.positionMs()).coerceAtLeast(0)
+                val whole = state?.current?.durMs ?: 0
+                if (health.tick(now, ahead, whole > 0 && player.bufferedPositionMs() >= whole - 1000)) {
+                    log("network is good again")
+                    seekGapMs = NetworkHealth.SEEK_GAP_MS
+                }
                 val expected = clock.toServer(now) - started + trimMs
                 val driftMs = player.positionMs() - expected
-                _snapshot.update { it.copy(driftMs = driftMs) }
+                        _snapshot.update { it.copy(driftMs = driftMs, weak = health.weak, lagMs = if (health.weak) (-driftMs).coerceAtLeast(0) else 0) }
+                tellNetwork(now)
                 if (now < settleUntil) continue // let a recent seek settle before measuring again
                 filter.add(now, driftMs)
                 val smoothed = filter.estimate(now) ?: continue
@@ -867,7 +951,9 @@ class GroupSession(
                 val trusted = coldStart || if (abs(smoothed) > drift.seekThresholdMs) filter.hasLargeDriftEvidence else filter.isFull
                 if (!trusted) continue
 
-                when (val action = if (coldStart) DriftAction.Seek else drift.decide(smoothed)) {
+                val decided = if (coldStart) DriftAction.Seek else drift.decide(smoothed)
+                val action = if (health.weak && !coldStart) whileWeak(decided, smoothed, ahead, now) else decided
+                when (action) {
                     DriftAction.None -> Unit
                     is DriftAction.SetSpeed -> {
                         player.setSpeed(action.factor)
@@ -880,18 +966,107 @@ class GroupSession(
                         // Aim a little ahead: the seek itself takes time
                         val target = clock.toServer(before) - started + seekCostMs + trimMs
                         learnBias = false // a corrective seek muddies what the plain start looked like
-                        player.seekTo(target)
-                        seekCostMs = (nowMs() - before).coerceIn(50, 1000)
+                        val buffered = player.bufferedPositionMs()
+                        if (target > player.positionMs() && target > buffered - IN_BUFFER_MARGIN_MS) {
+                            // The place is not held: going there now means loading it with the sound on, and the room moves
+                            // on meanwhile. Pause, load, and start there at a moment that is still ahead
+                            log("drift=${smoothed}ms (smoothed), ${buffered - player.positionMs()}ms held: jumping")
+                            player.pause()
+                            scheduledPlay(started)
+                        } else {
+                            player.seekTo(target)
+                            seekCostMs = (nowMs() - before).coerceIn(50, 1000)
+                            log("drift=${smoothed}ms (smoothed) -> seek to $target within the buffer (took ${seekCostMs}ms)")
+                        }
+                        lastSeekAt = nowMs()
+                        nextSeekAt = lastSeekAt + seekGapMs
                         drift.reset()
                         player.setSpeed(1f)
                         filter.reset(nowMs())
                         _snapshot.update { it.copy(speed = 1f) }
                         settleUntil = nowMs() + SETTLE_AFTER_SEEK_MS
-                        log("drift=${smoothed}ms (smoothed) -> seek to $target (took ${seekCostMs}ms)")
                     }
                 }
             }
         }
+    }
+
+    /** Tells the room, at most once in [NET_TELL_GAP_MS], when this device's network turned weak or good. Protocol 20. */
+    private fun tellNetwork(now: Long) {
+        if (state?.waitWeak == null) return // a server older than protocol 20 does not know the message
+        val weak = health.weak
+        if (weak == netSent || now - netSentAt < NET_TELL_GAP_MS) return
+        netSent = weak
+        netSentAt = now
+        send(Protocol.net(weak))
+    }
+
+    /** The room stopped for this device: say so once [WAIT_DATA_AHEAD_MS] of the song are loaded ahead, or the whole of it. */
+    private suspend fun waitForData(epoch: Long) {
+        val until = nowMs() + WAIT_DATA_MAX_MS
+        while (nowMs() < until) {
+            delay(DRIFT_TICK_MS)
+            val whole = state?.current?.durMs ?: 0
+            val buffered = player.bufferedPositionMs()
+            if (buffered - player.positionMs() >= WAIT_DATA_AHEAD_MS || (whole > 0 && buffered >= whole - 1000)) {
+                log("loaded ${buffered - player.positionMs()}ms ahead, telling the room")
+                send(Protocol.bufOk(epoch))
+                return
+            }
+        }
+    }
+
+    /**
+     * What to do about [decided] while the network is weak: a device behind the room does not chase it with data it does
+     * not have, see [NetworkHealth.catchUp]. A device ahead of the room is corrected as usual.
+     */
+    private fun whileWeak(decided: DriftAction, smoothedMs: Long, aheadMs: Long, now: Long): DriftAction {
+        if (smoothedMs < -drift.seekThresholdMs) {
+            return when (health.catchUp(-smoothedMs, aheadMs)) {
+                CatchUp.Wait -> {
+                    drift.reset()
+                    DriftAction.None
+                }
+                is CatchUp.Speed -> drift.decide(-drift.seekThresholdMs)
+                CatchUp.SeekInBuffer -> if (now >= nextSeekAt) DriftAction.Seek else DriftAction.None
+                CatchUp.Jump -> DriftAction.Seek
+            }
+        }
+        // Speeding up spends data faster too: not with a thin buffer
+        if (decided is DriftAction.SetSpeed && decided.factor > 1f && aheadMs < NetworkHealth.SPEED_AHEAD_MS) {
+            drift.reset()
+            return DriftAction.None
+        }
+        if (decided == DriftAction.Seek && smoothedMs > 0 && now < nextSeekAt) return DriftAction.None
+        return decided
+    }
+
+    /**
+     * Get the player to where the room will be at a moment ahead of now, and start it then. It loads the place first, paused,
+     * so a slow network costs one stretch of silence of known length rather than a chain of stalls. When loading takes
+     * longer than the time given, the next try is given more; after a few tries it plays at once.
+     */
+    private suspend fun scheduledPlay(startedAt: Long): Boolean {
+        var lead = health.loadMs
+        repeat(MAX_JUMP_ATTEMPTS) { attempt ->
+            val t0 = nowMs()
+            val position = (clock.toServer(t0) + lead - startedAt + trimMs + startBiasMs).coerceAtLeast(0)
+            player.seekTo(position)
+            val took = nowMs() - t0
+            val spare = lead - took
+            if (spare >= JUMP_MIN_SPARE_MS) {
+                delay(spare)
+                if (!held) player.play()
+                health.learnLoad(took)
+                log("jumped to ${position}ms, loading took ${took}ms of the ${lead}ms given (try ${attempt + 1})")
+                return true
+            }
+            health.onJumpMissed(nowMs(), took)
+            lead = health.loadMs
+            log("loading took ${took}ms, more than the time given; trying again with ${lead}ms")
+        }
+        if (!held) player.play()
+        return false
     }
 
     /** The first full window after a plain start shows how far off that start was; fold it into the bias. */
@@ -905,6 +1080,7 @@ class GroupSession(
     }
 
     private fun cancelPlayback() {
+        waitJob?.cancel()
         learnBias = false
         prepareJob?.cancel()
         startJob?.cancel()
@@ -923,7 +1099,24 @@ class GroupSession(
         const val DRIFT_TICK_MS = 500L
         const val LOG_EVERY_TICKS = 2 // every second
         const val SETTLE_AFTER_SEEK_MS = 1500L
-        const val CATCH_UP_LOAD_GUESS_MS = 2000L
+
+        /** A target this close to the end of what the player holds counts as not held. */
+        const val IN_BUFFER_MARGIN_MS = 1000L
+
+        /** Not playing for this long, though meant to, is a stall; one tick missing is jitter. */
+        const val STALL_MIN_MS = 1000L
+
+        /** A stall this long, in a room that waits for devices that stall, is told to the room. */
+        const val BUF_AFTER_MS = 500L
+        const val NET_TELL_GAP_MS = 10_000L
+
+        /** The device the room waits for says so when this much of the song is loaded ahead, and gives up waiting after the second. */
+        const val WAIT_DATA_AHEAD_MS = 10_000L
+        const val WAIT_DATA_MAX_MS = 20_000L
+        const val SEEK_STALL_WINDOW_MS = 5000L
+        const val MAX_SEEK_GAP_MS = 80_000L
+        const val MAX_JUMP_ATTEMPTS = 3
+        const val JUMP_MIN_SPARE_MS = 100L
         const val CATCH_UP_LEAD_MS = 400L
         const val CATCH_UP_RETRY_MS = 5000L
         const val CATCH_UP_MAX_ATTEMPTS = 60 // about five minutes plus the time each attempt takes
@@ -942,6 +1135,9 @@ class GroupSession(
 
         /** How long to wait for the room's answer, or for our own player, around a gapless advance. */
         const val ADVANCE_WAIT_MS = 4000L
+
+        /** Behind the room by this much when the song changes, the rest of the old song is dropped. */
+        const val TAIL_CUT_LAG_MS = 1500L
 
         /** Like most players: "previous" restarts the song unless it has only just begun. */
         const val PREV_RESTARTS_AFTER_MS = 3000L

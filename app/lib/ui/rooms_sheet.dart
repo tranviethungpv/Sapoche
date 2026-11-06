@@ -403,6 +403,11 @@ class _InRoom extends StatelessWidget {
         if (snapshot.iOwn) ...[
           const SizedBox(height: 16),
           _GuestControlCard(room: room),
+          // A server older than protocol 20 cannot wait for anybody
+          if (snapshot.roomWaitWeak != null) ...[
+            const SizedBox(height: 10),
+            _WaitWeakCard(room: room),
+          ],
         ],
         if (room.hasChat && (snapshot.encrypted || snapshot.iOwn)) ...[
           const SizedBox(height: 10),
@@ -470,6 +475,49 @@ class _InRoom extends StatelessWidget {
     if (confirmed != true || !context.mounted) return;
     Navigator.pop(context);
     room.leave();
+  }
+}
+
+/// Owner only: whether the room waits, for a few seconds at most, for a device that stalls for want of data.
+class _WaitWeakCard extends StatelessWidget {
+  const _WaitWeakCard({required this.room});
+
+  final RoomController room;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final on = room.snapshot.roomWaitWeak == true;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: on ? p.primaryContainer : p.surfaceRaised,
+        borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
+        border: Border.all(color: p.outlineSoft),
+      ),
+      // A screen reader reads the switch together with what it is for
+      child: MergeSemantics(
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(S.waitWeak, style: theme.titleMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    S.waitWeakHelp,
+                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Switch(value: on, onChanged: room.setRoomWaitWeak),
+          ],
+        ),
+      ),
+    );
   }
 }
 

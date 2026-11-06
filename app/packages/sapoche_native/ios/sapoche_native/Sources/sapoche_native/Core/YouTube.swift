@@ -87,6 +87,23 @@ enum AudioQuality: Int, CaseIterable {
         }
     }
 
+    /// The most a step of the bandwidth that is [kbps] can carry, with room to spare: a song streams at the bitrate it has.
+    static func forBandwidth(_ kbps: Int64) -> AudioQuality {
+        let usable = Double(kbps) / 1.5
+        if usable >= 160 { return .max }
+        if usable >= 128 { return .high }
+        if usable >= 70 { return .normal }
+        return .low
+    }
+
+    /// What a song is fetched in: the [setting] is the most, and while the network is [weak] no more than what the
+    /// [bandwidthKbps] measured can carry (the least stream there is, when nothing was measured).
+    static func effective(_ setting: AudioQuality, weak: Bool, bandwidthKbps: Int64) -> AudioQuality {
+        if !weak { return setting }
+        let auto = bandwidthKbps > 0 ? forBandwidth(bandwidthKbps) : .low
+        return auto.rawValue < setting.rawValue ? auto : setting
+    }
+
     /// The step for a saved level; anything unknown is the best, which is what the app did before there was a choice.
     init(level: Int) {
         self = Self(rawValue: level) ?? .max

@@ -159,7 +159,12 @@ final class FakePlayer: PlayerEngine {
         return position
     }
 
+    var buffering = false
     func isPlaying() -> Bool { playing }
+    func isBuffering() -> Bool { buffering }
+    /// Everything is held, so that seeks are quick, unless a test says otherwise.
+    var bufferedMs = Int64.max
+    func bufferedPositionMs() -> Int64 { bufferedMs }
 
     // ---- what the controller asks of an engine
 

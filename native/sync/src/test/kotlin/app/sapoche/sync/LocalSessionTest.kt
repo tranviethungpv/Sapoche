@@ -35,6 +35,7 @@ class LocalSessionTest {
             onQueueEnd = { ended += it.title },
             newId = { "id${++counter}" },
             random = Random(7),
+            nowMs = now,
         ).also { it.attach() }
     }
 
@@ -56,6 +57,38 @@ class LocalSessionTest {
         assertTrue(h.player.playing)
         assertEquals(listOf("Song 1", "Song 2"), h.titles())
         assertEquals("Song 2", h.player.queuedNext?.title, "the next song is ready for a gapless finish")
+    }
+
+    @Test
+    fun `a stall while listening alone makes the network weak, and a quiet spell makes it good again`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        step(2_000)
+        assertFalse(h.session.health.weak)
+
+        h.player.buffering = true
+        h.player.playing = false
+        step(3_000)
+        h.player.buffering = false
+        h.player.playing = true
+        step(1_000)
+        assertTrue(h.session.health.weak, "stalled for seconds, then played again")
+
+        step(NetworkHealth.QUIET_MS + 2_000)
+        assertFalse(h.session.health.weak, "a minute without a stall, and the buffer is full")
+    }
+
+    @Test
+    fun `a pause someone asked for is not a stall`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        h.session.pause()
+        step(5_000)
+        h.session.play()
+        step(2_000)
+        assertFalse(h.session.health.weak)
     }
 
     @Test

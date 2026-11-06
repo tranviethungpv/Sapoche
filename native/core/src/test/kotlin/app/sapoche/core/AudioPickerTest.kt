@@ -87,4 +87,20 @@ class AudioPickerTest {
         assertEquals(AudioQuality.MAX, AudioQuality.of(9))
         assertEquals(AudioQuality.MAX, AudioQuality.of(-1))
     }
+
+    @Test
+    fun `a weak network lowers what is fetched to what it can carry, never above the setting`() {
+        // A good network: the setting, whatever the last measure said
+        assertEquals(AudioQuality.MAX, AudioQuality.effective(AudioQuality.MAX, weak = false, bandwidthKbps = 50))
+        // Weak: the step the measured bandwidth leaves room for
+        assertEquals(AudioQuality.MAX, AudioQuality.effective(AudioQuality.MAX, weak = true, bandwidthKbps = 400))
+        assertEquals(AudioQuality.HIGH, AudioQuality.effective(AudioQuality.MAX, weak = true, bandwidthKbps = 220))
+        assertEquals(AudioQuality.NORMAL, AudioQuality.effective(AudioQuality.MAX, weak = true, bandwidthKbps = 120))
+        assertEquals(AudioQuality.LOW, AudioQuality.effective(AudioQuality.MAX, weak = true, bandwidthKbps = 60))
+        // Nothing measured yet: the least there is
+        assertEquals(AudioQuality.LOW, AudioQuality.effective(AudioQuality.MAX, weak = true, bandwidthKbps = 0))
+        // The setting stays the ceiling
+        assertEquals(AudioQuality.NORMAL, AudioQuality.effective(AudioQuality.NORMAL, weak = true, bandwidthKbps = 5000))
+        assertEquals(AudioQuality.LOW, AudioQuality.effective(AudioQuality.LOW, weak = true, bandwidthKbps = 5000))
+    }
 }

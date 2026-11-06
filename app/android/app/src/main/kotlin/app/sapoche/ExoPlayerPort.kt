@@ -252,6 +252,10 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
 
     override fun isPlaying(): Boolean = player.isPlaying
 
+    override fun isBuffering(): Boolean = player.playWhenReady && player.playbackState == Player.STATE_BUFFERING
+
+    override fun bufferedPositionMs(): Long = player.bufferedPosition
+
     private suspend fun awaitReady(timeoutMs: Long) {
         if (player.playbackState == Player.STATE_READY) return
         val result = withTimeoutOrNull(timeoutMs) {

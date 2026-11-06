@@ -12,6 +12,7 @@ import android.view.Surface
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.sapoche.sync.LocalMusic
+import app.sapoche.sync.NetworkHealth
 import app.sapoche.sync.ChatCipher
 import app.sapoche.sync.ChatMessage
 import app.sapoche.sync.ChatNotice
@@ -85,6 +86,9 @@ class GroupController(
     private val writer = Executors.newSingleThreadExecutor()
 
     /** The queue that plays outside a room; it comes back after a restart, paused. */
+    /** What is known about the network, whether listening in a room or alone: it decides the quality songs are fetched in. */
+    private val health = NetworkHealth().also { it.onChange = { weak -> SapocheApp.weakNetwork = weak; EventLog.d("net", "weak network: $weak") } }
+
     val local = LocalSession(
         ownScope,
         port,
@@ -93,6 +97,7 @@ class GroupController(
         problem = { problem -> _errors.tryEmit(ServerMessage.Error(problem.kind.code, problem.title)) },
         log = { EventLog.d("local", it) },
         onQueueEnd = ::autoplay,
+        health = health,
     )
 
     /** Which songs of the queue autoplay or a shelf put there, so a listen can say where it came from. */
@@ -541,7 +546,7 @@ class GroupController(
         val now = { SystemClock.elapsedRealtime() }
         val log = { message: String -> EventLog.d("sync", message) }
 
-        val newSession = GroupSession(scope, port, clock, now, { text -> client?.send(text) }, log)
+        val newSession = GroupSession(scope, port, clock, now, { text -> client?.send(text) }, log, health = health)
         newSession.trimMs = trimMs
         newSession.startBiasMs = prefs.getLong(KEY_START_BIAS_MS, 0L)
         newSession.onStartBiasLearned = { prefs.edit().putLong(KEY_START_BIAS_MS, it).apply() }
@@ -595,6 +600,7 @@ class GroupController(
                 val name = { id: String -> members.firstOrNull { it.id == id }?.name.orEmpty() }
                 when (event) {
                     is GroupSession.RoomEvent.Paused -> _notices.tryEmit(Notice("paused", name(event.byId)))
+                    is GroupSession.RoomEvent.Waiting -> _notices.tryEmit(Notice("waiting", name(event.byId)))
                     is GroupSession.RoomEvent.Skipped -> _notices.tryEmit(Notice("skipped", name(event.byId), event.title))
                     // Told as the personal queue tells it: the person may be the only one not hearing the song
                     is GroupSession.RoomEvent.LoadFailed -> _errors.tryEmit(ServerMessage.Error(loadFailureCode(event.reason), event.title))
@@ -942,6 +948,7 @@ class GroupController(
     }
     fun requestRoomSettings(guestControl: String) = send(Protocol.roomSettings(guestControl))
     fun requestRoomAutoplay(on: Boolean) = send(Protocol.autoplay(on))
+    fun requestRoomWaitWeak(on: Boolean) = send(Protocol.waitWeak(on))
 
     /** Runs the action for wherever the buttons act: outside a room, alone in a room, or on the room itself. */
     private inline fun act(onLocal: (LocalSession) -> Unit, onSolo: (GroupSession) -> Unit, onRoom: () -> Boolean): Boolean {

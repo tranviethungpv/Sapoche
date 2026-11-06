@@ -8,6 +8,9 @@ String formatDuration(int ms) {
   return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$ss' : '$m:$ss';
 }
 
+/// "2.4 s" for a lag in ms.
+String formatLag(int ms) => '${(ms / 1000).toStringAsFixed(1)} s';
+
 /// "12 ms ahead" style text for the sync indicator.
 String formatDrift(int ms) => '${ms >= 0 ? '+' : '−'}${ms.abs()} ms';
 

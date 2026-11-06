@@ -277,11 +277,15 @@ class Member {
     this.owner = false,
     this.av,
     this.app,
+    this.weak = false,
   });
 
   final String id;
   final String name;
   final bool ready;
+
+  /// The device said its network is weak; false from an app or a server older than protocol 20.
+  final bool weak;
 
   /// The version of the app they use, like `1.26.0`; null from an app or a server older than protocol 17.
   final String? app;
@@ -307,6 +311,7 @@ class Member {
     owner: json['owner'] as bool? ?? false,
     av: json['av'] as String?,
     app: json['app'] as String?,
+    weak: json['weak'] as bool? ?? false,
   );
 }
 
@@ -416,6 +421,7 @@ class RoomSnapshot {
     this.theme,
     this.guestControl = GuestControl.all,
     this.roomAutoplay,
+    this.roomWaitWeak,
     this.shuffle,
     this.encrypted = false,
     this.encryptionKey = false,
@@ -468,6 +474,10 @@ class RoomSnapshot {
   /// The room carries on with similar songs when its queue runs out. Null outside a room and when the server is too
   /// old to say, in which case nothing carries on.
   final bool? roomAutoplay;
+
+  /// The room stops, for a few seconds at most, for a device that stalls. Null outside a room and when the server is too
+  /// old to say, in which case the room never waits.
+  final bool? roomWaitWeak;
 
   /// What is still to come is mixed, and stays mixed as songs are added: this device's own outside a room, the room's
   /// in one. Null in a room whose server is too old to say, where shuffle is only a one-time mix.
@@ -598,6 +608,7 @@ class RoomSnapshot {
     theme: json['theme'] as String?,
     guestControl: GuestControl.parse(json['guestControl'] as String?),
     roomAutoplay: json['roomAutoplay'] as bool?,
+    roomWaitWeak: json['roomWaitWeak'] as bool?,
     shuffle: json['shuffle'] as bool?,
     encrypted: json['encrypted'] as bool? ?? false,
     encryptionKey: json['encryptionKey'] as bool? ?? false,
@@ -1002,6 +1013,8 @@ class PlayerPosition {
     this.positionMs = 0,
     this.durationMs = 0,
     this.driftMs,
+    this.weak = false,
+    this.lagMs = 0,
     this.speed = 1.0,
     this.videoWidth = 0,
     this.videoHeight = 0,
@@ -1016,6 +1029,10 @@ class PlayerPosition {
 
   /// How far this device is from the room's position, or null when not playing in sync.
   final int? driftMs;
+
+  /// The network is too weak to keep up with the room, so this device plays [lagMs] behind it, and says so.
+  final bool weak;
+  final int lagMs;
   final double speed;
 
   /// Size of the picture being played, or 0 until there is one.
@@ -1035,6 +1052,8 @@ class PlayerPosition {
     positionMs: (json['positionMs'] as num?)?.toInt() ?? 0,
     durationMs: (json['durationMs'] as num?)?.toInt() ?? 0,
     driftMs: (json['driftMs'] as num?)?.toInt(),
+    weak: json['weak'] as bool? ?? false,
+    lagMs: (json['lagMs'] as num?)?.toInt() ?? 0,
     speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
     videoWidth: (json['videoWidth'] as num?)?.toInt() ?? 0,
     videoHeight: (json['videoHeight'] as num?)?.toInt() ?? 0,

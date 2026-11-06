@@ -168,6 +168,8 @@ interface Attachment {
   bgseal?: boolean;
   /** The version of the app, as it said when joining. */
   app?: string;
+  /** The device said its network is weak. */
+  weak?: boolean;
 }
 
 /** What only the owner may do once the owner has restricted guests to adding songs. */
@@ -185,6 +187,7 @@ const CONTROL_MESSAGES = new Set([
   "prev",
   "repeat",
   "autoplay",
+  "waitWeak",
   "shuffle",
   "room.name",
   "room.theme",
@@ -219,6 +222,7 @@ function defaultState(): RoomState {
     failedIds: [],
     guestControl: "all",
     autoplay: true,
+    waitWeak: false,
     shuffle: false,
     alarms: {},
   };
@@ -328,6 +332,10 @@ export class Room extends DurableObject<Env> {
       case "prev": return this.pressedOnCurrent(msg.from) ? this.onPrev(me.id) : undefined;
       case "repeat": return this.onRepeat(msg.mode);
       case "autoplay": return this.onAutoplay(msg.on);
+      case "waitWeak": return this.onWaitWeak(msg.on);
+      case "net": return this.onNet(me, msg.weak === true);
+      case "buf": return this.onBuf(me, msg.epoch, msg.positionMs);
+      case "buf.ok": return this.onBufOk(me.id, msg.epoch);
       case "shuffle": return this.onShuffle(msg.on);
       case "solo": return this.onSolo(me, msg.on === true);
       case "avatar.set": return this.onAvatarSet(me, msg.data);
@@ -432,6 +440,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private async onMembersChanged(): Promise<void> {
+    await this.releaseGoneWaiter();
     const members = this.members();
     if (members.length === 0) {
       // A socket that never joined a room that does not exist is nothing to keep
@@ -450,6 +459,7 @@ export class Room extends DurableObject<Env> {
       this.s.failedIds = [];
       delete this.s.ownerId;
       this.s.guestControl = "all";
+      this.endWait(false);
       delete this.s.alarms.barrier;
       delete this.s.alarms.end;
       delete this.s.alarms.sweep;
@@ -917,6 +927,7 @@ export class Room extends DurableObject<Env> {
       if (att?.clientId === me.clientId) ws.serializeAttachment({ ...att, solo: on } satisfies Attachment);
     }
     this.broadcastMembers();
+    await this.releaseGoneWaiter();
     // A device that stopped following can no longer be the one the barrier waits for
     await this.maybeStart();
   }
@@ -1068,7 +1079,7 @@ export class Room extends DurableObject<Env> {
   /** Broadcasts the member list when who is here, away or solo changed since the last time. */
   private broadcastMembers(): void {
     const members = this.members();
-    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}:${m.owner}:${m.av ?? ""}:${m.app ?? ""}`).join("|");
+    const key = members.map((m) => `${m.id}:${m.name}:${m.ready}:${m.solo}:${m.away}:${m.owner}:${m.av ?? ""}:${m.app ?? ""}:${m.weak ?? ""}`).join("|");
     if (key === this.membersKey) return;
     this.membersKey = key;
     this.broadcast({ t: "members", members });
@@ -1258,6 +1269,8 @@ export class Room extends DurableObject<Env> {
 
   /** Start preparing an item: every device resolves and buffers it, then the barrier releases the start. */
   private async begin(index: number, seekToMs: number, by?: string): Promise<void> {
+    this.endWait(true);
+    delete this.s.waits; // a new song, a new count of waits
     this.s.index = index;
     this.s.epoch++;
     this.s.phase = "preparing";
@@ -1304,7 +1317,7 @@ export class Room extends DurableObject<Env> {
     await this.startPlayback();
   }
 
-  private async startPlayback(by?: string): Promise<void> {
+  private async startPlayback(by?: string, why?: "wait"): Promise<void> {
     const startAt = Date.now() + this.leadMs();
     this.s.phase = "playing";
     this.s.startedAt = startAt - this.s.positionMs;
@@ -1312,11 +1325,12 @@ export class Room extends DurableObject<Env> {
     this.s.failedIds = [];
     delete this.s.alarms.barrier;
     await this.scheduleEnd();
-    this.broadcast({ t: "start", epoch: this.s.epoch, startAt, positionMs: this.s.positionMs, by });
+    this.broadcast({ t: "start", epoch: this.s.epoch, startAt, positionMs: this.s.positionMs, by, ...(why ? { why } : {}) });
   }
 
   private async onPlay(by: string): Promise<void> {
     if (this.s.phase === "paused") {
+      this.endWait(true);
       this.s.epoch++;
       return this.startPlayback(by);
     }
@@ -1338,6 +1352,12 @@ export class Room extends DurableObject<Env> {
       await this.armAlarm();
       this.broadcastMembers();
       this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs, by });
+      return;
+    }
+    if (this.s.phase === "paused" && this.s.waiting) {
+      // Pressed while the room waits for a device: it stays paused, as the person asked
+      this.endWait(true);
+      await this.armAlarm();
       return;
     }
     if (this.s.phase !== "playing") return;
@@ -1385,6 +1405,91 @@ export class Room extends DurableObject<Env> {
   private async onFinished(): Promise<void> {
     if (this.s.repeat === "one" && this.s.queue[this.s.index]) return this.begin(this.s.index, 0);
     return this.onNext();
+  }
+
+  // ------------------------------------------------------------------ waiting for a weak network (protocol 20)
+
+  private async onWaitWeak(on: unknown): Promise<void> {
+    if (typeof on !== "boolean" || on === this.s.waitWeak) return;
+    this.s.waitWeak = on;
+    if (!on && this.s.waiting) return this.resumeFromWait(); // saves and broadcasts the state
+    await this.save();
+    this.broadcastState();
+  }
+
+  /** A device says its network is weak or good: shown in the member list, nothing else changes. */
+  private async onNet(me: Attachment, weak: boolean): Promise<void> {
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = ws.deserializeAttachment() as Attachment | null;
+      if (att?.clientId === me.clientId) ws.serializeAttachment({ ...att, weak } satisfies Attachment);
+    }
+    this.broadcastMembers();
+  }
+
+  /** What each device and the room as a whole may make the room wait, per song. */
+  private static readonly WAITS_PER_DEVICE = 2;
+  private static readonly WAITS_PER_SONG = 3;
+  private static readonly WAIT_MS = 15_000;
+  private static readonly WAIT_BACK_MAX_MS = 2_000;
+
+  /**
+   * A device following the room stalled. With `waitWeak` on, and while the room plays, the room stops where the device
+   * stopped (no more than two seconds back) and waits up to [WAIT_MS] for it. Ignored without a wait left to give.
+   */
+  private async onBuf(me: Attachment, epoch: unknown, positionMs: unknown): Promise<void> {
+    if (!this.s.waitWeak || this.s.phase !== "playing" || epoch !== this.s.epoch || this.s.waiting) return;
+    if (typeof positionMs !== "number" || !Number.isFinite(positionMs)) return;
+    const item = this.s.queue[this.s.index];
+    if (!item) return;
+    const mine = this.members().find((m) => m.id === me.id);
+    if (!mine || mine.solo || mine.away) return;
+    if (this.s.waits?.itemId !== item.id) this.s.waits = { itemId: item.id, total: 0, per: {} };
+    const waits = this.s.waits;
+    if (waits.total >= Room.WAITS_PER_SONG || (waits.per[me.id] ?? 0) >= Room.WAITS_PER_DEVICE) return;
+
+    const now = this.currentPositionMs();
+    this.s.positionMs = clamp(positionMs, Math.max(0, now - Room.WAIT_BACK_MAX_MS), now);
+    waits.total++;
+    waits.per[me.id] = (waits.per[me.id] ?? 0) + 1;
+    this.s.phase = "paused";
+    this.s.epoch++;
+    this.s.waiting = me.id;
+    await this.clearAlarm("end");
+    await this.setAlarm("wait", Date.now() + Room.WAIT_MS);
+    this.broadcast({ t: "pause", epoch: this.s.epoch, positionMs: this.s.positionMs, by: me.id, why: "wait" });
+  }
+
+  /** The device that stalled has data again: the room goes on. */
+  private async onBufOk(id: string, epoch: unknown): Promise<void> {
+    if (this.s.waiting !== id || this.s.phase !== "paused" || epoch !== this.s.epoch) return;
+    await this.resumeFromWait();
+  }
+
+  /** Forgets that the room waits. With [spent] the device that held it up has no waits left on this song. */
+  private endWait(spent: boolean): void {
+    const id = this.s.waiting;
+    if (!id) return;
+    delete this.s.waiting;
+    delete this.s.alarms.wait;
+    if (spent && this.s.waits) this.s.waits.per[id] = Room.WAITS_PER_DEVICE;
+  }
+
+  private async resumeFromWait(): Promise<void> {
+    if (!this.s.waiting) return;
+    this.endWait(false);
+    if (this.s.phase !== "paused") return this.armAlarm();
+    this.s.epoch++;
+    await this.startPlayback(undefined, "wait");
+  }
+
+  /** The device the room waits for left, went away or began to listen alone: no point in waiting for it. */
+  private async releaseGoneWaiter(): Promise<void> {
+    const id = this.s.waiting;
+    if (!id) return;
+    const there = this.members().find((m) => m.id === id);
+    if (there && !there.away && !there.solo) return;
+    if (this.members().every((m) => m.id === id)) return this.armAlarm(); // nobody else is here: the empty-room rules apply
+    await this.resumeFromWait();
   }
 
   private async onAutoplay(on: unknown): Promise<void> {
@@ -1472,6 +1577,7 @@ export class Room extends DurableObject<Env> {
   }
 
   private async goIdle(): Promise<void> {
+    this.endWait(true);
     this.s.phase = "idle";
     this.s.epoch++;
     this.s.positionMs = 0;
@@ -1496,6 +1602,7 @@ export class Room extends DurableObject<Env> {
       // Start without the devices that did not answer in time; they catch up when they finish loading
       if (this.s.phase === "preparing" && this.members().length > 0) await this.startPlayback();
     }
+    if (due.includes("wait") && this.s.waiting) await this.resumeFromWait();
     if (due.includes("end") && this.s.phase === "playing") await this.onFinished();
     if (due.includes("gc") && this.members().length === 0) {
       this.pruneChat(true);
@@ -1630,6 +1737,7 @@ export class Room extends DurableObject<Env> {
         owner: att.id === this.s.ownerId,
         ...(att.av ? { av: att.av } : {}),
         ...(att.app ? { app: att.app } : {}),
+        ...(att.weak ? { weak: true as const } : {}),
       });
     }
     return out;

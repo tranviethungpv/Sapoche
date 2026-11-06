@@ -210,6 +210,70 @@ final class GroupSessionTests: XCTestCase {
         XCTAssertFalse(h.session.isInSync)
     }
 
+    private func followingRoom(waitWeak: Bool?) async -> Harness {
+        let h = harness()
+        h.message(.state(serverNow: 0, you: "dev-a",
+                         state: RoomState(queue: [item], index: 0, phase: "preparing", startedAt: 0, positionMs: 0, epoch: 1, waitWeak: waitWeak),
+                         members: [], protocolVersion: 0))
+        h.message(prepare(1, item))
+        await h.run()
+        h.message(start(1, h.serverNow() + 1500))
+        await h.step(1500)
+        await h.step(3000)
+        return h
+    }
+
+    func testAStallInARoomThatWaitsForDevicesThatStallAsksTheRoomToWaitOnce() async {
+        let h = await followingRoom(waitWeak: true)
+        h.sent.removeAll()
+        h.player.playing = false
+        h.player.buffering = true
+        h.player.position = 4100
+        await h.step(2000)
+        XCTAssertEqual(h.sent.filter { $0.contains("\"buf\"") }.count, 1, "asked once for one stall: \(h.sent)")
+        XCTAssertTrue(h.sentAny("\"buf\"", "\"epoch\":1"))
+        await h.step(5000)
+        XCTAssertEqual(h.sent.filter { $0.contains("\"buf\"") }.count, 1, "not again while it lasts")
+    }
+
+    func testARoomThatDoesNotWaitOrAServerThatDoesNotKnowHowIsNotAsked() async {
+        for waitWeak in [false, nil] as [Bool?] {
+            let h = await followingRoom(waitWeak: waitWeak)
+            h.sent.removeAll()
+            h.player.playing = false
+            h.player.buffering = true
+            await h.step(3000)
+            XCTAssertFalse(h.sent.contains { $0.contains("\"buf\"") }, "waitWeak=\(String(describing: waitWeak)): \(h.sent)")
+        }
+    }
+
+    func testWhenTheRoomStoppedForThisDeviceItSaysWhenEnoughIsLoaded() async {
+        let h = await followingRoom(waitWeak: true)
+        h.player.bufferedMs = 0
+        h.message(.pause(epoch: 2, positionMs: 4100, by: "dev-a", why: "wait"))
+        await h.step(3000)
+        XCTAssertFalse(h.sent.contains { $0.contains("buf.ok") }, "not enough loaded yet")
+        h.player.bufferedMs = h.player.position + 11_000
+        await h.step(1000)
+        XCTAssertEqual(h.sent.filter { $0.contains("buf.ok") }.count, 1)
+        XCTAssertTrue(h.sentAny("buf.ok", "\"epoch\":2"))
+    }
+
+    func testWhenTheRoomStopsForAnotherDeviceItIsToldWhoIsWaitedForAndNotThatSomeonePaused() async {
+        let h = await followingRoom(waitWeak: true)
+        var seen: [GroupSession.RoomEvent] = []
+        let subscription = h.session.events.observe { seen.append($0) }
+        _ = subscription
+        h.message(.pause(epoch: 2, positionMs: 4100, by: "dev-b", why: "wait"))
+        await h.run()
+        XCTAssertEqual(seen, [.waiting(byId: "dev-b")])
+        h.message(.start(epoch: 2, startAt: h.serverNow() + 1500, positionMs: 4100, by: nil, why: "wait"))
+        await h.step(1500)
+        h.message(.pause(epoch: 3, positionMs: 6000, by: "dev-b"))
+        await h.run()
+        XCTAssertEqual(seen.last, .paused(byId: "dev-b"))
+    }
+
     func testAPauseDuringTheBarrierHoldsTheLoadedSongAndTheStartAfterItPlaysIt() async {
         let h = harness()
         h.message(state("preparing", epoch: 1))

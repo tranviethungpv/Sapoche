@@ -94,6 +94,8 @@ struct RoomState: Equatable {
     var autoplay: Bool?
     /// Whether what is still to come is mixed and stays mixed as songs are added; nil when the server is older than protocol 11.
     var shuffle: Bool?
+    /// Whether the room stops, for a few seconds at most, for a device that stalls; nil when the server is older than protocol 20.
+    var waitWeak: Bool?
     /// The chat is end-to-end encrypted: the room passes on sealed messages only (see `ChatCipher`). Protocol 15.
     var enc: Bool = false
     /// The look of the room's chat, a name the apps know, `default` for none; nil from a server older than protocol 16.
@@ -106,7 +108,7 @@ struct RoomState: Equatable {
 
     init(queue: [QueueItem], index: Int, phase: String, startedAt: Int64, positionMs: Int64, epoch: Int64,
          repeatMode: String = "off", name: String? = nil, ownerId: String? = nil, guestControl: String = "all", autoplay: Bool? = nil, shuffle: Bool? = nil,
-         enc: Bool = false, theme: String? = nil, bg: String? = nil) {
+         enc: Bool = false, theme: String? = nil, bg: String? = nil, waitWeak: Bool? = nil) {
         self.queue = queue
         self.index = index
         self.phase = phase
@@ -119,6 +121,7 @@ struct RoomState: Equatable {
         self.guestControl = guestControl
         self.autoplay = autoplay
         self.shuffle = shuffle
+        self.waitWeak = waitWeak
         self.enc = enc
         self.theme = theme
         self.bg = bg
@@ -141,7 +144,8 @@ struct RoomState: Equatable {
             shuffle: json["shuffle"].bool,
             enc: json["enc"].bool ?? false,
             theme: json["theme"].string,
-            bg: json["bg"].string
+            bg: json["bg"].string,
+            waitWeak: json["waitWeak"].bool
         )
     }
 }
@@ -160,9 +164,11 @@ struct Member: Equatable {
     var av: String?
     /// The version of the app the member uses, like `1.26.0`; nil from an app or a server older than protocol 17.
     var app: String?
+    /// The device said its network is weak; false from an app or a server older than protocol 20.
+    var weak: Bool = false
 
     init(id: String, name: String, ready: Bool, solo: Bool = false, away: Bool = false, owner: Bool = false, av: String? = nil,
-         app: String? = nil) {
+         app: String? = nil, weak: Bool = false) {
         self.id = id
         self.name = name
         self.ready = ready
@@ -171,6 +177,7 @@ struct Member: Equatable {
         self.owner = owner
         self.av = av
         self.app = app
+        self.weak = weak
     }
 
     init?(_ json: JSON) {
@@ -183,7 +190,8 @@ struct Member: Equatable {
             away: json["away"].bool ?? false,
             owner: json["owner"].bool ?? false,
             av: json["av"].string,
-            app: json["app"].string
+            app: json["app"].string,
+            weak: json["weak"].bool ?? false
         )
     }
 }
@@ -301,8 +309,9 @@ enum ServerMessage: Equatable {
     /// [by] is the client id of whoever asked for it; nil when the room moved on by itself.
     case prepare(epoch: Int64, index: Int, item: QueueItem, seekToMs: Int64, by: String?)
     /// Play so that position [positionMs] is heard at server time [startAt].
-    case start(epoch: Int64, startAt: Int64, positionMs: Int64, by: String?)
-    case pause(epoch: Int64, positionMs: Int64, by: String?)
+    case start(epoch: Int64, startAt: Int64, positionMs: Int64, by: String?, why: String? = nil)
+    /// `why` is `wait`: the room stopped for the device `by`, which waits for data, not because someone pressed pause. Protocol 20.
+    case pause(epoch: Int64, positionMs: Int64, by: String?, why: String? = nil)
     /// The room moved on to the item at [index]; position 0 of it was heard at server time [startedAt].
     case advance(epoch: Int64, index: Int, startedAt: Int64)
     case pong(c0: Int64, s1: Int64)
@@ -350,10 +359,10 @@ enum Wire {
             return .prepare(epoch: epoch, index: index, item: item, seekToMs: seek, by: json["by"].string)
         case "start":
             guard let epoch = json["epoch"].int64, let startAt = json["startAt"].int64, let position = json["positionMs"].int64 else { return nil }
-            return .start(epoch: epoch, startAt: startAt, positionMs: position, by: json["by"].string)
+            return .start(epoch: epoch, startAt: startAt, positionMs: position, by: json["by"].string, why: json["why"].string)
         case "pause":
             guard let epoch = json["epoch"].int64, let position = json["positionMs"].int64 else { return nil }
-            return .pause(epoch: epoch, positionMs: position, by: json["by"].string)
+            return .pause(epoch: epoch, positionMs: position, by: json["by"].string, why: json["why"].string)
         case "advance":
             guard let epoch = json["epoch"].int64, let index = json["index"].int, let startedAt = json["startedAt"].int64 else { return nil }
             return .advance(epoch: epoch, index: index, startedAt: startedAt)
@@ -550,6 +559,14 @@ enum Wire {
 
     /// Start or stop listening on one's own; a solo device never holds the room back.
     static func solo(_ on: Bool) -> String { msg("solo", ["on": on]) }
+    /// The room's waiting for a device that stalls, on or off. Only servers of protocol 20 or newer know it.
+    static func waitWeak(_ on: Bool) -> String { msg("waitWeak", ["on": on]) }
+    /// This device's network is weak, or good again (protocol 20).
+    static func net(weak: Bool) -> String { msg("net", ["weak": weak]) }
+    /// This device stalled for want of data at `positionMs` of `epoch`; a room that waits stops there (protocol 20).
+    static func buf(epoch: Int64, positionMs: Int64) -> String { msg("buf", ["epoch": epoch, "positionMs": positionMs]) }
+    /// The device that stalled has data again (protocol 20).
+    static func bufOk(epoch: Int64) -> String { msg("buf.ok", ["epoch": epoch]) }
 
     /// Ask for the room's current state again, as when rejoining after listening alone.
     static func resync() -> String { msg("resync") }

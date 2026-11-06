@@ -51,7 +51,10 @@ final class SapocheRuntime {
 
         let music = MusicClient(region: { region }, http: http)
         let resolver = YouTubeResolver(http: http, music: music, region: region)
-        let streams = StreamCache(resolver: resolver, quality: { AudioQuality(level: Int(prefs.int64("audio_quality") ?? 3)) })
+        let streams = StreamCache(resolver: resolver, quality: {
+            AudioQuality.effective(AudioQuality(level: Int(prefs.int64("audio_quality") ?? 3)), weak: NetworkState.shared.weak,
+                                   bandwidthKbps: NetworkState.shared.bandwidthKbps)
+        })
 
         let limitMb = prefs.int64("cache_limit_mb") ?? 256
         let files = MediaFiles(downloadsDir: support.appendingPathComponent("downloads", isDirectory: true),

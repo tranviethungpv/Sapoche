@@ -26,6 +26,13 @@ protocol PlayerPort: AnyObject {
     func positionMs() -> Int64
     func isPlaying() -> Bool
 
+    /// The player is meant to play and waits for data: a stall, as opposed to a pause someone asked for.
+    func isBuffering() -> Bool
+
+    /// The furthest place, in ms into the item, that the player holds without a gap from where it is now: a seek no
+    /// further than this is quick, any other one makes it load again. Not before `positionMs`.
+    func bufferedPositionMs() -> Int64
+
     /// Called when the loaded item played to its end and nothing was queued after it.
     var onEnded: (() -> Void)? { get set }
 
@@ -69,6 +76,10 @@ final class GroupSession {
         var soloItemId: String?
         /// While [solo], a song is on its way to play on this device.
         var loading = false
+        /// The network is too weak for the plain rules: the device may run behind the room, see `NetworkHealth`.
+        var weak = false
+        /// While `weak`, how far behind the room this device plays, in ms; 0 when it keeps up.
+        var lagMs: Int64 = 0
 
         /// This device may play, skip and seek the room: the same rule as the server's, which refuses the rest. Buttons
         /// outside the app (car, headset, lock screen) are switched off when it is false instead of failing quietly.
@@ -81,6 +92,8 @@ final class GroupSession {
     /// Something that happened to this device, worth telling the person about: mostly what another member did.
     enum RoomEvent: Equatable {
         case paused(byId: String)
+        /// The room stopped, for a few seconds at most, because `byId` waits for data to play on. Protocol 20.
+        case waiting(byId: String)
         case skipped(byId: String, title: String)
         /// This device could not load [title], while the room may well be playing it; [reason] when it is known.
         case loadFailed(title: String, reason: LoadFailure.Reason?)
@@ -120,6 +133,14 @@ final class GroupSession {
     private var prepareJob: Job?
     private var startJob: Job?
     private var driftJob: Job?
+    private var waitJob: Job?
+
+    /// What was last told of this device's network, and when, so that a flutter is not told again and again. Protocol 20.
+    private var netSent = false
+    private var netSentAt: Int64 = Int64.min / 2
+
+    /// The epoch the room was asked to wait in, so that one stall asks once.
+    private var bufSentEpoch: Int64 = -1
     private let filter = DriftFilter()
 
     /// Diagnostics: when false, drift is measured and logged but never corrected.
@@ -127,6 +148,13 @@ final class GroupSession {
 
     /// How long the last seek took; used to aim a little ahead when correcting drift by seeking.
     private var seekCostMs: Int64 = 150
+
+    /// What is known about the network, shared with whatever else plays on this device.
+    let health: NetworkHealth
+
+    /// While the network is weak, no seek before this moment, and the gap between seeks; a seek that stalls doubles it.
+    private var nextSeekAt: Int64 = 0
+    private var seekGapMs = NetworkHealth.seekGapMs
 
     /// Item currently handed to the player as the gapless successor of the loaded one.
     private var preloaded: QueueItem?
@@ -157,7 +185,8 @@ final class GroupSession {
     private var reportedFailure: String?
 
     init(scope: Scope, player: PlayerPort, clock: ClockSync, time: TimeSource? = nil,
-         send: @escaping (String) -> Void, log: @escaping (String) -> Void = { _ in }, drift: DriftController = DriftController()) {
+         send: @escaping (String) -> Void, log: @escaping (String) -> Void = { _ in }, drift: DriftController = DriftController(),
+         health: NetworkHealth = NetworkHealth()) {
         self.scope = scope
         self.player = player
         self.clock = clock
@@ -165,6 +194,7 @@ final class GroupSession {
         self.send = send
         self.log = log
         self.drift = drift
+        self.health = health
 
         player.onEnded = { [weak self] in
             guard let self else { return }
@@ -195,8 +225,8 @@ final class GroupSession {
             case let .state(_, you, state, members, _): self.onState(state: state, members: members, you: you)
             case let .members(members): self.snapshot.update { $0.members = members }
             case let .prepare(epoch, index, item, seekToMs, by): self.onPrepare(epoch: epoch, index: index, item: item, seekToMs: seekToMs, by: by)
-            case let .start(epoch, startAt, positionMs, _): self.onStart(epoch: epoch, startAt: startAt, positionMs: positionMs)
-            case let .pause(epoch, positionMs, by): self.onPause(epoch: epoch, positionMs: positionMs, by: by)
+            case let .start(epoch, startAt, positionMs, _, _): self.onStart(epoch: epoch, startAt: startAt, positionMs: positionMs)
+            case let .pause(epoch, positionMs, by, why): self.onPause(epoch: epoch, positionMs: positionMs, by: by, why: why)
             case let .advance(epoch, index, startedAt): self.onAdvance(epoch: epoch, index: index, startedAt: startedAt)
             case .pong: break // consumed by the connection layer
             case .avatar, .mediaTicket: break // consumed by the connection layer and the controller
@@ -314,8 +344,10 @@ final class GroupSession {
     /// The connection came back: the server forgot that this device listens alone.
     func onReconnected() {
         scope.launch { [weak self] in
-            guard let self, self.solo else { return }
-            self.send(Wire.solo(true))
+            guard let self else { return }
+            if self.solo { self.send(Wire.solo(true)) }
+            // The server forgot this device's network too
+            if self.netSent && self.state?.waitWeak != nil { self.send(Wire.net(weak: true)) }
         }
     }
 
@@ -545,6 +577,7 @@ final class GroupSession {
         // Keep our own prepare running: a slow device still needs to finish loading
         startJob?.cancel()
         driftJob?.cancel()
+        waitJob?.cancel()
         clearPendingAdopt()
         startedAtServer = nil
         player.pause()
@@ -563,17 +596,24 @@ final class GroupSession {
         }
     }
 
-    private func onPause(epoch: Int64, positionMs: Int64, by: String?) {
+    private func onPause(epoch: Int64, positionMs: Int64, by: String?, why: String? = nil) {
         if solo {
             updateRoom { $0.phase = "paused"; $0.epoch = epoch; $0.positionMs = positionMs }
             return
         }
         if epoch < handledEpoch { return }
         handledEpoch = epoch
-        if let by, by != snapshot.value.you { events.emit(.paused(byId: by)) }
+        let you = snapshot.value.you
+        if why == "wait" {
+            if let by, by != you { events.emit(.waiting(byId: by)) }
+        } else if let by, by != you {
+            events.emit(.paused(byId: by))
+        }
         updateRoom { $0.phase = "paused"; $0.epoch = epoch; $0.positionMs = positionMs }
         cancelPlayback()
         let item = state?.current
+        // The room stopped for this device: it says when it has enough data to go on
+        if why == "wait", let by, by == you { waitJob = scope.launch { [weak self] in await self?.waitForData(epoch) } }
         startJob = scope.launch { [weak self] in
             guard let self else { return }
             if self.loadedItemId != nil {
@@ -607,6 +647,11 @@ final class GroupSession {
 
         if loadedItemId == item.id {
             adopt(startedAt)
+        } else if preloaded?.id == item.id && health.weak && snapshot.value.lagMs >= Self.tailCutLagMs {
+            // Still behind on a weak network: do not hear out the end of the old song, start the new one with the room
+            log("behind by \(snapshot.value.lagMs)ms, cutting the end of the song short")
+            cancelPlayback()
+            startJob = scope.launch { [weak self] in try await self?.catchUpPlaying(item, startedAt) }
         } else if preloaded?.id == item.id {
             // Our player is still finishing the previous item and will move on within moments
             driftJob?.cancel()
@@ -771,7 +816,7 @@ final class GroupSession {
     private func catchUpPlaying(_ item: QueueItem, _ startedAt: Int64) async throws {
         var attempt = 0
         while true {
-            let guessed = clock.toServer(time.nowMs()) - startedAt + Self.catchUpLoadGuessMs
+            let guessed = clock.toServer(time.nowMs()) - startedAt + health.loadMs
             await loadPaused(item, max(guessed, 0))
             try Task.checkCancellation()
             if loadedItemId != nil { break }
@@ -798,9 +843,14 @@ final class GroupSession {
         } else {
             let late = time.nowMs() - startLocal
             let target = positionMs + max(late, 0) + seekCostMs + startBiasMs
-            try await player.seekTo(target)
-            if !held { player.play() }
-            log("\(held ? "held, not playing" : "play()") late by \(late)ms, skipped to \(target)")
+            if target > player.bufferedPositionMs() - Self.inBufferMarginMs {
+                log("late by \(late)ms and the place is not held: jumping")
+                try await scheduledPlay(startAtServer - positionMs)
+            } else {
+                try await player.seekTo(target)
+                if !held { player.play() }
+                log("\(held ? "held, not playing" : "play()") late by \(late)ms, skipped to \(target)")
+            }
         }
         drift.reset()
         player.setSpeed(1)
@@ -817,12 +867,26 @@ final class GroupSession {
             var settleUntil: Int64 = 0
             var tick = 0
             var playingTicks = 0
+            var stalledSince: Int64?
+            var stallAtMs: Int64 = 0
+            var lastSeekAt: Int64 = 0
             self.filter.reset(self.time.nowMs())
             while true {
                 guard await self.time.wait(ms: Self.driftTickMs) else { return }
                 guard let started = self.startedAtServer else { return }
                 if !self.player.isPlaying() {
                     playingTicks = 0
+                    if stalledSince == nil && !self.held {
+                        stalledSince = self.time.nowMs()
+                        stallAtMs = self.player.positionMs()
+                    }
+                    // A stall that lasts, in a room that waits for devices that stall: say where it began, and the room stops there
+                    if let since = stalledSince, self.time.nowMs() - since >= Self.bufAfterMs, self.player.isBuffering(),
+                       self.state?.waitWeak == true, self.bufSentEpoch != self.handledEpoch {
+                        self.bufSentEpoch = self.handledEpoch
+                        self.log("stalled at \(stallAtMs)ms, asking the room to wait")
+                        self.send(Wire.buf(epoch: self.handledEpoch, positionMs: stallAtMs))
+                    }
                     self.snapshot.update { $0.driftMs = nil }
                     // Readings from before a stall say nothing about the position after it
                     self.filter.reset(self.time.nowMs(), speed: self.snapshot.value.speed)
@@ -831,9 +895,27 @@ final class GroupSession {
                 playingTicks += 1
                 if playingTicks >= Self.healthyTicks { self.recoveries = 0 }
                 let now = self.time.nowMs()
+                if let since = stalledSince {
+                    stalledSince = nil
+                    if now - since >= Self.stallMinMs {
+                        self.learnBias = false // what a stall did to the readings says nothing about how late a start is heard
+                        self.log("stalled for \(now - since)ms, \(self.player.bufferedPositionMs() - self.player.positionMs())ms buffered now")
+                        if self.health.onStall(now) { self.log("weak network: the room may run ahead of this device") }
+                        // A seek that is followed by a stall was too soon: leave more time before the next one
+                        if now - lastSeekAt < Self.seekStallWindowMs { self.seekGapMs = min(self.seekGapMs * 2, Self.maxSeekGapMs) }
+                    }
+                }
+                let ahead = max(self.player.bufferedPositionMs() - self.player.positionMs(), 0)
+                let whole = self.state?.current?.durMs ?? 0
+                if self.health.tick(now, aheadMs: ahead, fullyLoaded: whole > 0 && self.player.bufferedPositionMs() >= whole - 1000) {
+                    self.log("network is good again")
+                    self.seekGapMs = NetworkHealth.seekGapMs
+                }
                 let expected = self.clock.toServer(now) - started + self.trimMs
                 let driftMs = self.player.positionMs() - expected
-                self.snapshot.update { $0.driftMs = driftMs }
+                let weak = self.health.weak
+                self.snapshot.update { $0.driftMs = driftMs; $0.weak = weak; $0.lagMs = weak ? max(-driftMs, 0) : 0 }
+                self.tellNetwork(now)
                 if now < settleUntil { continue } // let a recent seek settle before measuring again
                 self.filter.add(now, driftMs)
                 guard let smoothed = self.filter.estimate(now) else { continue }
@@ -849,7 +931,9 @@ final class GroupSession {
                 let trusted = coldStart || (abs(smoothed) > self.drift.seekThresholdMs ? self.filter.hasLargeDriftEvidence : self.filter.isFull)
                 if !trusted { continue }
 
-                switch coldStart ? DriftAction.seek : self.drift.decide(smoothed) {
+                let decided = coldStart ? DriftAction.seek : self.drift.decide(smoothed)
+                let action = self.health.weak && !coldStart ? self.whileWeak(decided, smoothed, ahead, now) : decided
+                switch action {
                 case .none:
                     break
                 case let .setSpeed(factor):
@@ -862,17 +946,105 @@ final class GroupSession {
                     // Aim a little ahead: the seek itself takes time
                     let target = self.clock.toServer(before) - started + self.seekCostMs + self.trimMs
                     self.learnBias = false // a corrective seek muddies what the plain start looked like
-                    try await self.player.seekTo(target)
-                    self.seekCostMs = min(max(self.time.nowMs() - before, 50), 1000)
+                    let buffered = self.player.bufferedPositionMs()
+                    if target > self.player.positionMs() && target > buffered - Self.inBufferMarginMs {
+                        // The place is not held: going there now means loading it with the sound on, and the room moves
+                        // on meanwhile. Pause, load, and start there at a moment that is still ahead
+                        self.log("drift=\(smoothed)ms (smoothed), \(buffered - self.player.positionMs())ms held: jumping")
+                        self.player.pause()
+                        try await self.scheduledPlay(started)
+                    } else {
+                        try await self.player.seekTo(target)
+                        self.seekCostMs = min(max(self.time.nowMs() - before, 50), 1000)
+                        self.log("drift=\(smoothed)ms (smoothed) -> seek to \(target) within the buffer (took \(self.seekCostMs)ms)")
+                    }
+                    lastSeekAt = self.time.nowMs()
+                    self.nextSeekAt = lastSeekAt + self.seekGapMs
                     self.drift.reset()
                     self.player.setSpeed(1)
                     self.filter.reset(self.time.nowMs())
                     self.snapshot.update { $0.speed = 1 }
                     settleUntil = self.time.nowMs() + Self.settleAfterSeekMs
-                    self.log("drift=\(smoothed)ms (smoothed) -> seek to \(target) (took \(self.seekCostMs)ms)")
                 }
             }
         }
+    }
+
+    /// Tells the room, at most once in `netTellGapMs`, when this device's network turned weak or good. Protocol 20.
+    private func tellNetwork(_ now: Int64) {
+        guard state?.waitWeak != nil else { return } // a server older than protocol 20 does not know the message
+        let weak = health.weak
+        if weak == netSent || now - netSentAt < Self.netTellGapMs { return }
+        netSent = weak
+        netSentAt = now
+        send(Wire.net(weak: weak))
+    }
+
+    /// The room stopped for this device: say so once `waitDataAheadMs` of the song are loaded ahead, or the whole of it.
+    private func waitForData(_ epoch: Int64) async {
+        let until = time.nowMs() + Self.waitDataMaxMs
+        while time.nowMs() < until {
+            guard await time.wait(ms: Self.driftTickMs) else { return }
+            let whole = state?.current?.durMs ?? 0
+            let buffered = player.bufferedPositionMs()
+            if buffered - player.positionMs() >= Self.waitDataAheadMs || (whole > 0 && buffered >= whole - 1000) {
+                log("loaded \(buffered - player.positionMs())ms ahead, telling the room")
+                send(Wire.bufOk(epoch: epoch))
+                return
+            }
+        }
+    }
+
+    /// What to do about [decided] while the network is weak: a device behind the room does not chase it with data it does
+    /// not have, see `NetworkHealth.catchUp`. A device ahead of the room is corrected as usual.
+    private func whileWeak(_ decided: DriftAction, _ smoothedMs: Int64, _ aheadMs: Int64, _ now: Int64) -> DriftAction {
+        if smoothedMs < -drift.seekThresholdMs {
+            switch health.catchUp(lagMs: -smoothedMs, aheadMs: aheadMs) {
+            case .wait:
+                drift.reset()
+                return .none
+            case .speed:
+                return drift.decide(-drift.seekThresholdMs)
+            case .seekInBuffer:
+                return now >= nextSeekAt ? .seek : .none
+            case .jump:
+                return .seek
+            }
+        }
+        // Speeding up spends data faster too: not with a thin buffer
+        if case let .setSpeed(factor) = decided, factor > 1, aheadMs < NetworkHealth.speedAheadMs {
+            drift.reset()
+            return .none
+        }
+        if decided == .seek && smoothedMs > 0 && now < nextSeekAt { return .none }
+        return decided
+    }
+
+    /// Get the player to where the room will be at a moment ahead of now, and start it then. It loads the place first,
+    /// paused, so a slow network costs one stretch of silence of known length rather than a chain of stalls. When loading
+    /// takes longer than the time given, the next try is given more; after a few tries it plays at once.
+    @discardableResult
+    private func scheduledPlay(_ startedAt: Int64) async throws -> Bool {
+        var lead = health.loadMs
+        for attempt in 1...Self.maxJumpAttempts {
+            let t0 = time.nowMs()
+            let position = max(clock.toServer(t0) + lead - startedAt + trimMs + startBiasMs, 0)
+            try await player.seekTo(position)
+            let took = time.nowMs() - t0
+            let spare = lead - took
+            if spare >= Self.jumpMinSpareMs {
+                try await time.sleep(ms: spare)
+                if !held { player.play() }
+                health.learnLoad(took)
+                log("jumped to \(position)ms, loading took \(took)ms of the \(lead)ms given (try \(attempt))")
+                return true
+            }
+            health.onJumpMissed(time.nowMs(), took)
+            lead = health.loadMs
+            log("loading took \(took)ms, more than the time given; trying again with \(lead)ms")
+        }
+        if !held { player.play() }
+        return false
     }
 
     /// The first full window after a plain start shows how far off that start was; fold it into the bias.
@@ -887,6 +1059,7 @@ final class GroupSession {
     }
 
     private func cancelPlayback() {
+        waitJob?.cancel()
         learnBias = false
         prepareJob?.cancel()
         startJob?.cancel()
@@ -904,7 +1077,24 @@ final class GroupSession {
     private static let driftTickMs: Int64 = 500
     private static let logEveryTicks = 2 // every second
     private static let settleAfterSeekMs: Int64 = 1500
-    private static let catchUpLoadGuessMs: Int64 = 2000
+
+    /// A target this close to the end of what the player holds counts as not held.
+    private static let inBufferMarginMs: Int64 = 1000
+
+    /// Not playing for this long, though meant to, is a stall; one tick missing is jitter.
+    private static let stallMinMs: Int64 = 1000
+
+    /// A stall this long, in a room that waits for devices that stall, is told to the room.
+    private static let bufAfterMs: Int64 = 500
+    private static let netTellGapMs: Int64 = 10_000
+
+    /// The device the room waits for says so when this much of the song is loaded ahead, and gives up waiting after the second.
+    private static let waitDataAheadMs: Int64 = 10_000
+    private static let waitDataMaxMs: Int64 = 20_000
+    private static let seekStallWindowMs: Int64 = 5000
+    private static let maxSeekGapMs: Int64 = 80_000
+    private static let maxJumpAttempts = 3
+    private static let jumpMinSpareMs: Int64 = 100
     private static let catchUpLeadMs: Int64 = 400
     private static let catchUpRetryMs: Int64 = 5000
     private static let catchUpMaxAttempts = 60 // about five minutes plus the time each attempt takes
@@ -922,6 +1112,9 @@ final class GroupSession {
 
     /// How long to wait for the room's answer, or for our own player, around a gapless advance.
     private static let advanceWaitMs: Int64 = 4000
+
+    /// Behind the room by this much when the song changes, the rest of the old song is dropped.
+    private static let tailCutLagMs: Int64 = 1500
 
     /// Like most players: "previous" restarts the song unless it has only just begun.
     private static let prevRestartsAfterMs: Int64 = 3000

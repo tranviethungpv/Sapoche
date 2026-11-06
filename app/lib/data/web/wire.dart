@@ -20,6 +20,7 @@ class RoomState {
     this.guestControl = 'all',
     this.autoplay,
     this.shuffle,
+    this.waitWeak,
     this.enc = false,
     this.theme,
     this.bg,
@@ -43,6 +44,9 @@ class RoomState {
   /// Null when the server is older than protocol 9 (autoplay) or 11 (shuffle).
   final bool? autoplay;
   final bool? shuffle;
+
+  /// Whether the room stops, for a few seconds at most, for a device that stalls; null from a server older than protocol 20.
+  final bool? waitWeak;
 
   /// The chat is end-to-end encrypted (protocol 15): the room passes on sealed messages only.
   final bool enc;
@@ -76,6 +80,7 @@ class RoomState {
     guestControl: guestControl,
     autoplay: autoplay,
     shuffle: shuffle,
+    waitWeak: waitWeak,
     enc: enc,
     theme: theme,
     bg: bg,
@@ -97,6 +102,7 @@ class RoomState {
     guestControl: json['guestControl'] as String? ?? 'all',
     autoplay: json['autoplay'] as bool?,
     shuffle: json['shuffle'] as bool?,
+    waitWeak: json['waitWeak'] as bool?,
     enc: json['enc'] as bool? ?? false,
     theme: json['theme'] as String?,
     bg: json['bg'] as String?,
@@ -153,18 +159,22 @@ class StartMessage extends ServerMessage {
     required this.startAt,
     required this.positionMs,
     this.by,
+    this.why,
   });
   final int epoch;
   final int startAt;
   final int positionMs;
   final String? by;
+  final String? why;
 }
 
+/// [why] `wait`: the room stopped for the device [by], which waits for data, not because someone pressed pause (protocol 20).
 class PauseMessage extends ServerMessage {
-  const PauseMessage({required this.epoch, required this.positionMs, this.by});
+  const PauseMessage({required this.epoch, required this.positionMs, this.by, this.why});
   final int epoch;
   final int positionMs;
   final String? by;
+  final String? why;
 }
 
 /// The room moved on to the item at [index]; position 0 of it was heard at server time [startedAt].
@@ -328,11 +338,13 @@ ServerMessage? parseServerMessage(String text) {
         startAt: n('startAt'),
         positionMs: n('positionMs'),
         by: obj['by'] as String?,
+        why: obj['why'] as String?,
       ),
       'pause' => PauseMessage(
         epoch: n('epoch'),
         positionMs: n('positionMs'),
         by: obj['by'] as String?,
+        why: obj['why'] as String?,
       ),
       'advance' => AdvanceMessage(
         epoch: n('epoch'),
@@ -549,6 +561,18 @@ abstract final class Wire {
   static String next({String? from}) => _msg('next', {'from': ?from});
   static String prev({String? from}) => _msg('prev', {'from': ?from});
   static String solo(bool on) => _msg('solo', {'on': on});
+
+  /// The room's waiting for a device that stalls, on or off. Only servers of protocol 20 or newer know it.
+  static String waitWeak(bool on) => _msg('waitWeak', {'on': on});
+
+  /// This device's network is weak, or good again (protocol 20).
+  static String net(bool weak) => _msg('net', {'weak': weak});
+
+  /// This device stalled for want of data at [positionMs] of [epoch]; a room that waits stops there (protocol 20).
+  static String buf(int epoch, int positionMs) => _msg('buf', {'epoch': epoch, 'positionMs': positionMs});
+
+  /// The device that stalled has data again (protocol 20).
+  static String bufOk(int epoch) => _msg('buf.ok', {'epoch': epoch});
   static String resync() => _msg('resync');
   static String ready(int epoch) => _msg('ready', {'epoch': epoch});
   static String resolveFailed(int epoch, String? reason) => _msg(

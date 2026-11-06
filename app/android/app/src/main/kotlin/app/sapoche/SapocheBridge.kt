@@ -834,6 +834,10 @@ class SapocheBridge(
                         requireRoom(group)
                         group.requestRoomAutoplay(call.argument<Boolean>("on") == true)
                     }
+                    "roomWaitWeak" -> {
+                        requireRoom(group)
+                        group.requestRoomWaitWeak(call.argument<Boolean>("on") == true)
+                    }
                     "sendChat" -> {
                         requireRoom(group)
                         // What the message answers, as the screen shows it: a sealed room seals it with the words

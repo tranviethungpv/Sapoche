@@ -28,6 +28,8 @@ enum UiJson {
             // The look of the chat; null from a server older than protocol 16, which cannot change it
             "theme": (inRoom ? state?.theme : nil) ?? NSNull(),
             "roomAutoplay": (inRoom ? state?.autoplay : nil) ?? NSNull(),
+            // Whether the room waits for a device that stalls; null on a server older than protocol 20, which cannot
+            "roomWaitWeak": (inRoom ? state?.waitWeak : nil) ?? NSNull(),
             // The chat is end-to-end encrypted, and whether this device has the secret to read it
             "encrypted": inRoom && state?.enc == true,
             "encryptionKey": inRoom && view.sealedKey,
@@ -44,7 +46,7 @@ enum UiJson {
             "queue": queue.map(item),
             "members": snap.members.map {
                 ["id": $0.id, "name": $0.name, "ready": $0.ready, "solo": $0.solo, "away": $0.away, "owner": $0.owner,
-                 "app": $0.app ?? NSNull()] as [String: Any]
+                 "app": $0.app ?? NSNull(), "weak": $0.weak] as [String: Any]
             },
         ]
         return JSONText.encode(object)
@@ -105,6 +107,8 @@ enum UiJson {
             "positionMs": player.positionMs,
             "durationMs": player.durationMs,
             "driftMs": view.snapshot.driftMs ?? NSNull(),
+            "weak": view.snapshot.weak,
+            "lagMs": view.snapshot.lagMs,
             "speed": Double(player.speed),
             "videoWidth": player.videoWidth,
             "videoHeight": player.videoHeight,

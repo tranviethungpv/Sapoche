@@ -316,6 +316,8 @@ class RoomSimulationTest {
         }
 
         override fun isPlaying(): Boolean = playing
+        override fun isBuffering(): Boolean = false
+        override fun bufferedPositionMs(): Long = Long.MAX_VALUE
 
         companion object {
             const val NOISE_PERIOD_MS = 3500L

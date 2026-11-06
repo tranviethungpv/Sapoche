@@ -154,14 +154,19 @@ final class LocalSession {
     /// Says the load is slow once it has taken a while.
     private var slowJob: Job?
 
+    /// What is known about the network, shared with whatever else plays on this device.
+    let health: NetworkHealth
+    private var watchJob: Job?
+
     /// Songs whose last load was said to be slow or failed: loading one again starts from a new stream address.
     private var stuckVideoIds = Set<String>()
 
     init(scope: Scope, player: PlayerPort, saved: SavedQueue?, persist: @escaping (SavedQueue) -> Void,
          problem: @escaping (Problem) -> Void = { _ in }, log: @escaping (String) -> Void = { _ in },
          onQueueEnd: @escaping (QueueItem) -> Void = { _ in }, newId: @escaping () -> String = { UUID().uuidString },
-         random: AnyRandom = AnyRandom(), time: TimeSource? = nil) {
+         random: AnyRandom = AnyRandom(), time: TimeSource? = nil, health: NetworkHealth = NetworkHealth()) {
         self.scope = scope
+        self.health = health
         self.player = player
         self.time = time ?? SystemTime.shared
         self.persist = persist
@@ -200,11 +205,38 @@ final class LocalSession {
             guard let self else { return }
             self.scope.launch { [weak self] in self?.onPlayerError(error) }
         }
+        watchJob?.cancel()
+        watchJob = scope.launch { [weak self] in await self?.watchStalls() }
+    }
+
+    /// Tells `health` when the player stalls for want of data, so that a weak network is known when listening alone too.
+    private func watchStalls() async {
+        var since: Int64?
+        while true {
+            guard await time.wait(ms: Self.stallTickMs) else { return }
+            let now = time.nowMs()
+            if loadedId != nil, job?.isActive != true, player.isBuffering() {
+                if since == nil { since = now }
+                continue
+            }
+            let was = since
+            since = nil
+            if let was, player.isPlaying(), now - was >= Self.stallMinMs {
+                log("stalled for \(now - was)ms")
+                if health.onStall(now) { log("weak network") }
+            }
+            let whole = snapshot.value.current?.durMs ?? 0
+            let buffered = player.bufferedPositionMs()
+            if health.tick(now, aheadMs: max(buffered - player.positionMs(), 0), fullyLoaded: whole > 0 && buffered >= whole - 1000) {
+                log("network is good again")
+            }
+        }
     }
 
     /// A room takes the player: silence it, but remember where this queue stood so it can be picked up again.
     func detach() {
         job?.cancel()
+        watchJob?.cancel()
         slowJob?.cancel()
         if loadedId != nil { pendingPositionMs = player.positionMs() }
         loadedId = nil
@@ -607,4 +639,6 @@ final class LocalSession {
     private static let prevRestartsAfterMs: Int64 = 3000
     /// A load that takes longer than this is said to be slow.
     private static let slowLoadMs: Int64 = 8000
+    private static let stallTickMs: Int64 = 500
+    private static let stallMinMs: Int64 = 1000
 }

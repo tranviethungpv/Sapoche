@@ -85,10 +85,12 @@ class PlaybackService : MediaLibraryService() {
 
         // Large max buffer so a whole track is buffered early and the next one starts loading sooner. In bytes it is
         // capped: with the picture the default allows about 144 MB, held in the app's own memory
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(30_000, 300_000, 2_500, 5_000)
-            .setTargetBufferBytes(48 * 1024 * 1024)
-            .build()
+        val loadControl = WeakAwareLoadControl(
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(30_000, 300_000, 2_500, 5_000)
+                .setTargetBufferBytes(48 * 1024 * 1024)
+                .build(),
+        ) { SapocheApp.weakNetwork }
 
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
@@ -699,6 +701,7 @@ class PlaybackService : MediaLibraryService() {
             totalBytesLoaded: Long,
             bitrateEstimate: Long,
         ) {
+            SapocheApp.bandwidthKbps = bitrateEstimate / 1000
             EventLog.d("net", "bandwidth estimate=${bitrateEstimate / 1000}kbps sample=${totalBytesLoaded}B/${totalLoadTimeMs}ms")
         }
 

@@ -769,6 +769,9 @@ final class Bridge {
         case "roomAutoplay":
             try requireRoom()
             controller.requestRoomAutoplay(bool("on"))
+        case "roomWaitWeak":
+            try requireRoom()
+            controller.requestRoomWaitWeak(bool("on"))
         case "sendChat":
             try requireRoom()
             // What the message answers, as the screen shows it: a sealed room seals it with the words

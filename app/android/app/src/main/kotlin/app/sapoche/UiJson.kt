@@ -34,6 +34,8 @@ object UiJson {
             // The look of the chat; null from a server older than protocol 16, which cannot change it
             .put("theme", state?.theme.takeIf { inRoom } ?: JSONObject.NULL)
             .put("roomAutoplay", state?.autoplay.takeIf { inRoom } ?: JSONObject.NULL)
+            // Whether the room waits for a device that stalls; null on a server older than protocol 20, which cannot
+            .put("roomWaitWeak", state?.waitWeak.takeIf { inRoom } ?: JSONObject.NULL)
             // The chat is end-to-end encrypted, and whether this device has the secret to read it
             .put("encrypted", inRoom && state?.enc == true)
             .put("encryptionKey", inRoom && view.sealedKey)
@@ -59,6 +61,7 @@ object UiJson {
                                 .put("ready", it.ready)
                                 .put("solo", it.solo)
                                 .put("away", it.away)
+                                .put("weak", it.weak)
                                 .put("owner", it.owner)
                                 .put("app", it.app ?: JSONObject.NULL),
                         )
@@ -129,6 +132,8 @@ object UiJson {
             .put("positionMs", player.positionMs)
             .put("durationMs", player.durationMs)
             .put("driftMs", view.snapshot.driftMs ?: JSONObject.NULL)
+            .put("weak", view.snapshot.weak)
+            .put("lagMs", view.snapshot.lagMs)
             .put("speed", player.speed.toDouble())
             .put("videoWidth", player.videoWidth)
             .put("videoHeight", player.videoHeight)

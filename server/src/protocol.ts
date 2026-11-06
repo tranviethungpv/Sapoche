@@ -1,7 +1,7 @@
 // Wire protocol between clients and the room Durable Object. See docs/PROTOCOL.md.
 
 /** Bumped when the set of messages grows or changes. Reported by /health and in every state message. */
-export const PROTOCOL_VERSION = 19;
+export const PROTOCOL_VERSION = 20;
 
 export interface QueueItem {
   id: string;
@@ -31,7 +31,7 @@ export type Repeat = "off" | "all" | "one";
 export type GuestControl = "all" | "add";
 
 /** The jobs a room can have pending. The Durable Object has one alarm, always set to the earliest of them. */
-export type AlarmKind = "barrier" | "end" | "gc" | "sweep";
+export type AlarmKind = "barrier" | "end" | "gc" | "sweep" | "wait";
 
 /** A song as clients send it; the server adds the id and who added it. */
 export interface TrackInput {
@@ -72,6 +72,12 @@ export interface RoomState {
   guestControl: GuestControl;
   /** Whether the room carries on with songs like the last one when its queue runs out. */
   autoplay: boolean;
+  /** Whether the room stops for a little while a device that is following it waits for data. Protocol 20. */
+  waitWeak: boolean;
+  /** Public id of the device the room is waiting for while paused with `why: "wait"`; kept apart from the clients' view. Protocol 20. */
+  waiting?: string;
+  /** The waits of the current song, so that no device and no song holds the room up for long; kept apart from the clients' view. Protocol 20. */
+  waits?: { itemId: string; total: number; per: Record<string, number> };
   /** Whether the songs still to come are mixed up and stay mixed as songs are added. Protocol 11. */
   shuffle: boolean;
   /** The ids of the queue in the order it had when shuffle was turned on; turning it off puts the songs back in it. */
@@ -165,6 +171,8 @@ export interface Member {
   av?: string;
   /** The version of the app the member is using, like `1.26.0`; absent from apps older than protocol 17. */
   app?: string;
+  /** The device said its network is weak (`net`); absent when it is not. Protocol 20. */
+  weak?: true;
 }
 
 // ---- client -> server ----
@@ -231,6 +239,14 @@ export type ClientMessage =
   | { t: "repeat"; mode: Repeat }
   /** Turns the room's autoplay on or off, restricted like [repeat]. Protocol 9. */
   | { t: "autoplay"; on: boolean }
+  /** Turns on or off that the room waits, for a few seconds at most, for a device that stalls, restricted like [repeat]. Protocol 20. */
+  | { t: "waitWeak"; on: boolean }
+  /** This device's network became weak, or good again. Shown to the room, nothing more. Protocol 20. */
+  | { t: "net"; weak: boolean }
+  /** The device stalled for want of data at [positionMs] of epoch [epoch]; with `waitWeak` on, the room waits for it. Protocol 20. */
+  | { t: "buf"; epoch: number; positionMs: number }
+  /** The device that stalled has enough data again. Protocol 20. */
+  | { t: "buf.ok"; epoch: number }
   /** Turns the room's shuffle on or off, restricted like [repeat]. Protocol 11. */
   | { t: "shuffle"; on: boolean }
   /**
@@ -276,8 +292,9 @@ export type ServerMessage =
   /** [by] is the client id of whoever caused it (skipped, picked a song); absent when the room moved on by itself. */
   | { t: "prepare"; epoch: number; index: number; item: QueueItem; seekToMs: number; by?: string }
   /** Play the current item so that its position [positionMs] is heard at server time [startAt]. */
-  | { t: "start"; epoch: number; startAt: number; positionMs: number; by?: string }
-  | { t: "pause"; epoch: number; positionMs: number; by?: string }
+  | { t: "start"; epoch: number; startAt: number; positionMs: number; by?: string; why?: "wait" }
+  /** [why] `wait`: the room stopped for the device [by], which waits for data, not because somebody pressed pause. Protocol 20. */
+  | { t: "pause"; epoch: number; positionMs: number; by?: string; why?: "wait" }
   /** The room moved on to the next item without a barrier; devices that already did the same keep playing. */
   | { t: "advance"; epoch: number; index: number; startedAt: number }
   | { t: "pong"; c0: number; s1: number }
@@ -306,4 +323,4 @@ export type ServerMessage =
   | { t: "error"; code: string; message: string };
 
 /** State as sent to clients; internal bookkeeping is left out. */
-export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder" | "theme" | "bgSealed"> & { theme: string };
+export type PublicState = Omit<RoomState, "readyIds" | "failedIds" | "alarms" | "shuffleOrder" | "theme" | "bgSealed" | "waiting" | "waits"> & { theme: string };

@@ -249,6 +249,9 @@ class FakeBackend implements Backend {
   @override
   Future<void> setRoomAutoplay(bool on) => _record('roomAutoplay $on');
 
+  @override
+  Future<void> setRoomWaitWeak(bool on) => _record('roomWaitWeak $on');
+
   List<Track> likedSongs = [];
   List<HistoryEntry> recentSongs = [];
 
@@ -1022,6 +1025,7 @@ RoomSnapshot sampleRoom({
   String? theme,
   GuestControl guestControl = GuestControl.all,
   bool? roomAutoplay,
+  bool? roomWaitWeak,
   bool? shuffle,
   bool encrypted = false,
   bool encryptionKey = false,
@@ -1045,6 +1049,7 @@ RoomSnapshot sampleRoom({
   theme: theme,
   guestControl: guestControl,
   roomAutoplay: roomAutoplay,
+  roomWaitWeak: roomWaitWeak,
   shuffle: shuffle,
   encrypted: encrypted,
   encryptionKey: encryptionKey,

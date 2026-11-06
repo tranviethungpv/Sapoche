@@ -74,6 +74,10 @@ class LocalSession(
     private val onQueueEnd: (QueueItem) -> Unit = {},
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val random: Random = Random.Default,
+    /** What is known about the network, shared with whatever else plays on this device. */
+    val health: NetworkHealth = NetworkHealth(),
+    /** Monotonic local clock in ms. */
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     data class Snapshot(
         val queue: List<QueueItem> = emptyList(),
@@ -127,6 +131,7 @@ class LocalSession(
     /** Item handed to the player as the gapless successor of the loaded one. */
     private var preloaded: QueueItem? = null
     private var job: Job? = null
+    private var watchJob: Job? = null
 
     /** Reloads used on the current item; stops endless retry loops on a broken stream. */
     private var recoveries = 0
@@ -153,11 +158,36 @@ class LocalSession(
         player.onEnded = { scope.launch { if (loadedId != null) step(+1, auto = true) } }
         player.onAdvanced = { scope.launch { onAdvanced() } }
         player.onError = { error -> scope.launch { onPlayerError(error) } }
+        watchJob?.cancel()
+        watchJob = scope.launch { watchStalls() }
+    }
+
+    /** Tells [health] when the player stalls for want of data, so that a weak network is known when listening alone too. */
+    private suspend fun watchStalls() {
+        var since: Long? = null
+        while (true) {
+            delay(STALL_TICK_MS)
+            val now = nowMs()
+            if (loadedId != null && job?.isActive != true && player.isBuffering()) {
+                if (since == null) since = now
+                continue
+            }
+            val was = since
+            since = null
+            if (was != null && player.isPlaying() && now - was >= STALL_MIN_MS) {
+                log("stalled for ${now - was}ms")
+                if (health.onStall(now)) log("weak network")
+            }
+            val whole = snapshot.value.current?.durMs ?: 0
+            val buffered = player.bufferedPositionMs()
+            if (health.tick(now, (buffered - player.positionMs()).coerceAtLeast(0), whole > 0 && buffered >= whole - 1000)) log("network is good again")
+        }
     }
 
     /** A room takes the player: silence it, but remember where this queue stood so it can be picked up again. */
     fun detach() {
         job?.cancel()
+        watchJob?.cancel()
         if (loadedId != null) pendingPositionMs = player.positionMs()
         loadedId = null
         preloaded = null
@@ -537,5 +567,7 @@ class LocalSession(
 
         /** A load that takes longer than this is said to be slow. */
         private const val SLOW_LOAD_MS = 8_000L
+        private const val STALL_TICK_MS = 500L
+        private const val STALL_MIN_MS = 1_000L
     }
 }

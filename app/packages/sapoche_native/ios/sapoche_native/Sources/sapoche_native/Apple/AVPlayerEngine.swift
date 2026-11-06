@@ -240,6 +240,21 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     func isPlaying() -> Bool { player.timeControlStatus == .playing }
 
+    func isBuffering() -> Bool { player.timeControlStatus == .waitingToPlayAtSpecifiedRate }
+
+    func bufferedPositionMs() -> Int64 {
+        let here = player.currentTime()
+        guard let ranges = player.currentItem?.loadedTimeRanges else { return positionMs() }
+        for value in ranges {
+            let range = value.timeRangeValue
+            if CMTimeRangeContainsTime(range, time: here) || CMTimeCompare(range.start, here) == 0 {
+                let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
+                if end.isFinite { return max(Int64(end * 1000), positionMs()) }
+            }
+        }
+        return positionMs()
+    }
+
     // ------------------------------------------------------------------ PlayerEngine
 
     var loadedItem: QueueItem? { current }
@@ -718,6 +733,11 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     private func watchSystem() {
         let center = NotificationCenter.default
+        // What the network carried while a song streamed: the stream cache lowers the quality by it while the network is weak
+        center.addObserver(forName: .AVPlayerItemNewAccessLogEntry, object: nil, queue: .main) { note in
+            guard let item = note.object as? AVPlayerItem, let event = item.accessLog()?.events.last, event.observedBitrate > 0 else { return }
+            NetworkState.shared.bandwidthKbps = Int64(event.observedBitrate / 1000)
+        }
         center.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] note in
             guard let item = note.object as? AVPlayerItem else { return }
             Task { @MainActor in self?.itemEnded(item) }

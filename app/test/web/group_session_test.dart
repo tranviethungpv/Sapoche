@@ -13,6 +13,10 @@ class FakePlayer extends PlayerPort {
   final calls = <String>[];
   var position = 0;
   var playing = false;
+  var buffering = false;
+
+  /// Everything is held, so that seeks are quick, unless a test says otherwise.
+  var bufferedMs = 0x7fffffffffff;
   Object? failNext;
 
   @override
@@ -78,6 +82,12 @@ class FakePlayer extends PlayerPort {
   @override
   bool isPlaying() => playing;
 
+  @override
+  bool isBuffering() => buffering;
+
+  @override
+  int bufferedPositionMs() => bufferedMs;
+
   void clear() => calls.clear();
 }
 
@@ -97,6 +107,7 @@ RoomState room({
   int positionMs = 0,
   int epoch = 1,
   int songs = 2,
+  bool? waitWeak,
 }) => RoomState(
   queue: [for (var i = 1; i <= songs; i++) item('$i')],
   index: index,
@@ -104,6 +115,7 @@ RoomState room({
   startedAt: startedAt,
   positionMs: positionMs,
   epoch: epoch,
+  waitWeak: waitWeak,
 );
 
 StateMessage stateOf(RoomState state) => StateMessage(
@@ -278,6 +290,74 @@ void main() {
       sent.clear();
       session.rejoin();
       expect(types(), ['solo', 'resync']);
+    });
+  });
+
+  group('a room that waits for devices that stall', () {
+    void following(bool? waitWeak) {
+      session.onMessage(stateOf(room(phase: 'playing', startedAt: 10000, epoch: 1, waitWeak: waitWeak)));
+      async.elapse(const Duration(seconds: 4));
+    }
+
+    test('is asked to wait once for one stall', () {
+      run(() {
+        following(true);
+        sent.clear();
+        player
+          ..playing = false
+          ..buffering = true
+          ..position = 4100;
+        async.elapse(const Duration(seconds: 2));
+        expect(sent.where((m) => jsonDecode(m)['t'] == 'buf'), hasLength(1));
+        expect(jsonDecode(sent.firstWhere((m) => jsonDecode(m)['t'] == 'buf'))['epoch'], 1);
+        async.elapse(const Duration(seconds: 5));
+        expect(sent.where((m) => jsonDecode(m)['t'] == 'buf'), hasLength(1));
+      });
+    });
+
+    test('is not asked when it does not wait, or the server does not know how', () {
+      for (final waitWeak in [false, null]) {
+        run(() {
+          following(waitWeak);
+          sent.clear();
+          player
+            ..playing = false
+            ..buffering = true;
+          async.elapse(const Duration(seconds: 3));
+          expect(sent.where((m) => jsonDecode(m)['t'] == 'buf'), isEmpty, reason: 'waitWeak=$waitWeak');
+        });
+      }
+    });
+
+    test('hears when it stopped for this device, and says when enough is loaded', () {
+      run(() {
+        following(true);
+        player.bufferedMs = 0;
+        session.onMessage(const PauseMessage(epoch: 2, positionMs: 4100, by: 'me', why: 'wait'));
+        async.elapse(const Duration(seconds: 3));
+        expect(sent.where((m) => jsonDecode(m)['t'] == 'buf.ok'), isEmpty);
+        player.bufferedMs = player.position + 11000;
+        async.elapse(const Duration(seconds: 1));
+        final ok = sent.where((m) => jsonDecode(m)['t'] == 'buf.ok').toList();
+        expect(ok, hasLength(1));
+        expect(jsonDecode(ok.single)['epoch'], 2);
+      });
+    });
+
+    test('tells who it waits for, and not that someone paused', () {
+      run(() {
+        following(true);
+        final events = <RoomEvent>[];
+        session.events.listen(events.add);
+        session.onMessage(const PauseMessage(epoch: 2, positionMs: 4100, by: 'dev-b', why: 'wait'));
+        async.elapse(const Duration(milliseconds: 10));
+        expect(events.single, isA<WaitingEvent>());
+        session.onMessage(const StartMessage(epoch: 2, startAt: 20000, positionMs: 4100, why: 'wait'));
+        async.elapse(const Duration(seconds: 2));
+        session.onMessage(const PauseMessage(epoch: 3, positionMs: 6000, by: 'dev-b'));
+        async.elapse(const Duration(milliseconds: 10));
+        expect(events.last, isA<PausedEvent>());
+      });
     });
   });
 }

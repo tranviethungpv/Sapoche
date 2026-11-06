@@ -621,6 +621,12 @@ class WebBackend extends BackendDefaults {
   }
 
   @override
+  Future<void> setRoomWaitWeak(bool on) async {
+    _inRoom();
+    _send(Wire.waitWeak(on));
+  }
+
+  @override
   Future<void> setSolo(bool on) async {
     final session = _inRoom();
     if (on) {
@@ -1568,6 +1574,8 @@ class WebBackend extends BackendDefaults {
     switch (event) {
       case PausedEvent():
         _events.add(NoticeEvent(kind: 'paused', by: nameOf(event.byId)));
+      case WaitingEvent():
+        _events.add(NoticeEvent(kind: 'waiting', by: nameOf(event.byId)));
       case SkippedEvent():
         _events.add(NoticeEvent(kind: 'skipped', by: nameOf(event.byId), title: event.title));
       case LoadFailedEvent():
@@ -1619,6 +1627,7 @@ class WebBackend extends BackendDefaults {
       theme: inRoom ? state?.theme : null,
       guestControl: GuestControl.parse(state?.guestControl),
       roomAutoplay: state?.autoplay,
+      roomWaitWeak: inRoom ? state?.waitWeak : null,
       encrypted: inRoom && state?.enc == true,
       encryptionKey: inRoom && _secrets.containsKey(_roomCode),
       // Outside a room this device's own; in one the room's, or null on a server too old to have it
@@ -1637,7 +1646,7 @@ class WebBackend extends BackendDefaults {
       snapshot.index,
       snapshot.repeat,
       snapshot.queue.map((e) => e.id).join(','),
-      snapshot.members.map((m) => '${m.id}${m.name}${m.ready}${m.solo}${m.away}${m.owner}').join(','),
+      snapshot.members.map((m) => '${m.id}${m.name}${m.ready}${m.solo}${m.away}${m.owner}${m.weak}').join(','),
       snapshot.solo,
       snapshot.soloItemId,
       snapshot.loading,
@@ -1646,6 +1655,7 @@ class WebBackend extends BackendDefaults {
       snapshot.theme,
       snapshot.guestControl,
       snapshot.roomAutoplay,
+      snapshot.roomWaitWeak,
       snapshot.shuffle,
       snapshot.encrypted,
       snapshot.encryptionKey,
@@ -1749,6 +1759,8 @@ class WebBackend extends BackendDefaults {
           positionMs: restored ?? player.positionMs(),
           durationMs: player.durationMs() > 0 ? player.durationMs() : (item?.durMs ?? 0),
           driftMs: group?.driftMs,
+          weak: group?.weak ?? false,
+          lagMs: group?.lagMs ?? 0,
           speed: group?.speed ?? (session == null ? _speed : 1),
           // Held back: the room plays on, this device is silent
           heldBack:

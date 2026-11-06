@@ -116,6 +116,12 @@ internal class FakePlayer(private val now: () -> Long) : PlayerPort {
     }
 
     override fun isPlaying(): Boolean = playing
+    var buffering = false
+    override fun isBuffering(): Boolean = buffering
+
+    /** Everything is held, so that seeks are quick, unless a test says otherwise. */
+    var bufferedMs = Long.MAX_VALUE
+    override fun bufferedPositionMs(): Long = bufferedMs
 
     /** Test hook: shove the position, as if the device drifted. */
     fun nudge(deltaMs: Long) {
@@ -241,6 +247,92 @@ class GroupSessionTest {
         val drift = h.player.positionMs() - (h.serverNow() - (h.serverNow() - (h.now() - 1500)))
         assertTrue(abs(drift) < 50, "still off by ${drift}ms")
         assertTrue(h.player.seeks.size <= 1, "no correction seeks expected, got ${h.player.seeks}")
+    }
+
+    private fun TestScope.followingRoom(waitWeak: Boolean?): Harness {
+        val h = harness()
+        h.session.onMessage(ServerMessage.State(0, "dev-a", RoomState(listOf(item), 0, "preparing", 0, 0, 1, waitWeak = waitWeak), emptyList()))
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Start(1, h.serverNow() + 1500, 0))
+        step(1500)
+        step(3000)
+        return h
+    }
+
+    @Test
+    fun `a stall in a room that waits for devices that stall asks the room to wait, once`() = runTest {
+        val h = followingRoom(waitWeak = true)
+        h.sent.clear()
+        h.player.playing = false
+        h.player.buffering = true
+        h.player.position = 4100
+        step(2000)
+        val asks = h.sent.filter { it.contains("\"buf\"") }
+        assertEquals(1, asks.size, "asked once for one stall: ${h.sent}")
+        assertTrue(asks.single().contains("\"epoch\":1"))
+        step(5000)
+        assertEquals(1, h.sent.count { it.contains("\"buf\"") }, "not again while it lasts")
+    }
+
+    @Test
+    fun `a room that does not wait, or a server that does not know how, is not asked`() = runTest {
+        for (waitWeak in listOf(false, null)) {
+            val h = followingRoom(waitWeak)
+            h.sent.clear()
+            h.player.playing = false
+            h.player.buffering = true
+            step(3000)
+            assertTrue(h.sent.none { it.contains("\"buf\"") }, "waitWeak=$waitWeak: ${h.sent}")
+        }
+    }
+
+    @Test
+    fun `when the room stopped for this device it says when enough is loaded`() = runTest {
+        val h = followingRoom(waitWeak = true)
+        h.player.bufferedMs = 0
+        h.session.onMessage(ServerMessage.Pause(epoch = 2, positionMs = 4100, by = "dev-a", why = "wait"))
+        step(3000)
+        assertTrue(h.sent.none { it.contains("buf.ok") }, "not enough loaded yet")
+        h.player.bufferedMs = h.player.position + 11_000
+        step(1000)
+        val ok = h.sent.filter { it.contains("buf.ok") }
+        assertEquals(1, ok.size)
+        assertTrue(ok.single().contains("\"epoch\":2"))
+    }
+
+    @Test
+    fun `when the room stops for another device it is told who is waited for, and not that someone paused`() = runTest {
+        val h = followingRoom(waitWeak = true)
+        val events = mutableListOf<GroupSession.RoomEvent>()
+        backgroundScope.launch { h.session.events.collect { events += it } }
+        runCurrent()
+        h.session.onMessage(ServerMessage.Pause(epoch = 2, positionMs = 4100, by = "dev-b", why = "wait"))
+        runCurrent()
+        assertEquals(listOf<GroupSession.RoomEvent>(GroupSession.RoomEvent.Waiting("dev-b")), events)
+        h.session.onMessage(ServerMessage.Start(2, h.serverNow() + 1500, 4100, why = "wait"))
+        step(1500)
+        h.session.onMessage(ServerMessage.Pause(epoch = 3, positionMs = 6000, by = "dev-b"))
+        runCurrent()
+        assertEquals(GroupSession.RoomEvent.Paused("dev-b"), events.last())
+    }
+
+    @Test
+    fun `a stall right after the start does not teach the device a wrong start delay`() = runTest {
+        val h = harness()
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Start(1, h.serverNow() + 1500, 0))
+        step(1500)
+        step(1000)
+        // The network stalls for a few seconds: the room goes on, this device does not
+        h.player.playing = false
+        h.player.buffering = true
+        step(4000)
+        h.player.playing = true
+        h.player.buffering = false
+        step(8000)
+        assertEquals(0L, h.session.startBiasMs, "what the stall did to the readings is not a start delay")
     }
 
     @Test

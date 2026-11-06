@@ -316,6 +316,9 @@ abstract class Backend {
   /// Whether the room carries on with similar songs when its queue runs out. Restricted like repeat.
   Future<void> setRoomAutoplay(bool on);
 
+  /// Whether the room stops, for a few seconds at most, for a device that stalls. Restricted like repeat.
+  Future<void> setRoomWaitWeak(bool on);
+
   Future<void> rename(String name);
 
   /// Opens the system share sheet with [text].
@@ -895,6 +898,9 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> setRoomAutoplay(bool on) => _call('roomAutoplay', {'on': on});
+
+  @override
+  Future<void> setRoomWaitWeak(bool on) => _call('roomWaitWeak', {'on': on});
 
   @override
   Future<void> rename(String name) => _call('rename', {'name': name});

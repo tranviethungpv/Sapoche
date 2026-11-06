@@ -3,6 +3,7 @@ import 'dart:async';
 import '../models.dart';
 import 'clocks.dart';
 import 'job.dart';
+import 'network_health.dart';
 import 'player_port.dart';
 import 'wire.dart';
 
@@ -13,6 +14,12 @@ sealed class RoomEvent {
 
 class PausedEvent extends RoomEvent {
   const PausedEvent(this.byId);
+  final String byId;
+}
+
+/// The room stopped, for a few seconds at most, because [byId] waits for data to play on (protocol 20).
+class WaitingEvent extends RoomEvent {
+  const WaitingEvent(this.byId);
   final String byId;
 }
 
@@ -39,6 +46,8 @@ class GroupSnapshot {
     this.solo = false,
     this.soloItemId,
     this.loading = false,
+    this.weak = false,
+    this.lagMs = 0,
   });
 
   final RoomState? state;
@@ -58,6 +67,12 @@ class GroupSnapshot {
   /// While [solo], a song is on its way to play on this device.
   final bool loading;
 
+  /// The network is too weak for the plain rules: the device may run behind the room, see [NetworkHealth].
+  final bool weak;
+
+  /// While [weak], how far behind the room this device plays, in ms; 0 when it keeps up.
+  final int lagMs;
+
   /// This device may play, skip and seek the room: the same rule as the server's, which refuses the rest. The media
   /// keys and the lock screen of the browser are switched off when it is false instead of failing quietly.
   bool get canSteer {
@@ -75,6 +90,8 @@ class GroupSnapshot {
     bool? solo,
     Object? soloItemId = _keep,
     bool? loading,
+    bool? weak,
+    int? lagMs,
   }) => GroupSnapshot(
     state: state ?? this.state,
     members: members ?? this.members,
@@ -84,6 +101,8 @@ class GroupSnapshot {
     solo: solo ?? this.solo,
     soloItemId: identical(soloItemId, _keep) ? this.soloItemId : soloItemId as String?,
     loading: loading ?? this.loading,
+    weak: weak ?? this.weak,
+    lagMs: lagMs ?? this.lagMs,
   );
 
   static const _keep = Object();
@@ -160,6 +179,14 @@ class GroupSession {
   Job? _prepareJob;
   Job? _startJob;
   Job? _driftJob;
+  Job? _waitJob;
+
+  /// What was last told of this device's network, and when, so that a flutter is not told again and again (protocol 20).
+  var _netSent = false;
+  var _netSentAt = -(1 << 40);
+
+  /// The epoch the room was asked to wait in, so that one stall asks once.
+  var _bufSentEpoch = -1;
   final _filter = DriftFilter();
 
   /// Diagnostics: when false, drift is measured and logged but never corrected.
@@ -167,6 +194,13 @@ class GroupSession {
 
   /// How long the last seek took; used to aim a little ahead when correcting drift by seeking.
   int _seekCostMs = 150;
+
+  /// Stalls the player reports, and how this device keeps to the room when the network is weak.
+  final health = NetworkHealth();
+
+  /// While the network is weak, no seek before this moment, and the gap between seeks; a seek that stalls doubles it.
+  int _nextSeekAt = 0;
+  int _seekGapMs = NetworkHealth.seekGapMs;
 
   /// Item currently handed to the player as the gapless successor of the loaded one.
   QueueEntry? _preloaded;
@@ -307,6 +341,8 @@ class GroupSession {
   /// The connection came back: the server forgot that this device listens alone.
   void onReconnected() {
     if (_solo) send(Wire.solo(true));
+    // The server forgot this device's network too
+    if (_netSent && _state?.waitWeak != null) send(Wire.net(true));
   }
 
   void soloPlay() {
@@ -543,6 +579,7 @@ class GroupSession {
     // Keep our own prepare running: a slow device still needs to finish loading
     _startJob?.cancel();
     _driftJob?.cancel();
+    _waitJob?.cancel();
     _clearPendingAdopt();
     _startedAtServer = null;
     player.pause();
@@ -569,10 +606,19 @@ class GroupSession {
     if (msg.epoch < _handledEpoch) return;
     _handledEpoch = msg.epoch;
     final by = msg.by;
-    if (by != null && by != _snapshot.you) _events.add(PausedEvent(by));
+    final you = _snapshot.you;
+    if (msg.why == 'wait') {
+      if (by != null && by != you) _events.add(WaitingEvent(by));
+    } else if (by != null && by != you) {
+      _events.add(PausedEvent(by));
+    }
     _updateRoom((s) => s.copyWith(phase: 'paused', epoch: msg.epoch, positionMs: msg.positionMs));
     _cancelPlayback();
     final item = _state?.current;
+    // The room stopped for this device: it says when it has enough data to go on
+    if (msg.why == 'wait' && by != null && by == you) {
+      _waitJob = Job.launch((job) => _waitForData(job, msg.epoch));
+    }
     _startJob = Job.launch((job) async {
       if (_loadedItemId != null) {
         await job.guard(player.seekTo(msg.positionMs));
@@ -615,6 +661,11 @@ class GroupSession {
 
     if (_loadedItemId == item.id) {
       _adopt(msg.startedAt);
+    } else if (_preloaded?.id == item.id && health.weak && _snapshot.lagMs >= _tailCutLagMs) {
+      // Still behind on a weak network: do not hear out the end of the old song, start the new one with the room
+      log('behind by ${_snapshot.lagMs}ms, cutting the end of the song short');
+      _cancelPlayback();
+      _startJob = Job.launch((j) => _catchUpPlaying(j, item, msg.startedAt));
     } else if (_preloaded?.id == item.id) {
       // Our player is still finishing the previous item and will move on within moments
       _driftJob?.cancel();
@@ -782,7 +833,7 @@ class GroupSession {
   Future<void> _catchUpPlaying(Job job, QueueEntry item, int startedAt) async {
     var attempt = 0;
     while (true) {
-      final guessed = clock.toServer(nowMs()) - startedAt + _catchUpLoadGuessMs;
+      final guessed = clock.toServer(nowMs()) - startedAt + health.loadMs;
       await _loadPaused(job, item, guessed < 0 ? 0 : guessed);
       if (_loadedItemId != null) break;
       if (++attempt >= _catchUpMaxAttempts) {
@@ -808,9 +859,14 @@ class GroupSession {
     } else {
       final late = nowMs() - startLocal;
       final target = positionMs + (late < 0 ? 0 : late) + _seekCostMs + startBiasMs;
-      await job.guard(player.seekTo(target));
-      if (!_held) player.play();
-      log('${_held ? 'held, not playing' : 'play()'} late by ${late}ms, skipped to $target');
+      if (target > player.bufferedPositionMs() - _inBufferMarginMs) {
+        log('late by ${late}ms and the place is not held: jumping');
+        await _scheduledPlay(job, startAtServer - positionMs);
+      } else {
+        await job.guard(player.seekTo(target));
+        if (!_held) player.play();
+        log('${_held ? 'held, not playing' : 'play()'} late by ${late}ms, skipped to $target');
+      }
     }
     drift.reset();
     player.setSpeed(1);
@@ -826,6 +882,9 @@ class GroupSession {
       var settleUntil = 0;
       var tick = 0;
       var playingTicks = 0;
+      int? stalledSince;
+      var stallAtMs = 0;
+      var lastSeekAt = 0;
       _filter.reset(nowMs());
       while (job.isActive) {
         await job.delay(_driftTick);
@@ -833,6 +892,21 @@ class GroupSession {
         if (started == null) break;
         if (!player.isPlaying()) {
           playingTicks = 0;
+          if (stalledSince == null && !_held) {
+            stalledSince = nowMs();
+            stallAtMs = player.positionMs();
+          }
+          // A stall that lasts, in a room that waits for devices that stall: say where it began, and the room stops there
+          final began = stalledSince;
+          if (began != null &&
+              nowMs() - began >= _bufAfterMs &&
+              player.isBuffering() &&
+              _state?.waitWeak == true &&
+              _bufSentEpoch != _handledEpoch) {
+            _bufSentEpoch = _handledEpoch;
+            log('stalled at ${stallAtMs}ms, asking the room to wait');
+            send(Wire.buf(_handledEpoch, stallAtMs));
+          }
           _update((s) => s.copyWith(driftMs: null));
           // Readings from before a stall say nothing about the position after it
           _filter.reset(nowMs(), _snapshot.speed);
@@ -840,9 +914,31 @@ class GroupSession {
         }
         if (++playingTicks >= _healthyTicks) _recoveries = 0;
         final now = nowMs();
+        final since = stalledSince;
+        if (since != null) {
+          stalledSince = null;
+          if (now - since >= _stallMinMs) {
+            _learnBias = false; // what a stall did to the readings says nothing about how late a start is heard
+            log('stalled for ${now - since}ms, ${player.bufferedPositionMs() - player.positionMs()}ms buffered now');
+            if (health.onStall(now)) log('weak network: the room may run ahead of this device');
+            // A seek that is followed by a stall was too soon: leave more time before the next one
+            if (now - lastSeekAt < _seekStallWindowMs) {
+              _seekGapMs = (_seekGapMs * 2).clamp(0, _maxSeekGapMs);
+            }
+          }
+        }
+        final aheadRaw = player.bufferedPositionMs() - player.positionMs();
+        final ahead = aheadRaw < 0 ? 0 : aheadRaw;
+        final whole = _state?.current?.durMs ?? 0;
+        if (health.tick(now, ahead, fullyLoaded: whole > 0 && player.bufferedPositionMs() >= whole - 1000)) {
+          log('network is good again');
+          _seekGapMs = NetworkHealth.seekGapMs;
+        }
         final expected = clock.toServer(now) - started + trimMs;
         final driftMs = player.positionMs() - expected;
-        _update((s) => s.copyWith(driftMs: driftMs));
+        final weak = health.weak;
+        _update((s) => s.copyWith(driftMs: driftMs, weak: weak, lagMs: weak && driftMs < 0 ? -driftMs : 0));
+        _tellNetwork(now);
         if (now < settleUntil) continue; // let a recent seek settle before measuring again
         _filter.add(now, driftMs);
         final smoothed = _filter.estimate(now);
@@ -861,7 +957,8 @@ class GroupSession {
             (smoothed.abs() > drift.seekThresholdMs ? _filter.hasLargeDriftEvidence : _filter.isFull);
         if (!trusted) continue;
 
-        final action = coldStart ? const DriftSeek() : drift.decide(smoothed);
+        final decided = coldStart ? const DriftSeek() : drift.decide(smoothed);
+        final action = health.weak && !coldStart ? _whileWeak(decided, smoothed, ahead, now) : decided;
         switch (action) {
           case DriftNone():
             break;
@@ -875,17 +972,105 @@ class GroupSession {
             // Aim a little ahead: the seek itself takes time
             final target = clock.toServer(before) - started + _seekCostMs + trimMs;
             _learnBias = false; // a corrective seek muddies what the plain start looked like
-            await job.guard(player.seekTo(target));
-            _seekCostMs = (nowMs() - before).clamp(50, 1000);
+            final buffered = player.bufferedPositionMs();
+            if (target > player.positionMs() && target > buffered - _inBufferMarginMs) {
+              // The place is not held: going there now means loading it with the sound on, and the room moves on
+              // meanwhile. Pause, load, and start there at a moment that is still ahead
+              log('drift=${smoothed}ms (smoothed), ${buffered - player.positionMs()}ms held: jumping');
+              player.pause();
+              await _scheduledPlay(job, started);
+            } else {
+              await job.guard(player.seekTo(target));
+              _seekCostMs = (nowMs() - before).clamp(50, 1000);
+              log('drift=${smoothed}ms (smoothed) -> seek to $target within the buffer (took ${_seekCostMs}ms)');
+            }
+            lastSeekAt = nowMs();
+            _nextSeekAt = lastSeekAt + _seekGapMs;
             drift.reset();
             player.setSpeed(1);
             _filter.reset(nowMs());
             _update((s) => s.copyWith(speed: 1));
             settleUntil = nowMs() + _settleAfterSeekMs;
-            log('drift=${smoothed}ms (smoothed) -> seek to $target (took ${_seekCostMs}ms)');
         }
       }
     });
+  }
+
+  /// Tells the room, at most once in [_netTellGapMs], when this device's network turned weak or good (protocol 20).
+  void _tellNetwork(int now) {
+    if (_state?.waitWeak == null) return; // a server older than protocol 20 does not know the message
+    final weak = health.weak;
+    if (weak == _netSent || now - _netSentAt < _netTellGapMs) return;
+    _netSent = weak;
+    _netSentAt = now;
+    send(Wire.net(weak));
+  }
+
+  /// The room stopped for this device: says so once [_waitDataAheadMs] of the song are loaded ahead, or the whole of it.
+  Future<void> _waitForData(Job job, int epoch) async {
+    final until = nowMs() + _waitDataMaxMs;
+    while (job.isActive && nowMs() < until) {
+      await job.delay(_driftTick);
+      final whole = _state?.current?.durMs ?? 0;
+      final buffered = player.bufferedPositionMs();
+      if (buffered - player.positionMs() >= _waitDataAheadMs || (whole > 0 && buffered >= whole - 1000)) {
+        log('loaded ${buffered - player.positionMs()}ms ahead, telling the room');
+        send(Wire.bufOk(epoch));
+        return;
+      }
+    }
+  }
+
+  /// What to do about [decided] while the network is weak: a device behind the room does not chase it with data it does
+  /// not have, see [NetworkHealth.catchUp]. A device ahead of the room is corrected as usual.
+  DriftAction _whileWeak(DriftAction decided, int smoothedMs, int aheadMs, int now) {
+    if (smoothedMs < -drift.seekThresholdMs) {
+      switch (health.catchUp(-smoothedMs, aheadMs)) {
+        case CatchUpWait():
+          drift.reset();
+          return const DriftNone();
+        case CatchUpSpeed():
+          return drift.decide(-drift.seekThresholdMs);
+        case CatchUpSeekInBuffer():
+          return now >= _nextSeekAt ? const DriftSeek() : const DriftNone();
+        case CatchUpJump():
+          return const DriftSeek();
+      }
+    }
+    // Speeding up spends data faster too: not with a thin buffer
+    if (decided is DriftSetSpeed && decided.factor > 1 && aheadMs < NetworkHealth.speedAheadMs) {
+      drift.reset();
+      return const DriftNone();
+    }
+    if (decided is DriftSeek && smoothedMs > 0 && now < _nextSeekAt) return const DriftNone();
+    return decided;
+  }
+
+  /// Gets the player to where the room will be at a moment ahead of now, and starts it then. It loads the place first,
+  /// paused, so a slow network costs one stretch of silence of known length rather than a chain of stalls. When loading
+  /// takes longer than the time given, the next try is given more; after a few tries it plays at once.
+  Future<bool> _scheduledPlay(Job job, int startedAt) async {
+    var lead = health.loadMs;
+    for (var attempt = 1; attempt <= _maxJumpAttempts; attempt++) {
+      final t0 = nowMs();
+      final raw = clock.toServer(t0) + lead - startedAt + trimMs + startBiasMs;
+      final position = raw < 0 ? 0 : raw;
+      await job.guard(player.seekTo(position));
+      final took = nowMs() - t0;
+      final spare = lead - took;
+      if (spare >= _jumpMinSpareMs) {
+        await job.delay(Duration(milliseconds: spare));
+        if (!_held) player.play();
+        health.learnLoad(took);
+        log('jumped to ${position}ms, loading took ${took}ms of the ${lead}ms given (try $attempt)');
+        return true;
+      }
+      health.onJumpMissed(nowMs(), took);
+      lead = health.loadMs;
+      log('loading took ${took}ms, more than the time given; trying again with ${lead}ms');
+    }
+    if (!_held) player.play();
+    return false;
   }
 
   /// The first full window after a plain start shows how far off that start was; fold it into the bias.
@@ -900,6 +1085,7 @@ class GroupSession {
   }
 
   void _cancelPlayback() {
+    _waitJob?.cancel();
     _learnBias = false;
     _prepareJob?.cancel();
     _startJob?.cancel();
@@ -917,7 +1103,27 @@ class GroupSession {
   static const _driftTick = Duration(milliseconds: 500);
   static const _logEveryTicks = 2; // every second
   static const _settleAfterSeekMs = 1500;
-  static const _catchUpLoadGuessMs = 2000;
+
+  /// A target this close to the end of what the player holds counts as not held.
+  static const _inBufferMarginMs = 1000;
+
+  /// Not playing for this long, though meant to, is a stall; one tick missing is jitter.
+  static const _stallMinMs = 1000;
+
+  /// A stall this long, in a room that waits for devices that stall, is told to the room.
+  static const _bufAfterMs = 500;
+  static const _netTellGapMs = 10000;
+
+  /// The device the room waits for says so when this much of the song is loaded ahead, and gives up waiting after the second.
+  static const _waitDataAheadMs = 10000;
+  static const _waitDataMaxMs = 20000;
+  static const _seekStallWindowMs = 5000;
+  static const _maxSeekGapMs = 80000;
+  static const _maxJumpAttempts = 3;
+  static const _jumpMinSpareMs = 100;
+
+  /// Behind the room by this much when the song changes, the rest of the old song is dropped.
+  static const _tailCutLagMs = 1500;
   static const _catchUpLeadMs = 400;
   static const _catchUpRetry = Duration(seconds: 5);
   static const _catchUpMaxAttempts = 60; // about five minutes plus the time each attempt takes
