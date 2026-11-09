@@ -6,14 +6,16 @@ import 'scope.dart';
 import 'widgets/avatars.dart';
 
 /// Lets the person change the name others see and the picture of themselves, in a room or not.
-Future<void> showProfileSheet(BuildContext context) =>
-    showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      builder: (_) =>
-          AppScope(model: AppScope.of(context), child: const _ProfileSheet()),
-    );
+Future<void> showProfileSheet(BuildContext context) {
+  // Looked up now, not in the builder: the builder runs again when the keyboard rises, and `context` may belong to a sheet closed by then
+  final model = AppScope.of(context);
+  return showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    builder: (_) => AppScope(model: model, child: const _ProfileSheet()),
+  );
+}
 
 class _ProfileSheet extends StatefulWidget {
   const _ProfileSheet();

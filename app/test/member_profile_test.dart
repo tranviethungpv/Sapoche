@@ -142,6 +142,21 @@ void main() {
     },
   );
 
+  testWidgets('the editor opened from your profile survives the keyboard', (
+    tester,
+  ) async {
+    await openMembers(tester, ownerId: 'me');
+    await openProfile(tester, 'me');
+    await tester.tap(find.byKey(const ValueKey('profile-view-edit')));
+    await tester.pumpAndSettle();
+    // Tapping the name field raises the keyboard: the sheet is rebuilt with new insets.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 600);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('profile-name')), findsOneWidget);
+  });
+
   testWidgets(
     'only the owner can remove someone from their profile, and is asked first',
     (tester) async {

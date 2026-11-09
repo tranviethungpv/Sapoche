@@ -12,16 +12,16 @@ import 'widgets/avatar_zoom.dart';
 import 'widgets/avatars.dart';
 
 /// Who someone in the room is: their picture, big and to be zoomed, and what they are doing.
-Future<void> showMemberProfile(BuildContext context, String memberId) =>
-    showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      builder: (_) => AppScope(
-        model: AppScope.of(context),
-        child: _MemberProfile(memberId: memberId),
-      ),
-    );
+Future<void> showMemberProfile(BuildContext context, String memberId) {
+  final model = AppScope.of(context);
+  return showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    builder: (_) =>
+        AppScope(model: model, child: _MemberProfile(memberId: memberId)),
+  );
+}
 
 class _MemberProfile extends StatelessWidget {
   const _MemberProfile({required this.memberId});
