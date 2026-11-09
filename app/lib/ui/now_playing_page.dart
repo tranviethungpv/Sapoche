@@ -882,7 +882,6 @@ class _TitleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final theme = Theme.of(context).textTheme;
     return Row(
       children: [
@@ -896,19 +895,100 @@ class _TitleRow extends StatelessWidget {
                 rounds: MarqueeText.playerRounds,
               ),
               const SizedBox(height: 2),
-              MarqueeText(
-                current.artist,
-                style: theme.titleMedium?.copyWith(
-                  color: p.primary,
-                  fontWeight: FontWeight.w500,
-                ),
-                rounds: MarqueeText.playerRounds,
-              ),
+              _ArtistLine(controller: controller, current: current),
             ],
           ),
         ),
         LikeButton(track: current, size: 26),
         _MoreButton(controller: controller, current: current),
+      ],
+    );
+  }
+}
+
+/// The artist of the song, and after it, small and still, how many watched it ("1.8B views"). It comes after a request
+/// of its own, once the song has sound, so it only narrows the line when it arrives and nothing moves down.
+class _ArtistLine extends StatefulWidget {
+  const _ArtistLine({required this.controller, required this.current});
+
+  final RoomController controller;
+  final QueueEntry current;
+
+  @override
+  State<_ArtistLine> createState() => _ArtistLineState();
+}
+
+class _ArtistLineState extends State<_ArtistLine> {
+  ({int count, bool plays})? _views;
+
+  @override
+  void initState() {
+    super.initState();
+    _ask();
+  }
+
+  @override
+  void didUpdateWidget(_ArtistLine old) {
+    super.didUpdateWidget(old);
+    if (old.current.videoId != widget.current.videoId) {
+      _views = null;
+      _ask();
+    }
+  }
+
+  /// Whether it is waiting for the song to have sound (it listens to the controller until it does).
+  bool _waiting = false;
+
+  @override
+  void dispose() {
+    if (_waiting) widget.controller.removeListener(_ask);
+    super.dispose();
+  }
+
+  Future<void> _ask() async {
+    final track = widget.current;
+    if (track.isLocal) return;
+    // The start of a song has the network to itself: the count is asked for once it has sound
+    final starting = widget.controller.isStarting;
+    if (starting != _waiting) {
+      _waiting = starting;
+      if (starting) {
+        widget.controller.addListener(_ask);
+      } else {
+        widget.controller.removeListener(_ask);
+      }
+    }
+    if (starting) return;
+    final views = await AppScope.of(context).music.viewCount(track);
+    if (mounted && widget.current.videoId == track.videoId) {
+      setState(() => _views = views);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final style = theme.titleMedium?.copyWith(
+      color: p.primary,
+      fontWeight: FontWeight.w500,
+    );
+    final views = _views;
+    final artist = MarqueeText(
+      widget.current.artist,
+      style: style,
+      rounds: MarqueeText.playerRounds,
+    );
+    if (views == null) return artist;
+    return Row(
+      children: [
+        Flexible(child: artist),
+        Text(
+          ' · ${formatViews(views.count, plays: views.plays)}',
+          maxLines: 1,
+          softWrap: false,
+          style: theme.titleMedium?.copyWith(color: p.textSecondary),
+        ),
       ],
     );
   }

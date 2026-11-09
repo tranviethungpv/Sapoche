@@ -49,6 +49,16 @@ class MusicParserTest {
     }
 
     @Test
+    fun `how many times a song was played is read from the details of the player answer, though it cannot be played`() = runTest {
+        assertEquals(144_730_678L, client("player" to "player_web_remix").views("lYBUbBu4W08"))
+    }
+
+    @Test
+    fun `no count is read when the answer has none`() = runTest {
+        assertNull(client("player" to "next_song").views("lYBUbBu4W08"))
+    }
+
+    @Test
     fun `a cover is asked for at a size fit for the player`() = runTest {
         val first = client("next" to "next_song").watchNext("lYBUbBu4W08").tracks.first()
         assertTrue(first.thumbUrl!!.contains("=w544-h544"), first.thumbUrl)
@@ -319,6 +329,7 @@ class MusicParserTest {
         assertEquals("Chúng Ta Của Hiện Tại", songs.first().title)
         assertEquals("Sơn Tùng M-TP", songs.first().artist)
         assertEquals(302, songs.first().durationSec)
+        assertEquals("155M plays", songs.first().stats, "the plays of a song are a column of their own")
         assertTrue(songs.all { it.isSong })
 
         val videos = client("search" to "search_videos").searchVideos("chung ta cua hien tai")

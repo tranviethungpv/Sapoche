@@ -12,6 +12,9 @@ import kotlinx.serialization.json.contentOrNull
  */
 object MusicParser {
 
+    /** How many times the video was watched or the song played, from the details of a "player" answer. */
+    fun views(root: JsonElement): Long? = root.at("videoDetails", "viewCount").string()?.toLongOrNull()
+
     fun watchNext(root: JsonElement): WatchNext {
         val tabs = root.at("contents", "singleColumnMusicWatchNextResultsRenderer", "tabbedRenderer", "watchNextTabbedResultsRenderer", "tabs")
             .elements()
@@ -350,6 +353,8 @@ object MusicParser {
             duration = duration,
             thumbs = row.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails"),
             type = type,
+            // A song's plays are a column of their own ("155M plays"), after the line with its artist and album
+            extra = columns.getOrNull(2).text(),
         )
     }
 
@@ -361,7 +366,7 @@ object MusicParser {
     }
 
     /** The parts of a line like "Artist • Album • 1987" are told apart by where the separators are. */
-    private fun track(videoId: String, title: String, byline: List<JsonElement>, duration: String?, thumbs: JsonElement?, type: String?): MusicTrack {
+    private fun track(videoId: String, title: String, byline: List<JsonElement>, duration: String?, thumbs: JsonElement?, type: String?, extra: String? = null): MusicTrack {
         val parts = mutableListOf(mutableListOf<JsonElement>())
         for (run in byline) {
             if (run.at("text").string()?.trim() == "•") parts.add(mutableListOf()) else parts.last().add(run)
@@ -371,7 +376,7 @@ object MusicParser {
         val album = parts.drop(1).flatten().firstOrNull { pageId(it)?.startsWith("MPRE") == true }
         val year = parts.drop(1).lastOrNull()?.singleOrNull()?.at("text").string()?.takeIf { YEAR.matches(it) }
         // A video's line says how many watched it instead of which album it is on
-        val stats = parts.drop(1).map { part -> part.joinToString("") { it.at("text").string().orEmpty() }.trim() }
+        val stats = (parts.drop(1).map { part -> part.joinToString("") { it.at("text").string().orEmpty() }.trim() } + listOfNotNull(extra?.trim()))
             .filter { it.endsWith("views") || it.endsWith("likes") || it.endsWith("plays") }
             .joinToString(" · ").takeIf { it.isNotEmpty() }
         return MusicTrack(

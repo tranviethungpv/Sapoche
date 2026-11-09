@@ -34,6 +34,9 @@ class MusicClient {
     }),
   );
 
+  // The "player" answer of this client says nothing of how to play (it is turned down), but does say how many watched
+  Future<int?> views(String videoId) async => MusicParser.views(await _ask('player', {'videoId': videoId}));
+
   /// The searches the website offers for a half-typed [input].
   Future<List<String>> suggestions(String input) async =>
       MusicParser.suggestions(await _ask('music/get_search_suggestions', {'input': input}));

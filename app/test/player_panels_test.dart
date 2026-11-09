@@ -15,8 +15,10 @@ import 'pump_app.dart';
 Future<FakeBackend> openPlayer(
   WidgetTester tester, {
   RoomSnapshot? snapshot,
+  void Function(FakeBackend backend)? before,
 }) async {
   final (backend, _) = await pumpApp(tester);
+  before?.call(backend);
   backend.emit(StateEvent(snapshot ?? sampleRoom()));
   backend.emit(
     const PositionEvent(
@@ -579,6 +581,47 @@ void main() {
     });
   });
 
+  group('how many watched', () {
+    testWidgets('the player says it small after the artist, as plays for a song', (
+      tester,
+    ) async {
+      final backend = await openPlayer(
+        tester,
+        before: (b) => b
+          ..radioResult = const SongRadio(tracks: [song])
+          ..views['video0'] = 144730678,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(backend.calls, contains('musicViews video0'));
+      expect(find.text('Artist 0'), findsWidgets);
+      expect(find.text(' · 145M plays'), findsOneWidget);
+    });
+
+    testWidgets('a video says views instead', (tester) async {
+      await openPlayer(
+        tester,
+        before: (b) => b
+          ..radioResult = const SongRadio(
+            tracks: [
+              MusicTrack(videoId: 'video0', title: 'Song 0', artist: 'Artist 0', durMs: 200000),
+            ],
+          )
+          ..views['video0'] = 1835322339,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text(' · 1.8B views'), findsOneWidget);
+    });
+
+    testWidgets('the player says nothing when YouTube says nothing', (tester) async {
+      final backend = await openPlayer(tester);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(backend.calls, contains('musicViews video0'));
+      expect(find.textContaining('views'), findsNothing);
+      expect(find.textContaining('plays'), findsNothing);
+      expect(find.textContaining(' · '), findsNothing);
+    });
+  });
+
   group('song and artist', () {
     Future<void> openMenu(WidgetTester tester, String item) async {
       await tester.tap(
@@ -604,6 +647,39 @@ void main() {
       expect(find.text('Song'), findsOneWidget);
       expect(find.text('3:20'), findsOneWidget);
       expect(find.text('You'), findsOneWidget, reason: 'who added it');
+    });
+
+    testWidgets('the info sheet says how many played a song, in its own row', (
+      tester,
+    ) async {
+      final backend = await openPlayer(tester);
+      backend.radioResult = const SongRadio(tracks: [song]);
+      backend.views['video0'] = 144730678;
+      await openMenu(tester, 'Song info');
+
+      expect(find.text('Plays'), findsOneWidget);
+      expect(find.text('145M'), findsOneWidget);
+    });
+
+    testWidgets('the info sheet falls back on what YouTube Music said of a video', (
+      tester,
+    ) async {
+      final backend = await openPlayer(tester);
+      backend.radioResult = const SongRadio(
+        tracks: [
+          MusicTrack(
+            videoId: 'video0',
+            title: 'Song 0',
+            artist: 'Artist 0',
+            durMs: 200000,
+            stats: '1.8B views · 19M likes',
+          ),
+        ],
+      );
+      await openMenu(tester, 'Song info');
+
+      expect(find.text('Reach'), findsOneWidget);
+      expect(find.text('1.8B views · 19M likes'), findsOneWidget);
     });
 
     testWidgets('the artist is opened from the sheet', (tester) async {

@@ -1,0 +1,14 @@
+{
+  "playabilityStatus": {
+    "status": "UNPLAYABLE",
+    "reason": "Video unavailable"
+  },
+  "videoDetails": {
+    "videoId": "lYBUbBu4W08",
+    "title": "Never Gonna Give You Up",
+    "lengthSeconds": "214",
+    "author": "Rick Astley",
+    "viewCount": "144730678",
+    "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+  }
+}

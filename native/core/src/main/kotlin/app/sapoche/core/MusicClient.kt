@@ -37,6 +37,9 @@ class MusicClient(
         },
     )
 
+    // The "player" answer of this client says nothing of how to play (it is turned down), but does say how many watched
+    override suspend fun views(videoId: String): Long? = MusicParser.views(ask("player") { put("videoId", videoId) })
+
     override suspend fun related(relatedId: String): Related = MusicParser.related(browse(relatedId))
 
     override suspend fun lyrics(lyricsId: String): String? = MusicParser.lyrics(browse(lyricsId))

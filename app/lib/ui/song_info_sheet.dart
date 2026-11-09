@@ -23,137 +23,162 @@ void showSongInfo(BuildContext context, QueueEntry entry, {String? addedBy}) {
       entry: entry,
       addedBy: addedBy,
       radio: music.radio(entry.videoId),
+      views: entry.isLocal ? null : music.viewCount(entry),
     ),
   );
 }
 
 class _SongInfo extends StatelessWidget {
-  const _SongInfo({required this.entry, required this.radio, this.addedBy});
+  const _SongInfo({
+    required this.entry,
+    required this.radio,
+    required this.views,
+    this.addedBy,
+  });
 
   final QueueEntry entry;
   final String? addedBy;
   final Future<SongRadio> radio;
+
+  /// How many watched it, for a song that is not on the phone.
+  final Future<({int count, bool plays})?>? views;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     return SafeArea(
-      child: FutureBuilder<SongRadio>(
-        future: radio,
-        builder: (context, async) {
-          // What YouTube Music adds arrives later; the sheet shows what the queue knows meanwhile
-          final song = async.data?.songOf(entry.videoId);
-          Widget row(String label, String? value, {VoidCallback? onTap}) {
-            if (value == null || value.isEmpty) return const SizedBox.shrink();
-            return InkWell(
-              onTap: onTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 11),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 92,
-                      child: Text(
-                        label,
-                        style: theme.bodyMedium?.copyWith(
-                          color: p.textSecondary,
+      child: FutureBuilder<({int count, bool plays})?>(
+        future: views,
+        builder: (context, counted) => FutureBuilder<SongRadio>(
+          future: radio,
+          builder: (context, async) {
+            // What YouTube Music adds arrives later; the sheet shows what the queue knows meanwhile
+            final song = async.data?.songOf(entry.videoId);
+            Widget row(String label, String? value, {VoidCallback? onTap}) {
+              if (value == null || value.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return InkWell(
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 92,
+                        child: Text(
+                          label,
+                          style: theme.bodyMedium?.copyWith(
+                            color: p.textSecondary,
+                          ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        value,
-                        style: theme.bodyLarge?.copyWith(
-                          color: onTap != null ? p.primary : p.text,
+                      Expanded(
+                        child: Text(
+                          value,
+                          style: theme.bodyLarge?.copyWith(
+                            color: onTap != null ? p.primary : p.text,
+                          ),
                         ),
                       ),
-                    ),
-                    if (onTap != null)
-                      Icon(Icons.chevron_right_rounded, color: p.textTertiary),
-                  ],
+                      if (onTap != null)
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: p.textTertiary,
+                        ),
+                    ],
+                  ),
                 ),
+              );
+            }
+
+            final artistId = song?.artistId;
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Artwork(url: entry.thumb, size: 72, radius: 12),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.title,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.titleLarge,
+                            ),
+                            Text(
+                              entry.artist,
+                              style: theme.bodyMedium?.copyWith(
+                                color: p.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  row(
+                    S.infoArtist,
+                    entry.artist,
+                    onTap: artistId == null
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            openArtist(context, artistId);
+                          },
+                  ),
+                  row(
+                    S.infoAlbum,
+                    song?.album,
+                    onTap: song?.albumId == null
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            openCollection(
+                              context,
+                              id: song!.albumId!,
+                              title: song.album,
+                              thumb: song.thumb,
+                            );
+                          },
+                  ),
+                  row(S.infoYear, song?.year),
+                  row(S.infoLength, formatDuration(entry.durMs)),
+                  // The count of the player, said in the language of the app; what YouTube Music said of the video until it comes
+                  row(
+                    counted.data?.plays ?? song?.isSong ?? false
+                        ? S.infoPlays
+                        : S.infoReach,
+                    counted.data == null
+                        ? song?.stats
+                        : formatCount(counted.data!.count),
+                  ),
+                  row(
+                    S.infoKind,
+                    song == null
+                        ? null
+                        : (song.isSong ? S.kindSong : S.kindVideo),
+                  ),
+                  row(S.addedByLabel, addedBy),
+                  if (async.connectionState != ConnectionState.done)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                ],
               ),
             );
-          }
-
-          final artistId = song?.artistId;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Artwork(url: entry.thumb, size: 72, radius: 12),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            entry.title,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.titleLarge,
-                          ),
-                          Text(
-                            entry.artist,
-                            style: theme.bodyMedium?.copyWith(
-                              color: p.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                row(
-                  S.infoArtist,
-                  entry.artist,
-                  onTap: artistId == null
-                      ? null
-                      : () {
-                          Navigator.pop(context);
-                          openArtist(context, artistId);
-                        },
-                ),
-                row(
-                  S.infoAlbum,
-                  song?.album,
-                  onTap: song?.albumId == null
-                      ? null
-                      : () {
-                          Navigator.pop(context);
-                          openCollection(
-                            context,
-                            id: song!.albumId!,
-                            title: song.album,
-                            thumb: song.thumb,
-                          );
-                        },
-                ),
-                row(S.infoYear, song?.year),
-                row(S.infoLength, formatDuration(entry.durMs)),
-                row(S.infoReach, song?.stats),
-                row(
-                  S.infoKind,
-                  song == null
-                      ? null
-                      : (song.isSong ? S.kindSong : S.kindVideo),
-                ),
-                row(S.addedByLabel, addedBy),
-                if (async.connectionState != ConnectionState.done)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: LinearProgressIndicator(minHeight: 2),
-                  ),
-              ],
-            ),
-          );
-        },
+          },
+        ),
       ),
     );
   }

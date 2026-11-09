@@ -6,6 +6,7 @@ import '../../theme/theme.dart';
 import 'artwork.dart';
 import '../scope.dart';
 import 'like_button.dart';
+import 'meta_line.dart';
 
 /// Lets the "…" menu in a row's trailing be opened by the row itself, from a right click, as a mouse (DeX, a computer)
 /// does. The row provides the key and the menu takes it.
@@ -28,6 +29,7 @@ class TrackTile extends StatefulWidget {
     super.key,
     required this.track,
     this.subtitle,
+    this.meta,
     this.trailing,
     this.onTap,
     this.leading,
@@ -42,6 +44,9 @@ class TrackTile extends StatefulWidget {
 
   /// Replaces the artist line, e.g. "Added by Anna".
   final String? subtitle;
+
+  /// A count ("1.8B views") at the end of the line under the title, which is cut before it is.
+  final String? meta;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -71,6 +76,7 @@ class _TrackTileState extends State<TrackTile> {
     final TrackTile(
       :track,
       :subtitle,
+      :meta,
       :trailing,
       :onTap,
       :leading,
@@ -132,7 +138,7 @@ class _TrackTileState extends State<TrackTile> {
                         ),
                       ),
                       // A song with nothing to say about it (an album's, by the one artist) has the title alone
-                      if ((subtitle ?? track.artist).isNotEmpty) ...[
+                      if ((subtitle ?? track.artist).isNotEmpty || meta != null) ...[
                         const SizedBox(height: 2),
                         Row(
                           children: [
@@ -154,10 +160,9 @@ class _TrackTileState extends State<TrackTile> {
                                   : const SizedBox.shrink(),
                             ),
                             Expanded(
-                              child: Text(
-                                subtitle ?? track.artist,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: MetaLine(
+                                text: subtitle ?? track.artist,
+                                meta: meta,
                                 style: theme.bodyMedium?.copyWith(
                                   color: p.textSecondary,
                                 ),

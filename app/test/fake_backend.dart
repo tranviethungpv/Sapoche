@@ -674,6 +674,15 @@ class FakeBackend implements Backend {
   Future<SongRadio> musicNext(String videoId) =>
       _music('musicNext $videoId', radioResult);
 
+  /// How many times each video was watched, by video id; null (nothing in it) is "YouTube does not say".
+  final views = <String, int>{};
+
+  @override
+  Future<int?> musicViews(String videoId) async {
+    await _record('musicViews $videoId');
+    return views[videoId];
+  }
+
   @override
   Future<RelatedPage> musicRelated(String videoId) =>
       _music('musicRelated $videoId', relatedResult);

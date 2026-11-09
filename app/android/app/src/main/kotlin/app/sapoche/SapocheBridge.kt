@@ -550,6 +550,7 @@ class SapocheBridge(
                 call.argument<Boolean>("songs") == true,
             ).map(MusicJson::track)
             "musicNext" -> return MusicJson.next(SapocheApp.musicFeed.watchNext(call.argument<String>("videoId").orEmpty()))
+            "musicViews" -> return SapocheApp.musicFeed.views(call.argument<String>("videoId").orEmpty())
             "musicRelated" -> return MusicJson.related(SapocheApp.musicFeed.related(call.argument<String>("videoId").orEmpty()))
             "musicArtist" -> return MusicJson.artist(SapocheApp.musicFeed.artist(call.argument<String>("id").orEmpty()))
             "musicSearchPage" -> return MusicJson.searchPage(

@@ -473,6 +473,9 @@ abstract class Backend {
   /// What YouTube Music would play after the song, with the song itself first. Throws without a network.
   Future<SongRadio> musicNext(String videoId);
 
+  /// How many times the video was watched, or the song played; null when YouTube does not say. Throws without a network.
+  Future<int?> musicViews(String videoId);
+
   /// The "related" page of a song: more like it, other performances, similar artists.
   Future<RelatedPage> musicRelated(String videoId);
 
@@ -1093,6 +1096,10 @@ class NativeBackend implements Backend {
   Future<SongRadio> musicNext(String videoId) async => SongRadio.fromMap(
     (await _call<Map<Object?, Object?>>('musicNext', {'videoId': videoId}))!,
   );
+
+  @override
+  Future<int?> musicViews(String videoId) =>
+      _call<int>('musicViews', {'videoId': videoId});
 
   @override
   Future<RelatedPage> musicRelated(String videoId) async => RelatedPage.fromMap(

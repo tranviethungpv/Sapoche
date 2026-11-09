@@ -7,6 +7,7 @@ import '../data/models.dart';
 import '../data/music_models.dart';
 import '../data/room_controller.dart';
 import '../data/song_key.dart';
+import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'artist_page.dart';
@@ -16,6 +17,7 @@ import 'player/track_section.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/link_banner.dart';
+import 'widgets/meta_line.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/queue_actions.dart';
 import 'widgets/shimmer.dart';
@@ -747,26 +749,18 @@ class _ResultRow extends StatelessWidget {
     _ => S.collectionKind(item.label ?? 'Playlist'),
   };
 
-  /// The line under a song, video or episode: who it is by and how many watched it.
-  String? get _byline {
-    final track = item.track;
-    if (track == null) return null;
-    if (item.kind == 'episode') return item.subtitle;
-    final stats = track is MusicTrack ? track.stats : null;
-    return [
-      track.artist,
-      if (stats != null && stats.isNotEmpty) stats,
-    ].where((e) => e.isNotEmpty).join(' · ');
-  }
-
   @override
   Widget build(BuildContext context) {
     final track = item.track;
     if (track != null) {
-      final line = _byline;
+      final episode = item.kind == 'episode';
+      // Who it is by, and apart from that how many watched it, which is not cut as the name is
+      final views = splitViews(track is MusicTrack ? track.stats : null).views;
+      final line = episode ? item.subtitle : track.artist;
       return TrackTile(
         track: track,
-        subtitle: labelled ? [_kind, ?line].join(' · ') : line,
+        subtitle: labelled ? [_kind, ?line].where((e) => e.isNotEmpty).join(' · ') : line,
+        meta: episode ? null : views,
         onTap: () => onTap(item),
         trailing: TrackMenu(
           track: track,
@@ -780,10 +774,8 @@ class _ResultRow extends StatelessWidget {
     final round = item.kind == 'artist' || item.kind == 'profile';
     // The same picture and the same height as the row of a song, so all kinds of result line up
     const size = 54.0;
-    final line = [
-      _kind,
-      ?(track == null ? item.subtitle : _byline),
-    ].where((e) => e.isNotEmpty).join(' · ');
+    final split = splitViews(item.subtitle);
+    final line = [_kind, split.text].where((e) => e.isNotEmpty).join(' · ');
     return InkWell(
       onTap: () => onTap(item),
       child: Padding(
@@ -807,10 +799,9 @@ class _ResultRow extends StatelessWidget {
                     style: theme.titleMedium,
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    line,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  MetaLine(
+                    text: line,
+                    meta: split.views,
                     style: theme.bodyMedium?.copyWith(color: p.textSecondary),
                   ),
                 ],

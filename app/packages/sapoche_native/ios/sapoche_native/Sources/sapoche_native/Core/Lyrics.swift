@@ -258,6 +258,9 @@ actor MusicFeed {
     /// The home page of YouTube Music changes by the hour at most.
     static let trendingMs: Int64 = 6 * 60 * 60 * 1000
 
+    /// How many songs the number of views is kept for.
+    static let viewsKept = 200
+
     private let music: MusicSource
     private let lyricsClient: LyricsClient
     private let lyricsStore: LyricsStore
@@ -265,6 +268,7 @@ actor MusicFeed {
 
     private var nextKept = Recent<String, WatchNext>()
     private var relatedKept = Recent<String, Related>()
+    private var viewsKept = Recent<String, Int64>(size: MusicFeed.viewsKept)
     private var artistsKept = Recent<String, ArtistPage>()
     private var collectionsKept = Recent<String, CollectionPage>()
     private var searchesKept = Recent<String, SearchPage>()
@@ -286,6 +290,14 @@ actor MusicFeed {
         if let kept = nextKept[videoId] { return kept }
         let found = try await music.watchNext(videoId)
         nextKept[videoId] = found
+        return found
+    }
+
+    /// How many times the video was watched or the song played; nil when YouTube does not say (and asked again then).
+    func views(_ videoId: String) async throws -> Int64? {
+        if let kept = viewsKept[videoId] { return kept }
+        let found = try await music.views(videoId)
+        viewsKept[videoId] = found
         return found
     }
 
@@ -397,9 +409,13 @@ actor MusicFeed {
 
     /// The last few answers, oldest let go first.
     private struct Recent<K: Hashable, V> {
-        private let size = 24
+        private let size: Int
         private var values: [K: V] = [:]
         private var order: [K] = []
+
+        init(size: Int = 24) {
+            self.size = size
+        }
 
         subscript(key: K) -> V? {
             mutating get {

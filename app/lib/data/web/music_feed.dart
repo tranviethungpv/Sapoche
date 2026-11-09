@@ -16,6 +16,7 @@ class MusicFeed {
 
   final _next = _Recent<String, WatchNext>();
   final _related = _Recent<String, Related>();
+  final _views = _Recent<String, int>(size: viewsKept);
   final _artists = _Recent<String, ArtistPage>();
   final _collections = _Recent<String, CollectionPage>();
   final _searches = _Recent<String, SearchResults>();
@@ -26,11 +27,23 @@ class MusicFeed {
   /// The home page of YouTube Music changes by the hour at most.
   static const trendingMs = 6 * 60 * 60 * 1000;
 
+  /// How many songs the number of views is kept for.
+  static const viewsKept = 200;
+
   /// How many pages of a search are read to get as many results as asked for.
   static const maxSearchPages = 10;
 
   /// The radio of the song, with where its lyrics and related page are.
   Future<WatchNext> watchNext(String videoId) => _next.getOrPut(videoId, () => _music.watchNext(videoId));
+
+  /// How many times the video was watched or the song played; null when YouTube does not say (and asked again then).
+  Future<int?> views(String videoId) async {
+    final kept = _views.peek(videoId);
+    if (kept != null) return kept;
+    final found = await _music.views(videoId);
+    if (found != null) _views.put(videoId, found);
+    return found;
+  }
 
   Future<Related?> related(String videoId) async {
     final page = (await watchNext(videoId)).relatedId;
@@ -126,6 +139,16 @@ class _Recent<K, V extends Object> {
 
   final int size;
   final _map = <K, V>{};
+
+  V? peek(K key) => _map[key];
+
+  void put(K key, V value) {
+    _map.remove(key);
+    _map[key] = value;
+    while (_map.length > size) {
+      _map.remove(_map.keys.first);
+    }
+  }
 
   Future<V> getOrPut(K key, Future<V> Function() load) async {
     final kept = _map.remove(key);

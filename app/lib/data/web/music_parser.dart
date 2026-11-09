@@ -22,6 +22,9 @@ class Related {
 }
 
 abstract final class MusicParser {
+  /// How many times the video was watched or the song played, from the details of a "player" answer.
+  static int? views(Object? root) => int.tryParse(_string(_at(root, ['videoDetails', 'viewCount'])) ?? '');
+
   static WatchNext watchNext(Object? root) {
     final tabs = _elements(
       _at(root, ['contents', 'singleColumnMusicWatchNextResultsRenderer', 'tabbedRenderer', 'watchNextTabbedResultsRenderer', 'tabs']),
@@ -525,6 +528,8 @@ abstract final class MusicParser {
       duration,
       _at(row, ['thumbnail', 'musicThumbnailRenderer', 'thumbnail', 'thumbnails']),
       type,
+      // A song's plays are a column of their own ("155M plays"), after the line with its artist and album
+      extra: columns.length > 2 ? _text(columns[2]) : null,
     );
   }
 
@@ -542,7 +547,7 @@ abstract final class MusicParser {
   }
 
   /// The parts of a line like "Artist • Album • 1987" are told apart by where the separators are.
-  static MusicTrack _build(String videoId, String title, List<Object?> byline, String? duration, Object? thumbs, String? type) {
+  static MusicTrack _build(String videoId, String title, List<Object?> byline, String? duration, Object? thumbs, String? type, {String? extra}) {
     final parts = <List<Object?>>[[]];
     for (final run in byline) {
       if (_string(_at(run, ['text']))?.trim() == '•') {
@@ -566,10 +571,8 @@ abstract final class MusicParser {
     final year = yearText != null && _year.hasMatch(yearText) ? yearText : null;
     // A video's line says how many watched it instead of which album it is on
     final stats = [
-      for (final part in later)
-        if (part.map((r) => _string(_at(r, ['text'])) ?? '').join().trim() case final t
-            when t.endsWith('views') || t.endsWith('likes') || t.endsWith('plays'))
-          t,
+      for (final t in [for (final part in later) part.map((r) => _string(_at(r, ['text'])) ?? '').join().trim(), ?extra?.trim()])
+        if (t.endsWith('views') || t.endsWith('likes') || t.endsWith('plays')) t,
     ].join(' · ');
     String? artistId;
     for (final run in artistRuns) {

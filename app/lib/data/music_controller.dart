@@ -15,6 +15,7 @@ class MusicController {
 
   final _radio = <String, Future<SongRadio>>{};
   final _related = <String, Future<RelatedPage>>{};
+  final _views = <String, Future<int?>>{};
   final _artists = <String, Future<ArtistPage>>{};
   final _collections = <String, Future<CollectionPage>>{};
   final _searchPages = <String, Future<SearchResults>>{};
@@ -28,6 +29,27 @@ class MusicController {
 
   Future<SongRadio> radio(String videoId) =>
       _cached(_radio, videoId, () => _backend.musicNext(videoId));
+
+  /// How many times the video was watched or the song played, once YouTube has said; not kept while it has not.
+  Future<int?> views(String videoId) => _cached(
+    _views,
+    videoId,
+    () => _backend.musicViews(videoId),
+    keep: (count) => count != null,
+  );
+
+  /// How many watched [track], with whether it is a song, for which the count is of plays and not of views. Null when
+  /// YouTube does not say, or there is no network.
+  Future<({int count, bool plays})?> viewCount(Track track) async {
+    try {
+      final count = await views(track.videoId);
+      if (count == null) return null;
+      final plays = await isAudioRelease(track).then<bool?>((v) => v, onError: (_) => null);
+      return (count: count, plays: plays ?? false);
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<RelatedPage> related(String videoId) =>
       _cached(_related, videoId, () => _backend.musicRelated(videoId));

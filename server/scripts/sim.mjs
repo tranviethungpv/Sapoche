@@ -403,7 +403,8 @@ async function authSection() {
   const ask = (path, init = {}) => fetch(`${BASE}/yt/${path}`, { method: "POST", headers: keyHeaders, body: "{}", ...init });
   check("YouTube Music is not asked for without the key", (await fetch(`${BASE}/yt/search`, { method: "POST", body: "{}" })).status === 401);
   check("YouTube Music takes POST only", (await ask("search", { method: "GET", body: undefined })).status === 405);
-  check("YouTube Music is asked only for the endpoints the app reads", (await ask("player")).status === 404);
+  check("YouTube Music is asked only for the endpoints the app reads", (await ask("guide")).status === 404);
+  check("the details of a video (its views) are an endpoint of it", (await ask("player", { body: "not json" })).status === 400);
   check("a body that is not JSON is refused", (await ask("search", { body: "not json" })).status === 400);
   check("the completions of a search are an endpoint of it", (await ask("music/get_search_suggestions", { body: "not json" })).status === 400);
   check("a body that is too large is refused", (await ask("search", { body: JSON.stringify({ query: "x".repeat(9000) }) })).status === 413);

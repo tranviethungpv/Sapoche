@@ -183,6 +183,9 @@ protocol MusicSource {
 
     func related(_ relatedId: String) async throws -> Related
 
+    /// How many times the video was watched, or the song played; nil when YouTube does not say.
+    func views(_ videoId: String) async throws -> Int64?
+
     /// The words of a song, as plain text without times; nil when there are none.
     func lyrics(_ lyricsId: String) async throws -> String?
 

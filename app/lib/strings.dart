@@ -1267,6 +1267,13 @@ abstract final class S {
   static String get infoReach => _t('Reach', 'Lượt xem');
   static String get infoKind => _t('Version', 'Phiên bản');
   static String get addedByLabel => _t('Added by', 'Người thêm');
+  static String get infoPlays => _t('Plays', 'Lượt phát');
+  static String get decimalSeparator => _t('.', ',');
+  static String get unitThousand => _t('K', ' N');
+  static String get unitMillion => _t('M', ' Tr');
+  static String get unitBillion => _t('B', ' Tỷ');
+  static String viewCount(String n) => _t('$n views', '$n lượt xem');
+  static String playCount(String n) => _t('$n plays', '$n lượt phát');
   static String get kindSong => _t('Song', 'Bài hát');
   static String get kindVideo => _t('Video', 'Video');
   static String get goToAlbum => _t('Go to album', 'Đến trang album');

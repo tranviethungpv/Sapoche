@@ -30,6 +30,10 @@ class MusicFeedTest {
             return WatchNext(listOf(MusicTrack(videoId, "T", "A")), lyricsId, "MPTR")
         }
 
+        var viewCalls = 0
+        var views: Long? = 144_730_678L
+
+        override suspend fun views(videoId: String): Long? = views.also { viewCalls++ }
         override suspend fun related(relatedId: String) = Related(emptyList(), emptyList(), emptyList(), emptyList(), null)
         override suspend fun lyrics(lyricsId: String): String? = plain.also { lyricsCalls++ }
         override suspend fun artist(artistId: String) = ArtistPage(artistId, "N", null, null, null, emptyList(), emptyList(), emptyList(), emptyList())
@@ -56,6 +60,20 @@ class MusicFeedTest {
 
     private fun feed(music: FakeMusic, lrclib: FakeLrclib, clock: () -> Long = { 0L }) =
         MusicFeed(music, LyricsClient(lrclib), LyricsStore(dir), clock)
+
+    @Test
+    fun `the views of a song are asked for once, and asked again when YouTube said nothing`() = runTest {
+        val music = FakeMusic()
+        val feed = feed(music, FakeLrclib(null))
+        assertEquals(144_730_678L, feed.views("id1"))
+        assertEquals(144_730_678L, feed.views("id1"))
+        assertEquals(1, music.viewCalls)
+        music.views = null
+        assertNull(feed.views("id2"))
+        music.views = 5
+        assertEquals(5L, feed.views("id2"))
+        assertEquals(3, music.viewCalls)
+    }
 
     @Test
     fun `lyrics with times from LRCLIB win over the plain words of YouTube`() = runTest {

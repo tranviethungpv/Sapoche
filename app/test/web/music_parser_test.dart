@@ -26,6 +26,14 @@ MusicClient client(Map<String, String> answers) =>
 }
 
 void main() {
+  test('how many times a song was played is read from the details of the player answer, though it cannot be played', () async {
+    expect(await client({'player': 'player_web_remix'}).views('lYBUbBu4W08'), 144730678);
+  });
+
+  test('no count is read when the answer has none', () async {
+    expect(await client({'player': 'next_song'}).views('lYBUbBu4W08'), isNull);
+  });
+
   test('the radio of a song starts with it and knows it is a song', () async {
     final next = await client({'next': 'next_song'}).watchNext('lYBUbBu4W08');
     final first = next.tracks.first;
@@ -285,6 +293,7 @@ void main() {
     expect(songs.first.title, 'Chúng Ta Của Hiện Tại');
     expect(songs.first.artist, 'Sơn Tùng M-TP');
     expect(songs.first.durMs, 302000);
+    expect(songs.first.stats, '155M plays', reason: 'the plays of a song are a column of their own');
     expect(songs.every((t) => t.isSong), isTrue);
 
     final videos = await client({'search': 'search_videos'}).searchVideos('chung ta cua hien tai');

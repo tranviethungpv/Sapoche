@@ -15,6 +15,7 @@ class MusicFeed(
 ) {
     private val next = Recent<String, WatchNext>()
     private val related = Recent<String, Related>()
+    private val views = Recent<String, Long>(VIEWS_KEPT)
     private val artists = Recent<String, ArtistPage>()
     private val collections = Recent<String, CollectionPage>()
     private val searches = Recent<String, SearchPage>()
@@ -25,6 +26,10 @@ class MusicFeed(
 
     /** The radio of the song, with where its lyrics and related page are. */
     suspend fun watchNext(videoId: String): WatchNext = next.getOrPut(videoId) { music.watchNext(videoId) }
+
+    /** How many times the video was watched or the song played; null when YouTube does not say (and asked again then). */
+    suspend fun views(videoId: String): Long? =
+        views.peek(videoId) ?: music.views(videoId)?.also { views.put(videoId, it) }
 
     suspend fun related(videoId: String): Related? {
         val page = watchNext(videoId).relatedId ?: return null
@@ -96,6 +101,12 @@ class MusicFeed(
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>) = this.size > size
         }
 
+        fun peek(key: K): V? = synchronized(map) { map[key] }
+
+        fun put(key: K, value: V) {
+            synchronized(map) { map[key] = value }
+        }
+
         suspend fun getOrPut(key: K, load: suspend () -> V): V {
             synchronized(map) { map[key] }?.let { return it }
             return load().also { synchronized(map) { map[key] = it } }
@@ -103,6 +114,9 @@ class MusicFeed(
     }
 
     companion object {
+        /** How many songs the number of views is kept for. */
+        const val VIEWS_KEPT = 200
+
         /** A song without lyrics is looked up again after this long. */
         const val MISSING_MS = 7L * 24 * 60 * 60 * 1000
 

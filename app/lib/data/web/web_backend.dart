@@ -1529,6 +1529,9 @@ class WebBackend extends BackendDefaults {
   }
 
   @override
+  Future<int?> musicViews(String videoId) => _feed.views(videoId);
+
+  @override
   Future<RelatedPage> musicRelated(String videoId) async {
     final related = await _feed.related(videoId);
     if (related == null) return const RelatedPage();

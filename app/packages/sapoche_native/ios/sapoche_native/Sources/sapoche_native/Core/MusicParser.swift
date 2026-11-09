@@ -4,6 +4,11 @@ import Foundation
 /// [JSON.at] and gives nil or nothing for what is missing, and whatever is left after that is still shown.
 enum MusicParser {
 
+    /// How many times the video was watched or the song played, from the details of a "player" answer.
+    static func views(_ root: JSON) -> Int64? {
+        root.at("videoDetails", "viewCount").string.flatMap { Int64($0) }
+    }
+
     static func watchNext(_ root: JSON) -> WatchNext {
         let tabs = root.at("contents", "singleColumnMusicWatchNextResultsRenderer", "tabbedRenderer", "watchNextTabbedResultsRenderer", "tabs")
             .array.map { $0.at("tabRenderer") }
@@ -376,7 +381,9 @@ enum MusicParser {
             byline: columns.count > 1 ? (labelled ? withoutLabel(columns[1].runs) : columns[1].runs) : [],
             duration: duration,
             thumbs: row.at("thumbnail", "musicThumbnailRenderer", "thumbnail", "thumbnails"),
-            type: type
+            type: type,
+            // A song's plays are a column of their own ("155M plays"), after the line with its artist and album
+            extra: columns.count > 2 ? columns[2].text : nil
         )
     }
 
@@ -388,7 +395,7 @@ enum MusicParser {
     }
 
     /// The parts of a line like "Artist • Album • 1987" are told apart by where the separators are.
-    private static func track(videoId: String, title: String, byline: [JSON], duration: String?, thumbs: JSON?, type: String?) -> MusicTrack {
+    private static func track(videoId: String, title: String, byline: [JSON], duration: String?, thumbs: JSON?, type: String?, extra: String? = nil) -> MusicTrack {
         var parts: [[JSON]] = [[]]
         for run in byline {
             if run.at("text").string?.trimmingCharacters(in: .whitespaces) == "•" {
@@ -404,8 +411,9 @@ enum MusicParser {
         var year: String?
         if let last = later.last, last.count == 1, let text = last[0].at("text").string, isYear(text) { year = text }
         // A video's line says how many watched it instead of which album it is on
-        let stats = later
+        let stats = (later
             .map { part in part.map { $0.at("text").string ?? "" }.joined().trimmingCharacters(in: .whitespaces) }
+            + [extra?.trimmingCharacters(in: .whitespaces)].compactMap { $0 })
             .filter { $0.hasSuffix("views") || $0.hasSuffix("likes") || $0.hasSuffix("plays") }
             .joined(separator: " · ")
         return MusicTrack(

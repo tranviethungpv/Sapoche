@@ -41,6 +41,16 @@ final class MusicParserTests: XCTestCase {
         XCTAssertEqual(first.stats, "1.8B views · 19M likes")
     }
 
+    func testHowManyTimesASongWasPlayedIsReadFromTheDetailsOfThePlayerAnswerThoughItCannotBePlayed() async throws {
+        let views = try await client(["player": "player_web_remix"]).views("lYBUbBu4W08")
+        XCTAssertEqual(views, 144_730_678)
+    }
+
+    func testNoCountIsReadWhenTheAnswerHasNone() async throws {
+        let views = try await client(["player": "next_song"]).views("lYBUbBu4W08")
+        XCTAssertNil(views)
+    }
+
     func testACoverIsAskedForAtASizeFitForThePlayer() async throws {
         let first = try await client(["next": "next_song"]).watchNext("lYBUbBu4W08").tracks[0]
         XCTAssertTrue(try XCTUnwrap(first.thumbUrl).contains("=w544-h544"), first.thumbUrl ?? "")
@@ -298,6 +308,7 @@ final class MusicParserTests: XCTestCase {
         XCTAssertEqual(songs[0].title, "Chúng Ta Của Hiện Tại")
         XCTAssertEqual(songs[0].artist, "Sơn Tùng M-TP")
         XCTAssertEqual(songs[0].durationSec, 302)
+        XCTAssertEqual(songs[0].stats, "155M plays", "the plays of a song are a column of their own")
         XCTAssertTrue(songs.allSatisfy(\.isSong))
 
         let videos = try await client(["search": "search_videos"]).searchVideos("chung ta cua hien tai")
@@ -627,6 +638,14 @@ final class MusicFeedTests: XCTestCase {
             return WatchNext(tracks: [MusicTrack(videoId: videoId, title: "T", artist: "A")], lyricsId: lyricsId, relatedId: "MPTR")
         }
 
+        var viewCalls = 0
+        var viewCount: Int64? = 144_730_678
+
+        func views(_ videoId: String) async throws -> Int64? {
+            viewCalls += 1
+            return viewCount
+        }
+
         func related(_ relatedId: String) async throws -> Related {
             Related(more: [], otherPerformances: [], artists: [], playlists: [], about: nil)
         }
@@ -702,6 +721,23 @@ final class MusicFeedTests: XCTestCase {
 
     private func feed(_ music: FakeMusic, _ lrclib: FakeLrclib, _ clock: Clock = Clock()) -> MusicFeed {
         MusicFeed(music: music, lyricsClient: LyricsClient { lrclib.get($0) }, lyricsStore: LyricsStore(dir: dir), now: { clock.time })
+    }
+
+    func testTheViewsOfASongAreAskedForOnceAndAskedAgainWhenYouTubeSaidNothing() async throws {
+        let music = FakeMusic()
+        let feed = feed(music, FakeLrclib(nil))
+        var views = try await feed.views("id1")
+        XCTAssertEqual(views, 144_730_678)
+        views = try await feed.views("id1")
+        XCTAssertEqual(views, 144_730_678)
+        XCTAssertEqual(music.viewCalls, 1)
+        music.viewCount = nil
+        views = try await feed.views("id2")
+        XCTAssertNil(views)
+        music.viewCount = 5
+        views = try await feed.views("id2")
+        XCTAssertEqual(views, 5)
+        XCTAssertEqual(music.viewCalls, 3)
     }
 
     func testLyricsWithTimesFromLRCLIBWinOverThePlainWordsOfYouTube() async throws {

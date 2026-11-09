@@ -46,6 +46,11 @@ struct MusicClient: MusicSource {
         return MusicParser.watchNext(try await ask("next", fields))
     }
 
+    // The "player" answer of this client says nothing of how to play (it is turned down), but does say how many watched
+    func views(_ videoId: String) async throws -> Int64? {
+        MusicParser.views(try await ask("player", ["videoId": videoId]))
+    }
+
     func related(_ relatedId: String) async throws -> Related {
         MusicParser.related(try await browse(relatedId))
     }

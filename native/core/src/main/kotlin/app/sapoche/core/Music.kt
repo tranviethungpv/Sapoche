@@ -133,6 +133,9 @@ interface MusicSource {
 
     suspend fun related(relatedId: String): Related
 
+    /** How many times the video was watched, or the song played; null when YouTube does not say. */
+    suspend fun views(videoId: String): Long?
+
     /** The words of a song, as plain text without times; null when there are none. */
     suspend fun lyrics(lyricsId: String): String?
 

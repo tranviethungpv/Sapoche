@@ -522,6 +522,8 @@ final class Bridge {
             return try await music.search(string("query"), songs: bool("songs")).map(MusicJson.track)
         case "musicNext":
             return MusicJson.next(try await music.watchNext(string("videoId")))
+        case "musicViews":
+            return try await music.views(string("videoId"))
         case "musicRelated":
             return MusicJson.related(try await music.related(string("videoId")))
         case "musicArtist":
