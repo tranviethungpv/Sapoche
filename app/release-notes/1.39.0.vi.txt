@@ -1,0 +1,5 @@
+Lượt phát trên player và tìm kiếm, cùng phần Cài đặt gọn gàng hơn
+- Trình phát và tờ Thông tin bài hát nay cho biết bài hát hoặc video đã có bao nhiêu lượt phát/lượt xem, và kết quả tìm kiếm luôn giữ con số này không bị cắt mất khi tên nghệ sĩ dài.
+- Cài đặt được chia thành từng nhóm rõ ràng để dễ nhìn lướt, hiện sẵn mức chất lượng âm thanh và trạng thái thông báo ở ngoài, đồng thời bỏ mục Phòng bị trùng lặp.
+- Trang Giao diện chọn Theo hệ thống, Sáng và Tối trên một thanh ngang gọn gàng, còn "Cân bằng âm lượng" nằm chung trong khối Âm thanh của trang Phát nhạc.
+- Sửa lỗi màn hình xám khi đổi tên từ thẻ hồ sơ của chính mình trong danh sách thành viên phòng.

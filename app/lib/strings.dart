@@ -764,6 +764,8 @@ abstract final class S {
 
   // Notices of the chat while the app is away
   static String get notices => _t('Notifications', 'Thông báo');
+  static String get noticesOn => _t('On', 'Bật');
+  static String get noticesOff => _t('Off', 'Tắt');
   static String get noticesSwitch => _t('Notify me of the chat', 'Thông báo khi có tin nhắn');
   static String get noticesSwitchHelp => _t(
     'When a message, an answer to one of yours or a reaction to one of yours comes while the app is not in front. Each room can be kept quiet from its chat.',

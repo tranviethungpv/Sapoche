@@ -1,0 +1,5 @@
+Play counts on the player and in search, and a tidier Settings
+- The player and the song info sheet now show how many times a song or video has been played, and search results keep the count in view even when the artist's name is long.
+- Settings are grouped by topic so they are easier to scan, show your sound quality and notification state at a glance, and drop the duplicate Room page.
+- Appearance now picks between System, Light and Dark on a single bar, and "Even out loudness" sits together with Sound in Playback.
+- Fixed a grey screen when editing your name from your own card in the room's member list.

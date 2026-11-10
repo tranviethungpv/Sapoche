@@ -112,12 +112,14 @@ void main() {
         },
       );
 
-      testWidgets('leaving the room from settings asks first', (tester) async {
+      testWidgets('leaving the room asks first', (tester) async {
         final (backend, _) = await pumpApp(tester, mode: mode);
         backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
         await tester.pumpAndSettle();
 
-        await openTopic(tester, 'room');
+        await tester.tap(find.byTooltip('Room'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Leave room'));
         await tester.tap(find.text('Leave room'));
         await tester.pumpAndSettle();
         expect(
@@ -349,15 +351,17 @@ void main() {
     // Who this is and where, then one row per topic, and nothing of the topics themselves
     expect(find.text('Anna'), findsWidgets);
     expect(find.text('Room ABC234 · 2 people listening'), findsOneWidget);
-    for (final topic in [
-      'appearance',
-      'playback',
-      'room',
-      'storage',
-      'backup',
-    ]) {
+    for (final topic in ['appearance', 'playback', 'storage', 'backup']) {
       expect(find.byKey(ValueKey('settings-$topic')), findsOneWidget);
     }
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings-playback')),
+        matching: find.text('Highest'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('settings-room')), findsNothing);
     expect(find.text('Played songs'), findsNothing);
     expect(find.text('Autoplay'), findsNothing);
 
@@ -369,22 +373,6 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('settings-playback')), findsOneWidget);
-  });
-
-  testWidgets('the room page closes itself once the room is left', (
-    tester,
-  ) async {
-    final (backend, _) = await pumpApp(tester);
-    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
-    await tester.pumpAndSettle();
-    await openTopic(tester, 'room');
-    expect(find.text('Leave room'), findsOneWidget);
-
-    backend.emit(const StateEvent(RoomSnapshot()));
-    await tester.pumpAndSettle();
-    expect(find.text('Leave room'), findsNothing);
-    expect(find.byKey(const ValueKey('settings-appearance')), findsOneWidget);
-    expect(find.byKey(const ValueKey('settings-room')), findsNothing);
   });
 
   testWidgets('settings have no room section outside a room', (tester) async {
@@ -481,31 +469,30 @@ void main() {
     expect(find.text('Recent rooms'), findsNothing);
   });
 
-  testWidgets(
-    'while a song plays, a room can start with it or start empty',
-    (tester) async {
-      final (backend, _) = await pumpApp(tester, listen: false);
-      backend.emit(StateEvent(sampleRoom(local: true)));
-      backend.emit(
-        const PositionEvent(
-          PlayerPosition(playing: true, positionMs: 30000, durationMs: 200000),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.tap(find.text('Room'));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(find.text('Create a room with this song'), findsOneWidget);
-      expect(find.text('Empty room'), findsOneWidget);
-      expect(find.text('Create a room'), findsNothing);
-      await tester.ensureVisible(find.text('Create a room with this song'));
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.text('Create a room with this song'));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(backend.calls, contains('createRoom Anna'));
-      // No room comes in this test: the wait for it gives up
-      await tester.pump(const Duration(seconds: 16));
-    },
-  );
+  testWidgets('while a song plays, a room can start with it or start empty', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester, listen: false);
+    backend.emit(StateEvent(sampleRoom(local: true)));
+    backend.emit(
+      const PositionEvent(
+        PlayerPosition(playing: true, positionMs: 30000, durationMs: 200000),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Room'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Create a room with this song'), findsOneWidget);
+    expect(find.text('Empty room'), findsOneWidget);
+    expect(find.text('Create a room'), findsNothing);
+    await tester.ensureVisible(find.text('Create a room with this song'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Create a room with this song'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(backend.calls, contains('createRoom Anna'));
+    // No room comes in this test: the wait for it gives up
+    await tester.pump(const Duration(seconds: 16));
+  });
 
   testWidgets('a name is needed before starting a room', (tester) async {
     final (backend, _) = await pumpApp(tester);
@@ -716,11 +703,11 @@ void main() {
     backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await openTopic(tester, 'room');
-    await tester.tap(find.text('Your name'));
+    await openSettingsList(tester);
+    await tester.tap(find.byKey(const ValueKey('settings-profile')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Anh');
-    await tester.tap(find.text('Save'));
+    await tester.enterText(find.byKey(const ValueKey('profile-name')), 'Anh');
+    await tester.tap(find.byKey(const ValueKey('profile-save')));
     await tester.pumpAndSettle();
     expect(backend.calls.last, 'rename Anh');
   });
@@ -1003,66 +990,75 @@ void main() {
       },
     );
 
-    testWidgets('and a page too short to scroll folds them when pulled on, so its end can be seen', (
-      tester,
-    ) async {
-      final (backend, _) = await pumpApp(tester);
-      // The size of a phone, where the settings barely fit: the list cannot scroll, yet its end lies under the mini player
-      tester.view.devicePixelRatio = 2.625;
-      backend.emit(StateEvent(sampleRoom(songs: 5)));
-      await settle(tester);
-      await openSettingsList(tester);
-      final list = find.byType(ListView).last;
-      double end() => find
-          .descendant(of: list, matching: find.byType(Text))
-          .evaluate()
-          .map((e) => tester.getRect(find.byElementPredicate((x) => x == e)).bottom)
-          .reduce((a, b) => a > b ? a : b);
+    testWidgets(
+      'and a page too short to scroll folds them when pulled on, so its end can be seen',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        // The size of a phone, where the settings barely fit: the list cannot scroll, yet its end lies under the mini player
+        tester.view.devicePixelRatio = 2.625;
+        backend.emit(StateEvent(sampleRoom(songs: 5)));
+        await settle(tester);
+        await openSettingsList(tester);
+        final list = find.byType(ListView).last;
+        double end() => find
+            .descendant(of: list, matching: find.byType(Text))
+            .evaluate()
+            .map(
+              (e) =>
+                  tester.getRect(find.byElementPredicate((x) => x == e)).bottom,
+            )
+            .reduce((a, b) => a > b ? a : b);
 
-      expect(find.text('Library'), findsOneWidget);
-      expect(end(), greaterThan(mini(tester).top), reason: 'covered while open');
+        expect(find.text('Library'), findsOneWidget);
+        expect(
+          end(),
+          greaterThan(mini(tester).top),
+          reason: 'covered while open',
+        );
 
-      await scroll(tester, -100);
-      expect(find.text('Library'), findsNothing);
-      expect(end(), lessThan(mini(tester).top), reason: 'clear once folded');
+        await scroll(tester, -100);
+        expect(find.text('Library'), findsNothing);
+        expect(end(), lessThan(mini(tester).top), reason: 'clear once folded');
 
-      await scroll(tester, 100);
-      expect(find.text('Library'), findsOneWidget);
-    });
+        await scroll(tester, 100);
+        expect(find.text('Library'), findsOneWidget);
+      },
+    );
 
-    testWidgets('and a page scrolled to its end clears the folded bars above the home indicator', (
-      tester,
-    ) async {
-      PackageInfo.setMockInitialValues(
-        appName: 'Sapoche',
-        packageName: 'app.sapoche',
-        version: '1.13.3',
-        buildNumber: '35',
-        buildSignature: '',
-      );
-      final (backend, _) = await pumpApp(tester);
-      // An iPhone: the system keeps a bar under the app, and the pages are below the scaffold that takes it off their media
-      tester.view.physicalSize = const Size(1179, 2556);
-      tester.view.devicePixelRatio = 3;
-      tester.view.padding = const FakeViewPadding(top: 177, bottom: 102);
-      tester.view.viewPadding = const FakeViewPadding(top: 177, bottom: 102);
-      addTearDown(tester.view.resetPadding);
-      addTearDown(tester.view.resetViewPadding);
-      backend.emit(StateEvent(sampleRoom(songs: 5)));
-      await settle(tester);
-      await openSettingsList(tester);
+    testWidgets(
+      'and a page scrolled to its end clears the folded bars above the home indicator',
+      (tester) async {
+        PackageInfo.setMockInitialValues(
+          appName: 'Sapoche',
+          packageName: 'app.sapoche',
+          version: '1.13.3',
+          buildNumber: '35',
+          buildSignature: '',
+        );
+        final (backend, _) = await pumpApp(tester);
+        // An iPhone: the system keeps a bar under the app, and the pages are below the scaffold that takes it off their media
+        tester.view.physicalSize = const Size(1179, 2556);
+        tester.view.devicePixelRatio = 3;
+        tester.view.padding = const FakeViewPadding(top: 177, bottom: 102);
+        tester.view.viewPadding = const FakeViewPadding(top: 177, bottom: 102);
+        addTearDown(tester.view.resetPadding);
+        addTearDown(tester.view.resetViewPadding);
+        backend.emit(StateEvent(sampleRoom(songs: 5)));
+        await settle(tester);
+        await openSettingsList(tester);
 
-      await scroll(tester, -600);
-      await tester.pumpAndSettle(); // the glide of the drag, to the very end
-      expect(find.text('Library'), findsNothing, reason: 'folded');
-      expect(
-        tester.getRect(find.byKey(const ValueKey('settings-version'))).bottom,
-        lessThan(mini(tester).top),
-      );
-      // Every page asks the same question, from under the scaffold: the home indicator, the tabs, and a little room
-      final page = tester.element(find.byType(ListView).last);
-      expect(HomeShell.bottomInsetOf(page), 34 + 46 + 16);
-    });
+        await scroll(tester, -600);
+        await tester.pumpAndSettle(); // the glide of the drag, to the very end
+        expect(find.text('Library'), findsNothing, reason: 'folded');
+        expect(
+          tester.getRect(find.byKey(const ValueKey('settings-version'))).bottom,
+          lessThan(mini(tester).top),
+        );
+        // Every page asks the same question, from under the scaffold: the home indicator, the tabs, and a little room
+        final page = tester.element(find.byType(ListView).last);
+        expect(HomeShell.bottomInsetOf(page), 34 + 46 + 16);
+      },
+    );
 
     testWidgets('and the end of a long queue clears them too', (tester) async {
       final (backend, _) = await pumpApp(tester);
@@ -1075,7 +1071,11 @@ void main() {
       backend.emit(StateEvent(sampleRoom(songs: 40)));
       await settle(tester);
 
-      await tester.fling(find.byType(TrackTile).first, const Offset(0, -6000), 6000);
+      await tester.fling(
+        find.byType(TrackTile).first,
+        const Offset(0, -6000),
+        6000,
+      );
       await tester.pumpAndSettle();
       expect(find.text('Library'), findsNothing, reason: 'folded');
       expect(
@@ -1496,10 +1496,7 @@ void main() {
       await tester.drag(find.byType(ListView).last, const Offset(0, -6000));
       await tester.pumpAndSettle();
       expect(backend.calls, contains('search many limit=40'));
-      expect(
-        find.text('Video number 24', skipOffstage: false),
-        findsOneWidget,
-      );
+      expect(find.text('Video number 24', skipOffstage: false), findsOneWidget);
 
       // Fewer than asked for is the end
       backend.calls.clear();
@@ -1761,49 +1758,50 @@ void main() {
     },
   );
 
-  testWidgets('a song that autoplay lined up has a spark where a person\'s picture would be', (
-    tester,
-  ) async {
-    final (backend, _) = await pumpApp(tester, listen: false);
-    backend.emit(
-      StateEvent(
-        RoomSnapshot(
-          room: 'ABC234',
-          you: 'me',
-          phase: 'playing',
-          index: 0,
-          members: const [Member(id: 'me', name: 'Anna', ready: true)],
-          queue: [
-            const QueueEntry(
-              id: 'q0',
-              videoId: 'video0',
-              title: 'Mine',
-              artist: 'Artist 0',
-              durMs: 200000,
-              addedBy: 'me',
-            ),
-            const QueueEntry(
-              id: 'q1',
-              videoId: 'video1',
-              title: 'Found',
-              artist: 'Artist 1',
-              durMs: 200000,
-              addedBy: 'me',
-              auto: true,
-            ),
-          ],
+  testWidgets(
+    'a song that autoplay lined up has a spark where a person\'s picture would be',
+    (tester) async {
+      final (backend, _) = await pumpApp(tester, listen: false);
+      backend.emit(
+        StateEvent(
+          RoomSnapshot(
+            room: 'ABC234',
+            you: 'me',
+            phase: 'playing',
+            index: 0,
+            members: const [Member(id: 'me', name: 'Anna', ready: true)],
+            queue: [
+              const QueueEntry(
+                id: 'q0',
+                videoId: 'video0',
+                title: 'Mine',
+                artist: 'Artist 0',
+                durMs: 200000,
+                addedBy: 'me',
+              ),
+              const QueueEntry(
+                id: 'q1',
+                videoId: 'video1',
+                title: 'Found',
+                artist: 'Artist 1',
+                durMs: 200000,
+                addedBy: 'me',
+                auto: true,
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(find.text('Listen'));
-    await tester.pump(const Duration(milliseconds: 100));
-    // The artist is said whole, with no word beside it; the spark is on the cover
-    expect(find.text('Artist 1'), findsOneWidget);
-    expect(find.text('Artist 1 · Autoplay'), findsNothing);
-    expect(find.byType(AutoplayBadge), findsOneWidget);
-    expect(find.byType(MemberAvatar), findsOneWidget);
-  });
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Listen'));
+      await tester.pump(const Duration(milliseconds: 100));
+      // The artist is said whole, with no word beside it; the spark is on the cover
+      expect(find.text('Artist 1'), findsOneWidget);
+      expect(find.text('Artist 1 · Autoplay'), findsNothing);
+      expect(find.byType(AutoplayBadge), findsOneWidget);
+      expect(find.byType(MemberAvatar), findsOneWidget);
+    },
+  );
 
   testWidgets('a new song slides in but the ones already there do not', (
     tester,

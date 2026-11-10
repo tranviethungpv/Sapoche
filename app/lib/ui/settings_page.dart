@@ -113,11 +113,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final model = AppScope.of(context);
     return [
       _ProfileCard(room: model.room),
-      _Group(
-        children: [
-          ListenableBuilder(
-            listenable: model.settings,
-            builder: (context, _) => _NavRow(
+      ListenableBuilder(
+        listenable: Listenable.merge([model.settings, model.room]),
+        builder: (context, _) => _Group(
+          children: [
+            _NavRow(
               selected: _shows(_appearance),
               key: const ValueKey('settings-appearance'),
               icon: Icons.palette_outlined,
@@ -129,10 +129,7 @@ class _SettingsPageState extends State<SettingsPage> {
               },
               onTap: () => _open(context, () => S.appearance, _appearance),
             ),
-          ),
-          ListenableBuilder(
-            listenable: model.settings,
-            builder: (context, _) => _NavRow(
+            _NavRow(
               selected: _shows(_language),
               key: const ValueKey('settings-language'),
               icon: Icons.translate_rounded,
@@ -142,49 +139,53 @@ class _SettingsPageState extends State<SettingsPage> {
                   : S.languageName(model.settings.language!),
               onTap: () => _open(context, () => S.languageLabel, _language),
             ),
-          ),
-          _NavRow(
-            selected: _shows(_playback),
-            key: const ValueKey('settings-playback'),
-            icon: Icons.play_circle_outline_rounded,
-            label: S.playback,
-            onTap: () => _open(context, () => S.playback, _playback),
-          ),
-          // Only where the device can tell the person of the chat while the app is away
-          ListenableBuilder(
-            listenable: model.room,
-            builder: (context, _) => model.room.notificationInfo.supported
-                ? _NavRow(
-                    selected: _shows(_notices),
-                    key: const ValueKey('settings-notices'),
-                    icon: Icons.notifications_none_rounded,
-                    label: S.notices,
-                    onTap: () => _open(context, () => S.notices, _notices),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          _NavRow(
-            selected: _shows(_suggestions),
-            key: const ValueKey('settings-suggestions'),
-            icon: Icons.auto_awesome_outlined,
-            label: S.suggestionsTitle,
-            onTap: () => _open(context, () => S.suggestionsTitle, _suggestions),
-          ),
-          ListenableBuilder(
-            listenable: model.room,
-            builder: (context, _) {
-              final snapshot = model.room.snapshot;
-              if (!snapshot.inRoom) return const SizedBox.shrink();
-              return _NavRow(
-                selected: _shows(_room),
-                key: const ValueKey('settings-room'),
-                icon: Icons.groups_outlined,
-                label: S.room,
-                value: snapshot.room,
-                onTap: () => _open(context, () => S.room, _room),
-              );
-            },
-          ),
+            // Only where the device can tell the person of the chat while the app is away
+            if (model.room.notificationInfo.supported)
+              _NavRow(
+                selected: _shows(_notices),
+                key: const ValueKey('settings-notices'),
+                icon: Icons.notifications_none_rounded,
+                label: S.notices,
+                value: model.room.notificationInfo.enabled
+                    ? S.noticesOn
+                    : S.noticesOff,
+                onTap: () => _open(context, () => S.notices, _notices),
+              ),
+          ],
+        ),
+      ),
+      ListenableBuilder(
+        listenable: model.room,
+        builder: (context, _) => _Group(
+          children: [
+            _NavRow(
+              selected: _shows(_playback),
+              key: const ValueKey('settings-playback'),
+              icon: Icons.play_circle_outline_rounded,
+              label: S.playback,
+              value: kIsWeb
+                  ? null
+                  : switch (model.room.audioQuality) {
+                      AudioQuality.low => S.audioQualityLow,
+                      AudioQuality.normal => S.audioQualityNormal,
+                      AudioQuality.high => S.audioQualityHigh,
+                      AudioQuality.max => S.audioQualityMax,
+                    },
+              onTap: () => _open(context, () => S.playback, _playback),
+            ),
+            _NavRow(
+              selected: _shows(_suggestions),
+              key: const ValueKey('settings-suggestions'),
+              icon: Icons.auto_awesome_outlined,
+              label: S.suggestionsTitle,
+              onTap: () =>
+                  _open(context, () => S.suggestionsTitle, _suggestions),
+            ),
+          ],
+        ),
+      ),
+      _Group(
+        children: [
           _NavRow(
             selected: _shows(_storage),
             key: const ValueKey('settings-storage'),
@@ -201,49 +202,55 @@ class _SettingsPageState extends State<SettingsPage> {
               label: S.backup,
               onTap: () => _open(context, () => S.backup, _backup),
             ),
-          // The server is set by the person on iOS and in a browser; on Android it is built into the app, and only the
-          // build for the public (a GitHub release) has no key and asks for one here
-          if (kIsWeb || Platform.isIOS || !model.room.profile.configured)
-            _NavRow(
-              selected: _shows(_server),
-              key: const ValueKey('settings-server'),
-              icon: Icons.dns_outlined,
-              label: S.serverSection,
-              onTap: () => _open(context, () => S.serverSection, _server),
-            ),
-          // The phone that has the server built in can set another one up; a browser shares a link to itself
-          if (kIsWeb || Platform.isAndroid)
-            _NavRow(
-              key: const ValueKey('settings-setup-another'),
-              icon: Icons.qr_code_2_rounded,
-              label: kIsWeb ? S.setupAnotherWeb : S.setupAnother,
-              onTap: () => showSetupLinkDialog(context, model.room),
-            ),
-          // iOS installs updates by itself: they come from SideStore, not from the app; a web page is always the newest
-          if (!kIsWeb && !Platform.isIOS)
-            ListenableBuilder(
-              listenable: model.update,
-              builder: (context, _) {
-                final info = model.update.info;
-                return _NavRow(
+        ],
+      ),
+      ListenableBuilder(
+        listenable: Listenable.merge([model.room, model.update]),
+        builder: (context, _) {
+          final info = model.update.info;
+          return _Group(
+            children: [
+              // The server is set by the person on iOS and in a browser; on Android it is built into the app, and only
+              // the build for the public (a GitHub release) has no key and asks for one here
+              if (kIsWeb || Platform.isIOS || !model.room.profile.configured)
+                _NavRow(
+                  selected: _shows(_server),
+                  key: const ValueKey('settings-server'),
+                  icon: Icons.dns_outlined,
+                  label: S.serverSection,
+                  onTap: () => _open(context, () => S.serverSection, _server),
+                ),
+              // The phone that has the server built in can set another one up; a browser shares a link to itself
+              if (kIsWeb || Platform.isAndroid)
+                _NavRow(
+                  key: const ValueKey('settings-setup-another'),
+                  icon: Icons.qr_code_2_rounded,
+                  label: kIsWeb ? S.setupAnotherWeb : S.setupAnother,
+                  onTap: () => showSetupLinkDialog(context, model.room),
+                ),
+              // iOS installs updates by itself: they come from SideStore, not from the app; a web page is always the
+              // newest
+              if (!kIsWeb && !Platform.isIOS)
+                _NavRow(
                   selected: _shows(_updates),
                   key: const ValueKey('settings-updates'),
                   icon: Icons.system_update_outlined,
                   label: S.updates,
                   value: info.hasUpdate ? info.version : info.installed,
                   onTap: () => _open(context, () => S.updates, _updates),
-                );
-              },
-            ),
-          // What changed in each version: it is in the app, so it reads the same on every platform
-          _NavRow(
-            selected: _shows(_releaseNotes),
-            key: const ValueKey('settings-release-notes'),
-            icon: Icons.history_rounded,
-            label: S.releaseNotes,
-            onTap: () => _open(context, () => S.releaseNotes, _releaseNotes),
-          ),
-        ],
+                ),
+              // What changed in each version: it is in the app, so it reads the same on every platform
+              _NavRow(
+                selected: _shows(_releaseNotes),
+                key: const ValueKey('settings-release-notes'),
+                icon: Icons.history_rounded,
+                label: S.releaseNotes,
+                onTap: () =>
+                    _open(context, () => S.releaseNotes, _releaseNotes),
+              ),
+            ],
+          );
+        },
       ),
       _Group(
         footer: S.diagnosticsHelp,
@@ -297,25 +304,36 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         ListenableBuilder(
           listenable: model.settings,
-          builder: (context, _) => Column(
-            children: [
-              for (final (mode, label) in [
-                (ThemeMode.system, S.themeSystem),
-                (ThemeMode.light, S.themeLight),
-                (ThemeMode.dark, S.themeDark),
-              ])
-                _Row(
-                  key: ValueKey('theme-${mode.name}'),
-                  label: label,
-                  trailing: model.settings.themeMode == mode
-                      ? Icon(
-                          Icons.check_rounded,
-                          color: context.palette.primary,
-                        )
-                      : null,
-                  onTap: () => model.settings.themeMode = mode,
-                ),
-            ],
+          builder: (context, _) => Padding(
+            padding: const EdgeInsets.all(12),
+            child: SegmentedButton<ThemeMode>(
+              showSelectedIcon: false,
+              expandedInsets: EdgeInsets.zero,
+              style: SegmentedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                selectedBackgroundColor: context.palette.primaryContainer,
+                selectedForegroundColor: context.palette.onPrimaryContainer,
+                foregroundColor: context.palette.textSecondary,
+                side: BorderSide(color: context.palette.outline),
+              ),
+              segments: [
+                for (final (mode, label) in [
+                  (ThemeMode.system, S.themeSystem),
+                  (ThemeMode.light, S.themeLight),
+                  (ThemeMode.dark, S.themeDark),
+                ])
+                  ButtonSegment(
+                    value: mode,
+                    label: FittedBox(
+                      key: ValueKey('theme-${mode.name}'),
+                      fit: BoxFit.scaleDown,
+                      child: Text(label, maxLines: 1),
+                    ),
+                  ),
+              ],
+              selected: {model.settings.themeMode},
+              onSelectionChanged: (s) => model.settings.themeMode = s.first,
+            ),
           ),
         ),
       ],
@@ -703,13 +721,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
-        ],
-      ),
-    // A browser plays through YouTube's own player, which evens songs out by itself and cannot be told not to
-    if (!kIsWeb)
-      _Group(
-        footer: S.normalizeVolumeHelp,
-        children: [
+          // A browser plays through YouTube's own player, which evens songs out by itself and cannot be told not to
           ListenableBuilder(
             listenable: model.room,
             builder: (context, _) => Material(
@@ -717,6 +729,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: SwitchListTile(
                 key: const ValueKey('normalize-volume-switch'),
                 title: Text(S.normalizeVolume),
+                subtitle: Text(S.normalizeVolumeHelp),
                 value: model.room.normalizeVolume,
                 onChanged: model.room.setNormalizeVolume,
               ),
@@ -786,10 +799,6 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (context, _) =>
           ReleaseHistoryList(upcoming: model.update.info.upcoming),
     ),
-  ];
-
-  static List<Widget> _room(BuildContext context, AppModel model) => [
-    _RoomGroup(room: model.room),
   ];
 }
 
@@ -1135,100 +1144,6 @@ class _UpdateGroup extends StatelessWidget {
         );
       },
     );
-  }
-}
-
-/// The room this device is in: its code, who is there, the name shown, inviting and leaving.
-class _RoomGroup extends StatelessWidget {
-  const _RoomGroup({required this.room});
-
-  final RoomController room;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: room,
-      builder: (context, _) {
-        final snapshot = room.snapshot;
-        if (!snapshot.inRoom) {
-          // The room was left from this page: nothing left to show
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) Navigator.of(context).maybePop();
-          });
-          return const SizedBox.shrink();
-        }
-        return _Group(
-          children: [
-            _Row(
-              label: S.roomCode,
-              value: snapshot.room ?? '',
-              trailing: Icon(
-                Icons.copy_rounded,
-                size: 18,
-                color: context.palette.textSecondary,
-              ),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: snapshot.room ?? ''));
-                ScaffoldMessenger.of(context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(SnackBar(content: Text(S.codeCopied)));
-              },
-            ),
-            _Row(label: S.tabRoom, value: S.listening(snapshot.members.length)),
-            _Row(
-              label: S.yourName,
-              value: snapshot.me?.name ?? '',
-              trailing: Icon(
-                Icons.edit_outlined,
-                size: 18,
-                color: context.palette.textSecondary,
-              ),
-              onTap: () => _rename(context),
-            ),
-            _Row(label: S.invite, onTap: room.shareInvite),
-            _Row(
-              label: S.leaveRoom,
-              destructive: true,
-              onTap: () => _confirmLeave(context),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _rename(BuildContext context) async {
-    final name = await showTextDialog(
-      context,
-      title: S.rename,
-      hint: S.yourName,
-      initial: room.snapshot.me?.name ?? '',
-    );
-    if (name != null && name.isNotEmpty) room.rename(name);
-  }
-
-  Future<void> _confirmLeave(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(S.leaveRoom),
-        content: Text(S.leaveQuestion),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(S.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(
-              S.leave,
-              style: TextStyle(color: context.palette.error),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) room.leave();
   }
 }
 
@@ -1709,7 +1624,6 @@ class _Row extends StatelessWidget {
     this.leading,
     this.trailing,
     this.onTap,
-    this.destructive = false,
   });
 
   final String label;
@@ -1717,7 +1631,6 @@ class _Row extends StatelessWidget {
   final Widget? leading;
   final Widget? trailing;
   final VoidCallback? onTap;
-  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
@@ -1733,9 +1646,7 @@ class _Row extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: theme.bodyLarge?.copyWith(
-                  color: destructive ? p.error : p.text,
-                ),
+                style: theme.bodyLarge?.copyWith(color: p.text),
               ),
             ),
             if (value != null)

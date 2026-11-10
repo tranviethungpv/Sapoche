@@ -142,15 +142,15 @@ void main() {
       await openSettingsList(tester);
       await tester.tap(find.byKey(const ValueKey('settings-appearance')));
       await tester.pumpAndSettle();
-      Finder check(String mode) => find.descendant(
-        of: find.byKey(ValueKey('theme-$mode')),
-        matching: find.byIcon(Icons.check_rounded),
-      );
-      expect(check('light'), findsOneWidget);
+      Set<ThemeMode> selected() => tester
+          .widget<SegmentedButton<ThemeMode>>(
+            find.byType(SegmentedButton<ThemeMode>),
+          )
+          .selected;
+      expect(selected(), {ThemeMode.light});
       await tester.tap(find.byKey(const ValueKey('theme-dark')));
       await tester.pumpAndSettle();
-      expect(check('dark'), findsOneWidget);
-      expect(check('light'), findsNothing);
+      expect(selected(), {ThemeMode.dark});
       expect(
         Theme.of(tester.element(find.byKey(const ValueKey('theme-dark'))))
             .brightness,
