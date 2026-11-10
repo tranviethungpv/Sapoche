@@ -116,6 +116,7 @@ export const ASSET_LINKS = [
       namespace: "android_app",
       package_name: PACKAGE,
       sha256_cert_fingerprints: [
+        "F3:70:4B:83:B3:6C:BE:F8:72:C8:5F:C9:59:27:56:AF:C1:A5:10:12:1C:DF:EC:AF:D2:6E:94:E2:D9:32:29:B6",
         "AC:29:E8:89:49:56:43:2C:84:C6:BD:A3:D3:E5:77:AF:6F:0C:0B:8F:3D:F9:0F:E3:B8:1E:11:4C:0F:8F:8C:23",
         "1E:46:49:89:64:96:47:57:5B:2F:54:23:45:01:D6:58:B7:50:8E:7D:85:97:E7:EA:17:F0:69:34:C4:75:A0:C5",
       ],
