@@ -38,7 +38,10 @@ jobs:
     if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    container: swift:6.3-noble
+    container:
+      image: swift:6.3-noble
+      # The runner's own resolver was not reachable from inside the container (apt could not resolve archive.ubuntu.com)
+      options: --dns 8.8.8.8 --dns 1.1.1.1
     defaults:
       run:
         working-directory: app/packages/sapoche_native
