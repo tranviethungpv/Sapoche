@@ -28,13 +28,24 @@ import 'widgets/track_tile.dart';
 /// podcasts. While the person types, a few completions and what is found so far are listed under one another; once
 /// they press search, the filters appear, to keep one kind of result.
 class SearchPage extends StatefulWidget {
-  const SearchPage({super.key, this.focusNode});
+  const SearchPage({super.key, this.focusNode, this.back});
 
   /// The search field's focus, for the shell to put the cursor in it (from the sidebar, or with the `/` key).
   final FocusNode? focusNode;
 
+  /// What the shell's Back button asks of the page.
+  final SearchBack? back;
+
   @override
   State<SearchPage> createState() => _SearchPageState();
+}
+
+/// What Back needs of Search: whether anything is typed or found, which Back clears before it leaves the tab, and the
+/// page's way of clearing it.
+class SearchBack extends ValueNotifier<bool> {
+  SearchBack() : super(false);
+
+  VoidCallback? clear;
 }
 
 enum _Phase { idle, loading, results, failed }
@@ -100,10 +111,22 @@ class _SearchPageState extends State<SearchPage> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    _field.addListener(_report);
+    widget.back?.clear = _clear;
+  }
+
+  void _report() => widget.back?.value = _field.text.isNotEmpty;
+
+  /// Back, or the cross in the field: the words, the results and the keyboard go, and the page is as it first was.
+  void _clear() {
+    _field.clear();
+    _onChanged('');
+    FocusScope.of(context).unfocus();
   }
 
   @override
   void dispose() {
+    widget.back?.clear = null;
     _debounce?.cancel();
     _suggestTimer?.cancel();
     _field.dispose();

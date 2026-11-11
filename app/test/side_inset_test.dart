@@ -63,10 +63,10 @@ void main() {
           S.tabHome,
           S.tabSearch,
           S.tabLibrary,
-          S.tabListen,
+          S.tabRoom,
         ]) {
           expect(
-            tester.getRect(find.byTooltip(name)).left,
+            tester.getRect(find.byTooltip(name).first).left,
             greaterThanOrEqualTo(left),
           );
         }

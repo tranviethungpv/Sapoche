@@ -102,6 +102,12 @@ abstract final class S {
       _t('Room code copied', 'Đã sao chép mã phòng');
   static String get removed => _t('Removed from queue', 'Đã xóa khỏi hàng đợi');
   static String get invite => _t('Invite friends', 'Mời bạn bè');
+  static String get inviteShort => _t('Invite', 'Mời');
+  static String get listeningAlone => _t('Listening alone', 'Đang nghe một mình');
+  static String get listeningAloneBody => _t(
+    'Invite a friend and you hear the same song at the same moment.',
+    'Mời một người bạn, hai người sẽ nghe cùng một bài vào cùng một lúc.',
+  );
   static String inviteText(String code, String link) => _t(
     'Join my room on Sapoche with the code $code\n$link',
     'Vào phòng của mình trên Sapoche bằng mã $code\n$link',
@@ -785,8 +791,8 @@ abstract final class S {
     'Trên iPhone, thông báo chỉ có khi Sapoche nằm trên Màn hình chính: trong Safari chọn Chia sẻ, rồi Thêm vào Màn hình chính, và mở app từ đó.',
   );
   static String get noticesOffer => _t(
-    'Get a notification when a message comes while the app is not open?',
-    'Nhận thông báo khi có tin nhắn lúc app không mở?',
+    'Get notified of new messages',
+    'Nhận thông báo tin nhắn mới',
   );
   static String get noticesTurnOn => _t('Turn on', 'Bật');
   static String get noticesNotNow => _t('Not now', 'Để sau');
@@ -813,6 +819,12 @@ abstract final class S {
     'Only people with the invitation link can read the messages. The server cannot, nor the pictures and the photo behind the chat, and it cannot be turned off. The room name, the queue and profile pictures are not encrypted.',
     'Chỉ người có liên kết mời đọc được tin nhắn. Máy chủ không đọc được, kể cả ảnh gửi trong chat và ảnh nền chat, và không thể tắt. Tên phòng, hàng đợi và ảnh đại diện thì không được mã hoá.',
   );
+  static String get encryptionShort => _t(
+    'Only people with the invitation link can read it.',
+    'Chỉ người có liên kết mời đọc được.',
+  );
+  static String get learnMore => _t('Learn more', 'Tìm hiểu thêm');
+  static String get roomSettings => _t('Room settings', 'Cài đặt phòng');
   static String get encryptionTurnOn => _t('Turn on', 'Bật');
   static String get encryptionConfirmBody => _t(
     'The messages, the pictures sent in the chat and the photo behind the chat are encrypted, not the room name, the queue or profile pictures. The messages so far are deleted. Everyone needs the new invitation link to read the chat, and people who have not updated the app cannot stay in the room. This cannot be turned off.',
@@ -1360,6 +1372,10 @@ abstract final class S {
     'Play some songs and this page fills with what you like: quick picks, mixes and more.',
     'Hãy nghe vài bài và trang này sẽ đầy những gì bạn thích: chọn nhanh, mix và hơn thế nữa.',
   );
+  static String get listenWithFriends =>
+      _t('Listen with friends', 'Nghe cùng bạn bè');
+  static String get fromYouTubeMusic =>
+      _t('From YouTube Music', 'Từ YouTube Music');
   static String get mixFailed =>
       _t('Couldn’t start the mix', 'Không bắt đầu được mix');
 
@@ -1457,6 +1473,14 @@ abstract final class S {
   );
   static String get setupPaste =>
       _t('Paste setup link', 'Dán liên kết cài đặt');
+  static String get setupNeededTitle =>
+      _t('Set up the server first', 'Cần thiết lập máy chủ trước');
+  static String get setupNeededBody => _t(
+    'Rooms live on your Sapoche server. On a phone that has it, open Settings > Set up another phone and point this phone\'s camera at the code, then come back; or paste the link it gives.',
+    'Phòng nằm trên máy chủ Sapoche của bạn. Trên máy đã có sẵn, mở Cài đặt > Cài đặt cho máy khác rồi đưa camera máy này vào mã, sau đó quay lại; hoặc dán liên kết nó cho.',
+  );
+  static String get setupEnterByHand =>
+      _t('Enter address and key', 'Nhập địa chỉ và khoá');
   static String get setupUseTitle =>
       _t('Use this server?', 'Dùng máy chủ này?');
   static String setupUseBody(String host) => _t(

@@ -628,8 +628,9 @@ void main() {
         final backend = await openHome(tester, prefs: recent);
         // Opening the app does not go into a room by itself
         expect(backend.calls.where((c) => c.startsWith('join')), isEmpty);
-        expect(find.text(S.rejoinChip), findsOneWidget);
-        await tester.tap(find.text(S.rejoinChip));
+        // The chip, and for somebody new the card that offers the same way back
+        expect(find.text(S.rejoinChip), findsNWidgets(2));
+        await tester.tap(find.text(S.rejoinChip).first);
         await tester.pumpAndSettle();
         expect(backend.calls, contains(startsWith('join XYZ234 ')));
         // No sheet in between
@@ -639,7 +640,7 @@ void main() {
 
     testWidgets('holding it opens the list of rooms instead', (tester) async {
       final backend = await openHome(tester, prefs: recent);
-      await tester.longPress(find.text(S.rejoinChip));
+      await tester.longPress(find.text(S.rejoinChip).first);
       await tester.pumpAndSettle();
       expect(find.text(S.recentRooms), findsOneWidget);
       expect(backend.calls.where((c) => c.startsWith('join')), isEmpty);
@@ -649,12 +650,16 @@ void main() {
       tester,
     ) async {
       await openHome(tester, inRoom: true, prefs: recent);
-      expect(find.text('ABC234'), findsOneWidget);
+      // The faces of the room and how many listen, not the code
+      expect(find.text('ABC234'), findsNothing);
+      expect(find.byType(AvatarStack), findsOneWidget);
       expect(find.text(S.rejoinChip), findsNothing);
-      await tester.tap(find.text('ABC234'));
+      await tester.tap(find.byType(AvatarStack));
       await tester.pumpAndSettle();
       expect(find.text(S.listenTogether), findsNothing);
-      expect(find.text(S.leaveRoom), findsOneWidget);
+      // The invitation, with the settings a button away
+      expect(find.text(S.scanToJoin), findsOneWidget);
+      expect(find.text(S.roomSettings), findsOneWidget);
     });
   });
 }

@@ -101,11 +101,11 @@ void main() {
     ) async {
       await pumpAt(tester, 820, 1180);
       final home = tester.getRect(find.text(S.tabHome));
-      final listen = tester.getRect(find.text(S.tabListen));
+      final listen = tester.getRect(find.text(S.tabRoom));
       expect(home.left, lessThan(100));
       expect(listen.top, greaterThan(home.top));
       expect(find.byType(MiniPlayer), findsOneWidget);
-      await tester.tap(find.text(S.tabListen));
+      await tester.tap(find.text(S.tabRoom));
       await tester.pumpAndSettle();
       expect(find.text('Song 0'), findsWidgets);
       expect(tester.takeException(), isNull);
@@ -294,7 +294,7 @@ void main() {
       tester,
     ) async {
       await pumpAt(tester, 1920, 1080);
-      for (final tab in [S.tabLibrary, S.tabListen, S.tabHome]) {
+      for (final tab in [S.tabLibrary, S.tabRoom, S.tabHome]) {
         await tester.tap(find.text(tab).first);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: tab);

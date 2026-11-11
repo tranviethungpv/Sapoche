@@ -1503,7 +1503,7 @@ class _ProfileCard extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             snapshot.inRoom
-                                ? '${S.room} ${snapshot.room} · ${S.listening(snapshot.members.length)}'
+                                ? '${snapshot.name ?? S.tabRoom} · ${S.listening(snapshot.members.length)}'
                                 : S.noRoom,
                             style: theme.bodyMedium?.copyWith(
                               color: p.textSecondary,

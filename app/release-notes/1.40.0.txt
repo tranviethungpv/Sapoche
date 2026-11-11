@@ -1,0 +1,7 @@
+A calmer, clearer look: the Room, the home page and the player
+- The Room page shows everyone as a face with their status, the song that is on in one card, and, when you are alone, an invitation with a code to scan. The room code now lives only in the invitation.
+- Room settings are one tidy list: listening together, guests, slow connections and chat encryption, each a switch with a line on what it does.
+- The chat keeps the song that is playing at the top, and asks about notifications in a single line. With no server set up yet, the Room sheet tells you what to do first.
+- The home page looks fuller for new listeners and for people with a single mix. Your mixes get covers drawn from the music in them, and your chips are set apart from the moods.
+- The bars at the bottom fade the page behind them, the four buttons under the player are easier to see, and Back now goes one step at a time: from a search it clears the search, then goes Home, then leaves.
+- Gentle motion where things used to jump: someone joining the room, a new song's cover, hearts, tabs and sheets. It follows "Reduce motion" and "Light effects".

@@ -93,6 +93,15 @@ class PlayerSheetController extends ChangeNotifier {
     return panel;
   }
 
+  /// Set by the open player while it shows lyrics or the queue in place of the cover: Back closes that first and says
+  /// so by returning true; the player itself closes only when this is null or returns false.
+  bool Function()? stepBack;
+
+  /// What Back does with the player open: a panel goes back to the cover, else the player closes.
+  void back() {
+    if (!(stepBack?.call() ?? false)) close();
+  }
+
   void close() {
     _setOpen(false);
     _animate(0, ms: _closeMs, byFinger: false);

@@ -821,7 +821,7 @@ async function inviteSection() {
   const links = await (await fetch(`${BASE}/.well-known/assetlinks.json`)).json();
   check(
     "asset links name the app and its signing keys",
-    links[0].target.package_name === "app.sapoche" && links[0].target.sha256_cert_fingerprints.length === 2,
+    links[0].target.package_name === "app.sapoche" && links[0].target.sha256_cert_fingerprints.length === 3,
   );
 }
 

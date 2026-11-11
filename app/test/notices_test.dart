@@ -137,7 +137,7 @@ void main() {
       tester,
     ) async {
       await chatOpen(tester, askable);
-      await tester.tap(find.text(S.noticesNotNow));
+      await tester.tap(find.byTooltip(S.noticesNotNow));
       await tester.pumpAndSettle();
       expect(find.text(S.noticesOffer), findsNothing);
       await tester.tapAt(const Offset(10, 10));

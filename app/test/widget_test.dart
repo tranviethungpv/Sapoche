@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
+import 'package:sapoche/strings.dart';
 import 'package:sapoche/ui/home_shell.dart';
 import 'package:sapoche/ui/now_playing_page.dart';
 import 'package:sapoche/ui/setup_dialog.dart';
@@ -67,7 +68,11 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Nothing queued yet'), findsOneWidget);
-        expect(find.text('ABC234'), findsOneWidget);
+        expect(
+          find.text('ABC234'),
+          findsNothing,
+          reason: 'the code is on the invitation, not on the page',
+        );
         await tester.tap(find.text('Add songs'));
         await tester.pumpAndSettle();
         expect(find.text('Find something to play'), findsOneWidget);
@@ -101,7 +106,12 @@ void main() {
           expect(find.text('Song 1'), findsOneWidget);
 
           // Mini player is the only place the title appears twice with the queue row
-          await tester.tap(find.byIcon(Icons.pause_rounded));
+          await tester.tap(
+            find.descendant(
+              of: find.byType(MiniPlayer),
+              matching: find.byIcon(Icons.pause_rounded),
+            ),
+          );
           await tester.pump();
           expect(backend.calls.last, 'pause');
 
@@ -117,7 +127,7 @@ void main() {
         backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byTooltip('Room'));
+        await tester.tap(find.byTooltip(S.roomSettings));
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('Leave room'));
         await tester.tap(find.text('Leave room'));
@@ -350,7 +360,8 @@ void main() {
 
     // Who this is and where, then one row per topic, and nothing of the topics themselves
     expect(find.text('Anna'), findsWidgets);
-    expect(find.text('Room ABC234 · 2 people listening'), findsOneWidget);
+    expect(find.text('Room · 2 people listening'), findsOneWidget);
+    expect(find.textContaining('ABC234'), findsNothing, reason: 'the code is on the invitation only');
     for (final topic in ['appearance', 'playback', 'storage', 'backup']) {
       expect(find.byKey(ValueKey('settings-$topic')), findsOneWidget);
     }
@@ -442,7 +453,11 @@ void main() {
       findsNothing,
       reason: 'no invitation panel after joining a room',
     );
-    expect(find.text('ABC234'), findsOneWidget, reason: 'the room page shows');
+    expect(
+      find.text('Nothing queued yet'),
+      findsOneWidget,
+      reason: 'the room page shows',
+    );
   });
 
   testWidgets('a room that no longer exists is marked and cannot be joined', (
@@ -535,11 +550,17 @@ void main() {
         reason: 'the room name is the title',
       );
 
-      await tester.tap(find.byTooltip('Room'));
+      // The invitation first: the code is only here, and the way to share it
+      await tester.tap(find.byTooltip(S.invite));
       await tester.pumpAndSettle();
       expect(find.text('Scan to join'), findsOneWidget);
+      expect(find.text('ABC234'), findsOneWidget);
       expect(find.text('Copy link'), findsOneWidget);
       expect(find.byType(CustomPaint), findsWidgets);
+      // The settings are behind a button, and the switches with them
+      expect(find.byType(Switch), findsNothing);
+      await tester.tap(find.text(S.roomSettings));
+      await tester.pumpAndSettle();
 
       // A screen reader reads the switch with what it is for
       final semantics = tester.ensureSemantics();
@@ -552,7 +573,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(backend.calls.last, 'guestControl add');
 
-      await tester.tap(find.byTooltip('Room name'));
+      await tester.tap(find.text('Room name'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Weekend');
       await tester.tap(find.text('Save'));
@@ -580,11 +601,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('The owner lets guests add songs only'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Room'));
+      await tester.tap(find.byTooltip(S.roomSettings));
       await tester.pumpAndSettle();
       expect(find.text('Guests can only add songs'), findsNothing);
       expect(
-        find.byTooltip('Room name'),
+        find.text('Room name'),
         findsNothing,
         reason: 'a guest cannot rename a restricted room',
       );
@@ -625,7 +646,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('2 people listening'));
+    await tester.tap(find.byKey(const ValueKey('person-b')));
     await tester.pumpAndSettle();
 
     expect(
@@ -660,11 +681,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('2 people listening'));
+    await tester.tap(find.byKey(const ValueKey('person-b')));
     await tester.pumpAndSettle();
     expect(find.byTooltip('Remove from room'), findsNothing);
     expect(
-      find.byIcon(Icons.workspace_premium_rounded),
+      find.descendant(
+        of: find.byKey(const ValueKey('member-b')),
+        matching: find.byIcon(Icons.workspace_premium_rounded),
+      ),
       findsOneWidget,
       reason: 'the owner wears a mark',
     );
@@ -956,10 +980,10 @@ void main() {
       expect(mini(tester).center.dy, closeTo(search(tester).center.dy, 1));
       expect(mini(tester).right, lessThan(search(tester).left));
       expect(find.text('Library'), findsNothing);
-      expect(find.byTooltip('Listen'), findsOneWidget);
+      expect(find.byTooltip('Room'), findsOneWidget);
       expect(
         mini(tester).left,
-        greaterThan(tester.getRect(find.byTooltip('Listen')).right),
+        greaterThan(tester.getRect(find.byTooltip('Room')).right),
       );
 
       // Back up a little, even a good way, does not bring them back: only the top of the page does
@@ -977,7 +1001,7 @@ void main() {
       (tester) async {
         await longQueue(tester);
         await scroll(tester, -300);
-        await tester.tap(find.byTooltip('Listen'));
+        await tester.tap(find.byTooltip('Room'));
         await settle(tester);
         expect(find.text('Library'), findsOneWidget);
         expect(mini(tester).bottom, lessThan(search(tester).top));
@@ -1118,9 +1142,9 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
-      expect(find.text('2 people listening · 1 away'), findsOneWidget);
+      expect(find.byKey(const ValueKey('person-c')), findsOneWidget);
 
-      await tester.tap(find.text('2 people listening · 1 away'));
+      await tester.tap(find.byKey(const ValueKey('person-b')));
       for (var i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
@@ -1129,7 +1153,12 @@ void main() {
       expect(find.text('On their own'), findsOneWidget);
       expect(find.text('Connection lost'), findsOneWidget);
 
-      await tester.tap(find.byType(Switch));
+      // The switch for listening together is among the room's settings
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip(S.roomSettings));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(Switch).first);
       await tester.pump();
       expect(backend.calls.last, 'solo true');
     },
@@ -1740,20 +1769,25 @@ void main() {
       final (backend, _) = await pumpApp(tester, listen: false);
       backend.emit(StateEvent(sampleRoom(songs: 3)));
       await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.text('Listen'));
+      await tester.tap(find.text('Room').last);
       await tester.pump(const Duration(milliseconds: 100));
       // The artist keeps the whole line, however long the name of the person who added the song
       expect(find.text('Artist 1'), findsOneWidget);
-      expect(find.textContaining('Added by'), findsNothing);
-      // One picture to a song: Song 0 and Song 2 are Anna's (this device's), Song 1 is Binh's
+      // Only the card of the song that is on says it in words; the rows of the queue show a picture
+      expect(find.textContaining('Added by'), findsOneWidget);
+      // One picture to a song in the queue: Song 1 is Binh's, Song 2 is Anna's (this device's); Song 0, the one that is on,
+      // names its person in the card
       expect(
         [
           for (final a in tester.widgetList<MemberAvatar>(
-            find.byType(MemberAvatar),
+            find.descendant(
+              of: find.byType(TrackTile),
+              matching: find.byType(MemberAvatar),
+            ),
           ))
             a.member.name,
         ],
-        ['Anna', 'Binh', 'Anna'],
+        ['Binh', 'Anna'],
       );
     },
   );
@@ -1793,7 +1827,7 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.text('Listen'));
+      await tester.tap(find.text('Room').last);
       await tester.pump(const Duration(milliseconds: 100));
       // The artist is said whole, with no word beside it; the spark is on the cover
       expect(find.text('Artist 1'), findsOneWidget);
@@ -1809,7 +1843,7 @@ void main() {
     final (backend, _) = await pumpApp(tester, listen: false);
     backend.emit(StateEvent(sampleRoom(songs: 3)));
     await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(find.text('Listen'));
+    await tester.tap(find.text('Room').last);
     await tester.pump(const Duration(milliseconds: 100));
     // Songs that were there from the start are fully visible at once
     expect(
@@ -1827,6 +1861,9 @@ void main() {
       1,
     );
 
+    // The tests run with the system's "reduce motion" on, and a song that comes in is still while it is: here it is off
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures();
     backend.emit(StateEvent(sampleRoom(songs: 4)));
     await tester.pump(const Duration(milliseconds: 50));
     final fade = tester.widget<FadeTransition>(

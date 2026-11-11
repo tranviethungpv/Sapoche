@@ -32,6 +32,7 @@ import 'widgets/artwork.dart';
 import 'widgets/cached_cover.dart';
 import 'widgets/glass.dart';
 import 'widgets/mini_player.dart';
+import 'widgets/motion.dart';
 import 'widgets/page_width.dart';
 import 'widgets/playlist_cover.dart';
 import 'widgets/text_dialog.dart';
@@ -125,6 +126,10 @@ class HomeShell extends StatefulWidget {
   /// The least room under a phone's bars, where the system has no bar of its own.
   static const _barsBottom = 10.0;
 
+  /// The name of the fourth tab: its page is the room's while in one.
+  static String listenLabelOf(BuildContext context) =>
+      AppScope.roomOf(context).snapshot.inRoom ? S.tabRoom : S.tabListen;
+
   /// Side of a cover in a row of cards: larger where the window is.
   static double cardSizeOf(BuildContext context) => switch (layoutOf(context)) {
     ShellLayout.bars => 148,
@@ -167,6 +172,17 @@ class _HomeShellState extends State<HomeShell>
     curve: const Interval(0.4, 1, curve: Curves.easeInOutCubic),
   );
 
+  /// The page that comes with a tab fades in, so that a tab is not a cut; 1 while nothing changes.
+  late final _pageFade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: Motion.medium),
+    value: 1,
+  );
+  late final _pageFadeIn = CurvedAnimation(
+    parent: _pageFade,
+    curve: Curves.easeOut,
+  );
+
   /// Whether the scroll under way is the person's, and how far it has gone one way since it last turned.
   bool _touched = false;
   double _travel = 0;
@@ -194,6 +210,9 @@ class _HomeShellState extends State<HomeShell>
       });
     }),
   );
+
+  /// Whether Search holds words or results, and the way to clear them, for Back.
+  final _searchBack = SearchBack();
 
   /// The search field, for the sidebar and the `/` key to put the cursor in.
   final _searchFocus = FocusNode(debugLabel: 'search');
@@ -260,6 +279,7 @@ class _HomeShellState extends State<HomeShell>
     room.chatRequests.addListener(_onChatRequest);
     room.setup.addListener(_onSetup);
     room.addListener(_precacheCover);
+    room.addListener(_watchRoom);
     room.addListener(_askForKey);
     WidgetsBinding.instance.addPostFrameCallback((_) => _precacheCover());
     WidgetsBinding.instance.addPostFrameCallback((_) => _askForKey());
@@ -378,13 +398,17 @@ class _HomeShellState extends State<HomeShell>
     _watched?.chatRequests.removeListener(_onChatRequest);
     _watched?.setup.removeListener(_onSetup);
     _watched?.removeListener(_precacheCover);
+    _watched?.removeListener(_watchRoom);
     _watched?.removeListener(_askForKey);
     _messages?.cancel();
     _libraryMessages?.cancel();
     _notices?.cancel();
     _sheet.dispose();
     _searchFocus.dispose();
+    _searchBack.dispose();
     _libraryRequests.dispose();
+    _pageFadeIn.dispose();
+    _pageFade.dispose();
     _shrink.dispose();
     _drop.dispose();
     _folded.dispose();
@@ -404,6 +428,15 @@ class _HomeShellState extends State<HomeShell>
       onError: (_, _) =>
           precacheImage(CachedCover(url), context, onError: (_, _) {}),
     );
+  }
+
+  bool _inRoom = false;
+
+  /// Entering or leaving a room renames the fourth tab, in the rail and the sidebar as well as the capsule.
+  void _watchRoom() {
+    final now = _watched?.snapshot.inRoom ?? false;
+    if (now == _inRoom || !mounted) return;
+    setState(() => _inRoom = now);
   }
 
   var _askedForKey = false;
@@ -493,6 +526,7 @@ class _HomeShellState extends State<HomeShell>
       return;
     }
     HapticFeedback.selectionClick();
+    if (!Motion.reduced(context)) _pageFade.forward(from: 0.35);
     setState(() {
       _tab = tab;
       if (tab != 1) _browsing = tab;
@@ -603,13 +637,15 @@ class _HomeShellState extends State<HomeShell>
     final layout = HomeShell.layoutOf(context);
     final pages = NotificationListener<ScrollNotification>(
       onNotification: _onScroll,
-      child: IndexedStack(
+      child: FadeTransition(
+        opacity: _pageFadeIn,
+        child: IndexedStack(
         index: _tab,
         // A tab that is not showing keeps its state but not its animations
         children: [
           for (final (i, page) in [
             const HomePage(),
-            SearchPage(focusNode: _searchFocus),
+            SearchPage(focusNode: _searchFocus, back: _searchBack),
             LibraryPage(requests: _libraryRequests),
             RoomPage(onAddSongs: _search),
           ].indexed)
@@ -624,6 +660,7 @@ class _HomeShellState extends State<HomeShell>
               ),
             ),
         ],
+      ),
       ),
     );
     final home = Scaffold(
@@ -676,17 +713,22 @@ class _HomeShellState extends State<HomeShell>
     );
     return PlayerSheetScope(
       controller: _sheet,
-      // Back closes an open player first, then goes back a page of the tab; only then does it leave the screen
+      // Back steps out one layer at a time: a panel of the player, the player, a page of the tab, the words and results
+      // of Search, then any other tab back to Home; only from Home does it leave the screen
       child: ListenableBuilder(
-        listenable: Listenable.merge([_sheet, _stack]),
+        listenable: Listenable.merge([_sheet, _stack, _searchBack]),
         builder: (context, stack) => PopScope(
-          canPop: !_sheet.isOpen && !(_current?.canPop() ?? false),
+          canPop: !_sheet.isOpen && !(_current?.canPop() ?? false) && _tab == 0,
           onPopInvokedWithResult: (didPop, _) {
             if (didPop) return;
             if (_sheet.isOpen) {
-              _sheet.close();
-            } else {
+              _sheet.back();
+            } else if (_current?.canPop() ?? false) {
               _current?.maybePop();
+            } else if (_tab == 1 && _searchBack.value) {
+              _searchBack.clear?.call();
+            } else {
+              _select(0);
             }
           },
           child: stack!,
@@ -855,11 +897,11 @@ class _Rail extends StatelessWidget {
   static double widthOf(bool compact) => compact ? compactWidth : width;
 
   /// A getter, not a constant: the names follow the language.
-  static List<(int, IconData, String)> get _items => [
+  static List<(int, IconData, String)> _items(String listen) => [
     (0, Icons.home_rounded, S.tabHome),
     (1, Icons.search_rounded, S.tabSearch),
     (2, Icons.library_music_rounded, S.tabLibrary),
-    (3, Icons.graphic_eq_rounded, S.tabListen),
+    (3, Icons.graphic_eq_rounded, listen),
   ];
 
   @override
@@ -874,7 +916,7 @@ class _Rail extends StatelessWidget {
             padding: EdgeInsets.all(compact ? 6 : 8),
             child: Column(
               children: [
-                for (final (tab, icon, label) in _items)
+                for (final (tab, icon, label) in _items(HomeShell.listenLabelOf(context)))
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 2),
                     child: Material(
@@ -1036,7 +1078,7 @@ class _Sidebar extends StatelessWidget {
             ),
             _SideRow(
               icon: Icons.graphic_eq_rounded,
-              label: S.tabListen,
+              label: HomeShell.listenLabelOf(context),
               selected: index == 3,
               onTap: () => onSelect(3),
             ),
@@ -1236,24 +1278,41 @@ class _Bars extends StatelessWidget {
         final high = tabs + (mini - tabs) * shrink;
         // Where the row of tabs starts: below the mini player, when there is a song
         final row = controller.snapshot.current == null ? 0.0 : mini + gap;
+        // The bars, the room under them, and a little above for the fade to start in
+        final pad = math.max(
+          HomeShell._systemBottomOf(context),
+          HomeShell._barsBottom,
+        );
+        final fade = pad + row + tabs + 28;
         return Stack(
+          // The fade reaches above the bars, which are only as high as themselves
+          clipBehavior: Clip.none,
           children: [
-            // What scrolls under the bars fades out at the very bottom, so it does not run into the system's own
-            // bar below them; only there, so the glass shows the page and not a band of plain colour
+            // What scrolls under the bars fades into the page, a little under the mini player and the tabs and more
+            // down to the system's own bar, so that nothing runs into the navigation buttons. Light over the glass:
+            // the page shows through it, as through Apple Music's, and only the room under the tabs is nearly solid
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              height: MediaQuery.viewPaddingOf(context).bottom + 24,
+              height: fade,
               child: IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
+                      stops: [
+                        0,
+                        (fade - pad - tabs) / fade,
+                        (fade - pad) / fade,
+                        1,
+                      ],
                       colors: [
                         p.base.withValues(alpha: 0),
-                        p.base.withValues(alpha: 0.7),
+                        p.base.withValues(alpha: 0.25),
+                        p.base.withValues(alpha: 0.45),
+                        p.base.withValues(alpha: 0.9),
                       ],
                     ),
                   ),
@@ -1354,10 +1413,10 @@ class _Tabs extends StatelessWidget {
 
   /// The tabs of the capsule, each with its place among the tabs; Search, the second, is the round button. A getter,
   /// not a constant: the names follow the language.
-  static List<(int, IconData, String)> get _items => [
+  static List<(int, IconData, String)> _items(String listen) => [
     (0, Icons.home_rounded, S.tabHome),
     (2, Icons.library_music_rounded, S.tabLibrary),
-    (3, Icons.graphic_eq_rounded, S.tabListen),
+    (3, Icons.graphic_eq_rounded, listen),
   ];
 
   @override
@@ -1365,7 +1424,7 @@ class _Tabs extends StatelessWidget {
     final p = context.palette;
     final wide = HomeShell.isWide(context);
     final round = BorderRadius.circular(HomeShell.tabHeightOf(context) / 2);
-    final items = _items;
+    final items = _items(HomeShell.listenLabelOf(context));
     final slot = items.indexWhere((item) => item.$1 == browsing);
     return Glass(
       // A capsule whatever its height is while it shrinks

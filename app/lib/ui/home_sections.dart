@@ -11,9 +11,9 @@ import 'home_shell.dart';
 import 'mood_page.dart';
 import 'player/track_section.dart';
 import 'scope.dart';
+import 'widgets/mix_cover.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/play_actions.dart';
-import 'widgets/playlist_cover.dart';
 import 'widgets/song_card.dart';
 
 /// Wraps what a row of the home page shows once it has something to show: the page uses it to count the rows that were
@@ -154,7 +154,20 @@ class _HomeChipsState extends State<HomeChips> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
             itemCount: count,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            separatorBuilder: (_, i) =>
+                // A rule between what is made from the person's music (plays at a touch) and the moods (open a list)
+                i == personal.length - 1 && moods.isNotEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Center(
+                      child: Container(
+                        width: 1,
+                        height: 22,
+                        color: p.text.withValues(alpha: 0.15),
+                      ),
+                    ),
+                  )
+                : const SizedBox(width: 8),
             itemBuilder: (context, i) {
               if (i < personal.length) {
                 final chip = personal[i];
@@ -301,7 +314,17 @@ class MadeForYou extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (mixes.isEmpty) return const SizedBox.shrink();
-    final size = HomeShell.cardSizeOf(context) + 24;
+    final size = HomeShell.cardSizeOf(context);
+    // One mix on its own would leave most of the row empty: it takes the whole row, with the way to play it
+    if (mixes.length == 1) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeading(S.madeForYou),
+          _WideMix(mix: mixes.first),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -318,6 +341,83 @@ class MadeForYou extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The only mix, as one slim row: its cover, who is in it, and a small round button to play it. Not a card of a shelf with
+/// the rest of the row empty, and not a large one either.
+class _WideMix extends StatelessWidget {
+  const _WideMix({required this.mix});
+
+  final DailyMix mix;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Material(
+        color: p.veil,
+        borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
+        child: InkWell(
+          key: ValueKey('mix-${mix.number}'),
+          borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
+          onTap: () => playMix(context, mix.tracks),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                MixCover(mix: mix, size: 76),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // The cover says which mix it is; beside it, who is in it
+                      Text(
+                        S.mixArtists(mix.artists),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.titleSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        S.madeForYou,
+                        style: theme.bodySmall?.copyWith(
+                          color: p.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Semantics(
+                  button: true,
+                  label: S.play,
+                  excludeSemantics: true,
+                  child: Container(
+                    key: const ValueKey('mix-play'),
+                    width: 40,
+                    height: 40,
+                    margin: const EdgeInsets.only(right: 4),
+                    decoration: BoxDecoration(
+                      color: p.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.play_arrow_rounded,
+                      size: 24,
+                      color: p.onPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -343,32 +443,7 @@ class _MixCard extends StatelessWidget {
           children: [
             Stack(
               children: [
-                PlaylistCover(thumbs: mix.covers, size: size, radius: 16),
-                // A fade drawn once, not a blur: the words stay readable on any picture
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: const LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Color(0x99000000)],
-                        stops: [0.45, 1],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 12,
-                  bottom: 10,
-                  child: Text(
-                    S.dailyMix(mix.number),
-                    style: theme.titleMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
+                MixCover(mix: mix, size: size, artists: false),
                 Positioned(
                   right: 10,
                   bottom: 10,
@@ -479,9 +554,12 @@ class _LatestReleasesShelfState extends State<LatestReleasesShelf> {
 
 /// What is played most where the person lives: playlists of the charts and the artists on top.
 class ChartsShelves extends StatelessWidget {
-  const ChartsShelves({super.key, this.frame = _plain});
+  const ChartsShelves({super.key, this.frame = _plain, this.sourced = false});
 
   final ShelfFrame frame;
+
+  /// Says on the first shelf that these are YouTube Music's, for a page with nothing of the person's own yet.
+  final bool sourced;
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<MusicShelf>>(
@@ -491,7 +569,18 @@ class ChartsShelves extends StatelessWidget {
       if (shelves.isEmpty) return const SizedBox.shrink();
       return frame(
         Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (sourced)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                child: Text(
+                  S.fromYouTubeMusic,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: context.palette.textSecondary,
+                  ),
+                ),
+              ),
             for (final shelf in shelves.take(2)) MusicShelfView(shelf: shelf),
           ],
         ),

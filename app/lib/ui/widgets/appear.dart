@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'motion.dart';
+
 /// Fades and slides its child in when it is first built, e.g. a song someone just added. With
 /// [animate] false it shows at once, which is what a list that was already on screen should do.
 class Appear extends StatefulWidget {
@@ -15,7 +17,7 @@ class Appear extends StatefulWidget {
 class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 420),
+    duration: const Duration(milliseconds: Motion.long),
     value: widget.animate ? 0 : 1,
   );
   late final Animation<double> _curve = CurvedAnimation(
@@ -23,10 +25,18 @@ class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
     curve: Curves.easeOutCubic,
   );
 
+  bool _started = false;
+
   @override
-  void initState() {
-    super.initState();
-    if (widget.animate) _controller.forward();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started || !widget.animate) return;
+    _started = true;
+    if (Motion.reduced(context)) {
+      _controller.value = 1;
+    } else {
+      _controller.forward();
+    }
   }
 
   @override

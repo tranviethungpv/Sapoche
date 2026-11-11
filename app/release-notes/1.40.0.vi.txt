@@ -1,0 +1,7 @@
+Giao diện gọn và rõ hơn: Phòng, Trang chủ và trình phát
+- Màn Phòng hiện mọi người bằng khuôn mặt kèm trạng thái, bài đang phát trong một thẻ, và khi bạn ở một mình thì có lời mời kèm mã để quét. Mã phòng giờ chỉ nằm trong lời mời.
+- Cài đặt phòng là một danh sách gọn: nghe cùng nhau, khách, mạng chậm và mã hoá chat, mỗi mục một công tắc kèm một dòng mô tả.
+- Chat luôn giữ bài đang phát ở đầu, và hỏi về thông báo chỉ trong một dòng. Khi chưa thiết lập máy chủ, tờ Phòng nói rõ việc cần làm trước.
+- Trang chủ đầy đặn hơn cho người mới và người chỉ có một mix. Mix có bìa vẽ theo âm nhạc trong đó, và các chip của bạn được tách khỏi các tâm trạng.
+- Thanh dưới mờ dần phần trang phía sau, bốn nút dưới trình phát dễ thấy hơn, và nút Back đi từng bước: từ tìm kiếm thì xoá tìm kiếm, rồi về Trang chủ, rồi mới thoát.
+- Chuyển động nhẹ ở những chỗ trước đây nhảy bước: người vào phòng, bìa bài mới, trái tim, tab và tờ. Chuyển động theo "Giảm chuyển động" và "Hiệu ứng nhẹ".

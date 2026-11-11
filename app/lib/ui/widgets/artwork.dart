@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
 import 'cached_cover.dart';
+import 'motion.dart';
 
 /// The largest picture YouTube keeps for a thumbnail address, or the address itself when it is not
 /// one we know how to enlarge. Search results carry a picture only about 400 pixels tall, and a
@@ -40,6 +41,7 @@ class Artwork extends StatelessWidget {
     this.radius = SapocheTheme.artworkRadius,
     this.sharp = false,
     this.wide = false,
+    this.crossfade = false,
   });
 
   final String? url;
@@ -53,6 +55,10 @@ class Artwork extends StatelessWidget {
   /// The picture is wide and is cropped square: it is decoded by its height, as a decode by width would leave it
   /// too few pixels tall. For small covers; [sharp] ones are decoded whole. A video's thumbnail is always wide.
   final bool wide;
+
+  /// When the picture changes, the old one fades into the new one. For the few covers that stay on screen as the song
+  /// changes, not for the hundreds in a list.
+  final bool crossfade;
 
   @override
   Widget build(BuildContext context) {
@@ -69,20 +75,30 @@ class Artwork extends StatelessWidget {
       borderRadius: BorderRadius.circular(radius),
       child: SizedBox.square(
         dimension: size,
-        child: url == null
-            ? placeholder
-            : _network(
-                context,
-                sharp ? sharpThumbnail(url!) : url!,
-                placeholder,
-                // Not every video has the enlarged picture: then the original will do
-                onError: sharp && sharpThumbnail(url!) != url
-                    ? (_, _, _) => _network(context, url!, placeholder)
-                    : null,
-              ),
+        child: crossfade
+            ? AnimatedSwitcher(
+                duration: Motion.of(context, Motion.medium),
+                child: KeyedSubtree(
+                  key: ValueKey(url),
+                  child: _picture(context, placeholder),
+                ),
+              )
+            : _picture(context, placeholder),
       ),
     );
   }
+
+  Widget _picture(BuildContext context, Widget placeholder) => url == null
+      ? placeholder
+      : _network(
+          context,
+          sharp ? sharpThumbnail(url!) : url!,
+          placeholder,
+          // Not every video has the enlarged picture: then the original will do
+          onError: sharp && sharpThumbnail(url!) != url
+              ? (_, _, _) => _network(context, url!, placeholder)
+              : null,
+        );
 
   Widget _network(
     BuildContext context,

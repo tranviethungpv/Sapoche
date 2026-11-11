@@ -503,6 +503,30 @@ void main() {
       return (backend, room);
     }
 
+    testWidgets('the song that is on stays at the top of the chat, with its button', (
+      tester,
+    ) async {
+      final (backend, _) = await roomWithChat(tester);
+      await tester.tap(find.byTooltip(S.chat));
+      await tester.pumpAndSettle();
+      final strip = find.byKey(const ValueKey('chat-now'));
+      expect(strip, findsOneWidget);
+      expect(find.descendant(of: strip, matching: find.text('Song 0')), findsOneWidget);
+      await tester.tap(find.descendant(of: strip, matching: find.byIcon(Icons.pause_rounded)));
+      await tester.pump();
+      expect(backend.calls.last, 'pause');
+    });
+
+    testWidgets('with no song on there is no strip', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+      backend.emit(history([message(1, 'b', 'hi there')]));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip(S.chat));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chat-now')), findsNothing);
+    });
+
     testWidgets('a room whose server keeps no chat shows no way into it', (
       tester,
     ) async {
@@ -743,7 +767,7 @@ void main() {
         );
         backend.emit(history([message(1, 'b', 'hi there')]));
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('Room'));
+        await tester.tap(find.byTooltip(S.roomSettings));
         await tester.pumpAndSettle();
         expect(room.inviteLink('ABC234'), isNot(contains('#k=')));
 
@@ -769,7 +793,7 @@ void main() {
       backend.emit(StateEvent(sampleRoom(ownerId: 'b')));
       backend.emit(history([message(1, 'b', 'hi there')]));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Room'));
+      await tester.tap(find.byTooltip(S.roomSettings));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('encryption-card')), findsNothing);
 
@@ -962,7 +986,9 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
 
         // The space beside a message is a touch on the list itself
-        final list = tester.getRect(find.byType(ListView));
+        final list = tester.getRect(
+          find.descendant(of: find.byType(ChatSheet), matching: find.byType(ListView)),
+        );
         await tester.tapAt(Offset(list.left + 2, list.top + 2));
         await tester.pumpAndSettle();
         expect(tester.testTextInput.isVisible, isFalse);

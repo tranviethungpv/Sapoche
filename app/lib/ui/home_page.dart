@@ -193,7 +193,10 @@ class _HomePageState extends State<HomePage> {
                     const _Header(),
                     // Rows that are empty until the network answers are kept, see [KeptAlive]
                     const KeptAlive(child: _FriendsListening()),
-                    if (home.isEmpty) const _Welcome(),
+                    if (home.isEmpty) ...[
+                      const _Welcome(),
+                      const _ListenWithFriends(),
+                    ],
                     KeptAlive(child: HomeChips(personal: _personalChips(home))),
                     QuickAccess(tiles: _quickTiles(context, library, home)),
                     MadeForYou(mixes: home.dailyMixes),
@@ -409,7 +412,10 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
       'charts': KeptAlive(
-        child: ChartsShelves(frame: (shelf) => _frame('charts', shelf)),
+        child: ChartsShelves(
+          frame: (shelf) => _frame('charts', shelf),
+          sourced: home.isEmpty,
+        ),
       ),
       'trending': KeptAlive(
         child: _Trending(frame: (shelf) => _frame('trending', shelf)),
@@ -797,7 +803,7 @@ class _RoomChipState extends State<_RoomChip> {
         final last = model.recents.rooms.firstOrNull;
         final inRoom = snapshot.inRoom;
         final label = inRoom
-            ? snapshot.room ?? S.tabRoom
+            ? '${snapshot.listeningCount}'
             : last == null
             ? S.tabRoom
             : S.rejoinChip;
@@ -822,28 +828,29 @@ class _RoomChipState extends State<_RoomChip> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _busy
-                            ? SizedBox.square(
-                                dimension: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: color,
-                                ),
-                              )
-                            : Icon(
-                                Icons.groups_rounded,
-                                size: 18,
-                                color: color,
-                              ),
+                        if (_busy)
+                          SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: color,
+                            ),
+                          )
+                        else if (inRoom)
+                          // Who is there, not the code: the code is on the invitation
+                          AvatarStack(
+                            members: snapshot.members,
+                            size: 24,
+                            max: 3,
+                          )
+                        else
+                          Icon(Icons.groups_rounded, size: 18, color: color),
                         const SizedBox(width: 6),
                         Text(
                           label,
                           maxLines: 1,
                           style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(
-                                color: color,
-                                letterSpacing: inRoom ? 1.5 : 0,
-                              ),
+                              ?.copyWith(color: color),
                         ),
                       ],
                     ),
@@ -1194,6 +1201,89 @@ class _Welcome extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// For somebody new, with a room behind them: the way back into it, before the charts, which are YouTube Music's and not
+/// the app's own. Nothing without a room in the list of recent ones, or while this device is in one.
+class _ListenWithFriends extends StatefulWidget {
+  const _ListenWithFriends();
+
+  @override
+  State<_ListenWithFriends> createState() => _ListenWithFriendsState();
+}
+
+class _ListenWithFriendsState extends State<_ListenWithFriends> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    final model = AppScope.of(context);
+    return ListenableBuilder(
+      listenable: Listenable.merge([model.room, model.recents]),
+      builder: (context, _) {
+        final last = model.recents.rooms.firstOrNull;
+        if (model.room.snapshot.inRoom || last == null) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+          child: Material(
+            key: const ValueKey('listen-with-friends'),
+            color: p.primaryContainer,
+            borderRadius: BorderRadius.circular(SapocheTheme.groupRadius),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(SapocheTheme.groupRadius),
+              onTap: _busy
+                  ? null
+                  : () => _rejoinLast(context, (busy) {
+                      if (mounted) setState(() => _busy = busy);
+                    }),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                child: Row(
+                  children: [
+                    Icon(Icons.groups_rounded, color: p.onPrimaryContainer, size: 28),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            S.listenWithFriends,
+                            style: theme.titleMedium?.copyWith(
+                              color: p.onPrimaryContainer,
+                            ),
+                          ),
+                          Text(
+                            last.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.bodySmall?.copyWith(
+                              color: p.onPrimaryContainer.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    FilledButton(
+                      onPressed: _busy
+                          ? null
+                          : () => _rejoinLast(context, (busy) {
+                              if (mounted) setState(() => _busy = busy);
+                            }),
+                      child: Text(S.rejoinChip),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

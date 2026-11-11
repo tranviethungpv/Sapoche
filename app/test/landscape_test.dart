@@ -291,7 +291,7 @@ void main() {
       expect(HomeShell.compactOf(context), isTrue);
       // The four places and Settings, named by their tooltips, in a column on the left that fits the window
       final rail = [
-        for (final name in [S.tabHome, S.tabSearch, S.tabLibrary, S.tabListen])
+        for (final name in [S.tabHome, S.tabSearch, S.tabLibrary, S.tabRoom])
           tester.getRect(find.byTooltip(name)),
       ];
       for (final r in rail) {

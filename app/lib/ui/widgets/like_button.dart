@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
+import 'motion.dart';
 
 /// A heart that keeps the song in the liked songs, and lights up when it is there.
 class LikeButton extends StatelessWidget {
@@ -33,7 +34,9 @@ class LikeButton extends StatelessWidget {
             height: size + 16,
           ),
           icon: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
+            duration: Motion.of(context, Motion.medium),
+            // The heart that lights up is a little too big for a moment, then settles
+            switchInCurve: liked ? Curves.easeOutBack : Curves.easeOut,
             transitionBuilder: (child, animation) =>
                 ScaleTransition(scale: animation, child: child),
             child: Icon(

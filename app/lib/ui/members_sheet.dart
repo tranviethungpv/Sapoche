@@ -8,6 +8,7 @@ import '../theme/theme.dart';
 import 'member_profile_sheet.dart';
 import 'scope.dart';
 import 'widgets/avatars.dart';
+import 'widgets/motion.dart';
 
 /// Who is in the room, what each of them is doing, and whether this device follows the room.
 void showMembersSheet(BuildContext context) {
@@ -16,6 +17,7 @@ void showMembersSheet(BuildContext context) {
     useRootNavigator: true,
     context: context,
     isScrollControlled: true,
+    sheetAnimationStyle: Motion.sheet(context),
     builder: (_) => _MembersSheet(controller: controller),
   );
 }
@@ -50,8 +52,6 @@ class _MembersSheet extends StatelessWidget {
                   style: theme.bodyMedium?.copyWith(color: p.textSecondary),
                 ),
                 const SizedBox(height: 16),
-                _FollowCard(controller: controller, solo: snapshot.solo),
-                const SizedBox(height: 8),
                 for (final member in members)
                   _MemberRow(
                     member: member,
@@ -115,49 +115,6 @@ Future<void> confirmRemoveMember(
     ),
   );
   if (confirmed == true) controller.kick(member);
-}
-
-/// The switch that decides whether the room's play, pause and skip move this device.
-class _FollowCard extends StatelessWidget {
-  const _FollowCard({required this.controller, required this.solo});
-
-  final RoomController controller;
-  final bool solo;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final theme = Theme.of(context).textTheme;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: solo ? p.primaryContainer : p.surfaceRaised,
-        borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
-        border: Border.all(color: p.outlineSoft),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(S.listenTogether, style: theme.titleMedium),
-                const SizedBox(height: 2),
-                Text(
-                  solo ? S.listenTogetherOff : S.listenTogetherOn,
-                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: !solo,
-            onChanged: (together) => controller.setSolo(!together),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// What a member is doing, in words and in the colour of the dot beside them.

@@ -26,6 +26,7 @@ import 'widgets/avatars.dart';
 import 'widgets/not_interested.dart';
 import 'widgets/like_button.dart';
 import 'widgets/marquee_text.dart';
+import 'widgets/motion.dart';
 import 'widgets/download_actions.dart';
 import 'widgets/playlist_picker.dart';
 import 'widgets/queue_actions.dart';
@@ -136,6 +137,21 @@ class _BodyState extends State<_Body> {
 
   RoomController get _c => widget.controller;
 
+  PlayerSheetController? _sheet;
+
+  /// Back with lyrics or the queue shown goes to the cover first; the player closes on the next one.
+  bool _stepBack() {
+    if (_panel == _Panel.cover) return false;
+    setState(() => _panel = _Panel.cover);
+    return true;
+  }
+
+  @override
+  void dispose() {
+    if (_sheet?.stepBack == _stepBack) _sheet?.stepBack = null;
+    super.dispose();
+  }
+
   /// A second touch on the button of the panel that is open goes back to the cover.
   void _show(_Panel panel) =>
       setState(() => _panel = _panel == panel ? _Panel.cover : panel);
@@ -146,6 +162,7 @@ class _BodyState extends State<_Body> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _sheet = PlayerSheetScope.of(context)..stepBack = _stepBack;
     final media = MediaQuery.of(context);
     final landscape = media.orientation == Orientation.landscape;
     final turned = _wasLandscape == false && landscape;
@@ -787,6 +804,7 @@ class _CoverArt extends StatelessWidget {
             size: size,
             radius: 16,
             sharp: true,
+            crossfade: true,
           ),
         ),
       ),
@@ -1077,6 +1095,10 @@ class _MoreButton extends StatelessWidget {
   }
 }
 
+/// The icons of the toolbar when off. The tertiary text colour is too faint over the glow of a cover (under 2:1 over a
+/// bright one in the dark theme); the main text colour, a little softened, reads like the rest of the player.
+Color _toolTint(Palette p) => p.text.withValues(alpha: 0.8);
+
 /// Lyrics, the queue, the sleep timer and where the sound goes: the things to reach for while listening.
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
@@ -1101,7 +1123,7 @@ class _Toolbar extends StatelessWidget {
         isSelected: on,
         icon: Icon(icon, size: 26 * scale),
         style: IconButton.styleFrom(
-          foregroundColor: on ? p.onPrimary : p.textTertiary,
+          foregroundColor: on ? p.onPrimary : _toolTint(p),
           backgroundColor: on ? p.primary : Colors.transparent,
           fixedSize: Size(52 * scale, 44 * scale),
         ),
@@ -1147,7 +1169,7 @@ class _OutputButton extends StatelessWidget {
       tooltip: output.name.isEmpty ? S.playOn : '${S.playOn} · ${output.name}',
       icon: Icon(_icon(output.kind), size: 26),
       style: IconButton.styleFrom(
-        foregroundColor: away ? p.onPrimary : p.textTertiary,
+        foregroundColor: away ? p.onPrimary : _toolTint(p),
         backgroundColor: away ? p.primary : Colors.transparent,
         fixedSize: const Size(52, 44),
       ),
@@ -1171,7 +1193,7 @@ class _SleepButton extends StatelessWidget {
         tooltip: S.sleepTimer,
         icon: const Icon(Icons.bedtime_outlined, size: 26),
         style: IconButton.styleFrom(
-          foregroundColor: p.textTertiary,
+          foregroundColor: _toolTint(p),
           fixedSize: const Size(52, 44),
         ),
       );
@@ -1354,7 +1376,7 @@ class _RoomStrip extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: ListenableBuilder(
               listenable: controller.player,
-              builder: (context, _) => _SyncChip(controller: controller),
+              builder: (context, _) => SyncChip(controller: controller),
             ),
           ),
         ),
@@ -1372,10 +1394,14 @@ class _RoomStrip extends StatelessWidget {
 /// Within this many ms of the room counts as in sync (the drift control aims well inside it).
 const _inSyncMs = 80;
 
-class _SyncChip extends StatelessWidget {
-  const _SyncChip({required this.controller});
+/// The room's sync state on this device, as a pill; a touch opens the list of members.
+class SyncChip extends StatelessWidget {
+  const SyncChip({super.key, required this.controller, this.margin});
 
   final RoomController controller;
+
+  /// Room around the pill, left out with it while there is nothing to say.
+  final EdgeInsetsGeometry? margin;
 
   @override
   Widget build(BuildContext context) {
@@ -1415,7 +1441,10 @@ class _SyncChip extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => showMembersSheet(context),
-      child: Container(
+      // The state changes its colour, in step with the words: the words themselves change with every reading
+      child: AnimatedContainer(
+        duration: Motion.of(context, Motion.medium),
+        margin: margin,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.14),
@@ -1424,19 +1453,22 @@ class _SyncChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
+            AnimatedContainer(
+              duration: Motion.of(context, Motion.medium),
               width: 7,
               height: 7,
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 7),
             Flexible(
-              child: Text(
-                label,
+              child: AnimatedDefaultTextStyle(
+                duration: Motion.of(context, Motion.medium),
+                style: Theme.of(context).textTheme.labelMedium!.copyWith(
+                  color: color,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium
-                    ?.copyWith(color: color),
+                child: Text(label),
               ),
             ),
           ],

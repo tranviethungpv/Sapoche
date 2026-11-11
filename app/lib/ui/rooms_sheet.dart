@@ -4,28 +4,39 @@ import 'package:flutter/services.dart';
 import '../data/models.dart';
 import '../data/recent_rooms.dart';
 import '../data/room_controller.dart';
+import '../data/setup_link.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'code_sheet.dart';
 import 'members_sheet.dart';
 import 'scope.dart';
+import 'settings_page.dart' show openSettings;
+import 'setup_dialog.dart';
+import 'widgets/motion.dart';
 import 'widgets/qr_code_view.dart';
 import 'widgets/text_dialog.dart';
 
 /// The way into and out of a room: start one, join one, or share and manage the one this device is in.
 /// [invitedCode] is a code that arrived with an invitation link.
-Future<void> showRoomSheet(BuildContext context, {String? invitedCode}) =>
-    showModalBottomSheet<void>(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _RoomSheet(invitedCode: invitedCode),
-    );
+///
+/// In a room it opens on the invitation (QR, code, share), and on the room's settings with [settings].
+Future<void> showRoomSheet(
+  BuildContext context, {
+  String? invitedCode,
+  bool settings = false,
+}) => showModalBottomSheet<void>(
+  useRootNavigator: true,
+  context: context,
+  isScrollControlled: true,
+  sheetAnimationStyle: Motion.sheet(context),
+  builder: (_) => _RoomSheet(invitedCode: invitedCode, settings: settings),
+);
 
 class _RoomSheet extends StatelessWidget {
-  const _RoomSheet({this.invitedCode});
+  const _RoomSheet({this.invitedCode, this.settings = false});
 
   final String? invitedCode;
+  final bool settings;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +52,7 @@ class _RoomSheet extends StatelessWidget {
             20 + MediaQuery.viewInsetsOf(context).bottom,
           ),
           child: model.room.snapshot.inRoom
-              ? _InRoom(room: model.room)
+              ? _InRoom(room: model.room, settings: settings)
               : _StartRoom(
                   room: model.room,
                   recents: model.recents,
@@ -157,6 +168,12 @@ class _StartRoomState extends State<_StartRoom> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
+    // Without a server and its key a room cannot be made: say so at once, with the ways to get them, instead of
+    // asking for a name first and then refusing
+    final profile = widget.room.profile;
+    if (!profile.configured || !profile.hasKey) {
+      return _NeedsSetup(room: widget.room);
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -247,6 +264,64 @@ class _StartRoomState extends State<_StartRoom> {
   }
 }
 
+/// This device has no server or key yet: a phone that has them shows a code to point the camera at, and its link can be
+/// pasted here; the address and key can also be typed in the settings.
+class _NeedsSetup extends StatelessWidget {
+  const _NeedsSetup({required this.room});
+
+  final RoomController room;
+
+  Future<void> _paste(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final link = SetupLink.parse(data?.text ?? '');
+    if (!context.mounted) return;
+    if (link == null) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(S.setupBad)));
+      return;
+    }
+    await askToUseSetup(context, room, link);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return Column(
+      key: const ValueKey('room-needs-setup'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(S.setupNeededTitle, style: theme.headlineSmall),
+        const SizedBox(height: 4),
+        Text(
+          S.setupNeededBody,
+          style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+        ),
+        const SizedBox(height: 18),
+        FilledButton.icon(
+          key: const ValueKey('room-setup-paste'),
+          onPressed: () => _paste(context),
+          icon: const Icon(Icons.content_paste_rounded, size: 18),
+          label: Text(S.setupPaste),
+        ),
+        const SizedBox(height: 10),
+        ElevatedButton(
+          key: const ValueKey('room-setup-manual'),
+          onPressed: () {
+            final navigator = Navigator.of(context);
+            navigator.pop();
+            openSettings(navigator.context);
+          },
+          child: Text(S.setupEnterByHand),
+        ),
+      ],
+    );
+  }
+}
+
 /// A room from before, with what the server says about it right now.
 class _RecentTile extends StatefulWidget {
   const _RecentTile({
@@ -317,47 +392,43 @@ class _RecentTileState extends State<_RecentTile> {
   }
 }
 
-/// In a room: its name, how to invite people, and what the owner can change.
-class _InRoom extends StatelessWidget {
-  const _InRoom({required this.room});
+/// In a room: first the invitation, the thing most wanted right after a room is made, and behind a button the room's
+/// settings, which the owner can change.
+class _InRoom extends StatefulWidget {
+  const _InRoom({required this.room, this.settings = false});
 
   final RoomController room;
+  final bool settings;
 
   @override
-  Widget build(BuildContext context) {
+  State<_InRoom> createState() => _InRoomState();
+}
+
+class _InRoomState extends State<_InRoom> {
+  late bool _settings = widget.settings;
+
+  RoomController get room => widget.room;
+
+  @override
+  Widget build(BuildContext context) =>
+      _settings ? _settingsView(context) : _inviteView(context);
+
+  Widget _inviteView(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    final snapshot = room.snapshot;
-    final code = snapshot.room ?? '';
+    final code = room.snapshot.room ?? '';
     final link = room.inviteLink(code);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                snapshot.name ?? S.tabRoom,
-                style: theme.headlineSmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (snapshot.canControl)
-              IconButton(
-                onPressed: () => _rename(context),
-                tooltip: S.roomName,
-                // A pencil either way: a plus read as "add" a room, or a song
-                icon: Icon(Icons.edit_outlined, color: p.primary),
-              ),
-          ],
+        Text(S.invite, style: theme.headlineSmall, textAlign: TextAlign.center),
+        const SizedBox(height: 4),
+        Text(
+          S.scanToJoin,
+          style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+          textAlign: TextAlign.center,
         ),
-        if (snapshot.name == null && snapshot.canControl)
-          Text(
-            S.addRoomName,
-            style: theme.bodySmall?.copyWith(color: p.textTertiary),
-          ),
         const SizedBox(height: 16),
         Center(child: QrCodeView(data: link)),
         const SizedBox(height: 10),
@@ -374,13 +445,7 @@ class _InRoom extends StatelessWidget {
             ),
           ),
         ),
-        Center(
-          child: Text(
-            S.scanToJoin,
-            style: theme.bodySmall?.copyWith(color: p.textSecondary),
-          ),
-        ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
@@ -400,32 +465,71 @@ class _InRoom extends StatelessWidget {
             ),
           ],
         ),
-        if (snapshot.iOwn) ...[
-          const SizedBox(height: 16),
-          _GuestControlCard(room: room),
-          // A server older than protocol 20 cannot wait for anybody
-          if (snapshot.roomWaitWeak != null) ...[
-            const SizedBox(height: 10),
-            _WaitWeakCard(room: room),
-          ],
-        ],
-        if (room.hasChat && (snapshot.encrypted || snapshot.iOwn)) ...[
-          const SizedBox(height: 10),
-          EncryptionCard(room: room),
-        ],
-        const SizedBox(height: 8),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.people_outline_rounded, color: p.textSecondary),
-          title: Text(S.peopleInRoom),
-          subtitle: Text(S.listening(snapshot.listeningCount)),
-          trailing: Icon(Icons.chevron_right_rounded, color: p.textTertiary),
-          onTap: () => showMembersSheet(context),
+        const SizedBox(height: 6),
+        TextButton(
+          onPressed: () => setState(() => _settings = true),
+          child: Text(S.roomSettings),
         ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.logout_rounded, color: p.error),
-          title: Text(S.leaveRoom, style: TextStyle(color: p.error)),
+      ],
+    );
+  }
+
+  Widget _settingsView(BuildContext context) {
+    final theme = Theme.of(context).textTheme;
+    final snapshot = room.snapshot;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(S.roomSettings, style: theme.headlineSmall),
+        const SizedBox(height: 8),
+        // Every row has the same make: an icon, what it is, a line on what it does, and its control at the end
+        _SettingTile(
+          icon: Icons.headphones_rounded,
+          title: S.listenTogether,
+          help: snapshot.solo ? S.listenTogetherOff : S.listenTogetherOn,
+          value: !snapshot.solo,
+          onChanged: (together) => room.setSolo(!together),
+        ),
+        if (snapshot.iOwn)
+          _SettingTile(
+            icon: Icons.playlist_add_rounded,
+            title: S.guestsAddOnly,
+            help: S.guestsAddOnlyHelp,
+            value: snapshot.guestControl == GuestControl.add,
+            onChanged: (on) =>
+                room.setGuestControl(on ? GuestControl.add : GuestControl.all),
+          ),
+        // A server older than protocol 20 cannot wait for anybody
+        if (snapshot.iOwn && snapshot.roomWaitWeak != null)
+          _SettingTile(
+            icon: Icons.network_check_rounded,
+            title: S.waitWeak,
+            help: S.waitWeakHelp,
+            value: snapshot.roomWaitWeak == true,
+            onChanged: room.setRoomWaitWeak,
+          ),
+        if (room.hasChat && (snapshot.encrypted || snapshot.iOwn))
+          EncryptionCard(room: room),
+        if (snapshot.canControl)
+          _SettingTile(
+            icon: Icons.edit_outlined,
+            title: S.roomName,
+            help: snapshot.name ?? S.addRoomName,
+            onTap: () => _rename(context),
+            chevron: true,
+          ),
+        _SettingTile(
+          icon: Icons.people_outline_rounded,
+          title: S.peopleInRoom,
+          help: S.listening(snapshot.listeningCount),
+          onTap: () => showMembersSheet(context),
+          chevron: true,
+        ),
+        _SettingTile(
+          icon: Icons.logout_rounded,
+          title: S.leaveRoom,
+          destructive: true,
           onTap: () => _confirmLeave(context),
         ),
       ],
@@ -478,103 +582,108 @@ class _InRoom extends StatelessWidget {
   }
 }
 
-/// Owner only: whether the room waits, for a few seconds at most, for a device that stalls for want of data.
-class _WaitWeakCard extends StatelessWidget {
-  const _WaitWeakCard({required this.room});
+/// One row of the room's settings, the same make for each: an icon, what it is, a line on what it does, and at the end
+/// its switch, a chevron, or a [trailing] widget of its own. With [onChanged] the whole row is the switch.
+class _SettingTile extends StatelessWidget {
+  const _SettingTile({
+    required this.icon,
+    required this.title,
+    this.help,
+    this.value,
+    this.onChanged,
+    this.onTap,
+    this.chevron = false,
+    this.destructive = false,
+    this.trailing,
+    this.below,
+  });
 
-  final RoomController room;
+  final IconData icon;
+  final String title;
+  final String? help;
 
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final theme = Theme.of(context).textTheme;
-    final on = room.snapshot.roomWaitWeak == true;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: on ? p.primaryContainer : p.surfaceRaised,
-        borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
-        border: Border.all(color: p.outlineSoft),
-      ),
-      // A screen reader reads the switch together with what it is for
-      child: MergeSemantics(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(S.waitWeak, style: theme.titleMedium),
-                  const SizedBox(height: 2),
-                  Text(
-                    S.waitWeakHelp,
-                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            Switch(value: on, onChanged: room.setRoomWaitWeak),
-          ],
-        ),
-      ),
-    );
-  }
-}
+  /// A switch, when there is [onChanged].
+  final bool? value;
+  final ValueChanged<bool>? onChanged;
+  final VoidCallback? onTap;
+  final bool chevron;
 
-/// Owner only: whether guests may control the room or only add songs.
-class _GuestControlCard extends StatelessWidget {
-  const _GuestControlCard({required this.room});
+  /// Leaving: in the colour of a warning.
+  final bool destructive;
+  final Widget? trailing;
 
-  final RoomController room;
+  /// Under the line of help, for a link.
+  final Widget? below;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    final restricted = room.snapshot.guestControl == GuestControl.add;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: restricted ? p.primaryContainer : p.surfaceRaised,
-        borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
-        border: Border.all(color: p.outlineSoft),
-      ),
-      // A screen reader reads the switch together with what it is for
-      child: MergeSemantics(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(S.guestsAddOnly, style: theme.titleMedium),
+    final color = destructive ? p.error : p.text;
+    final end =
+        trailing ??
+        (onChanged != null
+            ? Switch(value: value ?? false, onChanged: onChanged)
+            : chevron
+            ? Icon(Icons.chevron_right_rounded, color: p.textTertiary)
+            : null);
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 28,
+            child: Icon(
+              icon,
+              size: 24,
+              color: destructive ? p.error : p.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: theme.titleMedium?.copyWith(color: color)),
+                if (help != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    S.guestsAddOnlyHelp,
+                    help!,
                     style: theme.bodySmall?.copyWith(color: p.textSecondary),
                   ),
                 ],
-              ),
+                ?below,
+              ],
             ),
-            Switch(
-              value: restricted,
-              onChanged: (on) => room.setGuestControl(
-                on ? GuestControl.add : GuestControl.all,
-              ),
-            ),
-          ],
-        ),
+          ),
+          if (end != null) ...[const SizedBox(width: 12), end],
+        ],
+      ),
+    );
+    // A screen reader reads the switch together with what it is for
+    return MergeSemantics(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onChanged != null ? () => onChanged!(!(value ?? false)) : onTap,
+        child: row,
       ),
     );
   }
 }
 
-/// Whether the room's chat is end-to-end encrypted. The owner can turn it on, for good; once it is on, a device that has
-/// not the key (it joined without the link) is told how to get it.
+/// Whether the room's chat is end-to-end encrypted: a row of the settings, with a sentence and "Learn more" for the whole
+/// story. The owner can turn it on, for good; once it is on, a device that has not the key (it joined without the link)
+/// is told how to get it.
 class EncryptionCard extends StatelessWidget {
   const EncryptionCard({super.key, required this.room});
 
   final RoomController room;
+
+  /// The button of a row of settings is no taller than the switches beside it.
+  static final _small = FilledButton.styleFrom(
+    minimumSize: const Size(0, 36),
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -582,51 +691,58 @@ class EncryptionCard extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     final snapshot = room.snapshot;
     final on = snapshot.encrypted;
-    return Container(
+    final noKey = on && !snapshot.encryptionKey;
+    return KeyedSubtree(
       key: const ValueKey('encryption-card'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: on ? p.primaryContainer : p.surfaceRaised,
-        borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
-        border: Border.all(color: p.outlineSoft),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.lock_outline_rounded, color: p.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(S.encryptionTitle, style: theme.titleMedium),
-                const SizedBox(height: 2),
-                Text(
-                  on && !snapshot.encryptionKey
-                      ? S.encryptionNoKey
-                      : on
-                      ? S.encryptionOnHelp
-                      : S.encryptionOffHelp,
-                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                ),
-              ],
+      child: _SettingTile(
+        icon: Icons.lock_outline_rounded,
+        title: S.encryptionTitle,
+        help: noKey ? S.encryptionNoKey : S.encryptionShort,
+        below: GestureDetector(
+          onTap: () => _learnMore(context, on),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              S.learnMore,
+              style: theme.bodySmall?.copyWith(
+                color: p.primary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          if (!on)
-            FilledButton.tonal(
-              key: const ValueKey('encryption-turn-on'),
-              onPressed: () => _confirm(context),
-              child: Text(S.encryptionTurnOn),
-            )
-          else if (!snapshot.encryptionKey)
-            FilledButton.tonal(
-              key: const ValueKey('encryption-paste'),
-              onPressed: () => pasteInviteSecret(context, room),
-              child: Text(S.encryptionPaste),
-            ),
-        ],
+        ),
+        // Like the other settings a switch; on for good, so once it is on it cannot be turned off. Turning it on asks first.
+        // A device without the key has a button for getting it instead
+        onTap: on ? null : () => _confirm(context),
+        trailing: noKey
+            ? FilledButton.tonal(
+                key: const ValueKey('encryption-paste'),
+                style: _small,
+                onPressed: () => pasteInviteSecret(context, room),
+                child: Text(S.encryptionPaste),
+              )
+            : Switch(
+                key: ValueKey(on ? 'encryption-on' : 'encryption-turn-on'),
+                value: on,
+                onChanged: on ? null : (_) => _confirm(context),
+              ),
       ),
     );
   }
+
+  void _learnMore(BuildContext context, bool on) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(S.encryptionTitle),
+      content: Text(on ? S.encryptionOnHelp : S.encryptionOffHelp),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(S.close),
+        ),
+      ],
+    ),
+  );
 
   Future<void> _confirm(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);

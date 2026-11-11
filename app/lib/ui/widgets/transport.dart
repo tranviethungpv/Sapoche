@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../strings.dart';
 import '../../theme/theme.dart';
+import 'motion.dart';
 
 /// Play or pause glyph that morphs between the two, with a spinner while the room is starting.
 class PlayPauseButton extends StatelessWidget {
@@ -43,7 +44,7 @@ class PlayPauseButton extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
+                  duration: Motion.of(context, Motion.short),
                   transitionBuilder: (child, animation) => ScaleTransition(
                     scale: animation,
                     child: FadeTransition(opacity: animation, child: child),

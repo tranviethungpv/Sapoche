@@ -31,10 +31,12 @@ import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/chat_song_card.dart';
 import 'widgets/linked_text.dart';
+import 'widgets/motion.dart';
 import 'widgets/song_link_card.dart';
 import 'widgets/reactions.dart';
 import 'widgets/staged_photos.dart';
 import 'widgets/sticker_image.dart';
+import 'widgets/transport.dart';
 
 /// The room's chat, over whatever is shown: messages, the reactions, and a field to write in.
 Future<void> showChatSheet(BuildContext context) async {
@@ -56,6 +58,7 @@ Future<void> _showChatSheet(BuildContext context, RoomController controller) {
     useSafeArea: true,
     context: context,
     isScrollControlled: true,
+    sheetAnimationStyle: Motion.sheet(context),
     // The chat draws its own background and handle, so that a theme reaches all the way up to the edge of the sheet
     backgroundColor: Colors.transparent,
     showDragHandle: false,
@@ -721,6 +724,7 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
               ],
             ),
           ),
+          _NowStrip(controller: _c),
           _NoticeOffer(controller: _c),
           Expanded(
             // Part of the field as far as a touch goes: pressing a message to drag it sideways or hold it must not put
@@ -1407,6 +1411,82 @@ class _MuteButton extends StatelessWidget {
   }
 }
 
+/// The song the room is on, at the top of the chat, so that it stays in sight while people talk: its cover, its name, and
+/// the button to play or pause. Nothing while no song is on.
+class _NowStrip extends StatelessWidget {
+  const _NowStrip({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    // With the keyboard up there is little room for the messages: the strip waits
+    if (MediaQuery.viewInsetsOf(context).bottom > 0) {
+      return const SizedBox.shrink();
+    }
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final current = controller.snapshot.current;
+        if (current == null) return const SizedBox.shrink();
+        return Container(
+          key: const ValueKey('chat-now'),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+          decoration: BoxDecoration(
+            color: p.veil,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Artwork(
+                url: current.thumb == null
+                    ? null
+                    : barlessThumbnail(current.thumb!),
+                size: 38,
+                radius: 9,
+                wide: true,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      current.title,
+                      style: theme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      current.artist,
+                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              ListenableBuilder(
+                listenable: controller.playState,
+                builder: (context, _) => PlayPauseButton(
+                  playing: controller.isPlaying,
+                  starting: controller.isStarting,
+                  onPressed: controller.togglePlay,
+                  size: 36,
+                  filled: false,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Offers the notices of the chat to a person who has not turned them on, at the place where a message matters: here.
 /// Once the person says "not now" the offer waits a week.
 class _NoticeOffer extends StatefulWidget {
@@ -1446,32 +1526,42 @@ class _NoticeOfferState extends State<_NoticeOffer> {
         return Container(
           key: const ValueKey('notice-offer'),
           margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+          padding: const EdgeInsets.fromLTRB(12, 4, 2, 4),
           decoration: BoxDecoration(
             color: p.primary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             children: [
+              Icon(Icons.notifications_none_rounded, size: 18, color: p.primary),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   S.noticesOffer,
                   style: Theme.of(context).textTheme.bodyMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              TextButton(
-                onPressed: () {
-                  settings.noticeOfferedAt = DateTime.now();
-                  setState(() => _hidden = true);
-                },
-                child: Text(S.noticesNotNow),
               ),
               FilledButton(
                 onPressed: () {
                   setState(() => _hidden = true);
                   widget.controller.setNotifications(true);
                 },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                ),
                 child: Text(S.noticesTurnOn),
+              ),
+              IconButton(
+                onPressed: () {
+                  settings.noticeOfferedAt = DateTime.now();
+                  setState(() => _hidden = true);
+                },
+                tooltip: S.noticesNotNow,
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.close_rounded, size: 18, color: p.textTertiary),
               ),
             ],
           ),

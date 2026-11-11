@@ -35,7 +35,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.textContaining('listening'));
+    await tester.tap(find.byKey(const ValueKey('person-b')));
     await tester.pumpAndSettle();
     return backend;
   }
@@ -134,7 +134,10 @@ void main() {
     (tester) async {
       await openMembers(tester, ownerId: 'me');
       await openProfile(tester, 'me');
-      expect(find.text(S.you), findsOneWidget);
+      expect(
+        find.descendant(of: profile, matching: find.text(S.you)),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('profile-view-remove')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('profile-view-edit')));
       await tester.pumpAndSettle();
