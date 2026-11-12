@@ -28,6 +28,25 @@ class PlayerSheetController extends ChangeNotifier {
 
   /// The mini player's capsule, which the sheet grows out of.
   final miniBar = GlobalKey();
+
+  /// Whether a card on the page in front already shows the song and its button, so that the mini player gives way.
+  final miniHidden = ValueNotifier<bool>(false);
+
+  final _hiding = <Object>{};
+
+  /// Whoever shows the song on its page says so with itself as [owner]; the mini player gives way while any of them does,
+  /// whichever order a card that goes and the one that takes its place say it in. Asked from a frame's callback, which
+  /// can come after the sheet is gone.
+  void hideMini(Object owner, bool hide) {
+    if (_disposed) return;
+    if (hide) {
+      _hiding.add(owner);
+    } else {
+      _hiding.remove(owner);
+    }
+    miniHidden.value = _hiding.isNotEmpty;
+  }
+
   final pageCover = GlobalKey();
   final pageRoot = GlobalKey();
 
@@ -134,6 +153,7 @@ class PlayerSheetController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     position.dispose();
+    miniHidden.dispose();
     super.dispose();
   }
 

@@ -32,12 +32,25 @@ String barlessThumbnail(String url) => switch (_videoId(Uri.tryParse(url))) {
   _ => url,
 };
 
+/// YouTube's 4:3 thumbnails (`hqdefault`, `sddefault`, `default`, `0`) hold the 16:9 picture between two black bars,
+/// a 1/8 of the height each, which a square crop keeps.
+bool _hasBars(Uri? uri) {
+  if (_videoId(uri) == null) return false;
+  final name = uri!.pathSegments.last.split('.').first;
+  return const {'hqdefault', 'sddefault', 'default', '0'}.contains(name);
+}
+
+/// A cover this small or smaller takes the thumbnail that has no bars; a bigger one keeps its picture and shows only
+/// the part between the bars, with no second request.
+const double _smallCover = 72;
+
 /// Cover image with rounded corners; shows a soft pink tile while loading or when there is none.
 class Artwork extends StatelessWidget {
   const Artwork({
     super.key,
     required this.url,
     required this.size,
+    this.width,
     this.radius = SapocheTheme.artworkRadius,
     this.sharp = false,
     this.wide = false,
@@ -46,6 +59,10 @@ class Artwork extends StatelessWidget {
 
   final String? url;
   final double size;
+
+  /// For a wide box (a video's 16:9 card) instead of a square one: [size] is then its height. A 4:3 thumbnail fills it
+  /// by its width and so loses its two bars on its own.
+  final double? width;
   final double radius;
 
   /// Fetch the largest picture available and decode it whole, for covers shown big. Small covers
@@ -63,18 +80,25 @@ class Artwork extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final placeholder = ColoredBox(
-      color: p.primaryContainer,
-      child: Icon(
-        Icons.music_note_rounded,
-        color: p.primary.withValues(alpha: 0.6),
-        size: size * 0.42,
+    // Told to fill, not just asked to: in a cross-fade the switcher's stack loosens what its children are given, and a
+    // placeholder that is only asked would shrink to the note, with square corners, in the middle of the cover's place
+    final placeholder = SizedBox.expand(
+      child: ColoredBox(
+        color: p.primaryContainer,
+        child: Center(
+          child: Icon(
+            Icons.music_note_rounded,
+            color: p.primary.withValues(alpha: 0.6),
+            size: size * 0.42,
+          ),
+        ),
       ),
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: SizedBox.square(
-        dimension: size,
+      child: SizedBox(
+        width: width ?? size,
+        height: size,
         child: crossfade
             ? AnimatedSwitcher(
                 duration: Motion.of(context, Motion.medium),
@@ -106,9 +130,24 @@ class Artwork extends StatelessWidget {
     Widget placeholder, {
     ImageErrorWidgetBuilder? onError,
   }) {
-    final pixels = (size * MediaQuery.devicePixelRatioOf(context)).round();
-    // A wide picture cropped square would come out short of pixels if it were decoded by width
-    final byHeight = wide || _videoId(Uri.tryParse(address)) != null;
+    var uri = Uri.tryParse(address);
+    var bars = !sharp && width == null && _hasBars(uri);
+    if (bars && size <= _smallCover) {
+      address = barlessThumbnail(address);
+      uri = Uri.tryParse(address);
+      bars = false;
+    }
+    // Zoomed in to the picture between the bars, so it is decoded with a third more pixels
+    final pixels =
+        ((width ?? size) *
+                MediaQuery.devicePixelRatioOf(context) *
+                (bars ? 4 / 3 : 1))
+            .round();
+    // A wide picture cropped square would come out short of pixels if it were decoded by width; in a wide box it is
+    // decoded by its width
+    final byHeight = width == null && (wide || _videoId(uri) != null);
+    Widget crop(Widget picture) =>
+        bars ? Transform.scale(scale: 4 / 3, child: picture) : picture;
     return Image(
       image: ResizeImage.resizeIfNeeded(
         sharp || byHeight ? null : pixels,
@@ -118,7 +157,7 @@ class Artwork extends StatelessWidget {
       fit: BoxFit.cover,
       errorBuilder: onError ?? (_, _, _) => placeholder,
       frameBuilder: (context, child, frame, sync) => sync
-          ? child
+          ? crop(child)
           : Stack(
               fit: StackFit.expand,
               children: [
@@ -126,7 +165,7 @@ class Artwork extends StatelessWidget {
                 AnimatedOpacity(
                   opacity: frame == null ? 0 : 1,
                   duration: const Duration(milliseconds: 300),
-                  child: child,
+                  child: crop(child),
                 ),
               ],
             ),

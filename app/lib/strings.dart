@@ -74,6 +74,7 @@ abstract final class S {
   );
   static String get addSongs => _t('Add songs', 'Thêm bài hát');
   static String get shuffle => _t('Shuffle', 'Trộn bài');
+  static String get repeat => _t('Repeat', 'Lặp lại');
   static String get shuffleOn => _t('Shuffle on', 'Đang bật trộn bài');
   static String get shuffleOff => _t('Shuffle off', 'Đang tắt trộn bài');
   static String get upNextShuffled =>
@@ -447,6 +448,7 @@ abstract final class S {
     'Xóa “$name”? Không thể hoàn tác.',
   );
   static String get delete => _t('Delete', 'Xóa');
+  static String get findSongs => _t('Find songs', 'Tìm bài hát');
   static String get emptyPlaylistTitle =>
       _t('This playlist is empty', 'Danh sách phát này trống');
   static String get emptyPlaylistBody => _t(
@@ -694,6 +696,8 @@ abstract final class S {
         : '$minutes phút',
   );
   static String get sleepSongEnd => _t('End of this song', 'Hết bài này');
+  static String get sleepCustom => _t('Another time…', 'Số phút khác…');
+  static String get sleepCustomHint => _t('Minutes', 'Số phút');
   static String get sleepOff => _t('Turn off timer', 'Tắt hẹn giờ');
   static String get sleepInRoom => _t(
     'In a room only this phone stops; the room plays on without you.',
@@ -711,8 +715,8 @@ abstract final class S {
   static String get pausedHere =>
       _t('Paused here · room plays on', 'Đã dừng ở máy này · phòng vẫn phát');
   static String get catchingUp => _t('Catching up', 'Đang bắt kịp');
-  static String weakNetwork(String behind) =>
-      _t('Weak network · $behind behind', 'Mạng yếu · chậm $behind');
+  static String get weakNetworkLabel => _t('Weak network', 'Mạng yếu');
+  static String behindBy(String lag) => _t('$lag behind', 'chậm $lag');
   static String get soloOut => _t('Waiting for others', 'Đang đợi người khác');
   static String get onYourOwn => _t('On your own', 'Nghe riêng');
   static String get rejoin => _t('Rejoin', 'Nghe cùng lại');
@@ -1261,7 +1265,7 @@ abstract final class S {
   );
   static String get roomAutoplayQueued => _t(
     'Lined up by autoplay. They play after your queue and are not part of it: songs you add go first.',
-    'Do tự phát xếp sẵn. Chúng phát sau hàng đợi của bạn và không thuộc hàng đợi: bài bạn thêm sẽ được phát trước.',
+    'Tự phát đã xếp sẵn những bài này. Chúng phát sau hàng đợi của bạn và không thuộc hàng đợi, nên bài bạn thêm sẽ phát trước.',
   );
   static String get nothingAfter =>
       _t('Nothing is queued after this song.', 'Không có bài nào sau bài này.');
@@ -1291,6 +1295,8 @@ abstract final class S {
   static String get kindSong => _t('Song', 'Bài hát');
   static String get kindVideo => _t('Video', 'Video');
   static String get goToAlbum => _t('Go to album', 'Đến trang album');
+  static String get shareSong => _t('Share', 'Chia sẻ');
+  static String get noAlbum => _t('This song is not on an album', 'Bài này không có trong album nào');
   static String get seeAll => _t('See all', 'Xem tất cả');
   static String get albums => _t('Albums', 'Album');
   static String get singlesAndEps => _t('Singles & EPs', 'Đĩa đơn & EP');

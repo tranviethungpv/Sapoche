@@ -71,7 +71,8 @@ void main() {
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.byType(MiniPlayer));
+    await goHome(tester);
+    await tapMiniPlayer(tester);
     await tester.pumpAndSettle();
     expect(find.byType(NowPlayingPage), findsOneWidget);
 

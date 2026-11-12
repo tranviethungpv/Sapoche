@@ -213,16 +213,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// The person's own chips: each mix made for them, the mix for this time of day, the favourites not heard for a long
-  /// while and something new. A list of fewer than three songs is not worth a chip.
+  /// The person's own chips: the mix for this time of day, the favourites not heard for a long while and something new.
+  /// A list of fewer than three songs is not worth a chip. The mixes made for them are not here: they are the cards of
+  /// "Made for you" just below, and the same two names twice in a row read as a mistake.
   List<PersonalChip> _personalChips(HomeShelves home) {
     final chips = [
-      for (final mix in home.dailyMixes)
-        PersonalChip(
-          id: 'mix-${mix.number}',
-          label: S.dailyMix(mix.number),
-          tracks: mix.tracks,
-        ),
       PersonalChip(
         id: 'context',
         label: S.chipContext(home.contextBucket),

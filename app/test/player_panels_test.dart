@@ -4,7 +4,6 @@ import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/ui/player_sheet.dart';
-import 'package:sapoche/ui/widgets/mini_player.dart';
 import 'package:sapoche/ui/widgets/player_backdrop.dart';
 import 'package:sapoche/ui/widgets/volume_bar.dart';
 
@@ -27,7 +26,7 @@ Future<FakeBackend> openPlayer(
   );
   await tester.pump(const Duration(milliseconds: 500));
   await tester.pump(const Duration(milliseconds: 500));
-  await tester.tap(find.byType(MiniPlayer));
+  await tapMiniPlayer(tester);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 700));
   return backend;
@@ -516,7 +515,8 @@ void main() {
         backend.radioResult = const SongRadio(tracks: [song]);
         await openPanel(tester, 'Up Next');
 
-        expect(find.text('Autoplay'), findsOneWidget);
+        // The heading and the button, which now says it too
+        expect(find.text('Autoplay'), findsNWidgets(2));
         expect(find.text('Nothing is queued after this song.'), findsOneWidget);
         await tester.tap(find.byTooltip('Autoplay'));
         await tester.pump();
@@ -534,7 +534,8 @@ void main() {
         backend.radioResult = const SongRadio(tracks: [song]);
         await openPanel(tester, 'Up Next');
 
-        expect(find.text('Autoplay'), findsOneWidget);
+        // The heading and the button, which now says it too
+        expect(find.text('Autoplay'), findsNWidgets(2));
         expect(
           find.text(
             'The room keeps playing similar songs when the queue runs out.',

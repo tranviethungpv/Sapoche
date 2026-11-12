@@ -469,6 +469,10 @@ final class LyricsTests: XCTestCase {
         XCTAssertEqual(Lrc.parse("[00:05.5]\n[00:06.01]x"), [LyricLine(ms: 5500, text: ""), LyricLine(ms: 6010, text: "x")])
     }
 
+    func testTheTimesOfSingleWordsAreNotPartOfTheWords() {
+        XCTAssertEqual(Lrc.parse("[00:35.34]<00:35.34>I <00:36.66>just <00:36.98>wanna <00:37.50>"), [LyricLine(ms: 35_340, text: "I just wanna")])
+    }
+
     func testTextThatIsNotLyricsWithTimesGivesNoLines() {
         XCTAssertEqual(Lrc.parse("Just words\nmore words"), [])
     }

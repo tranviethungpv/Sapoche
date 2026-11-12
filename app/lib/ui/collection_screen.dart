@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,8 +12,11 @@ import 'home_shell.dart';
 import 'player/player_message.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
+import 'widgets/download_actions.dart';
+import 'widgets/menu_lines.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/page_width.dart';
+import 'widgets/title_on_scroll.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
 import 'widgets/player_backdrop.dart';
@@ -85,7 +89,11 @@ class _CollectionScreenState extends State<CollectionScreen> {
             Padding(
               padding: SideInset.paddingOf(context),
               child: page != null
-                  ? _Content(page: page)
+                  ? TitleOnScroll(
+                      title: page.title,
+                      builder: (context, title) =>
+                          _Content(page: page, title: title),
+                    )
                   : Scaffold(
                       appBar: AppBar(leading: const RoundBackButton()),
                       body: async.hasError
@@ -177,9 +185,12 @@ class CollectionCover extends StatelessWidget {
 }
 
 class _Content extends StatefulWidget {
-  const _Content({required this.page});
+  const _Content({required this.page, required this.title});
 
   final CollectionPage page;
+
+  /// The name of the page for the app bar, which shows it once the page has scrolled.
+  final Widget title;
 
   @override
   State<_Content> createState() => _ContentState();
@@ -308,6 +319,8 @@ class _ContentState extends State<_Content> {
         await queueTracks(context, songs, playNext: true);
       case 'queue':
         await queueTracks(context, songs);
+      case 'download':
+        await startDownload(context, songs);
       default:
         final messenger = ScaffoldMessenger.of(context);
         final saved = await AppScope.of(context).library
@@ -402,11 +415,14 @@ class _ContentState extends State<_Content> {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 onSelected: _menu,
-                itemBuilder: (context) => [
-                  PopupMenuItem(value: 'next', child: Text(S.playNext)),
-                  PopupMenuItem(value: 'queue', child: Text(S.addToQueue)),
-                  PopupMenuItem(value: 'save', child: Text(S.saveAsPlaylist)),
-                ],
+                itemBuilder: (context) => popupLines([
+                  MenuLine('next', Icons.playlist_play_rounded, S.playNext),
+                  MenuLine('queue', Icons.queue_music_rounded, S.addToQueue),
+                  MenuLine('save', Icons.library_add_outlined, S.saveAsPlaylist),
+                  // A browser downloads nothing
+                  if (!kIsWeb)
+                    MenuLine('download', Icons.download_rounded, S.downloadAll),
+                ]),
               ),
             ),
             if (_page.description != null) _description(context, wide: wide),
@@ -451,7 +467,7 @@ class _ContentState extends State<_Content> {
         // take the rest of the width, as on Apple Music's web page, instead of a column in the middle with the sides empty
         if (split != null) {
           return Scaffold(
-            appBar: AppBar(leading: const RoundBackButton()),
+            appBar: AppBar(leading: const RoundBackButton(), title: widget.title),
             body: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: splitMax),
@@ -503,7 +519,7 @@ class _ContentState extends State<_Content> {
           );
         }
         return Scaffold(
-          appBar: AppBar(leading: const RoundBackButton()),
+          appBar: AppBar(leading: const RoundBackButton(), title: widget.title),
           body: CustomScrollView(
             controller: _scroll,
             physics: const BouncingScrollPhysics(

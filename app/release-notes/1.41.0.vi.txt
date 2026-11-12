@@ -1,0 +1,7 @@
+Chỉnh kỹ hơn: bìa, menu bài hát, hàng đợi và trình phát
+- Bìa bài hát không còn dải đen, các kệ Videos hiện nguyên ảnh 16:9. Bìa Mix mềm hơn.
+- Menu của bài hát giờ là một tờ có bìa và biểu tượng ở mỗi dòng, thêm Tới album và Chia sẻ. Album và playlist tải được cả loạt.
+- Các nút hàng đợi có chữ Trộn bài, Lặp lại và Tự động phát, hàng đợi rộng hơn. Hàng đợi trống thì báo rõ, Bài đã thích trống thì chỉ cách thêm bài.
+- Ở trình phát, tên nghệ sĩ mở trang của họ, chữ và biểu tượng dễ đọc trên mọi bìa, và lời bài hát không còn hiện dấu thời gian giữa các chữ.
+- Trong phòng, nhãn đồng bộ chỉ còn chữ (số nằm ở danh sách người nghe) và biến mất khi bạn nghe một mình. Mini player nhường chỗ khi thẻ bài đang phát đã nằm trên trang Phòng.
+- Mini player có vạch tiến độ, hẹn giờ ngủ nhận số phút tuỳ ý, và tên nghệ sĩ ở lại trên thanh khi bạn cuộn.

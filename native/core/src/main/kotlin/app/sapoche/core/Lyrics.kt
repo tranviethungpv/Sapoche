@@ -25,14 +25,17 @@ data class Lyrics(val lines: List<LyricLine>, val plain: String?) {
     val synced get() = lines.isNotEmpty()
 }
 
-/** Reads the `[mm:ss.xx] words` format that lyrics with times come in. */
+/** Reads the `[mm:ss.xx] words` format that lyrics with times come in; the times of single words are left out. */
 object Lrc {
     private val TAG = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?]""")
+
+    /** The time of each word, `<mm:ss.xx>`, that some lyrics carry inside a line: not shown. */
+    private val WORD_TAG = Regex("""<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>""")
 
     /** Lines in time order. A line with several times gives one line for each; tags like `[ar:Name]` are skipped. */
     fun parse(text: String): List<LyricLine> = text.lineSequence().flatMap { line ->
         val tags = TAG.findAll(line).toList()
-        val words = TAG.replace(line, "").trim()
+        val words = WORD_TAG.replace(TAG.replace(line, ""), "").trim()
         tags.map { tag ->
             val (minutes, seconds, fraction) = tag.destructured
             // ".5" is half a second and ".500" too

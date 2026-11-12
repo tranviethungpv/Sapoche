@@ -6,6 +6,7 @@ import '../strings.dart';
 import '../theme/palette.dart';
 import '../theme/theme.dart';
 import 'member_profile_sheet.dart';
+import 'now_playing_page.dart' show syncReading;
 import 'scope.dart';
 import 'widgets/avatars.dart';
 import 'widgets/motion.dart';
@@ -56,6 +57,7 @@ class _MembersSheet extends StatelessWidget {
                   _MemberRow(
                     member: member,
                     isYou: member.id == snapshot.you,
+                    sync: member.id == snapshot.you ? controller : null,
                     loading: snapshot.phase == 'preparing' && !member.ready,
                     onRemove: snapshot.iOwn && member.id != snapshot.you
                         ? () => confirmRemoveMember(context, controller, member)
@@ -134,11 +136,15 @@ class _MemberRow extends StatelessWidget {
     required this.member,
     required this.isYou,
     required this.loading,
+    this.sync,
     this.onRemove,
   });
 
   final Member member;
   final bool isYou;
+
+  /// For the person's own row: where the number behind the room's sync state is told (how far off this device is).
+  final RoomController? sync;
   final bool loading;
 
   /// Set when this device may remove the member.
@@ -169,27 +175,46 @@ class _MemberRow extends StatelessWidget {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Flexible(
-                    child: Text(
-                      isYou ? '${member.name} (${S.you})' : member.name,
-                      style: theme.titleMedium?.copyWith(
-                        color: member.away ? p.textTertiary : p.text,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          isYou ? '${member.name} (${S.you})' : member.name,
+                          style: theme.titleMedium?.copyWith(
+                            color: member.away ? p.textTertiary : p.text,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                      if (member.owner) ...[
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.workspace_premium_rounded,
+                          size: 16,
+                          color: p.primary,
+                          semanticLabel: S.owner,
+                        ),
+                      ],
+                    ],
                   ),
-                  if (member.owner) ...[
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.workspace_premium_rounded,
-                      size: 16,
-                      color: p.primary,
-                      semanticLabel: S.owner,
+                  if (sync case final controller?)
+                    ListenableBuilder(
+                      listenable: controller.player,
+                      builder: (context, _) {
+                        final number = syncReading(controller, p)?.number;
+                        if (number == null) return const SizedBox.shrink();
+                        return Text(
+                          number,
+                          style: theme.bodySmall?.copyWith(
+                            color: p.textSecondary,
+                          ),
+                        );
+                      },
                     ),
-                  ],
                 ],
               ),
             ),

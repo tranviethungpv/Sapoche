@@ -4,6 +4,7 @@ import '../../data/models.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
+import 'motion.dart';
 import 'playlist_cover.dart';
 import 'text_dialog.dart';
 
@@ -15,6 +16,7 @@ Future<void> showAddToPlaylist(BuildContext context, List<Track> tracks) async {
     useRootNavigator: true,
     context: context,
     isScrollControlled: true,
+    sheetAnimationStyle: Motion.sheet(context),
     builder: (_) => _Picker(playlists: library.playlists),
   );
   if (choice == null) return;

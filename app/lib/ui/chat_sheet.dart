@@ -34,6 +34,7 @@ import 'widgets/linked_text.dart';
 import 'widgets/motion.dart';
 import 'widgets/song_link_card.dart';
 import 'widgets/reactions.dart';
+import 'widgets/menu_lines.dart';
 import 'widgets/staged_photos.dart';
 import 'widgets/sticker_image.dart';
 import 'widgets/transport.dart';
@@ -1396,15 +1397,27 @@ class _MuteButton extends StatelessWidget {
       ),
       itemBuilder: (context) => [
         if (until != null)
-          PopupMenuItem(value: _Mute.off, child: Text(S.noticesUnmute))
+          PopupMenuItem(
+            value: _Mute.off,
+            child: MenuLabel(Icons.notifications_active_outlined, S.noticesUnmute),
+          )
         else ...[
-          PopupMenuItem(value: _Mute.hour, child: Text(S.noticesMute1h)),
-          PopupMenuItem(value: _Mute.eightHours, child: Text(S.noticesMute8h)),
+          PopupMenuItem(
+            value: _Mute.hour,
+            child: MenuLabel(Icons.schedule_rounded, S.noticesMute1h),
+          ),
+          PopupMenuItem(
+            value: _Mute.eightHours,
+            child: MenuLabel(Icons.bedtime_outlined, S.noticesMute8h),
+          ),
           PopupMenuItem(
             value: _Mute.tomorrow,
-            child: Text(S.noticesMuteTomorrow),
+            child: MenuLabel(Icons.wb_sunny_outlined, S.noticesMuteTomorrow),
           ),
-          PopupMenuItem(value: _Mute.always, child: Text(S.noticesMuteAlways)),
+          PopupMenuItem(
+            value: _Mute.always,
+            child: MenuLabel(Icons.notifications_off_outlined, S.noticesMuteAlways),
+          ),
         ],
       ],
     );

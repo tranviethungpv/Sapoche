@@ -1111,6 +1111,16 @@ class RoomController extends ChangeNotifier {
     return _run(() => _backend.share(S.inviteText(code, inviteLink(code))));
   }
 
+  /// Sends a song, its name and a link that opens it, through the share sheet.
+  Future<void> shareSong(Track song) {
+    final by = song.artist.isEmpty ? '' : ' · ${song.artist}';
+    return _run(
+      () => _backend.share(
+        '${song.title}$by\nhttps://music.youtube.com/watch?v=${song.videoId}',
+      ),
+    );
+  }
+
   // ------------------------------------------------------------------ transport
 
   Future<void> togglePlay() {

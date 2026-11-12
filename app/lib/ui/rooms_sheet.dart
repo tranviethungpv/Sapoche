@@ -13,6 +13,7 @@ import 'scope.dart';
 import 'settings_page.dart' show openSettings;
 import 'setup_dialog.dart';
 import 'widgets/motion.dart';
+import 'widgets/sheet_tile.dart';
 import 'widgets/qr_code_view.dart';
 import 'widgets/text_dialog.dart';
 
@@ -452,7 +453,7 @@ class _InRoomState extends State<_InRoom> {
               child: FilledButton.icon(
                 onPressed: room.shareInvite,
                 icon: const Icon(Icons.ios_share_rounded, size: 18),
-                label: Text(S.invite),
+                label: FittedBox(fit: BoxFit.scaleDown, child: Text(S.invite, maxLines: 1)),
               ),
             ),
             const SizedBox(width: 10),
@@ -460,7 +461,8 @@ class _InRoomState extends State<_InRoom> {
               child: OutlinedButton.icon(
                 onPressed: () => _copy(context, link, S.linkCopied),
                 icon: const Icon(Icons.link_rounded, size: 18),
-                label: Text(S.copyLink),
+                // One line, smaller when the words are long (Vietnamese): a button that breaks its label looks broken
+                label: FittedBox(fit: BoxFit.scaleDown, child: Text(S.copyLink, maxLines: 1)),
               ),
             ),
           ],
@@ -484,7 +486,7 @@ class _InRoomState extends State<_InRoom> {
         Text(S.roomSettings, style: theme.headlineSmall),
         const SizedBox(height: 8),
         // Every row has the same make: an icon, what it is, a line on what it does, and its control at the end
-        _SettingTile(
+        SheetTile(
           icon: Icons.headphones_rounded,
           title: S.listenTogether,
           help: snapshot.solo ? S.listenTogetherOff : S.listenTogetherOn,
@@ -492,7 +494,7 @@ class _InRoomState extends State<_InRoom> {
           onChanged: (together) => room.setSolo(!together),
         ),
         if (snapshot.iOwn)
-          _SettingTile(
+          SheetTile(
             icon: Icons.playlist_add_rounded,
             title: S.guestsAddOnly,
             help: S.guestsAddOnlyHelp,
@@ -502,7 +504,7 @@ class _InRoomState extends State<_InRoom> {
           ),
         // A server older than protocol 20 cannot wait for anybody
         if (snapshot.iOwn && snapshot.roomWaitWeak != null)
-          _SettingTile(
+          SheetTile(
             icon: Icons.network_check_rounded,
             title: S.waitWeak,
             help: S.waitWeakHelp,
@@ -512,21 +514,21 @@ class _InRoomState extends State<_InRoom> {
         if (room.hasChat && (snapshot.encrypted || snapshot.iOwn))
           EncryptionCard(room: room),
         if (snapshot.canControl)
-          _SettingTile(
+          SheetTile(
             icon: Icons.edit_outlined,
             title: S.roomName,
             help: snapshot.name ?? S.addRoomName,
             onTap: () => _rename(context),
             chevron: true,
           ),
-        _SettingTile(
+        SheetTile(
           icon: Icons.people_outline_rounded,
           title: S.peopleInRoom,
           help: S.listening(snapshot.listeningCount),
           onTap: () => showMembersSheet(context),
           chevron: true,
         ),
-        _SettingTile(
+        SheetTile(
           icon: Icons.logout_rounded,
           title: S.leaveRoom,
           destructive: true,
@@ -582,95 +584,6 @@ class _InRoomState extends State<_InRoom> {
   }
 }
 
-/// One row of the room's settings, the same make for each: an icon, what it is, a line on what it does, and at the end
-/// its switch, a chevron, or a [trailing] widget of its own. With [onChanged] the whole row is the switch.
-class _SettingTile extends StatelessWidget {
-  const _SettingTile({
-    required this.icon,
-    required this.title,
-    this.help,
-    this.value,
-    this.onChanged,
-    this.onTap,
-    this.chevron = false,
-    this.destructive = false,
-    this.trailing,
-    this.below,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? help;
-
-  /// A switch, when there is [onChanged].
-  final bool? value;
-  final ValueChanged<bool>? onChanged;
-  final VoidCallback? onTap;
-  final bool chevron;
-
-  /// Leaving: in the colour of a warning.
-  final bool destructive;
-  final Widget? trailing;
-
-  /// Under the line of help, for a link.
-  final Widget? below;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final theme = Theme.of(context).textTheme;
-    final color = destructive ? p.error : p.text;
-    final end =
-        trailing ??
-        (onChanged != null
-            ? Switch(value: value ?? false, onChanged: onChanged)
-            : chevron
-            ? Icon(Icons.chevron_right_rounded, color: p.textTertiary)
-            : null);
-    final row = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 28,
-            child: Icon(
-              icon,
-              size: 24,
-              color: destructive ? p.error : p.textSecondary,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: theme.titleMedium?.copyWith(color: color)),
-                if (help != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    help!,
-                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                  ),
-                ],
-                ?below,
-              ],
-            ),
-          ),
-          if (end != null) ...[const SizedBox(width: 12), end],
-        ],
-      ),
-    );
-    // A screen reader reads the switch together with what it is for
-    return MergeSemantics(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onChanged != null ? () => onChanged!(!(value ?? false)) : onTap,
-        child: row,
-      ),
-    );
-  }
-}
-
 /// Whether the room's chat is end-to-end encrypted: a row of the settings, with a sentence and "Learn more" for the whole
 /// story. The owner can turn it on, for good; once it is on, a device that has not the key (it joined without the link)
 /// is told how to get it.
@@ -694,7 +607,7 @@ class EncryptionCard extends StatelessWidget {
     final noKey = on && !snapshot.encryptionKey;
     return KeyedSubtree(
       key: const ValueKey('encryption-card'),
-      child: _SettingTile(
+      child: SheetTile(
         icon: Icons.lock_outline_rounded,
         title: S.encryptionTitle,
         help: noKey ? S.encryptionNoKey : S.encryptionShort,

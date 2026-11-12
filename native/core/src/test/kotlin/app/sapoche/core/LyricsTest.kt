@@ -29,6 +29,11 @@ class LyricsTest {
     }
 
     @Test
+    fun `the times of single words are not part of the words`() {
+        assertEquals(listOf(LyricLine(35_340, "I just wanna")), Lrc.parse("[00:35.34]<00:35.34>I <00:36.66>just <00:36.98>wanna <00:37.50>"))
+    }
+
+    @Test
     fun `text that is not lyrics with times gives no lines`() {
         assertEquals(emptyList(), Lrc.parse("Just words\nmore words"))
     }

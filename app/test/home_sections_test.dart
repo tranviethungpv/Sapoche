@@ -347,20 +347,42 @@ void main() {
       chips: [MoodChip(label: 'Relax', params: 'p-relax')],
     );
 
-    testWidgets('are one for each mix, and come before the moods', (
+    void ownSongs(FakeBackend b) {
+      b.likedSongs = [
+        for (var i = 0; i < 3; i++) song('fav${i}aaaaaaaa', 'Old $i', 'Cher'),
+      ];
+      b.discoverSongs = [
+        for (var i = 0; i < 3; i++)
+          song('new${i}aaaaaaaa', 'New $i', 'Newcomer'),
+      ];
+    }
+
+    testWidgets('are not one for each mix, which have their cards just below', (
       tester,
     ) async {
       await openHome(
         tester,
         prepare: (b) {
           _twoTastes(b);
+          ownSongs(b);
           b.homeResult = moods();
         },
       );
-      expect(find.byKey(const ValueKey('chip-mix-1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('chip-mix-2')), findsOneWidget);
+      expect(find.text('Made for you'), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-mix-1')), findsNothing);
+      expect(find.byKey(const ValueKey('chip-mix-2')), findsNothing);
+    });
+
+    testWidgets('come before the moods', (tester) async {
+      await openHome(
+        tester,
+        prepare: (b) {
+          ownSongs(b);
+          b.homeResult = moods();
+        },
+      );
       final own = tester
-          .getTopLeft(find.byKey(const ValueKey('chip-mix-2')))
+          .getTopLeft(find.byKey(const ValueKey('chip-forgotten')))
           .dx;
       final mood = tester
           .getTopLeft(find.byKey(const ValueKey('mood-p-relax')))
@@ -374,34 +396,34 @@ void main() {
       await openHome(
         tester,
         prepare: (b) {
-          _twoTastes(b);
+          ownSongs(b);
           b.musicFailWith = StateError('offline');
         },
       );
-      expect(find.byKey(const ValueKey('chip-mix-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-forgotten')), findsOneWidget);
     });
 
-    testWidgets('a touch plays the mix and is counted for next time', (
+    testWidgets('a touch plays the list and is counted for next time', (
       tester,
     ) async {
-      final backend = await openHome(tester, prepare: _twoTastes);
-      await tester.tap(find.byKey(const ValueKey('chip-mix-2')));
+      final backend = await openHome(tester, prepare: ownSongs);
+      await tester.tap(find.byKey(const ValueKey('chip-new')));
       await tester.pump();
       final added = backend.calls.firstWhere((c) => c.startsWith('addMany'));
-      expect(added, contains('drake'));
+      expect(added, contains('new0aaaaaaaa'));
       expect(backend.calls, contains('clear'));
       final prefs = await SharedPreferences.getInstance();
       final stored = jsonDecode(prefs.getString('shelf_stats')!) as Map;
       final part = stored[dayPartOf(DateTime.now())] as Map;
-      expect(part['me:mix-2'], [1, 1]);
-      expect(part['me:mix-1'], [1, 0]);
+      expect(part['me:new'], [1, 1]);
+      expect(part['me:forgotten'], [1, 0]);
     });
 
     testWidgets('go on the queue in a room instead of taking its place', (
       tester,
     ) async {
-      final backend = await openHome(tester, prepare: _twoTastes, inRoom: true);
-      await tester.tap(find.byKey(const ValueKey('chip-mix-1')));
+      final backend = await openHome(tester, prepare: ownSongs, inRoom: true);
+      await tester.tap(find.byKey(const ValueKey('chip-forgotten')));
       await tester.pump();
       expect(backend.calls, isNot(contains('clear')));
       expect(backend.calls.where((c) => c.startsWith('addMany')), isNotEmpty);
@@ -447,19 +469,15 @@ void main() {
       final counts = jsonEncode({
         for (final part in ['morning', 'afternoon', 'evening', 'night'])
           part: {
-            'me:mix-2': [40, 35],
-            'me:mix-1': [40, 0],
+            'me:new': [40, 35],
+            'me:forgotten': [40, 0],
           },
       });
-      await openHome(
-        tester,
-        prepare: _twoTastes,
-        prefs: {'shelf_stats': counts},
-      );
+      await openHome(tester, prepare: ownSongs, prefs: {'shelf_stats': counts});
       expect(
-        tester.getTopLeft(find.byKey(const ValueKey('chip-mix-2'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('chip-new'))).dx,
         lessThan(
-          tester.getTopLeft(find.byKey(const ValueKey('chip-mix-1'))).dx,
+          tester.getTopLeft(find.byKey(const ValueKey('chip-forgotten'))).dx,
         ),
       );
     });

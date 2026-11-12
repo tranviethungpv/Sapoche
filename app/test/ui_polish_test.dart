@@ -9,6 +9,7 @@ import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/music_models.dart';
 import 'package:sapoche/strings.dart';
 import 'package:sapoche/ui/cover_glow.dart';
+import 'package:sapoche/ui/widgets/mini_player.dart';
 import 'package:sapoche/ui/widgets/avatars.dart';
 import 'package:sapoche/ui/widgets/mix_cover.dart';
 import 'package:sapoche/ui/widgets/motion.dart';
@@ -66,6 +67,82 @@ void main() {
         expect(find.byKey(const ValueKey('room-alone')), findsNothing);
       },
     );
+
+    testWidgets(
+      'the mini player gives way while the card of the song is in view, and comes back as it scrolls off',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.emit(StateEvent(sampleRoom(members: three, songs: 30)));
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump(const Duration(milliseconds: 500));
+
+        double mini() => tester
+            .widget<AnimatedOpacity>(
+              find.ancestor(
+                of: find.byType(MiniPlayer),
+                matching: find.byType(AnimatedOpacity),
+              ),
+            )
+            .opacity;
+        expect(find.byKey(const ValueKey('room-now-card')), findsOneWidget);
+        expect(mini(), 0);
+        expect(
+          find
+              .ancestor(
+                of: find.byType(MiniPlayer),
+                matching: find.byType(IgnorePointer),
+              )
+              .first,
+          findsOneWidget,
+        );
+
+        await tester.drag(
+          find.byType(CustomScrollView).first,
+          const Offset(0, -1500),
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.byKey(const ValueKey('room-now-card')), findsNothing);
+        expect(mini(), 1);
+      },
+    );
+
+    testWidgets(
+      'the next song replaces the card and the mini player stays away',
+      (tester) async {
+        final (backend, _) = await pumpApp(tester);
+        backend.emit(StateEvent(sampleRoom(members: three)));
+        await tester.pump(const Duration(milliseconds: 500));
+        for (final index in [1, 2]) {
+          backend.emit(StateEvent(sampleRoom(members: three, index: index)));
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump(const Duration(milliseconds: 500));
+          final fade = tester.widget<AnimatedOpacity>(
+            find.ancestor(
+              of: find.byType(MiniPlayer),
+              matching: find.byType(AnimatedOpacity),
+            ),
+          );
+          expect(fade.opacity, 0, reason: 'song $index');
+        }
+      },
+    );
+
+    testWidgets('the mini player stays on the other tabs', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(members: three)));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text(S.tabHome));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      final fade = tester.widget<AnimatedOpacity>(
+        find.ancestor(
+          of: find.byType(MiniPlayer),
+          matching: find.byType(AnimatedOpacity),
+        ),
+      );
+      expect(fade.opacity, 1);
+    });
 
     testWidgets(
       'somebody who comes in later pops in, and those already there do not',
@@ -407,8 +484,19 @@ void main() {
     testWidgets(
       'a rule parts the chips that play from the moods that open a list',
       (tester) async {
-        await openHome(tester, prepare: oneTaste);
-        final own = tester.getRect(find.byKey(const ValueKey('chip-mix-1')));
+        await openHome(
+          tester,
+          prepare: (b) {
+            oneTaste(b);
+            b.likedSongs = [
+              for (var i = 0; i < 3; i++)
+                musicSong('fav${i}aaaaaaaa', 'Old $i', 'Cher'),
+            ];
+          },
+        );
+        final own = tester.getRect(
+          find.byKey(const ValueKey('chip-forgotten')),
+        );
         final mood = tester.getRect(find.byKey(const ValueKey('mood-p-relax')));
         // More than the 8 that parts chips of one kind: there is a rule between them
         expect(mood.left - own.right, greaterThan(16));

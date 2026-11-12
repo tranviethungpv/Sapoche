@@ -43,6 +43,16 @@ String formatCount(int n) {
 String formatViews(int count, {bool plays = false}) =>
     plays ? S.playCount(formatCount(count)) : S.viewCount(formatCount(count));
 
+/// [views] as [formatViews] wrote it, without the word after the number: "5.4M plays" is "5.4M".
+String shortViews(String views) {
+  for (final label in [S.playCount(''), S.viewCount('')]) {
+    if (views.endsWith(label)) {
+      return views.substring(0, views.length - label.length);
+    }
+  }
+  return views;
+}
+
 final _viewsEnd = RegExp(r'\b(views?|plays?|listens?)\s*$', caseSensitive: false);
 final _viewsSegment = RegExp(r'^\s*([\d.,]+)\s*([KMB])?\s*(views?|plays?|listens?)\s*$', caseSensitive: false);
 

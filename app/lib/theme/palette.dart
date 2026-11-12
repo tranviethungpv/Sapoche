@@ -71,6 +71,46 @@ class Palette {
   Color get veilStrong =>
       text.withValues(alpha: brightness == Brightness.light ? 0.08 : 0.10);
 
+  /// A name that opens a page, on the colours of a cover: the deep shade of the accent in the light theme, where the
+  /// accent itself is 2.8:1 on a peach cover. In the dark one the pale shade of it was near white and read as no link
+  /// at all; this pink has as much colour as keeps 4.5:1 on every ground (`test/on_cover_test.dart`).
+  Color get link => brightness == Brightness.light
+      ? onPrimaryContainer
+      : const Color(0xFFFFCFDD);
+
+  /// This palette for what stands straight on the colours of a cover, as in the full player: the quiet words and
+  /// icons are the text colour a little see-through instead of a grey. A grey was picked for a plain ground and fell to
+  /// 1.4:1 to 3:1 on the colours of a cover; the text colour over a cover keeps what it has over any ground the cover
+  /// can make (see `test/on_cover_test.dart`: words 4.5:1, icons 3:1).
+  Palette get onCover {
+    final pale = brightness == Brightness.light;
+    return Palette._(
+      brightness: brightness,
+      base: base,
+      washTop: washTop,
+      washMid: washMid,
+      surface: surface,
+      surfaceRaised: surfaceRaised,
+      primary: primary,
+      onPrimary: onPrimary,
+      primaryContainer: primaryContainer,
+      onPrimaryContainer: onPrimaryContainer,
+      text: text,
+      textSecondary: text.withValues(alpha: pale ? 0.88 : 0.9),
+      textTertiary: text.withValues(alpha: pale ? 0.68 : 0.72),
+      outline: outline,
+      outlineSoft: outlineSoft,
+      error: error,
+      success: success,
+      menu: menu,
+      dialog: dialog,
+      sheet: sheet,
+      snack: snack,
+      onSnack: onSnack,
+      accent: accent,
+    );
+  }
+
   static const light = Palette._(
     brightness: Brightness.light,
     base: Color(0xFFFFFFFF),

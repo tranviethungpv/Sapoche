@@ -27,6 +27,11 @@ class PlayerBackdrop extends StatefulWidget {
 
   final String? coverUrl;
 
+  /// What is at least over the colours of the cover in the dark theme. Without it a vivid cover (a pure magenta) makes
+  /// ground that white words are 2.8:1 on; with it every ground the glow can make is 4.5:1 for them
+  /// (`test/on_cover_test.dart`).
+  static const darkestVeil = Color(0x59000000);
+
   /// A fraction of the height: instead of the whole screen, the colours are a glow along the top that thins out to
   /// nothing by this much of the way down, the rest being left to what is behind. For the pages that are not about one
   /// cover (home, library, settings).
@@ -240,9 +245,9 @@ class _PlayerBackdropState extends State<PlayerBackdrop> {
                       Color(0x4DFFFFFF),
                     ]
                   : const [
-                      Color(0x14000000),
-                      Color(0x26000000),
-                      Color(0x73000000),
+                      PlayerBackdrop.darkestVeil,
+                      Color(0x66000000),
+                      Color(0x8C000000),
                     ],
             ),
           ),

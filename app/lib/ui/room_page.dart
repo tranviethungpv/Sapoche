@@ -19,6 +19,7 @@ import 'widgets/delete_background.dart';
 import 'widgets/motion.dart';
 import 'widgets/equalizer.dart';
 import 'widgets/link_banner.dart';
+import 'widgets/on_screen.dart';
 import 'widgets/queued_autoplay.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/qr_code_view.dart';
@@ -130,10 +131,12 @@ class _RoomPageState extends State<RoomPage> {
             controller,
             current,
             snapshot.inRoom
-                ? _NowCard(
-                    controller: controller,
-                    entry: current,
-                    addedBy: _adder(snapshot, current),
+                ? _HidesMiniPlayer(
+                    child: _NowCard(
+                      controller: controller,
+                      entry: current,
+                      addedBy: _adder(snapshot, current),
+                    ),
                   )
                 : ListenableBuilder(
                     listenable: controller.playState,
@@ -624,6 +627,62 @@ class _NowCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Tells the bars, while [child] is in view on the page that is showing, that it already shows the song and its
+/// button: the mini player gives way, and comes back as the card scrolls off.
+class _HidesMiniPlayer extends StatefulWidget {
+  const _HidesMiniPlayer({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_HidesMiniPlayer> createState() => _HidesMiniPlayerState();
+}
+
+class _HidesMiniPlayerState extends State<_HidesMiniPlayer> {
+  PlayerSheetController? _sheet;
+
+  /// What the last build wanted, which the sheet is told once the frame is done: several builds in one frame, or one
+  /// that comes before a callback has run, leave the last word to the last of them.
+  bool _wanted = false;
+  bool _told = false;
+
+  void _set(bool value) {
+    _wanted = value;
+    if (_told) return;
+    _told = true;
+    // After this frame: the bars are being built in it
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _told = false;
+      _sheet?.hideMini(this, mounted && _wanted);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sheet = PlayerSheetScope.of(context);
+  }
+
+  @override
+  void dispose() {
+    _set(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => OnScreen(
+    builder: (context, visible) {
+      // A tab that is not showing, or a page opened over this one, leaves the mini player as it is
+      _set(
+        visible &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+      );
+      return widget.child;
+    },
+  );
 }
 
 /// What the page of a room with nothing queued is: one card, as wide as a phone's even on a wide page. Alone in it, the

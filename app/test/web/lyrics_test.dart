@@ -24,6 +24,11 @@ void main() {
     expect(Lrc.parse(text).map((l) => l.text), [for (var i = 0; i < 40; i++) 'line $i']);
   });
 
+  test('the times of single words are not part of the words', () {
+    final lines = Lrc.parse('[00:35.34]<00:35.34>I <00:36.66>just <00:36.98>wanna <00:37.50>');
+    expect(lines.map((l) => (l.ms, l.text)), [(35340, 'I just wanna')]);
+  });
+
   test('text that is not lyrics with times gives no lines', () {
     expect(Lrc.parse('Just words\nmore words'), isEmpty);
   });

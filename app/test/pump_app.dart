@@ -20,6 +20,7 @@ import 'package:sapoche/data/sticker_store.dart';
 import 'package:sapoche/strings.dart';
 import 'package:sapoche/data/update_controller.dart';
 import 'package:sapoche/ui/scope.dart';
+import 'package:sapoche/ui/widgets/mini_player.dart';
 
 import 'fake_backend.dart';
 
@@ -106,8 +107,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
         chatVideoPicker: chatVideoPicker ?? (_) async => null,
         clipboardHasPhotos: clipboardHasPhotos ?? noPhotosOnClipboard,
         clipboardPhotos: clipboardPhotos ?? readNoClipboardPhotos,
-        photoSaver:
-            photoSaver ?? (_, _, _) async => PhotoSaveResult.saved,
+        photoSaver: photoSaver ?? (_, _, _) async => PhotoSaveResult.saved,
       ),
     ),
   );
@@ -147,4 +147,18 @@ class SteadyRandom implements Random {
 
   @override
   int nextInt(int max) => 0;
+}
+
+/// Opens the full player the way a person does: from the card of the song on the Room tab while it is in view and the mini
+/// player has given way to it, otherwise from the mini player.
+Future<void> tapMiniPlayer(WidgetTester tester) async {
+  final card = find.byKey(const ValueKey('room-now-card')).hitTestable();
+  await tester.tap(card.evaluate().isNotEmpty ? card : find.byType(MiniPlayer));
+}
+
+/// Goes to the Home tab, where the mini player is always in its place, and lets the page fade in.
+Future<void> goHome(WidgetTester tester) async {
+  await tester.tap(find.text(S.tabHome));
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pump(const Duration(milliseconds: 500));
 }

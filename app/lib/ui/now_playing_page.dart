@@ -13,6 +13,7 @@ import '../theme/palette.dart';
 import '../theme/theme.dart';
 import 'artist_page.dart';
 import 'chat_sheet.dart';
+import 'collection_screen.dart' show openCollection;
 import 'members_sheet.dart';
 import 'player/lyrics_view.dart';
 import 'player/up_next_view.dart';
@@ -26,6 +27,7 @@ import 'widgets/avatars.dart';
 import 'widgets/not_interested.dart';
 import 'widgets/like_button.dart';
 import 'widgets/marquee_text.dart';
+import 'widgets/menu_lines.dart';
 import 'widgets/motion.dart';
 import 'widgets/download_actions.dart';
 import 'widgets/playlist_picker.dart';
@@ -139,6 +141,22 @@ class _BodyState extends State<_Body> {
 
   PlayerSheetController? _sheet;
 
+  ThemeData? _baseTheme;
+  ThemeData? _coverTheme;
+
+  /// The theme of the app with the quiet colours made for what is on a cover. Made again only when the app's own
+  /// theme changes: a new one at every build would make everything under it build again.
+  ThemeData _onCoverTheme(BuildContext context) {
+    final base = Theme.of(context);
+    if (!identical(base, _baseTheme)) {
+      _baseTheme = base;
+      _coverTheme = base.copyWith(
+        extensions: [SapocheTheme(context.palette.onCover)],
+      );
+    }
+    return _coverTheme!;
+  }
+
   /// Back with lyrics or the queue shown goes to the cover first; the player closes on the next one.
   bool _stepBack() {
     if (_panel == _Panel.cover) return false;
@@ -196,12 +214,17 @@ class _BodyState extends State<_Body> {
         ),
         // On its side the phone has no height for one column: the cover goes beside the controls instead. The
         // safe area also keeps both clear of a notch at the side. Reactions in the room fly up over all of it.
-        ReactionShower(
-          controller: _c,
-          child: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, box) =>
-                  box.maxWidth > box.maxHeight ? _wide(box) : _tall(context),
+        // What is on the colours of the cover is in the colours made for it (`Palette.onCover`), not in the greys
+        // of a plain page
+        Theme(
+          data: _onCoverTheme(context),
+          child: ReactionShower(
+            controller: _c,
+            child: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, box) =>
+                    box.maxWidth > box.maxHeight ? _wide(box) : _tall(context),
+              ),
             ),
           ),
         ),
@@ -259,7 +282,9 @@ class _BodyState extends State<_Body> {
               _TransportRow(controller: _c),
               const SizedBox(height: 6),
               // A browser has no volume of its own to set: the tab follows the computer's
-              if (!kIsWeb) VolumeBar(controller: _c),
+              // Not while the lyrics or the queue are open: the queue gets the room (it shows a row more); the bar is
+              // there again with the cover
+              if (!kIsWeb && _panel == _Panel.cover) VolumeBar(controller: _c),
               const SizedBox(height: 4),
               _Toolbar(controller: _c, panel: _panel, onPanel: _show),
               if (_c.snapshot.inRoom) ...[
@@ -863,7 +888,7 @@ class _PanelStage extends StatelessWidget {
                     ),
                     MarqueeText(
                       current.artist,
-                      style: theme.bodyMedium?.copyWith(color: p.primary),
+                      style: theme.bodyMedium?.copyWith(color: p.link),
                       rounds: MarqueeText.playerRounds,
                     ),
                   ],
@@ -977,6 +1002,8 @@ class _ArtistLineState extends State<_ArtistLine> {
       }
     }
     if (starting) return;
+    // A list that showed the song has said already how many watched it, and that is the number
+    if (AppScope.of(context).music.seenViews(track.videoId) != null) return;
     final views = await AppScope.of(context).music.viewCount(track);
     if (mounted && widget.current.videoId == track.videoId) {
       setState(() => _views = views);
@@ -987,27 +1014,107 @@ class _ArtistLineState extends State<_ArtistLine> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
+    final track = widget.current;
+    // A file on this phone has no YouTube artist to go to, so its name is not made to look like a link
     final style = theme.titleMedium?.copyWith(
-      color: p.primary,
+      // The pink accent is 2.8:1 on a peach cover: a name that opens a page is in the deep shade of it in the light
+      // theme (see Palette.link), and in the accent itself in the dark one
+      color: track.isLocal ? p.textSecondary : p.link,
       fontWeight: FontWeight.w500,
     );
+    final seen = AppScope.of(context).music.seenViews(track.videoId);
     final views = _views;
-    final artist = MarqueeText(
-      widget.current.artist,
-      style: style,
-      rounds: MarqueeText.playerRounds,
-    );
-    if (views == null) return artist;
-    return Row(
-      children: [
-        Flexible(child: artist),
-        Text(
-          ' · ${formatViews(views.count, plays: views.plays)}',
+    final count =
+        seen ??
+        (views == null ? null : formatViews(views.count, plays: views.plays));
+    final tail = theme.titleMedium?.copyWith(color: p.textSecondary);
+    Widget artist(String name) {
+      final line = MarqueeText(
+        name,
+        style: style,
+        rounds: MarqueeText.playerRounds,
+      );
+      if (track.isLocal) return line;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => openArtistOf(context, track),
+        child: line,
+      );
+    }
+
+    if (count == null) return artist(track.artist);
+    return LayoutBuilder(
+      builder: (context, box) {
+        double width(String text, TextStyle? style) => (TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
           maxLines: 1,
-          softWrap: false,
-          style: theme.titleMedium?.copyWith(color: p.textSecondary),
-        ),
-      ],
+        )..layout()).width;
+        final name = width(track.artist, style);
+        // The count gives way before the name does: whole, then without its word, then not at all. The name only
+        // moves when it is longer than the line by itself.
+        for (final text in [' · $count', ' · ${shortViews(count)}']) {
+          if (name + width(text, tail) <= box.maxWidth) {
+            return Row(
+              children: [
+                Flexible(child: artist(track.artist)),
+                Text(text, maxLines: 1, softWrap: false, style: tail),
+              ],
+            );
+          }
+        }
+        return artist(track.artist);
+      },
+    );
+  }
+}
+
+/// Opens the page of the artist of [song], which YouTube Music is asked for; says so when it cannot be found.
+Future<void> openArtistOf(BuildContext context, QueueEntry song) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final navigator = Navigator.of(context);
+  String? id;
+  try {
+    final radio = await AppScope.of(context).music.radio(song.videoId);
+    id = radio.songOf(song.videoId)?.artistId;
+  } on Object {
+    // Said below
+  }
+  if (id == null) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(S.musicFailed)));
+    return;
+  }
+  if (navigator.mounted) await openArtist(navigator.context, id);
+}
+
+/// Opens the page of the album [song] is on, which YouTube Music is asked for; says so when it is on none (a single
+/// video, a song it does not know the album of).
+Future<void> openAlbumOf(BuildContext context, QueueEntry song) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final navigator = Navigator.of(context);
+  MusicTrack? found;
+  try {
+    found = (await AppScope.of(context).music.radio(song.videoId))
+        .songOf(song.videoId);
+  } on Object {
+    // Said below
+  }
+  final id = found?.albumId;
+  if (id == null) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(S.noAlbum)));
+    return;
+  }
+  if (navigator.mounted) {
+    await openCollection(
+      navigator.context,
+      id: id,
+      title: found?.album ?? song.title,
+      thumb: song.thumb,
     );
   }
 }
@@ -1019,78 +1126,65 @@ class _MoreButton extends StatelessWidget {
   final RoomController controller;
   final QueueEntry current;
 
-  Future<void> _openArtist(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-    String? id;
-    try {
-      final radio = await AppScope.of(context).music.radio(current.videoId);
-      id = radio.songOf(current.videoId)?.artistId;
-    } on Object {
-      // Said below
-    }
-    if (id == null) {
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(S.musicFailed)));
-      return;
-    }
-    if (navigator.mounted) await openArtist(navigator.context, id);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final library = AppScope.of(context).library;
     final snapshot = controller.snapshot;
     final who = current.addedBy == snapshot.you
         ? S.you
         : snapshot.nameOf(current.addedBy);
-    return PopupMenuButton<String>(
-      useRootNavigator: true,
-      icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
-      color: p.menu,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    // A file on this phone has no YouTube artist or album, is not downloaded, has no link, and is not to be blocked
+    final online = !current.isLocal;
+    List<MenuLine> lines() => [
+      MenuLine('info', Icons.info_outline_rounded, S.songInfo),
+      if (online)
+        MenuLine('artist', Icons.person_outline_rounded, S.goToArtist),
+      if (online) MenuLine('album', Icons.album_outlined, S.goToAlbum),
+      MenuLine('playlist', Icons.playlist_add_rounded, S.addToPlaylist),
+      // Only where the room has a chat to send it to
+      if (canSendToChat(controller, current))
+        MenuLine('chat', Icons.chat_bubble_outline_rounded, S.songSendToChat),
+      if (online) MenuLine('share', Icons.ios_share_rounded, S.shareSong),
+      if (online && !kIsWeb)
+        ...switch (library.downloadState(current.videoId)) {
+          DownloadState.done => [
+            MenuLine(
+              'undownload',
+              Icons.download_done_rounded,
+              S.removeDownload,
+            ),
+          ],
+          DownloadState.queued || DownloadState.waiting => [
+            MenuLine(
+              'none',
+              Icons.downloading_rounded,
+              S.downloading,
+              enabled: false,
+            ),
+          ],
+          _ => [MenuLine('download', Icons.download_rounded, S.download)],
+        },
+      if (online)
+        MenuLine('blocked', Icons.block_rounded, S.notInterested, apart: true),
+    ];
+    return SongMenuButton(
+      track: current,
+      lines: lines,
       onSelected: (value) => switch (value) {
         'info' => showSongInfo(
           context,
           current,
           addedBy: who.isEmpty ? null : who,
         ),
-        'artist' => _openArtist(context),
+        'artist' => openArtistOf(context, current),
+        'album' => openAlbumOf(context, current),
         'playlist' => showAddToPlaylist(context, [current]),
         'chat' => sendTrackToChat(context, current),
+        'share' => controller.shareSong(current),
         'download' => startDownload(context, [current]),
         'blocked' => showNotInterested(context, current),
         _ => library.removeDownload(current.videoId),
       },
-      itemBuilder: (context) => [
-        PopupMenuItem(value: 'info', child: Text(S.songInfo)),
-        // A file on this phone has no YouTube artist, is not downloaded, and is not to be blocked
-        if (!current.isLocal)
-          PopupMenuItem(value: 'artist', child: Text(S.goToArtist)),
-        PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
-        // Only where the room has a chat to send it to
-        if (canSendToChat(controller, current))
-          PopupMenuItem(value: 'chat', child: Text(S.songSendToChat)),
-        if (!current.isLocal && !kIsWeb)
-          ...switch (library.downloadState(current.videoId)) {
-            DownloadState.done => [
-              PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
-            ],
-            DownloadState.queued || DownloadState.waiting => [
-              PopupMenuItem(
-                enabled: false,
-                value: 'none',
-                child: Text(S.downloading),
-              ),
-            ],
-            _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
-          },
-        if (!current.isLocal)
-          PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
-      ],
     );
   }
 }
@@ -1394,6 +1488,47 @@ class _RoomStrip extends StatelessWidget {
 /// Within this many ms of the room counts as in sync (the drift control aims well inside it).
 const _inSyncMs = 80;
 
+/// What the room's sync state is on this device: [label] in words, and [number] behind it (how far off, in ms or
+/// seconds), which is for the person's own row of the list of members and not for the pill, where it changed with every
+/// reading and was cut off when the label was long.
+class SyncReading {
+  const SyncReading(this.label, this.color, [this.number]);
+
+  final String label;
+  final Color color;
+  final String? number;
+}
+
+/// The reading to show, or null when there is nothing to say: nobody else is listening, so there is nobody to be in
+/// step with, or this device is stopped for a reason that is not the room's.
+SyncReading? syncReading(RoomController controller, Palette p) {
+  final snapshot = controller.snapshot;
+  final player = controller.player.value;
+  final drift = player.driftMs;
+  if (snapshot.solo) return SyncReading(S.onYourOwn, p.primary);
+  if (snapshot.listeningCount <= 1) return null;
+  if (!controller.isPlaying) {
+    // Stopped on this device by something outside the app while the room plays on: say so, and play catches up
+    if (!(snapshot.wantsPlaying && player.heldBack)) return null;
+    return SyncReading(S.pausedHere, p.textSecondary);
+  }
+  if (controller.isStarting) return SyncReading(S.buffering, p.textSecondary);
+  // The network, not the app: this device plays a little behind the room until it can catch up
+  if (player.weak && player.lagMs > _inSyncMs) {
+    return SyncReading(
+      S.weakNetworkLabel,
+      p.textSecondary,
+      S.behindBy(formatLag(player.lagMs)),
+    );
+  }
+  if (drift == null) return SyncReading(S.syncing, p.textSecondary);
+  if (drift.abs() <= _inSyncMs) {
+    return SyncReading(S.inSync, p.success, formatDrift(drift));
+  }
+  // Off by an audible amount: the drift control is bringing this phone back
+  return SyncReading(S.catchingUp, p.textSecondary, formatDrift(drift));
+}
+
 /// The room's sync state on this device, as a pill; a touch opens the list of members.
 class SyncChip extends StatelessWidget {
   const SyncChip({super.key, required this.controller, this.margin});
@@ -1405,39 +1540,10 @@ class SyncChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
-    final player = controller.player.value;
-    final drift = player.driftMs;
-    final String label;
-    final Color color;
-    if (controller.snapshot.solo) {
-      label = S.onYourOwn;
-      color = p.primary;
-    } else if (!controller.isPlaying) {
-      // Stopped on this device by something outside the app while the room plays on: say so, and play catches up
-      if (!(controller.snapshot.wantsPlaying && player.heldBack)) {
-        return const SizedBox.shrink();
-      }
-      label = S.pausedHere;
-      color = p.textSecondary;
-    } else if (controller.isStarting) {
-      label = S.buffering;
-      color = p.textSecondary;
-    } else if (player.weak && player.lagMs > _inSyncMs) {
-      // The network, not the app: this device plays a little behind the room until it can catch up
-      label = S.weakNetwork(formatLag(player.lagMs));
-      color = p.textSecondary;
-    } else if (drift == null) {
-      label = S.syncing;
-      color = p.textSecondary;
-    } else if (drift.abs() <= _inSyncMs) {
-      label = '${S.inSync} · ${formatDrift(drift)}';
-      color = p.success;
-    } else {
-      // Off by an audible amount: the drift control is bringing this phone back
-      label = '${S.catchingUp} · ${formatDrift(drift)}';
-      color = p.textSecondary;
-    }
+    final reading = syncReading(controller, context.palette);
+    if (reading == null) return const SizedBox.shrink();
+    final label = reading.label;
+    final color = reading.color;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => showMembersSheet(context),

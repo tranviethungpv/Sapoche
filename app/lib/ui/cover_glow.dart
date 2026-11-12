@@ -37,7 +37,7 @@ class CoverGlow {
   static const _lightSaturation = 1.35;
 
   /// The brightness the background should average in the light theme, 0 black to 1 white: pale enough for dark text.
-  static const _lightLuma = 0.62;
+  static const _lightLuma = 0.8;
 
   /// Size of the picture of the glow along the top. Its shape does not matter: it is made of a few soft patches of
   /// colour, which stay soft however far they are stretched.
@@ -382,7 +382,7 @@ class CoverGlow {
   /// How much of the colour of a cover of this [luma] is kept in the light theme, the rest being white: a dark cover
   /// is faded a lot to stay pale, a light or colourful one keeps more of its colours.
   static double lightKeep(double luma) =>
-      ((1 - _lightLuma) / (1 - (luma > 0.9 ? 0.9 : luma))).clamp(0.38, 0.75);
+      ((1 - _lightLuma) / (1 - (luma > 0.9 ? 0.9 : luma))).clamp(0.2, 0.3);
 
   /// A colour matrix that makes colours more vivid, darkens them by [factor] and then mixes in [lift] of white.
   static List<double> tint(

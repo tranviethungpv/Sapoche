@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../data/song_key.dart';
 import '../../strings.dart';
-import '../../theme/theme.dart';
+import 'motion.dart';
+import 'sheet_tile.dart';
 import '../scope.dart';
 
 enum _Choice { blockSong, blockArtist, notCounted, suggestLess }
@@ -16,60 +17,45 @@ Future<void> showNotInterested(BuildContext context, Track track) async {
   final choice = await showModalBottomSheet<_Choice>(
     context: context,
     useRootNavigator: true,
+    sheetAnimationStyle: Motion.sheet(context),
     builder: (context) {
       final theme = Theme.of(context).textTheme;
       final artist = displayArtist(track.artist);
+      // The rows are made as those of the room's settings are (`SheetTile`), in the same margins
       return SafeArea(
         child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: Text(S.notInterested, style: theme.titleLarge),
-              ),
-              ListTile(
+              Text(S.notInterested, style: theme.headlineSmall),
+              const SizedBox(height: 8),
+              SheetTile(
                 key: const ValueKey('not-interested-song'),
-                leading: Icon(
-                  Icons.music_off_outlined,
-                  color: context.palette.primary,
-                ),
-                title: Text(S.notInterestedSong),
-                subtitle: Text(
-                  track.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                icon: Icons.music_off_outlined,
+                title: S.notInterestedSong,
+                help: track.title,
                 onTap: () => Navigator.pop(context, _Choice.blockSong),
               ),
               if (artist.isNotEmpty)
-                ListTile(
+                SheetTile(
                   key: const ValueKey('not-interested-artist'),
-                  leading: Icon(
-                    Icons.person_off_outlined,
-                    color: context.palette.primary,
-                  ),
-                  title: Text(S.notInterestedArtist(artist)),
+                  icon: Icons.person_off_outlined,
+                  title: S.notInterestedArtist(artist),
                   onTap: () => Navigator.pop(context, _Choice.blockArtist),
                 ),
-              ListTile(
+              SheetTile(
                 key: const ValueKey('not-counted-song'),
-                leading: Icon(
-                  Icons.visibility_off_outlined,
-                  color: context.palette.primary,
-                ),
-                title: Text(S.notCountedSong),
+                icon: Icons.visibility_off_outlined,
+                title: S.notCountedSong,
                 onTap: () => Navigator.pop(context, _Choice.notCounted),
               ),
               if (artist.isNotEmpty && !track.isLocal)
-                ListTile(
+                SheetTile(
                   key: const ValueKey('suggest-less-artist'),
-                  leading: Icon(
-                    Icons.trending_down_rounded,
-                    color: context.palette.primary,
-                  ),
-                  title: Text(S.suggestLessArtist(artist)),
+                  icon: Icons.trending_down_rounded,
+                  title: S.suggestLessArtist(artist),
                   onTap: () => Navigator.pop(context, _Choice.suggestLess),
                 ),
             ],

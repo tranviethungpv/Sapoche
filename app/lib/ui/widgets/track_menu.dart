@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
 import '../../strings.dart';
-import '../../theme/theme.dart';
 import '../scope.dart';
 import 'download_actions.dart';
+import 'menu_lines.dart';
 import 'not_interested.dart';
 import 'playlist_picker.dart';
 import 'queue_actions.dart';
@@ -26,16 +26,49 @@ class TrackMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final library = AppScope.of(context).library;
-    return PopupMenuButton<String>(
+    List<MenuLine> lines() => [
+      MenuLine('next', Icons.playlist_play_rounded, S.playNext),
+      MenuLine('end', Icons.queue_music_rounded, S.addToQueue),
+      MenuLine('playlist', Icons.playlist_add_rounded, S.addToPlaylist),
+      // Only where the room has a chat to send it to
+      if (canSendToChat(AppScope.roomOf(context), track))
+        MenuLine('chat', Icons.chat_bubble_outline_rounded, S.songSendToChat),
+      // A file on this phone is not downloaded, and has no YouTube artist to be tired of; a browser downloads nothing
+      if (!track.isLocal && !kIsWeb)
+        ...switch (library.downloadState(track.videoId)) {
+          DownloadState.done => [
+            MenuLine(
+              'undownload',
+              Icons.download_done_rounded,
+              S.removeDownload,
+            ),
+          ],
+          DownloadState.queued || DownloadState.waiting => [
+            MenuLine(
+              'none',
+              Icons.downloading_rounded,
+              S.downloading,
+              enabled: false,
+            ),
+          ],
+          _ => [MenuLine('download', Icons.download_rounded, S.download)],
+        },
+      MenuLine(
+        'like',
+        library.isLikedSong(track)
+            ? Icons.favorite_rounded
+            : Icons.favorite_border_rounded,
+        library.isLikedSong(track) ? S.unlike : S.like,
+      ),
+      if (!track.isLocal)
+        MenuLine('blocked', Icons.block_rounded, S.notInterested, apart: true),
+    ];
+    return SongMenuButton(
       // The row this is in opens it from a right click
-      key: RowMenuKey.maybeOf(context),
-      useRootNavigator: true,
-      icon: Icon(Icons.more_horiz_rounded, color: p.textSecondary),
-      color: p.menu,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      menuKey: RowMenuKey.maybeOf(context),
+      track: track,
+      lines: lines,
       onSelected: (value) => switch (value) {
         'next' => onPlayNext(),
         'like' => library.toggleLike(track),
@@ -46,35 +79,6 @@ class TrackMenu extends StatelessWidget {
         'blocked' => showNotInterested(context, track),
         _ => onAdd(),
       },
-      itemBuilder: (context) => [
-        PopupMenuItem(value: 'next', child: Text(S.playNext)),
-        PopupMenuItem(value: 'end', child: Text(S.addToQueue)),
-        PopupMenuItem(value: 'playlist', child: Text(S.addToPlaylist)),
-        // Only where the room has a chat to send it to
-        if (canSendToChat(AppScope.roomOf(context), track))
-          PopupMenuItem(value: 'chat', child: Text(S.songSendToChat)),
-        // A file on this phone is not downloaded, and has no YouTube artist to be tired of; a browser downloads nothing
-        if (!track.isLocal && !kIsWeb)
-          ...switch (library.downloadState(track.videoId)) {
-            DownloadState.done => [
-              PopupMenuItem(value: 'undownload', child: Text(S.removeDownload)),
-            ],
-            DownloadState.queued || DownloadState.waiting => [
-              PopupMenuItem(
-                enabled: false,
-                value: 'none',
-                child: Text(S.downloading),
-              ),
-            ],
-            _ => [PopupMenuItem(value: 'download', child: Text(S.download))],
-          },
-        PopupMenuItem(
-          value: 'like',
-          child: Text(library.isLikedSong(track) ? S.unlike : S.like),
-        ),
-        if (!track.isLocal)
-          PopupMenuItem(value: 'blocked', child: Text(S.notInterested)),
-      ],
     );
   }
 }

@@ -1,3 +1,4 @@
+import '../format.dart';
 import 'backend.dart';
 import 'models.dart';
 import 'music_models.dart';
@@ -27,6 +28,41 @@ class MusicController {
 
   static const _keep = 30;
 
+  /// How many watched or played a track, as the list that showed it said ("59M plays"), by video id. YouTube counts a song one way in a search and another in the player (59M and 301K for the same song),
+  /// so the number the person saw in the list is the one the player and the song's info use: one number for a song.
+  final _seen = <String, String>{};
+
+  static const _keepSeen = 200;
+
+  /// The count a list showed for [videoId], said in the language of the app, or null when none did.
+  String? seenViews(String videoId) => splitViews(_seen[videoId]).views;
+
+  void _see(Iterable<MusicTrack> tracks) {
+    for (final t in tracks) {
+      if (splitViews(t.stats).views == null) continue;
+      _seen
+        ..remove(t.videoId)
+        ..[t.videoId] = t.stats!;
+    }
+    while (_seen.length > _keepSeen) {
+      _seen.remove(_seen.keys.first);
+    }
+  }
+
+  void _seeShelves(Iterable<MusicShelf> shelves) {
+    for (final shelf in shelves) {
+      _see(shelf.tracks);
+    }
+  }
+
+  SearchResults _seeResults(SearchResults results) {
+    _see([
+      for (final item in [results.top, ...results.items])
+        if (item?.track case final MusicTrack track) track,
+    ]);
+    return results;
+  }
+
   Future<SongRadio> radio(String videoId) =>
       _cached(_radio, videoId, () => _backend.musicNext(videoId));
 
@@ -55,7 +91,11 @@ class MusicController {
       _cached(_related, videoId, () => _backend.musicRelated(videoId));
 
   Future<ArtistPage> artist(String artistId) =>
-      _cached(_artists, artistId, () => _backend.musicArtist(artistId));
+      _cached(_artists, artistId, () => _backend.musicArtist(artistId)).then((page) {
+        _see(page.topSongs);
+        _seeShelves(page.shelves);
+        return page;
+      });
 
   Future<CollectionPage> collection(String id) =>
       _cached(_collections, id, () => _backend.musicCollection(id));
@@ -65,18 +105,21 @@ class MusicController {
     _searchPages,
     '${params ?? ''}\n$query',
     () => _backend.musicSearchPage(query, params: params),
-  );
+  ).then(_seeResults);
 
   /// The results after those a page of a search has; asked for as the person scrolls, so not kept.
   Future<SearchResults> searchMore(String token) =>
-      _backend.musicSearchMore(token);
+      _backend.musicSearchMore(token).then(_seeResults);
 
   /// The songs after those a page has; asked for as the person scrolls, so not kept.
   Future<MoreTracks> more(String token) => _backend.musicMore(token);
 
   /// What YouTube Music shows everybody; the same answer for the rest of the session.
   Future<List<MusicShelf>> trending() =>
-      _cached(_trending, 'home', _backend.musicTrending);
+      _cached(_trending, 'home', _backend.musicTrending).then((shelves) {
+        _seeShelves(shelves);
+        return shelves;
+      });
 
   /// The moods YouTube Music offers, with its home page; with a mood's [params] the shelves that suit that mood.
   Future<MusicHome> home({String? params}) => _cached(
@@ -84,7 +127,10 @@ class MusicController {
     params ?? '',
     () => _backend.musicHome(params: params),
     keep: (home) => home.chips.isNotEmpty || home.shelves.isNotEmpty,
-  );
+  ).then((home) {
+    _seeShelves(home.shelves);
+    return home;
+  });
 
   /// The charts of the person's country; the same answer for the rest of the session.
   Future<List<MusicShelf>> charts() => _cached(
@@ -92,14 +138,20 @@ class MusicController {
     'charts',
     _backend.musicCharts,
     keep: (shelves) => shelves.isNotEmpty,
-  );
+  ).then((shelves) {
+    _seeShelves(shelves);
+    return shelves;
+  });
 
   Future<List<MusicTrack>> search(String query, {required bool songs}) =>
       _cached(
         _searches,
         '$songs $query',
         () => _backend.musicSearch(query, songs: songs),
-      );
+      ).then((tracks) {
+        _see(tracks);
+        return tracks;
+      });
 
   /// Whether [track] is the audio release of a song (true) or a video (false); null when YouTube Music does not say.
   Future<bool?> isAudioRelease(Track track) async =>

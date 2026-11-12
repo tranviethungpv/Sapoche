@@ -87,11 +87,11 @@ void main() {
     });
 
     test('a dark cover is faded more than a light one in the light theme', () {
-      expect(CoverGlow.lightKeep(0), 0.38);
+      expect(CoverGlow.lightKeep(0), 0.2);
       expect(CoverGlow.lightKeep(0.4), greaterThan(CoverGlow.lightKeep(0.1)));
       expect(
         CoverGlow.lightKeep(1),
-        0.75,
+        0.3,
         reason: 'white does not divide by zero',
       );
     });

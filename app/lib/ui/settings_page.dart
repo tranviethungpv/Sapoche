@@ -257,6 +257,7 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           _Row(
             label: S.copyLog,
+            leading: Icon(Icons.content_copy_rounded, color: context.palette.primary),
             onTap: () async {
               final lines = await model.room.log();
               await Clipboard.setData(ClipboardData(text: lines.join('\n')));
@@ -271,6 +272,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _Row(
               key: const ValueKey('server-check'),
               label: S.checkConnectionRow,
+              leading: Icon(Icons.network_check_rounded, color: context.palette.primary),
               onTap: () => _showServerCheck(context, model.room),
             ),
         ],

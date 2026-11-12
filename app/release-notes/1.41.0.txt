@@ -1,0 +1,7 @@
+Finer details: covers, the song menu, the queue and the player
+- Song covers no longer have black bars, and the Videos shelves show whole 16:9 pictures. Mixes get softer covers.
+- A song's menu is now a sheet with its cover and an icon on every line, with Go to album and Share added. Albums and playlists can be downloaded in one go.
+- The queue buttons say Shuffle, Repeat and Autoplay, and the queue has more room. An empty queue tells you so, and an empty Liked songs says how to fill it.
+- In the player, the artist's name opens their page, the text and icons are easier to read over any cover, and the lyrics no longer show timing marks between words.
+- In a room, the sync label is just words (the numbers are in the people list) and is gone when you listen alone. The mini player steps aside while the song's card is on the Room page.
+- The mini player shows how far the song is, the sleep timer takes any number of minutes, and an artist's name stays on the bar as you scroll.

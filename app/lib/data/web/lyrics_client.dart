@@ -3,15 +3,18 @@ import 'dart:convert';
 import '../music_models.dart';
 import 'song_names.dart';
 
-/// Reads the `[mm:ss.xx] words` format that lyrics with times come in. Mirrors Lrc in Lyrics.kt.
+/// Reads the `[mm:ss.xx] words` format that lyrics with times come in; the times of single words are left out. Mirrors Lrc in Lyrics.kt.
 abstract final class Lrc {
   static final _tag = RegExp(r'\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]');
+
+  /// The time of each word, `<mm:ss.xx>`, that some lyrics carry inside a line: not shown.
+  static final _wordTag = RegExp(r'<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>');
 
   /// Lines in time order. A line with several times gives one line for each; tags like `[ar:Name]` are skipped.
   static List<LyricLine> parse(String text) {
     final lines = <LyricLine>[];
     for (final line in const LineSplitter().convert(text)) {
-      final words = line.replaceAll(_tag, '').trim();
+      final words = line.replaceAll(_tag, '').replaceAll(_wordTag, '').trim();
       for (final tag in _tag.allMatches(line)) {
         // ".5" is half a second and ".500" too
         final fraction = int.tryParse((tag[3] ?? '').padRight(3, '0').substring(0, 3)) ?? 0;

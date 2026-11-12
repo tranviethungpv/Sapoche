@@ -18,14 +18,27 @@ class MusicShelfView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = S.shelfTitle(shelf.title);
+    // A shelf of nothing but videos ("Videos", "Live performances") is a row of wide covers: a square crop of a video
+    // cut the lettering off its two edges
+    final video =
+        shelf.tracks.isNotEmpty &&
+        shelf.albums.isEmpty &&
+        shelf.playlists.isEmpty &&
+        shelf.tracks.every((t) => !t.isSong);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         CardShelf(
           title: title,
+          video: video,
           cards: [
             for (final t in shelf.tracks)
-              SongCard.track(context, t, onTap: () => playNow(context, t)),
+              SongCard.track(
+                context,
+                t,
+                video: video,
+                onTap: () => playNow(context, t),
+              ),
             for (final r in [...shelf.albums, ...shelf.playlists])
               SongCard(
                 title: r.title,

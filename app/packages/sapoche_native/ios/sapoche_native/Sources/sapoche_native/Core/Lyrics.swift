@@ -17,9 +17,12 @@ struct Lyrics: Equatable {
     var synced: Bool { !lines.isEmpty }
 }
 
-/// Reads the `[mm:ss.xx] words` format that lyrics with times come in.
+/// Reads the `[mm:ss.xx] words` format that lyrics with times come in; the times of single words are left out.
 enum Lrc {
     private static let tag = try! NSRegularExpression(pattern: "\\[(\\d{1,3}):(\\d{2})(?:[.:](\\d{1,3}))?\\]")
+
+    /// The time of each word, `<mm:ss.xx>`, that some lyrics carry inside a line: not shown.
+    private static let wordTag = try! NSRegularExpression(pattern: "<\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?>")
 
     /// Lines in time order. A line with several times gives one line for each; tags like `[ar:Name]` are skipped.
     static func parse(_ text: String) -> [LyricLine] {
@@ -27,7 +30,8 @@ enum Lrc {
         for line in text.components(separatedBy: "\n") {
             let range = NSRange(line.startIndex..., in: line)
             let tags = tag.matches(in: line, range: range)
-            let words = tag.stringByReplacingMatches(in: line, range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let bare = tag.stringByReplacingMatches(in: line, range: range, withTemplate: "")
+            let words = wordTag.stringByReplacingMatches(in: bare, range: NSRange(bare.startIndex..., in: bare), withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
             for match in tags {
                 func group(_ index: Int) -> String {
                     Range(match.range(at: index), in: line).map { String(line[$0]) } ?? ""

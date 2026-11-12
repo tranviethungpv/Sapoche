@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../strings.dart';
 
@@ -10,6 +11,7 @@ Future<String?> showTextDialog(
   String initial = '',
   int maxLength = 24,
   TextCapitalization capitalization = TextCapitalization.words,
+  bool digits = false,
 }) => showDialog<String>(
   context: context,
   builder: (_) => _TextDialog(
@@ -18,6 +20,7 @@ Future<String?> showTextDialog(
     initial: initial,
     maxLength: maxLength,
     capitalization: capitalization,
+    digits: digits,
   ),
 );
 
@@ -28,6 +31,7 @@ class _TextDialog extends StatefulWidget {
     required this.initial,
     required this.maxLength,
     required this.capitalization,
+    required this.digits,
   });
 
   final String title;
@@ -35,6 +39,9 @@ class _TextDialog extends StatefulWidget {
   final String initial;
   final int maxLength;
   final TextCapitalization capitalization;
+
+  /// A number: the number keyboard, and nothing else can be typed.
+  final bool digits;
 
   @override
   State<_TextDialog> createState() => _TextDialogState();
@@ -60,6 +67,10 @@ class _TextDialogState extends State<_TextDialog> {
         autofocus: true,
         maxLength: widget.maxLength,
         textCapitalization: widget.capitalization,
+        keyboardType: widget.digits ? TextInputType.number : null,
+        inputFormatters: widget.digits
+            ? [FilteringTextInputFormatter.digitsOnly]
+            : null,
         decoration: InputDecoration(hintText: widget.hint, counterText: ''),
         onSubmitted: (_) => _submit(),
       ),

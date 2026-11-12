@@ -138,7 +138,8 @@ class _TrackTileState extends State<TrackTile> {
                         ),
                       ),
                       // A song with nothing to say about it (an album's, by the one artist) has the title alone
-                      if ((subtitle ?? track.artist).isNotEmpty || meta != null) ...[
+                      if ((subtitle ?? track.artist).isNotEmpty ||
+                          meta != null) ...[
                         const SizedBox(height: 2),
                         Row(
                           children: [
@@ -179,11 +180,19 @@ class _TrackTileState extends State<TrackTile> {
                   trailing,
                 ] else ...[
                   LikeButton(track: track, size: 20),
-                  if (track.durMs > 0)
-                    Text(
-                      formatDuration(track.durMs),
-                      style: theme.bodySmall?.copyWith(color: p.textTertiary),
-                    ),
+                  // A row with no length keeps the room for one, so its heart stands where the other rows' do
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 36),
+                    child: track.durMs > 0
+                        ? Text(
+                            formatDuration(track.durMs),
+                            textAlign: TextAlign.end,
+                            style: theme.bodySmall?.copyWith(
+                              color: p.textTertiary,
+                            ),
+                          )
+                        : null,
+                  ),
                 ],
               ],
             ),

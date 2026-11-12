@@ -16,7 +16,8 @@ class MetaLine extends StatelessWidget {
     if (text.isEmpty) return Text(meta, maxLines: 1, softWrap: false, style: style);
     return Row(
       children: [
-        Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
+        // softWrap off: with it on, the line breaks at a word and cuts there, leaving room unused
+        Flexible(child: Text(text, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis, style: style)),
         Text(' · $meta', maxLines: 1, softWrap: false, style: style),
       ],
     );

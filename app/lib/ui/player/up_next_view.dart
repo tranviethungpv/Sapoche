@@ -65,7 +65,9 @@ class UpNextView extends StatelessWidget {
       ),
       slivers: [
         SliverToBoxAdapter(child: SectionHeading(S.upNext)),
-        if (upNext.isEmpty && snapshot.autoUpNext.isEmpty)
+        // Said whenever nothing is queued, autoplay or not: its suggestions come under "Suggestions" below, and a
+        // heading with nothing under it reads as broken
+        if (upNext.isEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
@@ -158,6 +160,11 @@ class _ShuffleButtonState extends State<_ShuffleButton> {
     // A room that only lets its owner steer: nothing to press for a guest. Without the mode, nothing to mix below two
     final enabled =
         snapshot.canControl && (shuffle != null || snapshot.upNext.length > 1);
+    final color = on
+        ? p.onPrimary
+        : enabled
+        ? p.textSecondary
+        : p.textTertiary.withValues(alpha: 0.5);
     return _Pill(
       onPressed: enabled ? () => _press(shuffle) : null,
       tooltip: shuffle == null
@@ -165,19 +172,14 @@ class _ShuffleButtonState extends State<_ShuffleButton> {
           : on
           ? S.shuffleOn
           : S.shuffleOff,
+      label: S.shuffle,
+      color: color,
       on: on,
       icon: AnimatedRotation(
         turns: _turns.toDouble(),
         duration: const Duration(milliseconds: 420),
         curve: Curves.easeOutCubic,
-        child: Icon(
-          Icons.shuffle_rounded,
-          color: on
-              ? p.onPrimary
-              : enabled
-              ? p.textSecondary
-              : p.textTertiary.withValues(alpha: 0.5),
-        ),
+        child: Icon(Icons.shuffle_rounded, color: color),
       ),
     );
   }
@@ -194,6 +196,7 @@ class _RepeatButton extends StatelessWidget {
     final p = context.palette;
     final mode = controller.snapshot.repeat;
     final on = mode != Repeat.off;
+    final color = on ? p.onPrimary : p.textSecondary;
     return _Pill(
       onPressed: controller.cycleRepeat,
       tooltip: switch (mode) {
@@ -201,10 +204,12 @@ class _RepeatButton extends StatelessWidget {
         Repeat.all => S.repeatAll,
         Repeat.one => S.repeatOne,
       },
+      label: S.repeat,
+      color: color,
       on: on,
       icon: Icon(
         mode == Repeat.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-        color: on ? p.onPrimary : p.textSecondary,
+        color: color,
       ),
     );
   }
@@ -224,6 +229,11 @@ class _AutoplayButton extends StatelessWidget {
     final alone = !snapshot.inRoom;
     final on = alone ? controller.autoplay : snapshot.roomAutoplay == true;
     final canChange = alone || snapshot.canControl;
+    final color = on
+        ? p.onPrimary
+        : canChange
+        ? p.textSecondary
+        : p.textTertiary.withValues(alpha: 0.5);
     return _Pill(
       onPressed: canChange
           ? () => alone
@@ -231,15 +241,10 @@ class _AutoplayButton extends StatelessWidget {
                 : controller.setRoomAutoplay(!on)
           : null,
       tooltip: S.autoplay,
+      label: S.autoplay,
+      color: color,
       on: on,
-      icon: Icon(
-        Icons.all_inclusive_rounded,
-        color: on
-            ? p.onPrimary
-            : canChange
-            ? p.textSecondary
-            : p.textTertiary.withValues(alpha: 0.5),
-      ),
+      icon: Icon(Icons.all_inclusive_rounded, color: color),
     );
   }
 }
@@ -249,12 +254,19 @@ class _Pill extends StatelessWidget {
   const _Pill({
     required this.onPressed,
     required this.tooltip,
+    required this.label,
+    required this.color,
     required this.on,
     required this.icon,
   });
 
   final VoidCallback? onPressed;
   final String tooltip;
+
+  /// What the button is, in words next to its icon: three icons side by side were guessed at. Smaller when the pill is
+  /// narrow or the words long; the tooltip says what it does now.
+  final String label;
+  final Color color;
   final bool on;
   final Widget icon;
 
@@ -269,7 +281,30 @@ class _Pill extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
-          child: SizedBox(height: 40, child: Center(child: icon)),
+          child: SizedBox(
+            height: 40,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      icon,
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        style: Theme.of(context).textTheme.labelLarge
+                            ?.copyWith(color: color),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

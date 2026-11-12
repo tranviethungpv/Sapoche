@@ -7,7 +7,6 @@ import 'package:sapoche/strings.dart';
 import 'package:sapoche/data/room_controller.dart';
 import 'package:sapoche/ui/player/video_controls.dart';
 import 'package:sapoche/ui/widgets/like_button.dart';
-import 'package:sapoche/ui/widgets/mini_player.dart';
 import 'package:sapoche/ui/widgets/playback_bar.dart';
 import 'package:sapoche/ui/widgets/video_view.dart';
 
@@ -106,7 +105,7 @@ Future<FakeBackend> openVideo(
     ),
   );
   await settle(tester, 1000);
-  await tester.tap(find.byType(MiniPlayer));
+  await tapMiniPlayer(tester);
   await settle(tester);
   return backend;
 }
@@ -888,7 +887,7 @@ void main() {
       final (backend, _) = await pumpApp(tester);
       backend.emit(StateEvent(sampleRoom()));
       await settle(tester, 1000);
-      await tester.tap(find.byType(MiniPlayer));
+      await tapMiniPlayer(tester);
       await settle(tester);
       await resize(tester, 1200, 460);
       expect(find.byType(VideoFullScreen), findsNothing);
@@ -1005,7 +1004,7 @@ void main() {
       backend.emit(StateEvent(sampleRoom()));
       backend.emit(PositionEvent(picture(1280, 720)));
       await settle(tester, 1000);
-      await tester.tap(find.byType(MiniPlayer));
+      await tapMiniPlayer(tester);
       await settle(tester);
       expect(watching(backend).where((c) => c.contains('true')), isEmpty);
     });

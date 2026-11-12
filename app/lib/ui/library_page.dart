@@ -15,6 +15,7 @@ import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
 import 'widgets/folder_cover.dart';
 import 'widgets/folder_sheets.dart';
+import 'widgets/menu_lines.dart';
 import 'widgets/library_lost_notice.dart';
 import 'widgets/page_width.dart';
 import 'widgets/play_actions.dart';
@@ -181,6 +182,8 @@ class _LibraryScreen extends StatelessWidget {
         _Liked() => _TrackList(
           title: S.likedSongs,
           tracks: library.liked,
+          emptyTitle: S.noLikedTitle,
+          emptyBody: S.noLikedBody,
           cover: (side) => _IconTile(
             Icons.favorite_rounded,
             size: side,
@@ -189,8 +192,7 @@ class _LibraryScreen extends StatelessWidget {
           ),
           menu: [
             if (library.liked.isNotEmpty && !kIsWeb)
-              _MenuAction(
-                S.downloadAll,
+              _MenuAction(Icons.download_rounded, S.downloadAll,
                 () => startDownload(context, library.liked),
               ),
           ],
@@ -217,8 +219,7 @@ class _LibraryScreen extends StatelessWidget {
           emptyBody: S.noDownloadsBody,
           menu: [
             if (library.downloads.isNotEmpty)
-              _MenuAction(
-                S.deleteAll,
+              _MenuAction(Icons.delete_outline_rounded, S.deleteAll,
                 () => _confirmDeleteDownloads(context, library),
               ),
           ],
@@ -226,6 +227,8 @@ class _LibraryScreen extends StatelessWidget {
         _Recent() => _TrackList(
           title: S.recentlyPlayed,
           tracks: [for (final e in library.recent) e.track],
+          emptyTitle: S.noRecentTitle,
+          emptyBody: S.noRecentBody,
           subtitles: [
             for (final e in library.recent)
               '${e.track.artist} · ${S.ago(DateTime.now().difference(e.at))}',
@@ -238,8 +241,7 @@ class _LibraryScreen extends StatelessWidget {
           ),
           menu: [
             if (library.recent.isNotEmpty)
-              _MenuAction(
-                S.clearHistory,
+              _MenuAction(Icons.delete_sweep_outlined, S.clearHistory,
                 () => _confirmClear(context, library),
               ),
           ],
@@ -384,14 +386,11 @@ class _Overview extends StatelessWidget {
                     'folder' => _createFolder(context, library),
                     _ => _import(context, library),
                   },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(value: 'new', child: Text(S.newPlaylist)),
-                    PopupMenuItem(value: 'folder', child: Text(S.newFolder)),
-                    PopupMenuItem(
-                      value: 'import',
-                      child: Text(S.importFromLink),
-                    ),
-                  ],
+                  itemBuilder: (context) => popupLines([
+                    MenuLine('new', Icons.playlist_add_rounded, S.newPlaylist),
+                    MenuLine('folder', Icons.create_new_folder_outlined, S.newFolder),
+                    MenuLine('import', Icons.link_rounded, S.importFromLink),
+                  ]),
                 ),
               ],
             ),
@@ -628,14 +627,13 @@ class _PlaylistPage extends StatelessWidget {
       onMove: (track, to) => library.movePlaylistItem(id, track, to),
       menu: [
         if (tracks.isNotEmpty && !kIsWeb)
-          _MenuAction(S.downloadAll, () => startDownload(context, tracks)),
+          _MenuAction(Icons.download_rounded, S.downloadAll, () => startDownload(context, tracks)),
         if (playlist != null)
-          _MenuAction(
-            S.moveToFolder,
+          _MenuAction(Icons.drive_file_move_outlined, S.moveToFolder,
             () => showMoveToFolder(context, playlist),
           ),
-        _MenuAction(S.rename, () => _rename(context, playlist)),
-        _MenuAction(S.deletePlaylist, () => _delete(context, playlist)),
+        _MenuAction(Icons.edit_outlined, S.rename, () => _rename(context, playlist)),
+        _MenuAction(Icons.delete_outline_rounded, S.deletePlaylist, () => _delete(context, playlist)),
       ],
     );
   }
@@ -700,7 +698,10 @@ class _MoreButton extends StatelessWidget {
       onSelected: (run) => run(),
       itemBuilder: (context) => [
         for (final action in menu)
-          PopupMenuItem(value: action.run, child: Text(action.label)),
+          PopupMenuItem(
+            value: action.run,
+            child: MenuLabel(action.icon, action.label),
+          ),
       ],
     );
   }
@@ -723,9 +724,9 @@ class _FolderPage extends StatelessWidget {
     final thumbs = _folderThumbs(playlists);
     final menu = [
       if (folder != null) ...[
-        _MenuAction(S.addPlaylists, () => showAddPlaylists(context, folder)),
-        _MenuAction(S.rename, () => _rename(context, folder)),
-        _MenuAction(S.deleteFolder, () => _delete(context, folder)),
+        _MenuAction(Icons.playlist_add_rounded, S.addPlaylists, () => showAddPlaylists(context, folder)),
+        _MenuAction(Icons.edit_outlined, S.rename, () => _rename(context, folder)),
+        _MenuAction(Icons.folder_delete_outlined, S.deleteFolder, () => _delete(context, folder)),
       ],
     ];
     // The page takes its colours from the first cover, as the page of an album does
@@ -848,12 +849,10 @@ class _FolderPage extends StatelessWidget {
                           onTap: () =>
                               _openScreen(context, _Playlist(playlist.id)),
                           trailing: _MoreButton([
-                            _MenuAction(
-                              S.moveToFolder,
+                            _MenuAction(Icons.drive_file_move_outlined, S.moveToFolder,
                               () => showMoveToFolder(context, playlist),
                             ),
-                            _MenuAction(
-                              S.removeFromFolder,
+                            _MenuAction(Icons.folder_off_outlined, S.removeFromFolder,
                               () => library.moveToFolder(playlist.id, null),
                             ),
                           ], round: false),
@@ -1078,11 +1077,12 @@ class _LocalPageState extends State<_LocalPage> with WidgetsBindingObserver {
             if (granted) ...[
               for (final sort in _LocalSort.values)
                 _MenuAction(
+                  Icons.sort_rounded,
                   '${S.sortBy}: ${_sortName(sort)}',
                   () => setState(() => _sort = sort),
                 ),
-              _MenuAction(S.localRefresh, library.scanLocal),
-              if (_ios) _MenuAction(S.localAddFiles, () => _addFiles(library)),
+              _MenuAction(Icons.refresh_rounded, S.localRefresh, library.scanLocal),
+              if (_ios) _MenuAction(Icons.add_circle_outline_rounded, S.localAddFiles, () => _addFiles(library)),
             ],
           ],
           filterBar: granted && library.local.any((s) => !s.missing)
@@ -1212,8 +1212,9 @@ class _LocalEmpty extends StatelessWidget {
 
 /// One thing the "…" button of a list offers.
 class _MenuAction {
-  const _MenuAction(this.label, this.run);
+  const _MenuAction(this.icon, this.label, this.run);
 
+  final IconData icon;
   final String label;
   final VoidCallback run;
 }
@@ -1401,7 +1402,7 @@ class _TrackList extends StatelessWidget {
                     // (Not while a box to search them is above: a search that finds nothing keeps the page as it was)
                     final bare =
                         tracks.isEmpty &&
-                        emptyView != null &&
+                        (emptyView != null || emptyTitle != null) &&
                         filterBar == null;
                     final listSlivers = <Widget>[
                       if (filterBar != null)
@@ -1598,6 +1599,13 @@ class _TrackList extends StatelessWidget {
               style: theme.bodyMedium?.copyWith(color: p.textSecondary),
             ),
           ],
+          // The one thing to do about an empty list: a song has to be found first
+          const SizedBox(height: 18),
+          FilledButton.tonalIcon(
+            onPressed: TabNavigation.search,
+            icon: const Icon(Icons.search_rounded, size: 18),
+            label: Text(S.findSongs),
+          ),
         ],
       ),
     );

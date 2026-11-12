@@ -105,6 +105,8 @@ void main() {
           expect(find.text('Up Next'), findsOneWidget);
           expect(find.text('Song 1'), findsOneWidget);
 
+          // The card of the song on this tab stands in for the mini player, which is on the other tabs
+          await goHome(tester);
           // Mini player is the only place the title appears twice with the queue row
           await tester.tap(
             find.descendant(
@@ -115,7 +117,7 @@ void main() {
           await tester.pump();
           expect(backend.calls.last, 'pause');
 
-          await tester.tap(find.byType(MiniPlayer));
+          await tapMiniPlayer(tester);
           await tester.pump(); // the route is built offstage first
           await tester.pump(const Duration(milliseconds: 700));
           expect(find.textContaining('In sync'), findsOneWidget);
@@ -214,7 +216,7 @@ void main() {
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.byType(MiniPlayer));
+    await tapMiniPlayer(tester);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
 
@@ -237,7 +239,7 @@ void main() {
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.byType(MiniPlayer));
+    await tapMiniPlayer(tester);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
 
@@ -741,7 +743,7 @@ void main() {
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.byType(MiniPlayer));
+    await tapMiniPlayer(tester);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
     expect(find.byType(NowPlayingPage), findsOneWidget);
@@ -774,6 +776,8 @@ void main() {
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
+
+    await goHome(tester);
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.byType(MiniPlayer)),
@@ -859,6 +863,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 
+    await goHome(tester);
+
     final miniTop = tester.getTopLeft(find.byType(MiniPlayer)).dy;
     final gesture = await tester.startGesture(
       tester.getCenter(find.byType(MiniPlayer)),
@@ -899,6 +905,8 @@ void main() {
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
+
+    await goHome(tester);
 
     Set<BackdropKey?> keys() => tester
         .renderObjectList<RenderBackdropFilter>(find.byType(BackdropFilter))
@@ -1113,7 +1121,7 @@ void main() {
       (tester) async {
         await longQueue(tester);
         await scroll(tester, -300);
-        await tester.tap(find.byType(MiniPlayer));
+        await tapMiniPlayer(tester);
         await settle(tester);
         expect(find.byType(NowPlayingPage), findsOneWidget);
 
@@ -1209,7 +1217,7 @@ void main() {
       backend.emit(StateEvent(sampleRoom()));
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
-      await tester.tap(find.byType(MiniPlayer));
+      await tapMiniPlayer(tester);
       for (var i = 0; i < 8; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
@@ -1729,7 +1737,7 @@ void main() {
     backend.emit(StateEvent(sampleRoom()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.byType(MiniPlayer));
+    await tapMiniPlayer(tester);
     for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -1915,7 +1923,7 @@ void main() {
     // equalizer or the seek bar would make it time out, and would cost battery on the real phone
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(MiniPlayer));
+    await tapMiniPlayer(tester);
     await tester.pumpAndSettle();
     expect(find.byType(NowPlayingPage), findsOneWidget);
   });
@@ -2320,7 +2328,7 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
-      await tester.tap(find.byType(MiniPlayer));
+      await tapMiniPlayer(tester);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 700));
 
@@ -2355,7 +2363,7 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 500));
-      await tester.tap(find.byType(MiniPlayer));
+      await tapMiniPlayer(tester);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 700));
 
@@ -2870,7 +2878,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.byType(MiniPlayer));
+    await tapMiniPlayer(tester);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 700));
     expect(find.textContaining('Catching up'), findsOneWidget);

@@ -9,6 +9,7 @@ import 'artist_page.dart';
 import 'collection_screen.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
+import 'widgets/motion.dart';
 
 /// What is known about a song: who sings it, which album and year, how long it is, how many watched it.
 void showSongInfo(BuildContext context, QueueEntry entry, {String? addedBy}) {
@@ -17,8 +18,7 @@ void showSongInfo(BuildContext context, QueueEntry entry, {String? addedBy}) {
     useRootNavigator: true,
     context: context,
     isScrollControlled: true,
-    showDragHandle: true,
-    backgroundColor: context.palette.surface,
+    sheetAnimationStyle: Motion.sheet(context),
     builder: (context) => _SongInfo(
       entry: entry,
       addedBy: addedBy,
@@ -95,6 +95,18 @@ class _SongInfo extends StatelessWidget {
             }
 
             final artistId = song?.artistId;
+            // A song from a search comes without its length: YouTube Music's own page of the song has it, and for the
+            // song that plays, so does the player. Where none says, the row is left out rather than say 0:00.
+            final room = AppScope.roomOf(context);
+            final length = entry.durMs > 0
+                ? entry.durMs
+                : (song?.durMs ?? 0) > 0
+                ? song!.durMs
+                : room.snapshot.current?.videoId == entry.videoId
+                ? room.durationMs()
+                : 0;
+            // The count of the list that showed the song, when one did: it is the one number of the song
+            final seen = AppScope.of(context).music.seenViews(entry.videoId);
             return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
               child: Column(
@@ -152,13 +164,17 @@ class _SongInfo extends StatelessWidget {
                           },
                   ),
                   row(S.infoYear, song?.year),
-                  row(S.infoLength, formatDuration(entry.durMs)),
+                  row(S.infoLength, length > 0 ? formatDuration(length) : null),
                   // The count of the player, said in the language of the app; what YouTube Music said of the video until it comes
                   row(
-                    counted.data?.plays ?? song?.isSong ?? false
+                    (seen != null
+                            ? seen.endsWith(S.playCount(''))
+                            : counted.data?.plays ?? song?.isSong ?? false)
                         ? S.infoPlays
                         : S.infoReach,
-                    counted.data == null
+                    seen != null
+                        ? shortViews(seen)
+                        : counted.data == null
                         ? song?.stats
                         : formatCount(counted.data!.count),
                   ),

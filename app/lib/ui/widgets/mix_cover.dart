@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 import '../../data/home_model.dart';
@@ -68,12 +70,21 @@ class _MixCoverState extends State<MixCover> {
               fit: StackFit.expand,
               children: [
                 ColoredBox(color: tone),
+                // Blurred, so that the lettering of the cover it is taken from ("HEAVEN ON YOUR MIND") is not
+                // there to be read behind "Mix 1": what is left is its colours and its shapes
                 if (picture != null)
-                  Artwork(
-                    url: barlessThumbnail(picture),
-                    size: size,
-                    radius: 0,
-                    wide: true,
+                  ImageFiltered(
+                    imageFilter: ImageFilter.blur(
+                      sigmaX: size * 0.045,
+                      sigmaY: size * 0.045,
+                      tileMode: TileMode.clamp,
+                    ),
+                    child: Artwork(
+                      url: barlessThumbnail(picture),
+                      size: size,
+                      radius: 0,
+                      wide: true,
+                    ),
                   ),
                 // The veil: light at the top, where the picture shows, deep under the words
                 DecoratedBox(

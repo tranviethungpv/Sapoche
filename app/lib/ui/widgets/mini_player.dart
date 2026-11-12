@@ -7,6 +7,7 @@ import '../home_shell.dart';
 import '../player_sheet.dart';
 import 'artwork.dart';
 import 'glass.dart';
+import 'low_rate_timer.dart';
 import 'marquee_text.dart';
 import 'transport.dart';
 
@@ -105,81 +106,156 @@ class MiniPlayerCapsule extends StatelessWidget {
     final fading = (1 - 2 * folded).clamp(0.0, 1.0);
     return Glass(
       borderRadius: BorderRadius.circular(height / 2),
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          height: height,
-          child: Row(
-            children: [
-              // The cover is round and as far from the edge on the left as from the top and bottom, so its curve
-              // follows the capsule's end
-              SizedBox(width: (height - cover) / 2),
-              if (ghost)
-                SizedBox.square(dimension: cover)
-              else
-                Artwork(
-                  key: sheet.miniCover,
-                  url: current.thumb,
-                  size: cover,
-                  radius: cover / 2,
-                ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MarqueeText(
-                      current.title,
-                      style: theme.titleSmall,
-                      rounds: MarqueeText.barRounds,
+      child: Stack(
+        children: [
+          InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              height: height,
+              child: Row(
+                children: [
+                  // The cover is round and as far from the edge on the left as from the top and bottom, so its curve
+                  // follows the capsule's end
+                  SizedBox(width: (height - cover) / 2),
+                  if (ghost)
+                    SizedBox.square(dimension: cover)
+                  else
+                    Artwork(
+                      key: sheet.miniCover,
+                      url: current.thumb,
+                      size: cover,
+                      radius: cover / 2,
                     ),
-                    if (fading > 0)
-                      Align(
-                        alignment: Alignment.topLeft,
-                        heightFactor: 1 - folded,
-                        child: Opacity(
-                          opacity: fading,
-                          child: MarqueeText(
-                            controller.snapshot.solo
-                                ? '${current.artist} · ${S.onYourOwn}'
-                                : current.artist,
-                            style: theme.bodySmall?.copyWith(
-                              color: p.textSecondary,
-                            ),
-                            rounds: MarqueeText.barRounds,
-                          ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MarqueeText(
+                          current.title,
+                          style: theme.titleSmall,
+                          rounds: MarqueeText.barRounds,
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              ListenableBuilder(
-                listenable: controller.playState,
-                builder: (context, _) => PlayPauseButton(
-                  playing: controller.isPlaying,
-                  starting: controller.isStarting,
-                  onPressed: controller.togglePlay,
-                  size: button,
-                  filled: false,
-                ),
-              ),
-              if (fading > 0)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: 1 - folded,
-                  child: Opacity(
-                    opacity: fading,
-                    child: SkipButton(
-                      forward: true,
-                      onPressed: controller.next,
-                      box: button,
+                        if (fading > 0)
+                          Align(
+                            alignment: Alignment.topLeft,
+                            heightFactor: 1 - folded,
+                            child: Opacity(
+                              opacity: fading,
+                              child: MarqueeText(
+                                controller.snapshot.solo
+                                    ? '${current.artist} · ${S.onYourOwn}'
+                                    : current.artist,
+                                style: theme.bodySmall?.copyWith(
+                                  color: p.textSecondary,
+                                ),
+                                rounds: MarqueeText.barRounds,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                ),
-              const SizedBox(width: 4),
-            ],
+                  ListenableBuilder(
+                    listenable: controller.playState,
+                    builder: (context, _) => PlayPauseButton(
+                      playing: controller.isPlaying,
+                      starting: controller.isStarting,
+                      onPressed: controller.togglePlay,
+                      size: button,
+                      filled: false,
+                    ),
+                  ),
+                  if (fading > 0)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: 1 - folded,
+                      child: Opacity(
+                        opacity: fading,
+                        child: SkipButton(
+                          forward: true,
+                          onPressed: controller.next,
+                          box: button,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 4),
+                ],
+              ),
+            ),
           ),
+          // How far the song has gone, along the lower edge of the capsule, as Spotify's and YouTube Music's have it
+          if (!ghost)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 2,
+              child: IgnorePointer(
+                child: _MiniProgress(controller: controller),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A thin line of the song's progress. It is drawn again once a second, in a layer of its own, not at the pace of the
+/// bar of the full player: it sits over glass, which is costly to draw again, and a second is as fine as a line this
+/// short can show.
+class _MiniProgress extends StatefulWidget {
+  const _MiniProgress({required this.controller});
+
+  final RoomController controller;
+
+  @override
+  State<_MiniProgress> createState() => _MiniProgressState();
+}
+
+class _MiniProgressState extends State<_MiniProgress> {
+  late final LowRateTimer _ticker = LowRateTimer(
+    const Duration(seconds: 1),
+    () => setState(() {}),
+  );
+
+  RoomController get _c => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _c.player.addListener(_sync);
+    _c.addListener(_sync);
+    _ticker.run(_c.player.value.playing);
+  }
+
+  void _sync() {
+    _ticker.run(_c.player.value.playing);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _c.player.removeListener(_sync);
+    _c.removeListener(_sync);
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = _c.durationMs();
+    final fraction = duration > 0
+        ? (_c.positionMs() / duration).clamp(0.0, 1.0)
+        : 0.0;
+    return RepaintBoundary(
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: fraction,
+          heightFactor: 1,
+          child: ColoredBox(color: context.palette.primary),
         ),
       ),
     );

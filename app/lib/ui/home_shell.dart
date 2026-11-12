@@ -275,6 +275,7 @@ class _HomeShellState extends State<HomeShell>
     TabNavigation._closePlayer = () {
       if (_sheet.isOpen) _sheet.close();
     };
+    TabNavigation._search = _search;
     room.invite.addListener(_onInvite);
     room.chatRequests.addListener(_onChatRequest);
     room.setup.addListener(_onSetup);
@@ -393,6 +394,7 @@ class _HomeShellState extends State<HomeShell>
     HardwareKeyboard.instance.removeHandler(_onKey);
     TabNavigation._active = null;
     TabNavigation._closePlayer = null;
+    TabNavigation._search = null;
     _stack.dispose();
     _watched?.invite.removeListener(_onInvite);
     _watched?.chatRequests.removeListener(_onChatRequest);
@@ -704,6 +706,7 @@ class _HomeShellState extends State<HomeShell>
               controller: controller,
               shrink: _shrink,
               drop: _drop,
+              hideMini: _sheet.miniHidden,
               index: _tab,
               browsing: _browsing,
               onSelect: _select,
@@ -1240,6 +1243,7 @@ class _Bars extends StatelessWidget {
     required this.controller,
     required this.shrink,
     required this.drop,
+    required this.hideMini,
     required this.index,
     required this.browsing,
     required this.onSelect,
@@ -1251,6 +1255,9 @@ class _Bars extends StatelessWidget {
   /// How far the capsule of tabs has shrunk, and the mini player come down, 0 to 1.
   final Animation<double> shrink;
   final Animation<double> drop;
+
+  /// Whether the mini player gives way, while the bars are open, to a card on the page that shows the same song.
+  final ValueNotifier<bool> hideMini;
 
   /// The tab that is open, and the last of the capsule's that was.
   final int index;
@@ -1340,9 +1347,25 @@ class _Bars extends StatelessWidget {
                           top:
                               (row - gap - mini) * (1 - drop) +
                               (row + tabs - mini) * drop,
-                          child: MiniPlayer(
-                            controller: controller,
-                            folded: drop,
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: hideMini,
+                            builder: (context, hidden, child) =>
+                                AnimatedOpacity(
+                                  duration: Motion.of(
+                                    context,
+                                    Motion.medium,
+                                  ),
+                                  // Folded, the capsule sits between the tab and Search, where nothing else is
+                                  opacity: hidden && drop == 0 ? 0 : 1,
+                                  child: IgnorePointer(
+                                    ignoring: hidden && drop == 0,
+                                    child: child,
+                                  ),
+                                ),
+                            child: MiniPlayer(
+                              controller: controller,
+                              folded: drop,
+                            ),
                           ),
                         ),
                         Positioned(
@@ -1582,6 +1605,10 @@ class _StackWatcher extends NavigatorObserver {
 abstract final class TabNavigation {
   static NavigatorState? Function()? _active;
   static VoidCallback? _closePlayer;
+  static VoidCallback? _search;
+
+  /// Opens Search with the cursor in its field, from a page that has nothing to show but a way to find songs.
+  static void search() => _search?.call();
 
   static Future<T?> push<T>(BuildContext context, Route<T> route) {
     _closePlayer?.call();

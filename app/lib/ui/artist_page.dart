@@ -15,6 +15,7 @@ import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/play_row.dart';
+import 'widgets/title_on_scroll.dart';
 import 'widgets/player_backdrop.dart';
 
 /// Opens the page of an artist in the tab that is showing, with a way back.
@@ -64,20 +65,26 @@ class _ArtistScreenState extends State<ArtistScreen> {
             PlayerBackdrop(coverUrl: page?.thumb, mesh: true),
             Padding(
               padding: SideInset.paddingOf(context),
-              child: Scaffold(
-                appBar: AppBar(leading: const RoundBackButton()),
-                body: switch (page) {
-                  _ when failed => PlayerMessage(
-                    icon: Icons.cloud_off_rounded,
-                    text: S.musicFailed,
-                    action: S.tryAgain,
-                    onAction: () => setState(_load),
+              child: TitleOnScroll(
+                title: page?.name ?? '',
+                builder: (context, title) => Scaffold(
+                  appBar: AppBar(
+                    leading: const RoundBackButton(),
+                    title: title,
                   ),
-                  null => const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  _ => _Content(page: page),
-                },
+                  body: switch (page) {
+                    _ when failed => PlayerMessage(
+                      icon: Icons.cloud_off_rounded,
+                      text: S.musicFailed,
+                      action: S.tryAgain,
+                      onAction: () => setState(_load),
+                    ),
+                    null => const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    _ => _Content(page: page),
+                  },
+                ),
               ),
             ),
           ],
