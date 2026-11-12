@@ -213,14 +213,22 @@ final class YouTubeTests: XCTestCase {
         let http = FakeHTTP()
         http.numberedVisitors = true
         let turnedDown = #"{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in"}}"#
-        let answers = [turnedDown, turnedDown, String(decoding: try fixture("player_visionos"), as: UTF8.self)]
-        let flaky = FlakyHTTP(base: http, answers: answers, counter: Collected())
+        let played = String(decoding: try fixture("player_visionos"), as: UTF8.self)
+        let flaky = FlakyHTTP(base: http, answers: [turnedDown, turnedDown, played, played], counter: Collected())
         let resolver = YouTubeResolver(http: flaky, music: MusicClient(http: http), region: "US")
+        _ = try await resolver.resolve("dQw4w9WgXcQ")
+        await resolver.idle()
+        // The next song takes what was kept in advance. Which call asked for it is not told by the order of the calls: the
+        // background ask can be sent before or after the Quest client's own, as the two run at once. What is kept is told
+        // by the identity the next song uses: VISITORn is the nth `visitor_id` call, and that call was made by the main
+        // client, not by the Quest client, whose try was its own.
         _ = try await resolver.resolve("dQw4w9WgXcQ")
         await resolver.idle()
         let askers = http.calls.filter { $0.url.contains("visitor_id") }
             .compactMap { (($0.body["context"] as? [String: Any])?["client"] as? [String: Any])?["clientName"] as? String }
-        XCTAssertEqual(askers.last, "VISIONOS", "what the Quest client's try left in advance is not for the next song: \(askers)")
+        let used = try XCTUnwrap(flaky.visitors.last)
+        let number = try XCTUnwrap(Int(used.dropFirst("VISITOR".count)), "an identity of the test: \(used)")
+        XCTAssertEqual(askers[number - 1], "VISIONOS", "what the Quest client's try left in advance is not for the next song: \(used) was asked by \(askers[number - 1]) in \(askers)")
         XCTAssertEqual(askers.filter { $0 == "ANDROID_VR" }.count, 1, "the Quest client asked only for its own try: \(askers)")
     }
 
