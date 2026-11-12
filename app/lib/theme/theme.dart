@@ -201,18 +201,28 @@ ThemeData buildTheme(Palette p) {
     ),
     sliderTheme: SliderThemeData(
       activeTrackColor: p.primary,
-      inactiveTrackColor: p.outline,
+      inactiveTrackColor: p.track,
       thumbColor: p.primary,
       overlayColor: p.primary.withValues(alpha: 0.12),
       trackHeight: 4,
     ),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith(
-        (s) => s.contains(WidgetState.selected) ? p.onPrimary : p.textTertiary,
-      ),
-      trackColor: WidgetStateProperty.resolveWith(
-        (s) => s.contains(WidgetState.selected) ? p.primary : p.outlineSoft,
-      ),
+      // A switch that cannot be turned (the chat's encryption, once it is on) is drawn faded, so it does not read as
+      // one that can
+      thumbColor: WidgetStateProperty.resolveWith((s) {
+        final on = s.contains(WidgetState.selected);
+        final color = on ? p.onPrimary : p.textTertiary;
+        return s.contains(WidgetState.disabled)
+            ? color.withValues(alpha: 0.7)
+            : color;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((s) {
+        final on = s.contains(WidgetState.selected);
+        final color = on ? p.primary : p.outlineSoft;
+        return s.contains(WidgetState.disabled)
+            ? color.withValues(alpha: on ? 0.38 : 0.5)
+            : color;
+      }),
       trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(

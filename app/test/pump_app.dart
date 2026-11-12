@@ -126,7 +126,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
 Future<void> openSettingsList(WidgetTester tester) async {
   await tester.tap(find.text(S.tabHome));
   await tester.pumpAndSettle();
-  await tester.tap(find.byTooltip(S.settingsTitle));
+  // The gear at the top of Home, or in a wide window the row of the sidebar that it gave way to
+  final gear = find.byTooltip(S.settingsTitle);
+  await tester.tap(gear.evaluate().isNotEmpty ? gear : find.text(S.settingsTitle).last);
   await tester.pumpAndSettle();
 }
 

@@ -102,7 +102,7 @@ void main() {
           await tester.pump(const Duration(milliseconds: 500));
           await tester.pump(const Duration(milliseconds: 500));
 
-          expect(find.text('Up Next'), findsOneWidget);
+          expect(find.text('Up next'), findsOneWidget);
           expect(find.text('Song 1'), findsOneWidget);
 
           // The card of the song on this tab stands in for the mini player, which is on the other tabs
@@ -221,7 +221,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
 
     // Repeat is in Up Next, as in Apple Music
-    await tester.tap(find.byTooltip('Up Next'));
+    await tester.tap(find.byTooltip('Up next'));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.byIcon(Icons.repeat_rounded));
     await tester.pump();

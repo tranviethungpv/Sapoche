@@ -61,7 +61,7 @@ class _VolumeBarState extends State<VolumeBar> {
                               borderRadius: BorderRadius.circular(height),
                               child: Stack(
                                 children: [
-                                  Container(height: height, color: p.outline),
+                                  Container(height: height, color: p.track),
                                   FractionallySizedBox(
                                     widthFactor: level,
                                     child: Container(

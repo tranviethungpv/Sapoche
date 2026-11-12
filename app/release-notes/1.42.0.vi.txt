@@ -1,0 +1,7 @@
+Giao diện gọn hơn: chữ vừa chỗ, màn rộng và điện thoại chứa được nhiều hơn
+- Tên bài và tên nghệ sĩ dài được cắt gọn: số như "205M lượt phát" hiện đủ hoặc bỏ hẳn, không bị cắt đôi, và tên bài dài có hai dòng ở trình phát trước khi chạy chữ.
+- Ở màn rộng (máy tính bảng nằm ngang, máy tính, trình duyệt), danh sách bài có cột album và thời lượng, thanh bên chỉ sáng đúng chỗ bạn đang ở, Cài đặt là một hàng của thanh bên, và menu không còn che thanh phát.
+- Hàng đợi hiện được nhiều bài hơn: khi chưa xếp bài nào, Tự động phát chỉ còn một dòng, các đoạn giải thích dài chuyển vào Cài đặt. Hàng cuối mờ dần thay vì bị cắt cứng.
+- Bài đã thích, Nghe gần đây, Đã tải và Trên máy này bắt đầu bằng một ô nhỏ cạnh tên. Menu của album hay playlist là một tờ trượt từ dưới lên, như menu của bài hát.
+- Thanh tua và thanh âm lượng thấy được cả lúc còn trống, các nút trộn bài và lặp lại có viền.
+- Sửa lỗi: chat mã hoá đầu cuối giờ trông như đã khoá khi đã bật (không tắt lại được); bài đang phát vẫn ở đầu khung chat khi bạn gõ phím; và ở chế độ Âm thanh, ảnh của trình phát luôn là hình vuông.

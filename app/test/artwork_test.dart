@@ -144,4 +144,38 @@ void main() {
       );
     }
   });
+
+  artworkShapeTests();
+}
+
+void artworkShapeTests() {
+  // A video's thumbnail is 16:9 and a cover is a square: in a cross-fade the picture is given loose constraints by the
+  // switcher's own Stack and takes its own shape, a 16:9 strip across the middle of the cover, unless that Stack tells
+  // what it holds to fill. (Seen on a phone, 1.41.0: a song whose picture is a video's thumbnail had a wide cover in Audio.)
+  testWidgets('a cross-fade of covers tells the picture to fill the square', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Palette.light),
+        home: const Center(
+          child: Artwork(
+            url: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+            size: 300,
+            sharp: true,
+            crossfade: true,
+          ),
+        ),
+      ),
+    );
+    final stack = tester.widget<Stack>(
+      find
+          .descendant(
+            of: find.byType(AnimatedSwitcher),
+            matching: find.byType(Stack),
+          )
+          .first,
+    );
+    expect(stack.fit, StackFit.expand);
+  });
 }

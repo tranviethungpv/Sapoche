@@ -105,7 +105,7 @@ class _PlaybackBarState extends State<PlaybackBar> {
                   borderRadius: BorderRadius.circular(height),
                   child: Stack(
                     children: [
-                      Container(height: height, color: p.outline),
+                      Container(height: height, color: p.track),
                       FractionallySizedBox(
                         widthFactor: fraction,
                         child: Container(

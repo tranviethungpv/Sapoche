@@ -187,7 +187,9 @@ class _EmojiGrid extends StatelessWidget {
 }
 
 /// The height of what shows the emoji flying above the grid.
-const _flightHeight = 120.0;
+///
+/// Short: a band of 120 dp was a fifth of the sheet, empty but for one line (kept to 72 dp: plan `2026-11-12-ui-fixed-yardstick`, K16).
+const _flightHeight = 72.0;
 
 /// Reactions flying up over [child], from the bottom of the place: the room's, and this device's own. Each one ends
 /// by itself after a moment, so nothing keeps the screen drawing once they stop coming.

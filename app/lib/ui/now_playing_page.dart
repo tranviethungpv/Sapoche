@@ -24,6 +24,7 @@ import 'scope.dart';
 import 'sleep_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
+import 'widgets/edge_fade.dart';
 import 'widgets/not_interested.dart';
 import 'widgets/like_button.dart';
 import 'widgets/marquee_text.dart';
@@ -418,7 +419,9 @@ class _BodyState extends State<_Body> {
                         child: _Toolbar(
                           controller: _c,
                           panel: panel,
-                          onPanel: _show,
+                          // One of the two is always showing beside the picture, so these are a choice between two and
+                          // not switches: touching the lit one leaves it lit
+                          onPanel: (choice) => setState(() => _panel = choice),
                         ),
                       ),
                     ),
@@ -738,7 +741,17 @@ class _CoverStage extends StatelessWidget {
                   ),
                   // With no room left for the cover the title is all there is
                   SizedBox(height: side > 0 ? _coverGap : 0),
-                  _TitleRow(controller: controller, current: current),
+                  _TitleRow(
+                    controller: controller,
+                    current: current,
+                    // A second line is for a screen where the cover keeps its size with it: one line of the title is
+                    // taller than [_titleHeight] by about 32 dp
+                    wrapLines:
+                        side >= artSize &&
+                            box.maxHeight - side - _coverGap - _titleHeight - 16 >= 32
+                        ? 2
+                        : 1,
+                  ),
                 ],
               ),
             ),
@@ -901,9 +914,13 @@ class _PanelStage extends StatelessWidget {
         ),
         Expanded(
           child: switch (panel) {
-            _Panel.lyrics => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: _margin),
-              child: LyricsView(controller: controller, track: current),
+            // The lines go up under the song above them: they fade out there, not cut off at its foot
+            _Panel.lyrics => EdgeFade(
+              top: 24,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: _margin),
+                child: LyricsView(controller: controller, track: current),
+              ),
             ),
             // The queue has 20 of its own at each side, and the song above it 32: the difference is made up here
             _ => Padding(
@@ -918,10 +935,18 @@ class _PanelStage extends StatelessWidget {
 }
 
 class _TitleRow extends StatelessWidget {
-  const _TitleRow({required this.controller, required this.current});
+  const _TitleRow({
+    required this.controller,
+    required this.current,
+    this.wrapLines = 1,
+  });
 
   final RoomController controller;
   final QueueEntry current;
+
+  /// How many lines the title may take before it runs: more than one only where the height has room for them, as the
+  /// cover of a phone's player does while it keeps its size.
+  final int wrapLines;
 
   @override
   Widget build(BuildContext context) {
@@ -936,6 +961,7 @@ class _TitleRow extends StatelessWidget {
                 current.title,
                 style: theme.headlineSmall,
                 rounds: MarqueeText.playerRounds,
+                wrapLines: wrapLines,
               ),
               const SizedBox(height: 2),
               _ArtistLine(controller: controller, current: current),
@@ -1052,17 +1078,16 @@ class _ArtistLineState extends State<_ArtistLine> {
           maxLines: 1,
         )..layout()).width;
         final name = width(track.artist, style);
-        // The count gives way before the name does: whole, then without its word, then not at all. The name only
-        // moves when it is longer than the line by itself.
-        for (final text in [' · $count', ' · ${shortViews(count)}']) {
-          if (name + width(text, tail) <= box.maxWidth) {
-            return Row(
-              children: [
-                Flexible(child: artist(track.artist)),
-                Text(text, maxLines: 1, softWrap: false, style: tail),
-              ],
-            );
-          }
+        // The count gives way before the name does: whole or not at all (a count without its word, "734 M", reads as a
+        // number of nothing). The name only moves when it is longer than the line by itself.
+        final text = ' · $count';
+        if (name + width(text, tail) <= box.maxWidth) {
+          return Row(
+            children: [
+              Flexible(child: artist(track.artist)),
+              Text(text, maxLines: 1, softWrap: false, style: tail),
+            ],
+          );
         }
         return artist(track.artist);
       },

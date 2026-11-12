@@ -88,89 +88,93 @@ class PlayerBarBody extends StatelessWidget {
       borderRadius: BorderRadius.circular(PlayerBar.height / 2),
       child: InkWell(
         onTap: onTap,
-        child: SizedBox(
-          height: PlayerBar.height,
-          child: LayoutBuilder(
-            builder: (context, box) {
-              // The middle takes what the song and the buttons leave, within reason
-              final middle = (box.maxWidth * 0.38).clamp(220.0, 420.0);
-              return Row(
-                children: [
-                  const SizedBox(width: side),
-                  // Round, as the mini player's: the cover flies from here into the full player
-                  if (ghost)
-                    const SizedBox.square(dimension: _cover)
-                  else
-                    Artwork(
-                      key: sheet.miniCover,
-                      url: current.thumb,
-                      size: _cover,
-                      radius: _cover / 2,
-                    ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        MarqueeText(
-                          current.title,
-                          style: theme.titleSmall,
-                          rounds: MarqueeText.barRounds,
-                        ),
-                        MarqueeText(
-                          controller.snapshot.solo
-                              ? '${current.artist} · ${S.onYourOwn}'
-                              : current.artist,
-                          style: theme.bodySmall?.copyWith(
-                            color: p.textSecondary,
+        // A bar of a fixed height does not grow with large text: what it holds would not fit, so the words stop at 1.15
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.15,
+          child: SizedBox(
+            height: PlayerBar.height,
+            child: LayoutBuilder(
+              builder: (context, box) {
+                // The middle takes what the buttons need, within reason; the song has the rest
+                final middle = (box.maxWidth * 0.30).clamp(220.0, 380.0);
+                return Row(
+                  children: [
+                    const SizedBox(width: side),
+                    // Round, as the mini player's: the cover flies from here into the full player
+                    if (ghost)
+                      const SizedBox.square(dimension: _cover)
+                    else
+                      Artwork(
+                        key: sheet.miniCover,
+                        url: current.thumb,
+                        size: _cover,
+                        radius: _cover / 2,
+                      ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MarqueeText(
+                            current.title,
+                            style: theme.titleSmall,
+                            rounds: MarqueeText.barRounds,
                           ),
-                          rounds: MarqueeText.barRounds,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 28),
-                  SizedBox(
-                    width: middle,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ListenableBuilder(
-                          listenable: controller.playState,
-                          builder: (context, _) => Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SkipButton(
-                                forward: false,
-                                onPressed: controller.prev,
-                                size: 26,
-                              ),
-                              const SizedBox(width: 8),
-                              PlayPauseButton(
-                                playing: controller.isPlaying,
-                                starting: controller.isStarting,
-                                onPressed: controller.togglePlay,
-                                size: 40,
-                                filled: false,
-                              ),
-                              const SizedBox(width: 8),
-                              SkipButton(
-                                forward: true,
-                                onPressed: controller.next,
-                                size: 26,
-                              ),
-                            ],
+                          MarqueeText(
+                            controller.snapshot.solo
+                                ? '${current.artist} · ${S.onYourOwn}'
+                                : current.artist,
+                            style: theme.bodySmall?.copyWith(
+                              color: p.textSecondary,
+                            ),
+                            rounds: MarqueeText.barRounds,
                           ),
-                        ),
-                        PlaybackBar(controller: controller, compact: true),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 28),
-                  Expanded(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                    const SizedBox(width: 28),
+                    SizedBox(
+                      width: middle,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ListenableBuilder(
+                            listenable: controller.playState,
+                            builder: (context, _) => Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SkipButton(
+                                  forward: false,
+                                  onPressed: controller.prev,
+                                  size: 26,
+                                ),
+                                const SizedBox(width: 8),
+                                PlayPauseButton(
+                                  playing: controller.isPlaying,
+                                  starting: controller.isStarting,
+                                  onPressed: controller.togglePlay,
+                                  size: 40,
+                                  filled: false,
+                                ),
+                                const SizedBox(width: 8),
+                                SkipButton(
+                                  forward: true,
+                                  onPressed: controller.next,
+                                  size: 26,
+                                ),
+                              ],
+                            ),
+                          ),
+                          PlaybackBar(controller: controller, compact: true),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 28),
+                    // As wide as its two buttons: the name of the song has all that is left, and runs only when it is
+                    // longer than that
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
                           onPressed: () => sheet.openOn(PlayerPanel.lyrics),
@@ -190,11 +194,11 @@ class PlayerBarBody extends StatelessWidget {
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                ],
-              );
-            },
+                    const SizedBox(width: 14),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),

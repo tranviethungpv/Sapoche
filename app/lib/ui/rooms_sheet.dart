@@ -624,8 +624,9 @@ class EncryptionCard extends StatelessWidget {
             ),
           ),
         ),
-        // Like the other settings a switch; on for good, so once it is on it cannot be turned off. Turning it on asks first.
-        // A device without the key has a button for getting it instead
+        // Like the other settings a switch; on for good, so once it is on it cannot be turned off: the row is dimmed and
+        // its switch faded then. Turning it on asks first. A device without the key has a button for getting it instead
+        enabled: !on || noKey,
         onTap: on ? null : () => _confirm(context),
         trailing: noKey
             ? FilledButton.tonal(

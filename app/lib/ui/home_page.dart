@@ -511,23 +511,26 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           const _RoomChip(),
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: () => openSettings(context),
-            tooltip: S.settingsTitle,
-            style: roundButtonStyle(context, size: 40),
-            // A dot while a newer version of the app is waiting
-            icon: ListenableBuilder(
-              listenable: AppScope.of(context).update,
-              builder: (context, _) => Badge(
-                key: const ValueKey('update-dot'),
-                smallSize: 9,
-                backgroundColor: p.primary,
-                isLabelVisible: AppScope.of(context).update.info.hasUpdate,
-                child: Icon(Icons.settings_outlined, size: 22, color: p.text),
+          // Beside a sidebar Settings is a row of it, with the dot of a new version
+          if (HomeShell.layoutOf(context) != ShellLayout.sidebar) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: () => openSettings(context),
+              tooltip: S.settingsTitle,
+              style: roundButtonStyle(context, size: 40),
+              // A dot while a newer version of the app is waiting
+              icon: ListenableBuilder(
+                listenable: AppScope.of(context).update,
+                builder: (context, _) => Badge(
+                  key: const ValueKey('update-dot'),
+                  smallSize: 9,
+                  backgroundColor: p.primary,
+                  isLabelVisible: AppScope.of(context).update.info.hasUpdate,
+                  child: Icon(Icons.settings_outlined, size: 22, color: p.text),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

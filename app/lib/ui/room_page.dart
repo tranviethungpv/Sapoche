@@ -19,10 +19,12 @@ import 'widgets/delete_background.dart';
 import 'widgets/motion.dart';
 import 'widgets/equalizer.dart';
 import 'widgets/link_banner.dart';
+import 'widgets/meta_line.dart';
 import 'widgets/on_screen.dart';
 import 'widgets/queued_autoplay.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/qr_code_view.dart';
+import 'widgets/track_columns.dart' show ListWidth;
 import 'widgets/track_tile.dart';
 import 'widgets/transport.dart';
 
@@ -132,10 +134,12 @@ class _RoomPageState extends State<RoomPage> {
             current,
             snapshot.inRoom
                 ? _HidesMiniPlayer(
-                    child: _NowCard(
-                      controller: controller,
-                      entry: current,
-                      addedBy: _adder(snapshot, current),
+                    child: ListWidth(
+                      child: _NowCard(
+                        controller: controller,
+                        entry: current,
+                        addedBy: _adder(snapshot, current),
+                      ),
                     ),
                   )
                 : ListenableBuilder(
@@ -582,31 +586,33 @@ class _NowCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              [
-                                entry.artist,
-                                ?(addedBy == null ? null : S.addedBy(addedBy!)),
-                              ].join(' · '),
+                            // Who added it gives way before the artist is cut
+                            MetaLine(
+                              text: entry.artist,
+                              meta: addedBy == null
+                                  ? null
+                                  : S.addedBy(addedBy!),
                               style: theme.bodySmall?.copyWith(
                                 color: p.textSecondary,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    ListenableBuilder(
-                      listenable: controller.playState,
-                      builder: (context, _) => PlayPauseButton(
-                        playing: controller.isPlaying,
-                        starting: controller.isStarting,
-                        onPressed: controller.togglePlay,
-                        size: 44,
+                    // In a wide window the player bar under the pages has the same button, so the card is only the song
+                    if (HomeShell.layoutOf(context) != ShellLayout.sidebar) ...[
+                      const SizedBox(width: 8),
+                      ListenableBuilder(
+                        listenable: controller.playState,
+                        builder: (context, _) => PlayPauseButton(
+                          playing: controller.isPlaying,
+                          starting: controller.isStarting,
+                          onPressed: controller.togglePlay,
+                          size: 44,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
                 // Under it all, with the whole width of the card to say how this device is in step with the room
@@ -938,15 +944,20 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 12, 6),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(text, style: Theme.of(context).textTheme.titleLarge),
-            ),
-            ?action,
-          ],
+      child: ListWidth(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 12, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  text,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              ?action,
+            ],
+          ),
         ),
       ),
     );

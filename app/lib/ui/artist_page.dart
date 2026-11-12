@@ -290,6 +290,10 @@ class _ContentState extends State<_Content> {
         child: Padding(
           padding: EdgeInsets.only(left: math.max(inset - 12, 0)),
           child: TextButton(
+            // Its words start where the text above them does: 12 of padding, taken off the inset
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
             onPressed: () => setState(() => _open = !_open),
             child: Text(_open ? S.showLess : S.showMore),
           ),

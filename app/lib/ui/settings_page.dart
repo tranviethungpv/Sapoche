@@ -40,7 +40,10 @@ import 'widgets/text_dialog.dart';
 /// Opens the settings in the tab that is showing (beside the sidebar of a wide screen), with a way back.
 Future<void> openSettings(BuildContext context) => TabNavigation.push(
   context,
-  MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+  MaterialPageRoute<void>(
+    settings: const RouteSettings(name: Where.settings),
+    builder: (_) => const SettingsScreen(),
+  ),
 );
 
 /// The settings as a page of their own. A page on its own paints its own backdrop, the same as the home screen's,
@@ -688,7 +691,8 @@ class _SettingsPageState extends State<SettingsPage> {
     else
       _Group(
         title: S.soundSection,
-        footer: S.audioQualityHelp,
+        // What the switch under the qualities would say at length is here, as the other pages say theirs
+        footer: '${S.audioQualityHelp}\n\n${S.normalizeVolumeHelp}',
         children: [
           ListenableBuilder(
             listenable: model.room,
@@ -731,7 +735,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: SwitchListTile(
                 key: const ValueKey('normalize-volume-switch'),
                 title: Text(S.normalizeVolume),
-                subtitle: Text(S.normalizeVolumeHelp),
+                subtitle: Text(S.normalizeVolumeShort),
                 value: model.room.normalizeVolume,
                 onChanged: model.room.setNormalizeVolume,
               ),

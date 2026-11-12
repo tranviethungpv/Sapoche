@@ -70,6 +70,10 @@ class _ScrollEdgeState extends State<ScrollEdge> {
 
   @override
   Widget build(BuildContext context) {
+    // Beside a sidebar the page's name is already said (it is the lit row of the sidebar), and a solid strip of glass with
+    // it in the middle only covers what scrolls up: the first page of a tab has no strip there. A page opened over it
+    // has its own name beside its Back button (`TitleOnScroll`).
+    if (HomeShell.layoutOf(context) == ShellLayout.sidebar) return widget.child;
     final top = MediaQuery.paddingOf(context).top;
     // On a phone the page simply ends below the status bar, as it did before the strip: it looked heavy there
     if (HomeShell.endsBelowStatusOf(context)) {

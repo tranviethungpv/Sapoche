@@ -5,6 +5,7 @@ import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/room_controller.dart';
 import 'package:sapoche/strings.dart';
+import 'package:sapoche/theme/palette.dart';
 import 'package:sapoche/ui/chat_sheet.dart';
 import 'package:sapoche/ui/widgets/reactions.dart';
 
@@ -517,6 +518,17 @@ void main() {
       expect(backend.calls.last, 'pause');
     });
 
+    testWidgets('the song that is on stays when the keyboard comes up', (tester) async {
+      await roomWithChat(tester);
+      await tester.tap(find.byTooltip(S.chat));
+      await tester.pumpAndSettle();
+      // The keyboard: 300 dp of the bottom of a tall window
+      tester.view.viewInsets = FakeViewPadding(bottom: 300 * tester.view.devicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('chat-now')), findsOneWidget);
+    });
+
     testWidgets('with no song on there is no strip', (tester) async {
       final (backend, _) = await pumpApp(tester);
       backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
@@ -801,6 +813,25 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('encryption-card')), findsOneWidget);
       expect(find.byKey(const ValueKey('encryption-turn-on')), findsNothing);
+    });
+
+    testWidgets('once encryption is on its row is dimmed and its switch is drawn faded', (tester) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.emit(StateEvent(sampleRoom(ownerId: 'me', encrypted: true, encryptionKey: true)));
+      backend.emit(history([message(1, 'b', 'hi there')]));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip(S.roomSettings));
+      await tester.pumpAndSettle();
+      final on = find.byKey(const ValueKey('encryption-on'));
+      await tester.ensureVisible(on);
+      expect(tester.widget<Switch>(on).onChanged, isNull);
+      final theme = Theme.of(tester.element(on)).switchTheme;
+      final live = theme.trackColor!.resolve({WidgetState.selected})!;
+      final faded = theme.trackColor!.resolve({WidgetState.selected, WidgetState.disabled})!;
+      expect(faded.a, lessThan(live.a), reason: 'a switch that cannot be turned does not look like one that can');
+      // The title of the row is in the colour of what cannot be touched
+      final title = tester.widget<Text>(find.descendant(of: find.byKey(const ValueKey('encryption-card')), matching: find.text(S.encryptionTitle)));
+      expect(title.style?.color, Palette.light.textTertiary);
     });
 
     testWidgets('an empty chat says so', (tester) async {

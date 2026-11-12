@@ -59,8 +59,8 @@ abstract final class S {
     n == 1 ? '1 person listening' : '$n people listening',
     '$n người đang nghe',
   );
-  static String get nowPlaying => _t('Now Playing', 'Đang phát');
-  static String get upNext => _t('Up Next', 'Tiếp theo');
+  static String get nowPlaying => _t('Now playing', 'Đang phát');
+  static String get upNext => _t('Up next', 'Tiếp theo');
   static String get played => _t('Played', 'Đã phát');
   static String get emptyQueueTitle =>
       _t('Nothing queued yet', 'Chưa có bài nào trong hàng đợi');
@@ -78,7 +78,7 @@ abstract final class S {
   static String get shuffleOn => _t('Shuffle on', 'Đang bật trộn bài');
   static String get shuffleOff => _t('Shuffle off', 'Đang tắt trộn bài');
   static String get upNextShuffled =>
-      _t('Up Next shuffled', 'Đã trộn các bài tiếp theo');
+      _t('Up next shuffled', 'Đã trộn các bài tiếp theo');
   static String get noVideoVersion => _t(
     'No video version of this song was found',
     'Không tìm thấy bản video của bài này',
@@ -1065,6 +1065,11 @@ abstract final class S {
 
   static String get normalizeVolume =>
       _t('Even out loudness', 'Cân bằng âm lượng');
+  // Beside the switch, two lines at most; the rest is `normalizeVolumeHelp`, under the card
+  static String get normalizeVolumeShort => _t(
+    'Loud songs are turned down so that songs sound about equally loud.',
+    'Bài to được hạ xuống để các bài nghe to bằng nhau.',
+  );
   static String get normalizeVolumeHelp => _t(
     'Loud songs are turned down to the level YouTube plays them at, so that songs sound about equally loud. Quiet songs are left as they are. Turn it off to hear songs as they were mastered. Songs from files on this phone are not changed.',
     'Bài to được hạ xuống đúng mức YouTube vẫn phát, để các bài nghe to bằng nhau. Bài nhỏ giữ nguyên. Tắt đi để nghe bài đúng như lúc được thu. Bài từ tệp trên máy không bị đổi.',
@@ -1255,18 +1260,15 @@ abstract final class S {
   static String get songInfo => _t('Song info', 'Thông tin bài hát');
   static String get goToArtist => _t('Go to artist', 'Đến trang nghệ sĩ');
   static String get suggested => _t('Suggested', 'Gợi ý');
-  static String get autoplayNote => _t(
-    'Similar songs keep playing when the queue runs out.',
-    'Những bài tương tự sẽ tiếp tục phát khi hàng đợi hết.',
-  );
-  static String get roomAutoplayNote => _t(
-    'The room keeps playing similar songs when the queue runs out.',
-    'Phòng sẽ tiếp tục phát những bài tương tự khi hàng đợi hết.',
-  );
   static String get roomAutoplayQueued => _t(
-    'Lined up by autoplay. They play after your queue and are not part of it: songs you add go first.',
-    'Tự phát đã xếp sẵn những bài này. Chúng phát sau hàng đợi của bạn và không thuộc hàng đợi, nên bài bạn thêm sẽ phát trước.',
+    'After your queue; the songs you add go first.',
+    'Sau hàng đợi của bạn; bài bạn thêm sẽ phát trước.',
   );
+  // One line beside the heading, where the full explanation (`autoplayHelp`) is in Settings
+  static String get autoplayShort =>
+      _t('plays after your queue', 'phát sau hàng đợi của bạn');
+  static String get roomAutoplayShort =>
+      _t('plays after the room\'s queue', 'phát sau hàng đợi của phòng');
   static String get nothingAfter =>
       _t('Nothing is queued after this song.', 'Không có bài nào sau bài này.');
   static String get youMightAlsoLike =>

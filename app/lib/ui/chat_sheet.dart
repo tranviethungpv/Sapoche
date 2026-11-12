@@ -725,7 +725,12 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
               ],
             ),
           ),
-          _NowStrip(controller: _c),
+          // It stays while the keyboard is up; only the stickers' search, which has the keyboard and the tray together,
+          // leaves the messages no room for it
+          _NowStrip(
+            controller: _c,
+            waits: tray > 0 && MediaQuery.viewInsetsOf(context).bottom > 0,
+          ),
           _NoticeOffer(controller: _c),
           Expanded(
             // Part of the field as far as a touch goes: pressing a message to drag it sideways or hold it must not put
@@ -1427,18 +1432,18 @@ class _MuteButton extends StatelessWidget {
 /// The song the room is on, at the top of the chat, so that it stays in sight while people talk: its cover, its name, and
 /// the button to play or pause. Nothing while no song is on.
 class _NowStrip extends StatelessWidget {
-  const _NowStrip({required this.controller});
+  const _NowStrip({required this.controller, this.waits = false});
 
   final RoomController controller;
+
+  /// There is no room for it now: the keyboard and the stickers are both up.
+  final bool waits;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
-    // With the keyboard up there is little room for the messages: the strip waits
-    if (MediaQuery.viewInsetsOf(context).bottom > 0) {
-      return const SizedBox.shrink();
-    }
+    if (waits) return const SizedBox.shrink();
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {

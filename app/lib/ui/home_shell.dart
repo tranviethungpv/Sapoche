@@ -688,14 +688,19 @@ class _HomeShellState extends State<HomeShell>
             Expanded(
               child: layout == ShellLayout.bars
                   ? pages
-                  : _Side(
-                      layout: layout,
-                      controller: controller,
-                      index: _tab,
-                      onSelect: _select,
-                      onSearch: _search,
-                      onLibrary: _openLibrary,
-                      child: pages,
+                  // The sidebar lights the page on top in the tab, which changes when a page is opened or closed in it
+                  : ListenableBuilder(
+                      listenable: _stack,
+                      builder: (context, _) => _Side(
+                        layout: layout,
+                        controller: controller,
+                        index: _tab,
+                        where: _watchers[_tab].top,
+                        onSelect: _select,
+                        onSearch: _search,
+                        onLibrary: _openLibrary,
+                        child: pages,
+                      ),
                     ),
             ),
           ],
@@ -771,6 +776,7 @@ class _Side extends StatelessWidget {
     required this.layout,
     required this.controller,
     required this.index,
+    required this.where,
     required this.onSelect,
     required this.onSearch,
     required this.onLibrary,
@@ -780,6 +786,9 @@ class _Side extends StatelessWidget {
   final ShellLayout layout;
   final RoomController controller;
   final int index;
+
+  /// The name of the page on top in the tab that is showing: what the sidebar lights besides the tab.
+  final String? where;
   final ValueChanged<int> onSelect;
   final VoidCallback onSearch;
   final ValueChanged<int> onLibrary;
@@ -850,6 +859,7 @@ class _Side extends StatelessWidget {
                 width: _Sidebar.width,
                 child: _Sidebar(
                   index: index,
+                  where: where,
                   onSelect: onSelect,
                   onSearch: onSearch,
                   onLibrary: onLibrary,
@@ -998,12 +1008,17 @@ class _Rail extends StatelessWidget {
 class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.index,
+    required this.where,
     required this.onSelect,
     required this.onSearch,
     required this.onLibrary,
   });
 
   final int index;
+
+  /// The page on top in the tab ([Where]): Settings or a list of the library has its row lit instead of the tab's, so that
+  /// one row is lit and it is where the person is.
+  final String? where;
   final ValueChanged<int> onSelect;
   final VoidCallback onSearch;
   final ValueChanged<int> onLibrary;
@@ -1015,6 +1030,10 @@ class _Sidebar extends StatelessWidget {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     final library = AppScope.of(context).library;
+    final spot = Where.spotOf(where);
+    final inSettings = where == Where.settings;
+    // A named page has a row of its own
+    final named = spot != null || inSettings;
     return Glass(
       borderRadius: BorderRadius.circular(24),
       child: Padding(
@@ -1070,19 +1089,19 @@ class _Sidebar extends StatelessWidget {
             _SideRow(
               icon: Icons.home_rounded,
               label: S.tabHome,
-              selected: index == 0,
+              selected: index == 0 && !named,
               onTap: () => onSelect(0),
             ),
             _SideRow(
               icon: Icons.library_music_rounded,
               label: S.tabLibrary,
-              selected: index == 2,
+              selected: index == 2 && !named,
               onTap: () => onSelect(2),
             ),
             _SideRow(
               icon: Icons.graphic_eq_rounded,
               label: HomeShell.listenLabelOf(context),
-              selected: index == 3,
+              selected: index == 3 && !named,
               onTap: () => onSelect(3),
             ),
             Padding(
@@ -1105,6 +1124,7 @@ class _Sidebar extends StatelessWidget {
                         on: p.onPrimary,
                       ),
                       label: S.likedSongs,
+                      selected: spot == LibraryRequests.liked,
                       onTap: () => onLibrary(LibraryRequests.liked),
                     ),
                     if (!kIsWeb)
@@ -1115,6 +1135,7 @@ class _Sidebar extends StatelessWidget {
                           on: p.text,
                         ),
                         label: S.downloadedSongs,
+                        selected: spot == LibraryRequests.downloaded,
                         onTap: () => onLibrary(LibraryRequests.downloaded),
                       ),
                     if (library.localStatus.enabled)
@@ -1125,6 +1146,7 @@ class _Sidebar extends StatelessWidget {
                           on: p.text,
                         ),
                         label: S.localMusic,
+                        selected: spot == LibraryRequests.local,
                         onTap: () => onLibrary(LibraryRequests.local),
                       ),
                     for (final playlist in library.playlists)
@@ -1135,16 +1157,22 @@ class _Sidebar extends StatelessWidget {
                           radius: 7,
                         ),
                         label: playlist.name,
+                        selected: spot == playlist.id,
                         onTap: () => onLibrary(playlist.id),
                       ),
                   ],
                 ),
               ),
             ),
-            _SideRow(
-              icon: Icons.settings_outlined,
-              label: S.settingsTitle,
-              onTap: () => openSettings(context),
+            ListenableBuilder(
+              listenable: AppScope.of(context).update,
+              builder: (context, _) => _SideRow(
+                icon: Icons.settings_outlined,
+                label: S.settingsTitle,
+                selected: inSettings,
+                dot: AppScope.of(context).update.info.hasUpdate,
+                onTap: () => openSettings(context),
+              ),
             ),
           ],
         ),
@@ -1161,11 +1189,15 @@ class _SideRow extends StatelessWidget {
     this.icon,
     this.leading,
     this.selected = false,
+    this.dot = false,
   });
 
   final String label;
   final VoidCallback onTap;
   final IconData? icon;
+
+  /// A dot on the icon: something here is waiting (a newer version of the app).
+  final bool dot;
 
   /// In place of the icon, a playlist's cover.
   final Widget? leading;
@@ -1187,10 +1219,16 @@ class _SideRow extends StatelessWidget {
             children: [
               SizedBox(width: leading == null ? 12 : 6),
               leading ??
-                  Icon(
-                    icon,
-                    size: 22,
-                    color: selected ? p.primary : p.textSecondary,
+                  Badge(
+                    key: dot ? const ValueKey('update-dot') : null,
+                    smallSize: 9,
+                    backgroundColor: p.primary,
+                    isLabelVisible: dot,
+                    child: Icon(
+                      icon,
+                      size: 22,
+                      color: selected ? p.primary : p.textSecondary,
+                    ),
                   ),
               const SizedBox(width: 12),
               Expanded(
@@ -1541,7 +1579,15 @@ class _Tabs extends StatelessWidget {
                                             children: [
                                               glyph,
                                               const SizedBox(height: 2),
-                                              name,
+                                              // A longer word (Vietnamese, large text) shrinks to the room in the
+                                              // lit pill instead of touching its edge
+                                              Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                child: FittedBox(
+                                                  fit: BoxFit.scaleDown,
+                                                  child: name,
+                                                ),
+                                              ),
                                             ],
                                           );
                                   },
@@ -1583,20 +1629,52 @@ class _StackWatcher extends NavigatorObserver {
 
   final VoidCallback changed;
 
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      changed();
+  /// The pages of the tab, the first at the bottom: the sidebar lights the row of the one on top ([Where]).
+  final _routes = <Route<dynamic>>[];
+
+  /// The name given to the page on top (`RouteSettings.name`), if it has one.
+  String? get top => _routes.isEmpty ? null : _routes.last.settings.name;
 
   @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => changed();
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.add(route);
+    changed();
+  }
 
   @override
-  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      changed();
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.remove(route);
+    changed();
+  }
 
   @override
-  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
-      changed();
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.remove(route);
+    changed();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    final at = oldRoute == null ? -1 : _routes.indexOf(oldRoute);
+    if (at >= 0) _routes.removeAt(at);
+    if (newRoute != null) {
+      _routes.insert(at < 0 ? _routes.length : at, newRoute);
+    }
+    changed();
+  }
+}
+
+/// The names the pages that the sidebar has a row for go by, in `RouteSettings.name`.
+abstract final class Where {
+  static const settings = 'settings';
+
+  /// A list of the library: [LibraryRequests]'s, or the id of a playlist.
+  static String library(int spot) => 'library:$spot';
+
+  static int? spotOf(String? name) =>
+      name != null && name.startsWith('library:')
+      ? int.tryParse(name.substring(8))
+      : null;
 }
 
 /// Where a page opened from anywhere goes: into the tab that is showing, with the full player put away if it is open.

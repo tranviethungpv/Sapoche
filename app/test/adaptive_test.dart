@@ -215,7 +215,9 @@ void main() {
 
     testWidgets('settings show a topic beside the list', (tester) async {
       await pumpAt(tester, 1280, 800);
-      await tester.tap(find.byTooltip(S.settingsTitle));
+      // Beside a sidebar there is no gear at the top of Home: Settings is a row of the sidebar
+      expect(find.byTooltip(S.settingsTitle), findsNothing);
+      await tester.tap(find.text(S.settingsTitle).last);
       await tester.pumpAndSettle();
       // The list, and the topic that is open beside it
       expect(find.byKey(const ValueKey('settings-appearance')), findsOneWidget);

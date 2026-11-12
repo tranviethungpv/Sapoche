@@ -400,29 +400,30 @@ class _ContentState extends State<_Content> {
               working: _working,
               onPlay: () => _playAll(shuffle: false),
               onShuffle: () => _playAll(shuffle: true),
-              more: PopupMenuButton<String>(
-                tooltip: S.showMore,
+              // A sheet from the bottom on a phone, with the album or the playlist at its head; the small menu where
+              // there is room
+              more: MoreMenuButton(
+                style: roundButtonStyle(context),
+                head: SheetHead(
+                  leading: Artwork(url: _page.thumb, size: 48, radius: 10),
+                  title: _page.title,
+                  subtitle: _page.owner,
+                ),
                 icon: _working == PlayWorking.other
                     ? const SizedBox.square(
                         dimension: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.more_horiz_rounded),
-                style: roundButtonStyle(context),
-                color: p.menu,
-                surfaceTintColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                    : null,
                 onSelected: _menu,
-                itemBuilder: (context) => popupLines([
+                lines: [
                   MenuLine('next', Icons.playlist_play_rounded, S.playNext),
                   MenuLine('queue', Icons.queue_music_rounded, S.addToQueue),
                   MenuLine('save', Icons.library_add_outlined, S.saveAsPlaylist),
                   // A browser downloads nothing
                   if (!kIsWeb)
                     MenuLine('download', Icons.download_rounded, S.downloadAll),
-                ]),
+                ],
               ),
             ),
             if (_page.description != null) _description(context, wide: wide),

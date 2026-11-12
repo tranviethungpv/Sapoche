@@ -21,6 +21,7 @@ import 'widgets/meta_line.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/queue_actions.dart';
 import 'widgets/shimmer.dart';
+import 'widgets/track_columns.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 
@@ -677,7 +678,10 @@ class _SearchPageState extends State<SearchPage> {
             ),
           ],
         ),
-        _Phase.results => ListView(
+        // In a wide window the songs stand in columns, with an album's name beside each that has one
+        _Phase.results => TrackColumnsScope(
+          tracks: [for (final item in _items) ?item.track],
+          child: ListView(
           key: const ValueKey('results'),
           controller: _scroll,
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -689,6 +693,7 @@ class _SearchPageState extends State<SearchPage> {
               _ResultRow(item: _top!, onTap: _open, labelled: true),
               if (_items.isNotEmpty) const SizedBox(height: 6),
             ],
+            if (_items.isNotEmpty) const TrackColumnsHeader(),
             for (final item in _items)
               _ResultRow(
                 item: item,
@@ -706,6 +711,7 @@ class _SearchPageState extends State<SearchPage> {
                 ),
               ),
           ],
+        ),
         ),
       },
     );
@@ -782,7 +788,8 @@ class _ResultRow extends StatelessWidget {
       final line = episode ? item.subtitle : track.artist;
       return TrackTile(
         track: track,
-        subtitle: labelled ? [_kind, ?line].where((e) => e.isNotEmpty).join(' · ') : line,
+        subtitle: line,
+        lead: labelled ? _kind : null,
         meta: episode ? null : views,
         onTap: () => onTap(item),
         trailing: TrackMenu(
@@ -798,6 +805,7 @@ class _ResultRow extends StatelessWidget {
     // The same picture and the same height as the row of a song, so all kinds of result line up
     const size = 54.0;
     final split = splitViews(item.subtitle);
+    // What kind of result it is stays: with no way to play it from here, it is what tells an album from an artist
     final line = [_kind, split.text].where((e) => e.isNotEmpty).join(' · ');
     return InkWell(
       onTap: () => onTap(item),

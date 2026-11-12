@@ -434,7 +434,7 @@ void main() {
 
     testWidgets('Up Next keeps them in a section of their own, not in the queue', (tester) async {
       await openPlayer(tester, snapshot: roomWithAutoplay(user: 3, auto: 2));
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       expect(find.text('Song 1'), findsOneWidget);
       expect(find.byType(QueuedAutoplay), findsOneWidget);
       expect(find.descendant(of: find.byType(QueuedAutoplay), matching: find.text('Auto 0')), findsOneWidget);
@@ -444,7 +444,7 @@ void main() {
 
     testWidgets('a touch on one plays it now', (tester) async {
       final backend = await openPlayer(tester, snapshot: roomWithAutoplay(user: 2, auto: 2));
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       await tester.tap(find.text('Auto 1'));
       await tester.pump();
       expect(backend.calls.last, 'jump auto1');
@@ -452,7 +452,7 @@ void main() {
 
     testWidgets('without any, Up Next suggests as before', (tester) async {
       await openPlayer(tester, snapshot: sampleRoom(songs: 3).withRoomAutoplay());
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       expect(find.byType(QueuedAutoplay), findsNothing);
     });
   });

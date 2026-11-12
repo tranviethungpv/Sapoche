@@ -102,6 +102,13 @@ class Artwork extends StatelessWidget {
         child: crossfade
             ? AnimatedSwitcher(
                 duration: Motion.of(context, Motion.medium),
+                // The default layout is a Stack that loosens what its children are given: a picture then takes its own
+                // shape (a video's thumbnail, 16:9, in the middle of a square cover) instead of filling the cover. The
+                // children are told to fill, as the placeholder is
+                layoutBuilder: (current, previous) => Stack(
+                  fit: StackFit.expand,
+                  children: [...previous, ?current],
+                ),
                 child: KeyedSubtree(
                   key: ValueKey(url),
                   child: _picture(context, placeholder),

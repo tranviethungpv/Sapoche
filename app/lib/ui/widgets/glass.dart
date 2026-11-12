@@ -16,7 +16,8 @@ import '../../theme/theme.dart';
 /// the home screen, so that they share one reading of what is behind them, they take 4 ms, against 2.5 ms without
 /// any glass.
 ///
-/// While the phone is warm or saving power ([Calm]) the bars are a near solid veil instead, as iOS turns its glass
+/// While the phone is warm or saving power ([Calm]) the bars are a solid veil instead (nothing of the page behind may
+/// show through it, or its text is read under the bar's own), as iOS turns its glass
 /// solid in Low Power Mode: nothing behind them is read or blurred, which is half of what the screen costs as a page
 /// scrolls.
 class Glass extends StatelessWidget {
@@ -35,7 +36,7 @@ class Glass extends StatelessWidget {
     final light = p.brightness == Brightness.light;
     return Color.alphaBlend(
       p.text.withValues(alpha: light ? 0.06 : 0.08),
-      p.base.withValues(alpha: calm ? 0.94 : (light ? 0.55 : 0.40)),
+      p.base.withValues(alpha: calm ? 1 : (light ? 0.55 : 0.40)),
     );
   }
 

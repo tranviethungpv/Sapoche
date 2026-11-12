@@ -97,7 +97,7 @@ void main() {
     });
 
     testWidgets(
-      'in Vietnamese, in a narrow line, the word of the count gives way first',
+      'in Vietnamese, in a narrow line, the count is left out whole, not shortened',
       (tester) async {
         await _openPlayer(
           tester,
@@ -109,11 +109,8 @@ void main() {
             await music.searchPage('song');
           },
         );
-        expect(
-          find.text(' · 5,4 Tr'),
-          findsOneWidget,
-          reason: 'the word gives way first',
-        );
+        // "5,4 Tr" without its word reads as a number of nothing: the count is whole or it is not there
+        expect(find.textContaining('5,4 Tr'), findsNothing);
       },
     );
 
@@ -266,7 +263,7 @@ void main() {
 
   group('the queue panel of the player', () {
     Future<void> openQueue(WidgetTester tester) async {
-      await tester.tap(find.byTooltip('Up Next'));
+      await tester.tap(find.byTooltip('Up next'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
     }
@@ -274,6 +271,9 @@ void main() {
     testWidgets('names its three buttons and gives the volume bar up', (
       tester,
     ) async {
+      // The font of a test is twice as wide as a real one: the three words fit with the text a little smaller
+      tester.platformDispatcher.textScaleFactorTestValue = 0.6;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await _openPlayer(tester, room: sampleRoom(roomAutoplay: true));
       expect(find.byType(VolumeBar), findsOneWidget);
       await openQueue(tester);
@@ -282,13 +282,13 @@ void main() {
       }
       expect(find.byType(VolumeBar), findsNothing);
 
-      await tester.tap(find.byTooltip('Up Next'));
+      await tester.tap(find.byTooltip('Up next'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byType(VolumeBar), findsOneWidget);
     });
 
-    testWidgets('in Vietnamese, on a narrow phone, the words fit', (
+    testWidgets('in Vietnamese, on a narrow phone, the three keep their icons and no word, all together', (
       tester,
     ) async {
       await _openPlayer(
@@ -300,10 +300,11 @@ void main() {
       await tester.tap(find.byTooltip('Tiếp theo'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Trộn bài'), findsOneWidget);
-      expect(find.text('Lặp lại'), findsOneWidget);
-      expect(find.text('Tự động phát'), findsWidgets);
-      // A word that did not fit would have thrown an overflow, which fails the test
+      // No pill has its word, instead of the longest one being drawn smaller than the others; the tooltips name them
+      expect(find.text('Trộn bài'), findsNothing);
+      expect(find.text('Lặp lại'), findsNothing);
+      expect(find.descendant(of: find.byTooltip('Tự động phát'), matching: find.text('Tự động phát')), findsNothing);
+      expect(find.byTooltip('Tự động phát'), findsOneWidget);
     });
   });
 

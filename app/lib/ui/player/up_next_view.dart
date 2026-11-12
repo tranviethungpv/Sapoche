@@ -10,6 +10,7 @@ import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
 import '../widgets/delete_background.dart';
+import '../widgets/edge_fade.dart';
 import '../widgets/queued_autoplay.dart';
 import '../widgets/track_tile.dart';
 import 'player_message.dart';
@@ -34,19 +35,50 @@ class UpNextView extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Row(
-                children: [
-                  Expanded(child: _ShuffleButton(controller: controller)),
-                  const SizedBox(width: 10),
-                  Expanded(child: _RepeatButton(controller: controller)),
-                  if (!snapshot.inRoom || snapshot.roomAutoplay != null) ...[
-                    const SizedBox(width: 10),
-                    Expanded(child: _AutoplayButton(controller: controller)),
-                  ],
-                ],
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final autoplay =
+                      !snapshot.inRoom || snapshot.roomAutoplay != null;
+                  // The three are one size: when the longest word does not fit its pill all three give their words up
+                  // and keep the icons (the tooltips say what each does), instead of one shrinking more than the others
+                  final words = _pillWordsFit(context, box.maxWidth, autoplay);
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _ShuffleButton(
+                          controller: controller,
+                          words: words,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _RepeatButton(
+                          controller: controller,
+                          words: words,
+                        ),
+                      ),
+                      if (autoplay) ...[
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _AutoplayButton(
+                            controller: controller,
+                            words: words,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
-            Expanded(child: _list(context, snapshot, upNext, current)),
+            // The last row is not cut off where the list ends: it fades out (the page behind is tinted by the cover, so
+            // this is a mask, not a veil of the plain background)
+            Expanded(
+              child: EdgeFade(
+                bottom: 28,
+                child: _list(context, snapshot, upNext, current),
+              ),
+            ),
           ],
         );
       },
@@ -64,10 +96,14 @@ class UpNextView extends StatelessWidget {
         parent: AlwaysScrollableScrollPhysics(),
       ),
       slivers: [
-        SliverToBoxAdapter(child: SectionHeading(S.upNext)),
-        // Said whenever nothing is queued, autoplay or not: its suggestions come under "Suggestions" below, and a
-        // heading with nothing under it reads as broken
-        if (upNext.isEmpty)
+        // With nothing queued and autoplay on, "Up next" and "nothing is queued" are not said twice over: the one line
+        // "Autoplay · plays after your queue" under the buttons is all there is above the suggestions, which are then
+        // what the screen is for
+        if (!(upNext.isEmpty && (!snapshot.inRoom || snapshot.roomAutoplay != null)))
+          SliverToBoxAdapter(child: SectionHeading(S.upNext)),
+        // Said whenever nothing is queued and autoplay is not there to say it: a heading with nothing under it reads as
+        // broken
+        if (upNext.isEmpty && snapshot.inRoom && snapshot.roomAutoplay == null)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
@@ -120,13 +156,36 @@ class UpNextView extends StatelessWidget {
   }
 }
 
+/// Whether the words of the three pills fit in a pill each, at the size they are drawn: the icon, a gap and the word,
+/// between the padding of the pill.
+bool _pillWordsFit(BuildContext context, double width, bool autoplay) {
+  final style = Theme.of(context).textTheme.labelLarge;
+  final words = [S.shuffle, S.repeat, if (autoplay) S.autoplay];
+  final pill = (width - 10 * (words.length - 1)) / words.length;
+  for (final word in words) {
+    final painter = TextPainter(
+      text: TextSpan(text: word, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final needed = 8 + 24 + 6 + painter.width + 8;
+    painter.dispose();
+    if (needed > pill) return false;
+  }
+  return true;
+}
+
 /// Shuffle, on or off. On, what is still to come is mixed and stays mixed as songs are added; off, the songs go back in
 /// their order. A room whose server is too old for that has only a one-time mix: the icon turns once and a note says
 /// so, as shuffle did before it was a mode.
 class _ShuffleButton extends StatefulWidget {
-  const _ShuffleButton({required this.controller});
+  const _ShuffleButton({required this.controller, required this.words});
 
   final RoomController controller;
+
+  /// Whether the pill has its word beside the icon.
+  final bool words;
 
   @override
   State<_ShuffleButton> createState() => _ShuffleButtonState();
@@ -173,6 +232,7 @@ class _ShuffleButtonState extends State<_ShuffleButton> {
           ? S.shuffleOn
           : S.shuffleOff,
       label: S.shuffle,
+      words: widget.words,
       color: color,
       on: on,
       icon: AnimatedRotation(
@@ -187,9 +247,12 @@ class _ShuffleButtonState extends State<_ShuffleButton> {
 
 /// Cycles off, repeat all, repeat this song. Lit up while repeating.
 class _RepeatButton extends StatelessWidget {
-  const _RepeatButton({required this.controller});
+  const _RepeatButton({required this.controller, required this.words});
 
   final RoomController controller;
+
+  /// Whether the pill has its word beside the icon.
+  final bool words;
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +268,7 @@ class _RepeatButton extends StatelessWidget {
         Repeat.one => S.repeatOne,
       },
       label: S.repeat,
+      words: words,
       color: color,
       on: on,
       icon: Icon(
@@ -218,9 +282,12 @@ class _RepeatButton extends StatelessWidget {
 /// Whether what plays when the queue ends goes on by itself: this device's own choice outside a room, the room's in
 /// one (only whoever controls the room can change it). Lit up while on.
 class _AutoplayButton extends StatelessWidget {
-  const _AutoplayButton({required this.controller});
+  const _AutoplayButton({required this.controller, required this.words});
 
   final RoomController controller;
+
+  /// Whether the pill has its word beside the icon.
+  final bool words;
 
   @override
   Widget build(BuildContext context) {
@@ -242,6 +309,7 @@ class _AutoplayButton extends StatelessWidget {
           : null,
       tooltip: S.autoplay,
       label: S.autoplay,
+      words: words,
       color: color,
       on: on,
       icon: Icon(Icons.all_inclusive_rounded, color: color),
@@ -255,6 +323,7 @@ class _Pill extends StatelessWidget {
     required this.onPressed,
     required this.tooltip,
     required this.label,
+    required this.words,
     required this.color,
     required this.on,
     required this.icon,
@@ -266,6 +335,7 @@ class _Pill extends StatelessWidget {
   /// What the button is, in words next to its icon: three icons side by side were guessed at. Smaller when the pill is
   /// narrow or the words long; the tooltip says what it does now.
   final String label;
+  final bool words;
   final Color color;
   final bool on;
   final Widget icon;
@@ -277,7 +347,16 @@ class _Pill extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: on ? p.primary : p.primary.withValues(alpha: 0.12),
-        shape: const StadiumBorder(),
+        // Off, an edge of the accent: the tint alone is 1.1:1 on the page in the light theme, and the pill read as nothing
+        shape: StadiumBorder(
+          side: on
+              ? BorderSide.none
+              : BorderSide(
+                  color: p.primary.withValues(
+                    alpha: p.brightness == Brightness.light ? 0.75 : 0.55,
+                  ),
+                ),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
@@ -292,13 +371,15 @@ class _Pill extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       icon,
-                      const SizedBox(width: 6),
-                      Text(
-                        label,
-                        maxLines: 1,
-                        style: Theme.of(context).textTheme.labelLarge
-                            ?.copyWith(color: color),
-                      ),
+                      if (words) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          label,
+                          maxLines: 1,
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(color: color),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -395,18 +476,31 @@ class _SuggestionsState extends State<_Suggestions> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SectionHeading(
-              alone || roomAutoplay != null ? S.autoplay : S.suggested,
-            ),
             if (alone || roomAutoplay != null)
+              // The heading and what it is, in one line: the explanation at length is in Settings
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-                child: Text(
-                  alone ? S.autoplayNote : S.roomAutoplayNote,
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: p.textSecondary),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: S.autoplay,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      TextSpan(
+                        text:
+                            ' · ${alone ? S.autoplayShort : S.roomAutoplayShort}',
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: p.textSecondary),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
+              )
+            else
+              SectionHeading(S.suggested),
             body,
           ],
         );

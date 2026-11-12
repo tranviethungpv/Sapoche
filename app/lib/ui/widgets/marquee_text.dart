@@ -16,6 +16,7 @@ class MarqueeText extends StatefulWidget {
     this.style,
     this.pause = const Duration(seconds: 2),
     this.rounds,
+    this.wrapLines = 1,
   });
 
   final String text;
@@ -28,6 +29,10 @@ class MarqueeText extends StatefulWidget {
   /// back to the front; null for ever. For a line that is always on screen, like the mini player's: every frame of
   /// its movement draws the glass around it again.
   final int? rounds;
+
+  /// How many lines a text that does not fit on one may take before it is made to travel: with room to spare in height, a
+  /// title is better read whole on two lines than chased along one.
+  final int wrapLines;
 
   /// The [rounds] of the lines of the bars that stay on screen under every page (the mini player, the player bar).
   static const barRounds = 2;
@@ -155,6 +160,26 @@ class _MarqueeTextState extends State<MarqueeText>
         final width = _size.width;
         final height = _size.height;
         final fits = width <= constraints.maxWidth;
+        if (!fits && widget.wrapLines > 1) {
+          final wrapped = TextPainter(
+            text: TextSpan(text: widget.text, style: style),
+            textDirection: direction,
+            textScaler: scaler,
+            maxLines: widget.wrapLines,
+          )..layout(maxWidth: constraints.maxWidth);
+          final whole = !wrapped.didExceedMaxLines;
+          wrapped.dispose();
+          if (whole) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _travel(0);
+            });
+            return Text(
+              widget.text,
+              maxLines: widget.wrapLines,
+              style: widget.style,
+            );
+          }
+        }
         final distance = fits || still ? 0.0 : width + MarqueeText.gap;
         // The loop is only (re)started after this frame is built
         if (distance != _distance) {

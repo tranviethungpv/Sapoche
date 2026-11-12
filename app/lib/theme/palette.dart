@@ -71,6 +71,17 @@ class Palette {
   Color get veilStrong =>
       text.withValues(alpha: brightness == Brightness.light ? 0.08 : 0.10);
 
+  /// The empty part of a bar that fills as it goes (the seek bar, the volume): at least 3:1 on the plain background in
+  /// both themes and in every colour that can be picked, where [outline] was 1.5:1 and the bar read as no bar until it
+  /// had filled (`test/wide_lists_test.dart`). The quiet-words colour, thinned as far as that allows.
+  Color get track {
+    for (var alpha = 0.5; alpha < 1; alpha += 0.05) {
+      final mixed = Color.alphaBlend(textTertiary.withValues(alpha: alpha), base);
+      if (_contrast(mixed, base) >= 3) return mixed;
+    }
+    return textTertiary;
+  }
+
   /// A name that opens a page, on the colours of a cover: the deep shade of the accent in the light theme, where the
   /// accent itself is 2.8:1 on a peach cover. In the dark one the pale shade of it was near white and read as no link
   /// at all; this pink has as much colour as keeps 4.5:1 on every ground (`test/on_cover_test.dart`).

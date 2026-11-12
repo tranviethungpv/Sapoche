@@ -1,0 +1,7 @@
+A tidier look: text that fits, wide screens, and a denser phone
+- Long titles and artist names are cut cleanly: a count like "205M plays" is shown whole or left out, never in half, and a long song name gets two lines in the player before it starts to scroll.
+- On wide screens (tablet on its side, computer, browser) song lists have columns for the album and the length, the sidebar lights only where you are, Settings is a row of the sidebar, and menus no longer cover the player bar.
+- The queue shows more songs: with nothing queued, autoplay is one line, and the long explanations moved into Settings. The last row fades instead of being cut off.
+- Liked songs, Recently played, Downloaded and On this phone start with a small tile beside their name. The menu of an album or a playlist is a sheet from the bottom, like a song's.
+- The seek and volume bars can be seen when empty, and the shuffle and repeat buttons have an edge.
+- Fixed: end-to-end encryption in a chat now looks switched off once it is on (it cannot be turned off); the song that is playing stays at the top of the chat while you type; and in Audio mode the player's picture is always square.

@@ -319,7 +319,7 @@ void main() {
       expect(find.byTooltip('Shuffle off'), findsNothing);
       expect(find.byTooltip('Repeat off'), findsNothing);
 
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       expect(find.byTooltip('Shuffle off'), findsOneWidget);
       expect(find.byTooltip('Repeat off'), findsOneWidget);
 
@@ -335,7 +335,7 @@ void main() {
         tester,
         snapshot: sampleRoom(songs: 4, shuffle: false),
       );
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       await tester.tap(find.byTooltip('Shuffle off'));
       await tester.pump();
       expect(backend.calls.last, 'setShuffle true');
@@ -353,7 +353,7 @@ void main() {
         tester,
         snapshot: sampleRoom(songs: 1, shuffle: false),
       );
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       await tester.tap(find.byTooltip('Shuffle off'));
       await tester.pump();
       expect(backend.calls.last, 'setShuffle true');
@@ -363,18 +363,18 @@ void main() {
       tester,
     ) async {
       final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 4));
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       await tester.tap(find.byTooltip('Shuffle'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(backend.calls.last, 'shuffle');
-      expect(find.text('Up Next shuffled'), findsOneWidget);
+      expect(find.text('Up next shuffled'), findsOneWidget);
       await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('and waits until two songs are left to mix', (tester) async {
       final backend = await openPlayer(tester, snapshot: sampleRoom(songs: 2));
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       await tester.tap(find.byTooltip('Shuffle'));
       await tester.pump();
       expect(backend.calls, isNot(contains('shuffle')));
@@ -474,7 +474,7 @@ void main() {
             ),
           ],
         );
-        await openPanel(tester, 'Up Next');
+        await openPanel(tester, 'Up next');
 
         expect(backend.calls, contains('musicNext video0'));
         expect(
@@ -513,11 +513,12 @@ void main() {
           ),
         );
         backend.radioResult = const SongRadio(tracks: [song]);
-        await openPanel(tester, 'Up Next');
+        await openPanel(tester, 'Up next');
 
-        // The heading and the button, which now says it too
-        expect(find.text('Autoplay'), findsNWidgets(2));
-        expect(find.text('Nothing is queued after this song.'), findsOneWidget);
+        // One line says what autoplay is, in place of "Up next", "nothing is queued" and the heading; the button has the
+        // icon alone here, as the three words do not fit side by side in the test's wide font
+        expect(find.textContaining('Autoplay · plays after your queue', findRichText: true), findsOneWidget);
+        expect(find.text('Nothing is queued after this song.'), findsNothing);
         await tester.tap(find.byTooltip('Autoplay'));
         await tester.pump();
         expect(backend.calls.last, 'autoplay false');
@@ -532,14 +533,12 @@ void main() {
           snapshot: sampleRoom(roomAutoplay: true),
         );
         backend.radioResult = const SongRadio(tracks: [song]);
-        await openPanel(tester, 'Up Next');
+        await openPanel(tester, 'Up next');
 
-        // The heading and the button, which now says it too
-        expect(find.text('Autoplay'), findsNWidgets(2));
+        // The heading and what it is, in one line; the button has the icon alone here, as the three words do not fit side
+        // by side in the test's wide font
         expect(
-          find.text(
-            'The room keeps playing similar songs when the queue runs out.',
-          ),
+          find.textContaining("Autoplay · plays after the room's queue", findRichText: true),
           findsOneWidget,
         );
         await tester.tap(find.byTooltip('Autoplay'));
@@ -564,7 +563,7 @@ void main() {
           ),
         );
         backend.radioResult = const SongRadio(tracks: [song]);
-        await openPanel(tester, 'Up Next');
+        await openPanel(tester, 'Up next');
 
         final button = find.descendant(
           of: find.byTooltip('Autoplay'),
@@ -577,7 +576,7 @@ void main() {
     testWidgets('say so when YouTube Music cannot be reached', (tester) async {
       final backend = await openPlayer(tester);
       backend.failWith = StateError('offline');
-      await openPanel(tester, 'Up Next');
+      await openPanel(tester, 'Up next');
       expect(find.text('Couldn’t reach YouTube Music'), findsOneWidget);
     });
   });

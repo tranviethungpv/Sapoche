@@ -153,7 +153,19 @@ void _openScreen(BuildContext context, _Open value) {
   ScaffoldMessenger.of(context).removeCurrentSnackBar();
   TabNavigation.push(
     context,
-    MaterialPageRoute<void>(builder: (_) => _LibraryScreen(open: value)),
+    MaterialPageRoute<void>(
+      // The sidebar lights the row of a list that it has one for
+      settings: RouteSettings(
+        name: switch (value) {
+          _Liked() => Where.library(LibraryRequests.liked),
+          _Downloaded() => Where.library(LibraryRequests.downloaded),
+          _Local() => Where.library(LibraryRequests.local),
+          _Playlist(:final id) => Where.library(id),
+          _ => null,
+        },
+      ),
+      builder: (_) => _LibraryScreen(open: value),
+    ),
   );
 }
 
@@ -184,6 +196,7 @@ class _LibraryScreen extends StatelessWidget {
           tracks: library.liked,
           emptyTitle: S.noLikedTitle,
           emptyBody: S.noLikedBody,
+          compactHead: true,
           cover: (side) => _IconTile(
             Icons.favorite_rounded,
             size: side,
@@ -209,6 +222,7 @@ class _LibraryScreen extends StatelessWidget {
                 DownloadState.failed => S.downloadFailed,
               }}',
           ],
+          compactHead: true,
           cover: (side) => _IconTile(
             Icons.download_done_rounded,
             size: side,
@@ -233,6 +247,7 @@ class _LibraryScreen extends StatelessWidget {
             for (final e in library.recent)
               '${e.track.artist} · ${S.ago(DateTime.now().difference(e.at))}',
           ],
+          compactHead: true,
           cover: (side) => _IconTile(
             Icons.history_rounded,
             size: side,
@@ -675,34 +690,27 @@ class _PlaylistPage extends StatelessWidget {
   }
 }
 
-/// The "…" button of a page or a row, with what it offers: a soft round disc beside Play, or a plain icon in a row.
+/// The "…" button of a page or a row, with what it offers: a soft round disc beside Play, or a plain icon in a row. On a
+/// phone it is a sheet from the bottom, with [head] (what the page is) at its top, as for a song or an album.
 class _MoreButton extends StatelessWidget {
-  const _MoreButton(this.menu, {this.round = true});
+  const _MoreButton(this.menu, {this.round = true, this.head});
 
   final List<_MenuAction> menu;
   final bool round;
+  final Widget? head;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return PopupMenuButton<VoidCallback>(
-      tooltip: S.showMore,
-      icon: Icon(
-        Icons.more_horiz_rounded,
-        color: round ? null : p.textTertiary,
-      ),
+    return MoreMenuButton(
+      iconColor: round ? null : p.textTertiary,
       style: round ? roundButtonStyle(context) : null,
-      color: p.menu,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      onSelected: (run) => run(),
-      itemBuilder: (context) => [
-        for (final action in menu)
-          PopupMenuItem(
-            value: action.run,
-            child: MenuLabel(action.icon, action.label),
-          ),
+      head: head,
+      lines: [
+        for (final (i, action) in menu.indexed)
+          MenuLine('$i', action.icon, action.label),
       ],
+      onSelected: (value) => menu[int.parse(value)].run(),
     );
   }
 }
@@ -1067,6 +1075,7 @@ class _LocalPageState extends State<_LocalPage> with WidgetsBindingObserver {
             for (final s in shown)
               [s.track.artist, s.album].where((t) => t.isNotEmpty).join(' · '),
           ],
+          compactHead: true,
           cover: (side) => _IconTile(
             Icons.smartphone_rounded,
             size: side,
@@ -1235,10 +1244,15 @@ class _TrackList extends StatelessWidget {
     this.filterBar,
     this.onRemove,
     this.onMove,
+    this.compactHead = false,
   });
 
   final String title;
   final List<Track> tracks;
+
+  /// The cover is an icon, not a picture: on a phone it is a small tile beside the name and the count, not a square half
+  /// the screen wide with nothing on it.
+  final bool compactHead;
 
   /// Draws the cover at the side the page gives it.
   final Widget Function(double side) cover;
@@ -1392,7 +1406,19 @@ class _TrackList extends StatelessWidget {
                             inline: wide,
                             onPlay: () => playAll(shuffle: false),
                             onShuffle: () => playAll(shuffle: true),
-                            more: menu.isEmpty ? null : _MoreButton(menu),
+                            more: menu.isEmpty
+                                ? null
+                                : _MoreButton(
+                                    menu,
+                                    head: SheetHead(
+                                      leading: SizedBox.square(
+                                        dimension: 48,
+                                        child: cover(48),
+                                      ),
+                                      title: title,
+                                      subtitle: S.songCount(tracks.length),
+                                    ),
+                                  ),
                           ),
                       ],
                     );
@@ -1543,6 +1569,80 @@ class _TrackList extends StatelessWidget {
                                             Expanded(child: info),
                                           ],
                                         ),
+                                      )
+                                    : compactHead
+                                    ? Column(
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              20,
+                                              4,
+                                              20,
+                                              0,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                SizedBox.square(
+                                                  dimension: 96,
+                                                  child: cover(96),
+                                                ),
+                                                const SizedBox(width: 16),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        title,
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style:
+                                                            theme.headlineSmall,
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        S.songCount(
+                                                          tracks.length,
+                                                        ),
+                                                        style: theme.bodySmall
+                                                            ?.copyWith(
+                                                              color: p
+                                                                  .textSecondary,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (tracks.isNotEmpty)
+                                            PlayRow(
+                                              inline: false,
+                                              onPlay: () =>
+                                                  playAll(shuffle: false),
+                                              onShuffle: () =>
+                                                  playAll(shuffle: true),
+                                              more: menu.isEmpty
+                                                  ? null
+                                                  : _MoreButton(
+                                                      menu,
+                                                      head: SheetHead(
+                                                        leading: SizedBox.square(
+                                                          dimension: 48,
+                                                          child: cover(48),
+                                                        ),
+                                                        title: title,
+                                                        subtitle: S.songCount(
+                                                          tracks.length,
+                                                        ),
+                                                      ),
+                                                    ),
+                                            ),
+                                          const SizedBox(height: 6),
+                                        ],
                                       )
                                     : Column(
                                         children: [
