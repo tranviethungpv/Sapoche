@@ -30,6 +30,15 @@ Future<void> reveal(WidgetTester tester, Finder finder) async {
 
 void main() {
   group('the taste on the suggestions page', () {
+    testWidgets('says once, above the artists, what the two buttons at the end of a row are', (tester) async {
+      await openHome(tester, prepare: (b) => b.tasteProfileResult = _profile);
+      await openSuggestions(tester);
+      final legend = find.byKey(const ValueKey('taste-legend'));
+      expect(legend, findsOneWidget);
+      expect(find.descendant(of: legend, matching: find.text('Suggest less')), findsOneWidget);
+      expect(find.descendant(of: legend, matching: find.text('Block')), findsOneWidget);
+    });
+
     testWidgets('shows the artists with bars, and Suggest less toggles the mark', (tester) async {
       final b = await openHome(tester, prepare: (b) => b.tasteProfileResult = _profile);
       await openSuggestions(tester);

@@ -379,6 +379,15 @@ void main() {
       return (backend, context);
     }
 
+    testWidgets('a hyphen in the name is not a place to break the line', (tester) async {
+      final (backend, context) = await start(tester);
+      backend.artistResult = const ArtistPage(id: 'UCmtp', name: 'Sơn Tùng M-TP', subscribers: '9M');
+      openArtist(context, 'UCmtp');
+      await tester.pumpAndSettle();
+      expect(find.text('Sơn Tùng M\u2011TP'), findsOneWidget);
+      expect(find.text('Sơn Tùng M-TP'), findsNothing);
+    });
+
     testWidgets('has play and shuffle, top songs, releases and more', (
       tester,
     ) async {

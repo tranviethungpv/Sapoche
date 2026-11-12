@@ -25,6 +25,7 @@ import 'sleep_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/edge_fade.dart';
+import 'widgets/touch_box.dart';
 import 'widgets/not_interested.dart';
 import 'widgets/like_button.dart';
 import 'widgets/marquee_text.dart';
@@ -875,19 +876,16 @@ class _PanelStage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(_margin, 14, 20, 8),
           child: Row(
             children: [
-              GestureDetector(
-                onTap: onCover,
-                child: kIsWeb && controller.snapshot.video
-                    ? VideoFrameSlot(
-                        radius: 10,
-                        crop: true,
-                        child: Artwork(
-                          url: current.thumb,
-                          size: 56,
-                          radius: 10,
-                        ),
-                      )
-                    : Artwork(url: current.thumb, size: 56, radius: 10),
+              Semantics(
+                button: true,
+                label: S.showCover,
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: onCover,
+                  // Even in a browser's Video mode: YouTube asks for a frame of 200 pixels, which is not the room a small
+                  // cover has, so the frame is hidden here (it plays on) as it is in Audio and under the closed player
+                  child: Artwork(url: current.thumb, size: 56, radius: 10),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1275,7 +1273,7 @@ class _OutputButton extends StatelessWidget {
     'airplay' => Icons.airplay_rounded,
     'car' => Icons.directions_car_rounded,
     'other' => Icons.speaker_group_rounded,
-    _ => Icons.smartphone_rounded,
+    _ => Icons.speaker_rounded,
   };
 
   @override
@@ -1406,46 +1404,65 @@ class _ModePill extends StatelessWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
+          // The lit pill is 32 high; the place that answers a touch is the full 48
+          child: SizedBox(
             width: 52,
-            height: 32,
-            decoration: BoxDecoration(
-              color: selected ? p.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: selected ? p.onPrimary : p.textSecondary,
+            height: touchSize,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 52,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: selected ? p.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Icon(
+                  icon,
+                  size: 20,
+                  color: selected ? p.onPrimary : p.textSecondary,
+                ),
+              ),
             ),
           ),
         ),
       ),
     );
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: p.primary.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          segment(
-            Icons.music_note_rounded,
-            S.modeAudio,
-            !video,
-            () => _chooseMode(context, false),
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // The pill is drawn 38 high, 3 round the lit one, behind the full-height places that answer a touch
+        Positioned.fill(
+          top: (touchSize - 38) / 2,
+          bottom: (touchSize - 38) / 2,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: p.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
           ),
-          segment(
-            Icons.smart_display_rounded,
-            S.modeVideo,
-            video,
-            () => _chooseMode(context, true),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              segment(
+                Icons.music_note_rounded,
+                S.modeAudio,
+                !video,
+                () => _chooseMode(context, false),
+              ),
+              segment(
+                Icons.smart_display_rounded,
+                S.modeVideo,
+                video,
+                () => _chooseMode(context, true),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1569,8 +1586,7 @@ class SyncChip extends StatelessWidget {
     if (reading == null) return const SizedBox.shrink();
     final label = reading.label;
     final color = reading.color;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return TouchBox(
       onTap: () => showMembersSheet(context),
       // The state changes its colour, in step with the words: the words themselves change with every reading
       child: AnimatedContainer(

@@ -237,6 +237,10 @@ abstract final class S {
     'Gõ tên bài hát hoặc nghệ sĩ, hoặc dán liên kết YouTube.',
   );
   static String get noResults => _t('No results', 'Không có kết quả');
+  static String get noResultsBody => _t(
+    'Check the spelling, or try the name of the artist.',
+    'Kiểm tra chính tả, hoặc thử tên nghệ sĩ.',
+  );
   static String get searchFailed => _t(
     'Search failed. Check your connection.',
     'Tìm kiếm không được. Hãy kiểm tra kết nối.',
@@ -333,7 +337,7 @@ abstract final class S {
   static String get autoplay => _t('Autoplay', 'Tự động phát');
   static String get autoplayHelp => _t(
     'When your queue runs out, keep playing songs like the last one.',
-    'Khi hàng đợi hết, tiếp tục phát những bài giống bài vừa rồi.',
+    'Khi hết hàng đợi, tự phát tiếp các bài gần giống bài vừa nghe.',
   );
 
   // Music on this phone
@@ -589,7 +593,7 @@ abstract final class S {
     'Chưa đủ lượt nghe để so sánh.',
   );
   static String tasteStatsAuto(int percent) =>
-      _t('Autoplay songs skipped: $percent%', 'Bài tự phát bị bỏ qua: $percent%');
+      _t('Autoplay songs skipped: $percent%', 'Bài tự động phát bị bỏ qua: $percent%');
   static String tasteStatsShelf(int percent) => _t(
     'Suggested songs skipped: $percent%',
     'Bài gợi ý bị bỏ qua: $percent%',
@@ -1249,6 +1253,7 @@ abstract final class S {
 
   // Full player: lyrics, queue, song and artist pages
   static String get lyrics => _t('Lyrics', 'Lời bài hát');
+  static String get showCover => _t('Back to the cover', 'Về ảnh bìa');
   static String get volume => _t('Volume', 'Âm lượng');
   static String get noLyrics =>
       _t('No lyrics for this song', 'Bài này chưa có lời');
@@ -1262,7 +1267,7 @@ abstract final class S {
   static String get suggested => _t('Suggested', 'Gợi ý');
   static String get roomAutoplayQueued => _t(
     'After your queue; the songs you add go first.',
-    'Sau hàng đợi của bạn; bài bạn thêm sẽ phát trước.',
+    'Phát sau hàng đợi; bài bạn thêm vẫn được phát trước.',
   );
   // One line beside the heading, where the full explanation (`autoplayHelp`) is in Settings
   static String get autoplayShort =>
@@ -1351,7 +1356,7 @@ abstract final class S {
     ),
     _ => _t(
       '${artists[0]}, ${artists[1]} and more',
-      '${artists[0]}, ${artists[1]} và nhiều hơn',
+      '${artists[0]}, ${artists[1]} và những nghệ sĩ khác',
     ),
   };
   static String chipContext(String bucket) => switch (bucket) {

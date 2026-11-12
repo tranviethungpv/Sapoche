@@ -103,8 +103,7 @@ class _TrackTileState extends State<TrackTile> {
             style: theme.bodySmall?.copyWith(color: p.textTertiary),
           )
         : null;
-    Widget cover() =>
-        leading ??
+    Widget picture() =>
         Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
@@ -125,6 +124,9 @@ class _TrackTileState extends State<TrackTile> {
             if (badge != null) Positioned(right: -6, bottom: -6, child: badge),
           ],
         );
+    // A song that cannot be chosen (heard already, its file gone) is dimmed in its picture, never in its words: their
+    // colour is the one that keeps 4.5:1, and a row faded as a whole put them at 2.3:1
+    Widget cover() => Opacity(opacity: dimmed ? 0.5 : 1, child: leading ?? picture());
     final names = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -133,7 +135,11 @@ class _TrackTileState extends State<TrackTile> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.titleMedium?.copyWith(
-            color: highlight ? p.primary : p.text,
+            color: highlight
+                ? p.primary
+                : dimmed
+                ? p.textSecondary
+                : p.text,
           ),
         ),
         // A song with nothing to say about it (an album's, by the one artist) has the title alone
@@ -175,78 +181,75 @@ class _TrackTileState extends State<TrackTile> {
       child: InkWell(
         onTap: onTap,
         onSecondaryTap: () => _menu.open?.call(),
-        child: Opacity(
-          opacity: dimmed ? 0.55 : 1,
-          child: LayoutBuilder(
-            builder: (context, box) {
-              // In a wide window the row stands in columns: the song, its album if the list has one, its length
-              final columns = TrackColumns.fits(context, box.maxWidth);
-              final album = columns && TrackColumns.albumOf(context);
-              final row = Row(
-                children: [
-                  cover(),
-                  const SizedBox(width: 14),
+        child: LayoutBuilder(
+          builder: (context, box) {
+            // In a wide window the row stands in columns: the song, its album if the list has one, its length
+            final columns = TrackColumns.fits(context, box.maxWidth);
+            final album = columns && TrackColumns.albumOf(context);
+            final row = Row(
+              children: [
+                cover(),
+                const SizedBox(width: 14),
+                Expanded(
+                  flex: columns ? TrackColumns.titleFlex : 1,
+                  // The album column starts a little way from where a long title ends
+                  child: album
+                      ? Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: names,
+                        )
+                      : names,
+                ),
+                if (album)
                   Expanded(
-                    flex: columns ? TrackColumns.titleFlex : 1,
-                    // The album column starts a little way from where a long title ends
-                    child: album
-                        ? Padding(
-                            padding: const EdgeInsets.only(right: 16),
-                            child: names,
-                          )
-                        : names,
+                    flex: TrackColumns.albumFlex,
+                    child: _AlbumCell(track: track),
                   ),
-                  if (album)
-                    Expanded(
-                      flex: TrackColumns.albumFlex,
-                      child: _AlbumCell(track: track),
-                    ),
-                  if (columns) ...[
-                    SizedBox(
-                      width: TrackColumns.lengthWidth,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: length,
-                      ),
-                    ),
-                    if (trailing != null) ...[
-                      const SizedBox(width: 8),
-                      trailing,
-                    ] else
-                      LikeButton(track: track, size: 20),
-                  ] else if (trailing != null) ...[
-                    const SizedBox(width: 8),
-                    trailing,
-                  ] else ...[
-                    LikeButton(track: track, size: 20),
-                    // A row with no length keeps the room for one, so its heart stands where the other rows' do
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 36),
+                if (columns) ...[
+                  SizedBox(
+                    width: TrackColumns.lengthWidth,
+                    child: Align(
+                      alignment: Alignment.centerRight,
                       child: length,
                     ),
-                  ],
-                ],
-              );
-              return Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: dense ? 0 : 7,
-                ),
-                child: ConstrainedBox(
-                  // A row of an album is never lower than a thing to touch, whatever its text
-                  constraints: BoxConstraints(
-                    minHeight: dense ? 52 : 0,
-                    maxWidth: columns
-                        ? TrackColumns.maxContent(album: album)
-                        : double.infinity,
                   ),
-                  child: columns
-                      ? Align(alignment: Alignment.centerLeft, child: row)
-                      : row,
+                  if (trailing != null) ...[
+                    const SizedBox(width: 8),
+                    trailing,
+                  ] else
+                    LikeButton(track: track, size: 20),
+                ] else if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  trailing,
+                ] else ...[
+                  LikeButton(track: track, size: 20),
+                  // A row with no length keeps the room for one, so its heart stands where the other rows' do
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 36),
+                    child: length,
+                  ),
+                ],
+              ],
+            );
+            return Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: dense ? 0 : 7,
+              ),
+              child: ConstrainedBox(
+                // A row of an album is never lower than a thing to touch, whatever its text
+                constraints: BoxConstraints(
+                  minHeight: dense ? 52 : 0,
+                  maxWidth: columns
+                      ? TrackColumns.maxContent(album: album)
+                      : double.infinity,
                 ),
-              );
-            },
-          ),
+                child: columns
+                    ? Align(alignment: Alignment.centerLeft, child: row)
+                    : row,
+              ),
+            );
+          },
         ),
       ),
     );

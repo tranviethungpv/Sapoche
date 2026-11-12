@@ -441,7 +441,7 @@ class _SuggestionsState extends State<_Suggestions> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SectionHeading(S.autoplay),
+          SectionHeading(S.autoplay, icon: Icons.auto_awesome_rounded),
           QueuedAutoplay(controller: c, entries: lined),
         ],
       );

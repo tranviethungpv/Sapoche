@@ -1,0 +1,8 @@
+Dễ chạm và dễ đọc hơn: bìa mix mới, vùng chạm rộng hơn, màu rõ hơn
+- Các mix dành cho bạn có bìa mới, vẽ theo số của mix và mỗi mix một màu, thay cho bản mờ của ảnh một bài hát.
+- Nút và thanh dễ bấm hơn: nút phát, nút Back, công tắc Âm thanh/Video, các chip ở Trang chủ, các hàng của thanh bên, nút chọn màu ở Cài đặt, thanh tua và thanh âm lượng đều nhận chạm trong một vùng rộng bằng ngón tay, mà nhìn không to hơn.
+- Chữ nhỏ dễ đọc hơn: màu xám nhạt của chủ đề sáng đậm hơn, nhãn tab đang chọn và các nút bằng chữ dùng màu đậm hơn, các dòng lời chưa tới bớt mờ.
+- Bài đã phát trong phòng chỉ mờ ở ảnh, tên bài và nghệ sĩ vẫn đọc được. Ảnh bìa có viền mảnh ở chủ đề sáng, và ảnh gốc của bài hiện trong lúc ảnh lớn đang tải.
+- Ở Cài đặt > Gợi ý có một dòng nói hai nút cuối mỗi nghệ sĩ làm gì. Tiêu đề Tự động phát có cùng biểu tượng lấp lánh như huy hiệu của nó. Tìm kiếm không có kết quả sẽ gợi ý cách thử và có nút xoá ô tìm.
+- Trên web, mở lời hay hàng đợi khi đang xem video không còn ép video vào một ô tí hon; chỗ đó hiện ảnh bìa và video vẫn phát tiếp.
+- Sửa vài câu tiếng Việt, và dấu gạch nối trong tên như "Sơn Tùng M-TP" không còn làm ngắt dòng.

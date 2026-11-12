@@ -64,7 +64,7 @@ void main() {
             home: Artwork(url: url, size: size, sharp: sharp),
           ),
         );
-        final image = tester.widget<Image>(find.byType(Image)).image;
+        final image = tester.widget<Image>(find.byType(Image).first).image;
         final address =
             (image is ResizeImage ? image.imageProvider : image) as CachedCover;
         final zoomed = find
@@ -143,6 +143,76 @@ void main() {
         },
       );
     }
+  });
+
+  group('a big cover while its enlarged picture is still coming', () {
+    const small = 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg?sqp=x';
+
+    List<String> pictures(WidgetTester tester) => [
+      for (final image in tester.widgetList<Image>(find.byType(Image)))
+        ((image.image is ResizeImage
+                    ? (image.image as ResizeImage).imageProvider
+                    : image.image)
+                as CachedCover)
+            .url,
+    ];
+
+    testWidgets('shows the picture the song came with, not the note', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Palette.dark),
+          home: const Artwork(url: small, size: 300, sharp: true),
+        ),
+      );
+      expect(pictures(tester), [
+        'https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+        small,
+      ]);
+    });
+
+    testWidgets(
+      'has nothing under it when the picture is the biggest there is',
+      (tester) async {
+        const same = 'https://example.com/cover.jpg';
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildTheme(Palette.dark),
+            home: const Artwork(url: same, size: 300, sharp: true),
+          ),
+        );
+        expect(pictures(tester), [same]);
+      },
+    );
+  });
+
+  group('the edge of a cover', () {
+    Future<Border?> borderIn(WidgetTester tester, ThemeData theme) async {
+      await tester.pumpWidget(
+        MaterialApp(theme: theme, home: const Artwork(url: null, size: 80)),
+      );
+      final box = tester
+          .widgetList<DecoratedBox>(
+            find.descendant(
+              of: find.byType(Artwork),
+              matching: find.byType(DecoratedBox),
+            ),
+          )
+          .firstWhere((b) => b.position == DecorationPosition.foreground);
+      return (box.decoration as BoxDecoration).border as Border?;
+    }
+
+    testWidgets(
+      'has a hairline in the light theme, so that a white cover has an edge',
+      (tester) async {
+        expect(await borderIn(tester, buildTheme(Palette.light)), isNotNull);
+      },
+    );
+
+    testWidgets('has none in the dark theme', (tester) async {
+      expect(await borderIn(tester, buildTheme(Palette.dark)), isNull);
+    });
   });
 
   artworkShapeTests();

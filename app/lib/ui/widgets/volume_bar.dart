@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
+import 'touch_box.dart';
 
 /// The volume of the device, between a quiet and a loud speaker, as in Apple Music. It follows the buttons of the phone
 /// and grows under the finger like the seek bar above it.
@@ -48,7 +49,7 @@ class _VolumeBarState extends State<VolumeBar> {
                 onHorizontalDragCancel: () => setState(() => _dragging = false),
                 onTapUp: (d) => _set(d.localPosition.dx, box.maxWidth),
                 child: SizedBox(
-                  height: 32,
+                  height: barTouchHeight(context, 32),
                   child: Center(
                     child: ValueListenableBuilder<double>(
                       valueListenable: widget.controller.volume,

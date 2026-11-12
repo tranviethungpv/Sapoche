@@ -110,4 +110,22 @@ void main() {
     expect(find.textContaining('270 Tr lượt xem'), findsOneWidget);
     expect(find.textContaining('155 Tr lượt phát'), findsOneWidget);
   });
+
+  testWidgets('a search with no results says what to try and has a button that clears the field', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(songs: 0, phase: 'idle')));
+    await tester.pump(const Duration(milliseconds: 500));
+    backend.searchPageResult = const SearchResults(items: []);
+    await tester.tap(find.byTooltip(S.tabSearch));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'zzzz');
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+    expect(find.text(S.noResults), findsOneWidget);
+    expect(find.text(S.noResultsBody), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, S.clearSearch));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
+    expect(find.text(S.noResults), findsNothing);
+  });
 }

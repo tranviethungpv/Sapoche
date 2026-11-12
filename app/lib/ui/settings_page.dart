@@ -561,7 +561,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     ?.copyWith(color: context.palette.textSecondary),
               ),
             )
-          else
+          else ...[
+            // What the two buttons at the end of each row are, said once where they are met
+            const _TasteLegend(),
             for (final artist in artists.take(8))
               _TasteArtistRow(
                 key: ValueKey('taste-artist-${artist.key}'),
@@ -579,6 +581,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   artistOnly: true,
                 ),
               ),
+          ],
         ],
       ),
       if (clusters.isNotEmpty)
@@ -1445,11 +1448,11 @@ class _SettingsList extends StatelessWidget {
       ),
       children: [
         SizedBox(
-          height: 44,
+          height: 48,
           child: back
               ? Align(
                   alignment: Alignment.centerLeft,
-                  child: BackButton(style: roundButtonStyle(context, size: 44)),
+                  child: BackButton(style: roundButtonStyle(context, size: 48)),
                 )
               : null,
         ),
@@ -1812,7 +1815,7 @@ class _Swatch extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  static const size = 44.0;
+  static const size = 48.0;
 
   @override
   Widget build(BuildContext context) {
@@ -1862,6 +1865,39 @@ class _Swatch extends StatelessWidget {
                 : null,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// One line above the artists of the person's taste that says what the two buttons at the end of each row are.
+class _TasteLegend extends StatelessWidget {
+  const _TasteLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final style = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: p.textSecondary,
+    );
+    Widget item(IconData icon, Color color, String text) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: style),
+      ],
+    );
+    return Padding(
+      key: const ValueKey('taste-legend'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 4,
+        children: [
+          item(Icons.remove_circle_outline_rounded, p.primary, S.suggestLess),
+          item(Icons.block_rounded, p.textTertiary, S.blockArtist),
+        ],
       ),
     );
   }

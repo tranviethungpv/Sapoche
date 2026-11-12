@@ -56,42 +56,6 @@ class CoverGlow {
   static final _pending = <String, Future<ui.Image?>>{};
   static const _kept = 12;
 
-  static final _tones = <String, Color?>{};
-
-  /// One colour that stands for the cover at [url], dark enough for white words to read on it, or null when the cover
-  /// cannot be read. It is the mean of the grid of colours of the cover ([gridColors]), made deeper: the vivid and light
-  /// parts of a picture would otherwise give a pale one.
-  static Future<Color?> tone(String url) async {
-    if (_tones.containsKey(url)) return _tones[url];
-    final small = await _load(url);
-    if (small == null) return null;
-    try {
-      final data = await small.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (data == null) return null;
-      final cells = gridColors(
-        data.buffer.asUint8List(),
-        small.width,
-        small.height,
-      );
-      var r = 0.0, g = 0.0, b = 0.0;
-      for (final c in cells) {
-        r += c.r;
-        g += c.g;
-        b += c.b;
-      }
-      final mean = Color.from(
-        alpha: 1,
-        red: r / cells.length,
-        green: g / cells.length,
-        blue: b / cells.length,
-      );
-      if (_tones.length >= 64) _tones.remove(_tones.keys.first);
-      return _tones[url] = deepen(mean);
-    } finally {
-      small.dispose();
-    }
-  }
-
   /// [color] kept to a lightness at which white words have at least 4.5:1 on it: its hue and most of its colour, a good
   /// deal darker.
   static Color deepen(Color color) {
@@ -102,9 +66,14 @@ class CoverGlow {
         .toColor();
   }
 
-  /// A colour for a cover that has no picture to take one from: a different hue for each [seed], deep, like [tone].
+  /// The hues of the mixes, one after the other: warm, cool, green, violet, pink, amber. Spread by hand: a hue for every
+  /// 67 degrees gave an olive for the first mix, which is the one everybody sees.
+  static const _mixHues = [14.0, 212.0, 152.0, 274.0, 338.0, 36.0];
+
+  /// A colour for a cover drawn from nothing but its number: a different hue for each [seed] (they come round after six),
+  /// deep, so that white words read on it.
   static Color toneFor(int seed) =>
-      deepen(HSLColor.fromAHSL(1, (seed * 67 % 360).toDouble(), 0.6, 0.3).toColor());
+      deepen(HSLColor.fromAHSL(1, _mixHues[(seed - 1) % _mixHues.length], 0.6, 0.3).toColor());
 
   /// The blurred picture for the cover at [url], pale when [light], or null when the cover cannot be read.
   static Future<ui.Image?> of(String url, {bool light = false}) =>

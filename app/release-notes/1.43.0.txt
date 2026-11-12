@@ -1,0 +1,8 @@
+Easier to touch and to read: new mix covers, bigger touch areas, clearer colours
+- The mixes made for you have new covers drawn from their number, one colour each, in place of a blurred copy of a song's picture.
+- Buttons and bars are easier to hit: the play button, Back, the Audio/Video switch, the chips on Home, the sidebar rows, the colour choices in Settings, and the seek and volume bars all react to a touch in a space as large as a finger, without looking any bigger.
+- Small words are easier to read: the quiet grey of the light theme is darker, the lit tab and the buttons made of words use a deeper colour, and the lines of lyrics that are not playing are less faded.
+- A song you have already played in the room fades in its picture only, so its name and artist stay readable. Pictures have a thin edge in the light theme, and a song's own picture shows while the large one loads.
+- In Settings > Suggestions a line says what the two buttons at the end of each artist do. Autoplay has the same sparkle in its title as on its badge. A search with no results says what to try and has a button to clear it.
+- On the web, opening the lyrics or the queue while watching a video no longer squeezes the video into a tiny box; its place shows the picture, and the video goes on playing.
+- Small fixes to the Vietnamese texts, and a hyphen in a name such as "Sơn Tùng M-TP" no longer breaks the line.

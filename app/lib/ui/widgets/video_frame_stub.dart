@@ -4,4 +4,4 @@ import 'package:flutter/widgets.dart';
 
 Widget buildVideoFrame() => const SizedBox.shrink();
 
-void lookOfVideoFrame({required bool hidden, required bool crop}) {}
+void lookOfVideoFrame({required bool hidden}) {}

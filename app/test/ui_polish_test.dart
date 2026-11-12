@@ -590,7 +590,27 @@ void main() {
       },
     );
 
-    test('whatever the picture, the colour it gives lets white words read at 4.5:1', () {
+    testWidgets('is drawn from its number, not from the pictures of its songs', (tester) async {
+      final mix = DailyMix(
+        number: 1,
+        artists: const ['Adele'],
+        tracks: [
+          for (var i = 0; i < 3; i++)
+            Track(
+              videoId: 'vid${i}aaaaaaaa',
+              title: 'Song $i',
+              artist: 'Adele',
+              durMs: 200000,
+              thumb: 'https://i.ytimg.com/vi/vid${i}aaaaaaaa/hq720.jpg',
+            ),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp(home: MixCover(mix: mix, size: 140)));
+      expect(find.byType(Image), findsNothing);
+      expect(find.text('Mix 1'), findsOneWidget);
+    });
+
+    test('whatever the colour it is made from, white words read on it at 4.5:1', () {
       double luminance(Color c) {
         double f(double v) => v <= 0.03928
             ? v / 12.92

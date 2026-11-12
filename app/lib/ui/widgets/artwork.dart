@@ -94,42 +94,59 @@ class Artwork extends StatelessWidget {
         ),
       ),
     );
+    final light = Theme.of(context).brightness == Brightness.light;
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: SizedBox(
-        width: width ?? size,
-        height: size,
-        child: crossfade
-            ? AnimatedSwitcher(
-                duration: Motion.of(context, Motion.medium),
-                // The default layout is a Stack that loosens what its children are given: a picture then takes its own
-                // shape (a video's thumbnail, 16:9, in the middle of a square cover) instead of filling the cover. The
-                // children are told to fill, as the placeholder is
-                layoutBuilder: (current, previous) => Stack(
-                  fit: StackFit.expand,
-                  children: [...previous, ?current],
-                ),
-                child: KeyedSubtree(
-                  key: ValueKey(url),
-                  child: _picture(context, placeholder),
-                ),
-              )
-            : _picture(context, placeholder),
+      child: DecoratedBox(
+        // A hairline round the cover in the light theme, for the covers that are white: without it their edge is the
+        // page's. It is drawn over the picture, inside the clip, so it is as wide as the cover and no wider.
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          border: light
+              ? Border.all(color: Colors.black.withValues(alpha: 0.10))
+              : null,
+        ),
+        child: SizedBox(
+          width: width ?? size,
+          height: size,
+          child: crossfade
+              ? AnimatedSwitcher(
+                  duration: Motion.of(context, Motion.medium),
+                  // The default layout is a Stack that loosens what its children are given: a picture then takes its own
+                  // shape (a video's thumbnail, 16:9, in the middle of a square cover) instead of filling the cover. The
+                  // children are told to fill, as the placeholder is
+                  layoutBuilder: (current, previous) => Stack(
+                    fit: StackFit.expand,
+                    children: [...previous, ?current],
+                  ),
+                  child: KeyedSubtree(
+                    key: ValueKey(url),
+                    child: _picture(context, placeholder),
+                  ),
+                )
+              : _picture(context, placeholder),
+        ),
       ),
     );
   }
 
-  Widget _picture(BuildContext context, Widget placeholder) => url == null
-      ? placeholder
-      : _network(
-          context,
-          sharp ? sharpThumbnail(url!) : url!,
-          placeholder,
-          // Not every video has the enlarged picture: then the original will do
-          onError: sharp && sharpThumbnail(url!) != url
-              ? (_, _, _) => _network(context, url!, placeholder)
-              : null,
-        );
+  Widget _picture(BuildContext context, Widget placeholder) {
+    if (url == null) return placeholder;
+    if (!sharp || sharpThumbnail(url!) == url) {
+      return _network(context, url!, placeholder);
+    }
+    // The enlarged picture is a download of its own: until it is there the cover shows the picture the song came with,
+    // which a list or a card has fetched already, not the note of a cover that has none
+    final original = _network(context, url!, placeholder);
+    return _network(
+      context,
+      sharpThumbnail(url!),
+      original,
+      // Not every video has the enlarged picture: then the original will do
+      onError: (_, _, _) => original,
+    );
+  }
 
   Widget _network(
     BuildContext context,

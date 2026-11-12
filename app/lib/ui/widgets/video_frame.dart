@@ -5,7 +5,7 @@ import '../player_sheet.dart';
 import 'video_frame_stub.dart' if (dart.library.js_interop) 'video_frame_web.dart';
 
 /// Where and how the frame of YouTube is shown right now.
-typedef _Shape = ({Size size, double radius, bool crop});
+typedef _Shape = ({Size size, double radius});
 
 /// The frame of the YouTube player is one piece of the page that cannot be moved from one place of the tree to another
 /// (it would load again), so it floats over the screen and follows a [VideoFrameSlot], a place the layout has kept for
@@ -16,7 +16,7 @@ class VideoFrame {
   const VideoFrame._();
 
   static final _page = LayerLink();
-  static const _gone = (size: Size(1, 1), radius: 0.0, crop: false);
+  static const _gone = (size: Size(1, 1), radius: 0.0);
   static final _pageShape = ValueNotifier<_Shape>(_gone);
   static var _pageSlots = 0;
 }
@@ -28,15 +28,11 @@ class VideoFrameSlot extends StatefulWidget {
     super.key,
     required this.child,
     this.radius = 0,
-    this.crop = false,
   });
 
   final Widget child;
 
   final double radius;
-
-  /// The picture fills the place and loses its sides, for a small round place; else all of it shows, as it is.
-  final bool crop;
 
   @override
   State<VideoFrameSlot> createState() => _VideoFrameSlotState();
@@ -63,7 +59,7 @@ class _VideoFrameSlotState extends State<VideoFrameSlot> {
     if (!mounted) return;
     final size = context.size;
     if (size == null || size.isEmpty) return;
-    VideoFrame._pageShape.value = (size: size, radius: widget.radius, crop: widget.crop);
+    VideoFrame._pageShape.value = (size: size, radius: widget.radius);
   }
 
   @override
@@ -103,7 +99,7 @@ class _VideoFrameHostState extends State<VideoFrameHost> {
       final closed = widget.sheet.position.value == 0;
       final shape = closed ? VideoFrame._gone : VideoFrame._pageShape.value;
       final gone = shape.size == const Size(1, 1);
-      lookOfVideoFrame(hidden: gone, crop: shape.crop);
+      lookOfVideoFrame(hidden: gone);
       return Positioned(
         left: 0,
         top: 0,

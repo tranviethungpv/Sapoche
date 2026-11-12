@@ -381,7 +381,8 @@ class _Hero extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      page.name,
+                      // A hyphen in a name ("Sơn Tùng M-TP") is not a place to break the line: "M-" above "TP"
+                      page.name.replaceAll('-', '\u2011'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.headlineLarge?.copyWith(color: Colors.white),

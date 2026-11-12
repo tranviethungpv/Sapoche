@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import 'motion.dart';
+import 'touch_box.dart';
 
 /// Play or pause glyph that morphs between the two, with a spinner while the room is starting.
 class PlayPauseButton extends StatelessWidget {
@@ -27,46 +30,52 @@ class PlayPauseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final glyphColor = filled ? p.onPrimary : p.text;
+    final ring = filled ? p.onPrimary.withValues(alpha: 0.7) : p.primary;
     // A container of its own, or the screen reader merges it with the buttons around it
     return Semantics(
       container: true,
       button: true,
       label: playing ? S.pause : S.play,
-      child: SizedBox.square(
-        dimension: size,
-        child: Material(
-          color: filled ? p.primary : Colors.transparent,
-          shape: const CircleBorder(),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onPressed,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                AnimatedSwitcher(
-                  duration: Motion.of(context, Motion.short),
-                  transitionBuilder: (child, animation) => ScaleTransition(
-                    scale: animation,
-                    child: FadeTransition(opacity: animation, child: child),
-                  ),
-                  child: Icon(
-                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    key: ValueKey(playing),
-                    size: size * 0.56,
-                    color: glyphColor,
-                  ),
-                ),
-                if (starting)
-                  SizedBox.square(
-                    dimension: size * 0.86,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: filled
-                          ? p.onPrimary.withValues(alpha: 0.7)
-                          : p.primary,
+      child: TouchBox(
+        onTap: onPressed,
+        semantic: false,
+        child: SizedBox.square(
+          dimension: size,
+          child: Material(
+            color: filled ? p.primary : Colors.transparent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onPressed,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  AnimatedSwitcher(
+                    duration: Motion.of(context, Motion.short),
+                    transitionBuilder: (child, animation) => ScaleTransition(
+                      scale: animation,
+                      child: FadeTransition(opacity: animation, child: child),
+                    ),
+                    child: Icon(
+                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      key: ValueKey(playing),
+                      size: size * 0.56,
+                      color: glyphColor,
                     ),
                   ),
-              ],
+                  if (starting)
+                    SizedBox.square(
+                      dimension: size * 0.86,
+                      // The whole circle is drawn faintly and the arc runs round it: an arc alone looks like a drawing
+                      // that was cut short
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: ring,
+                        backgroundColor: ring.withValues(alpha: 0.25),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -102,7 +111,8 @@ class SkipButton extends StatelessWidget {
       style: box == null
           ? null
           : IconButton.styleFrom(
-              fixedSize: Size.square(box!),
+              // As wide as a finger, like the play button beside it, even where the bar is lower than that
+              fixedSize: Size(math.max(box!, touchSize), box!),
               padding: EdgeInsets.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),

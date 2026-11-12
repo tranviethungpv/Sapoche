@@ -15,6 +15,7 @@ import 'widgets/mix_cover.dart';
 import 'widgets/music_shelf.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/song_card.dart';
+import 'widgets/touch_box.dart';
 
 /// Wraps what a row of the home page shows once it has something to show: the page uses it to count the rows that were
 /// seen and touched (see `ShelfStats`). A row that is not made of this does not count.
@@ -117,42 +118,56 @@ class _HomeChipsState extends State<HomeChips> {
           required String label,
           required VoidCallback onTap,
           bool own = false,
-        }) => Material(
-          color: own ? p.primaryContainer : p.text.withValues(alpha: 0.1),
-          shape: const StadiumBorder(),
-          child: InkWell(
-            key: key,
-            customBorder: const StadiumBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(own ? 10 : 16, 0, 16, 0),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // The own chips play at a touch: the arrow says so
-                  if (own) ...[
-                    Icon(
-                      Icons.play_arrow_rounded,
-                      size: 20,
-                      color: p.onPrimaryContainer,
+        }) =>
+        // The chip is drawn 36 high; a touch answers in the 48 round it
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          onTap: onTap,
+          child: SizedBox(
+            height: touchSize,
+            child: Center(
+              child: Material(
+                color: own ? p.primaryContainer : p.text.withValues(alpha: 0.1),
+                shape: const StadiumBorder(),
+                child: InkWell(
+                  key: key,
+                  customBorder: const StadiumBorder(),
+                  onTap: onTap,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(own ? 10 : 16, 8, 16, 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // The own chips play at a touch: the arrow says so
+                        if (own) ...[
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            size: 20,
+                            color: p.onPrimaryContainer,
+                          ),
+                          const SizedBox(width: 2),
+                        ],
+                        Text(
+                          label,
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: own ? p.onPrimaryContainer : null,
+                              ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 2),
-                  ],
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelLarge
-                        ?.copyWith(color: own ? p.onPrimaryContainer : null),
                   ),
-                ],
+                ),
               ),
             ),
           ),
         );
         return SizedBox(
-          height: 52,
+          height: 56,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
             itemCount: count,
             separatorBuilder: (_, i) =>
                 // A rule between what is made from the person's music (plays at a touch) and the moods (open a list)

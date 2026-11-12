@@ -219,7 +219,7 @@ class _RoomPageState extends State<RoomPage> {
         ),
       ],
       if (snapshot.autoUpNext.isNotEmpty) ...[
-        _SectionTitle(S.autoplay),
+        _SectionTitle(S.autoplay, icon: Icons.auto_awesome_rounded),
         SliverToBoxAdapter(
           child: QueuedAutoplay(
             controller: controller,
@@ -936,10 +936,13 @@ class _SoloBanner extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text, {this.action});
+  const _SectionTitle(this.text, {this.action, this.icon});
 
   final String text;
   final Widget? action;
+
+  /// Before the title; the autoplay's is the sparkle its badge on a cover has.
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -949,6 +952,10 @@ class _SectionTitle extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 20, 12, 6),
           child: Row(
             children: [
+              if (icon != null) ...[
+                Icon(icon, size: 20, color: context.palette.primary),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: Text(
                   text,

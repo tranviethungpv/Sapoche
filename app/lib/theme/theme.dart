@@ -144,7 +144,7 @@ ThemeData buildTheme(Palette p) {
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: p.primary,
+        foregroundColor: p.link,
         textStyle: text.labelLarge,
         shape: buttonShape,
       ),

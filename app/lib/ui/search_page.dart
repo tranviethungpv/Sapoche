@@ -674,6 +674,15 @@ class _SearchPageState extends State<SearchPage> {
               child: _Message(
                 icon: Icons.music_off_rounded,
                 title: S.noResults,
+                body: S.noResultsBody,
+                action: FilledButton.tonal(
+                  onPressed: () {
+                    _field.clear();
+                    _onChanged('');
+                    widget.focusNode?.requestFocus();
+                  },
+                  child: Text(S.clearSearch),
+                ),
               ),
             ),
           ],
@@ -856,11 +865,15 @@ class _Message extends StatelessWidget {
     required this.icon,
     required this.title,
     this.body,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String? body;
+
+  /// What to do about it, under the words.
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -888,6 +901,7 @@ class _Message extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ],
+            if (action != null) ...[const SizedBox(height: 16), action!],
           ],
         ),
       ),

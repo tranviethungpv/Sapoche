@@ -185,6 +185,21 @@ void main() {
     expect(tester.getRect(find.text('Song 15')).bottom, lessThanOrEqualTo(bar.top));
   });
 
+  testWidgets('a song already played is dimmed in its picture, and its words keep 4.5:1', (tester) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom(index: 1)));
+    await tester.pumpAndSettle();
+    final row = find.widgetWithText(TrackTile, 'Song 0');
+    expect(row, findsOneWidget);
+    final faded = find.byWidgetPredicate((w) => w is Opacity && w.opacity < 1);
+    // The picture is faded, and nothing that holds the words is
+    expect(find.descendant(of: row, matching: faded), findsOneWidget);
+    expect(find.ancestor(of: find.text('Song 0'), matching: faded), findsNothing);
+    final title = tester.widget<Text>(find.descendant(of: row, matching: find.text('Song 0')));
+    final base = Palette.light.base;
+    expect(_contrast(Color.alphaBlend(title.style!.color!, base), base), greaterThanOrEqualTo(4.5));
+  });
+
   testWidgets('a row of an album is never lower than 52 dp', (tester) async {
     final (backend, _) = await pumpApp(tester, listen: false);
     backend.emit(const StateEvent(RoomSnapshot()));

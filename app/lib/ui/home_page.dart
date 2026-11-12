@@ -31,6 +31,7 @@ import 'widgets/play_row.dart';
 import 'widgets/playlist_cover.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/song_card.dart';
+import 'widgets/touch_box.dart';
 
 /// The rows below the ones that are always on top. The order here is the one the page was made in; the order shown is
 /// drawn from what the person touches (see `ShelfStats`).
@@ -812,45 +813,50 @@ class _RoomChipState extends State<_RoomChip> {
           button: true,
           child: Tooltip(
             message: inRoom || last == null ? S.tabRoom : last.title,
-            child: Material(
-              color: inRoom ? p.primary : p.text.withValues(alpha: 0.14),
-              shape: const StadiumBorder(),
-              child: InkWell(
-                customBorder: const StadiumBorder(),
-                onTap: _busy ? null : _touch,
-                onLongPress: () => showRoomSheet(context),
-                child: SizedBox(
-                  height: 40,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_busy)
-                          SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: color,
-                            ),
-                          )
-                        else if (inRoom)
-                          // Who is there, not the code: the code is on the invitation
-                          AvatarStack(
-                            members: snapshot.members,
-                            size: 24,
-                            max: 3,
-                          )
-                        else
-                          Icon(Icons.groups_rounded, size: 18, color: color),
-                        const SizedBox(width: 6),
-                        Text(
-                          label,
-                          maxLines: 1,
-                          style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(color: color),
-                        ),
-                      ],
+            // The chip is drawn 40 high; a touch answers in the 48 round it
+            child: TouchBox(
+              onTap: _busy ? null : _touch,
+              semantic: false,
+              child: Material(
+                color: inRoom ? p.primary : p.text.withValues(alpha: 0.14),
+                shape: const StadiumBorder(),
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: _busy ? null : _touch,
+                  onLongPress: () => showRoomSheet(context),
+                  child: SizedBox(
+                    height: 40,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_busy)
+                            SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: color,
+                              ),
+                            )
+                          else if (inRoom)
+                            // Who is there, not the code: the code is on the invitation
+                            AvatarStack(
+                              members: snapshot.members,
+                              size: 24,
+                              max: 3,
+                            )
+                          else
+                            Icon(Icons.groups_rounded, size: 18, color: color),
+                          const SizedBox(width: 6),
+                          Text(
+                            label,
+                            maxLines: 1,
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: color),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

@@ -23,7 +23,8 @@ class RoundBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(6),
+    // An app bar gives its leading 56: with 4 round it the button is 48, the least to touch
+    padding: const EdgeInsets.all(4),
     child: IconButton(
       onPressed: () => Navigator.maybePop(context),
       tooltip: MaterialLocalizations.of(context).backButtonTooltip,

@@ -48,10 +48,13 @@ class TrackSection extends StatelessWidget {
 
 /// A title above a block of a page, with room for something at its end.
 class SectionHeading extends StatelessWidget {
-  const SectionHeading(this.title, {super.key, this.action});
+  const SectionHeading(this.title, {super.key, this.action, this.icon});
 
   final String title;
   final Widget? action;
+
+  /// Before the title: the sparkle the autoplay badge on a cover has, so that the badge is explained where it is met.
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +62,10 @@ class SectionHeading extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 18, 12, 6),
       child: Row(
         children: [
+          if (icon != null) ...[
+            Icon(icon, size: 18, color: context.palette.primary),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Text(title, style: Theme.of(context).textTheme.titleMedium),
           ),

@@ -5,6 +5,7 @@ import '../../format.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import 'low_rate_timer.dart';
+import 'touch_box.dart';
 
 /// Seek bar with elapsed and remaining time. It moves five times a second while playing, which is
 /// finer than a pixel of the bar, and it grows under the finger like Apple's.
@@ -93,7 +94,10 @@ class _PlaybackBarState extends State<PlaybackBar> {
             _finish(duration);
           },
           child: SizedBox(
-            height: compact ? 20 : 28,
+            // The line is 4 to 10 high; the place that answers a touch and a drag is the full 48. Not in the bar of a
+            // wide window (`compact`), which is a fixed height with the buttons above it: 20, as it was, nor on a
+            // phone on its side
+            height: compact ? 20 : barTouchHeight(context, 28),
             child: Center(
               child: TweenAnimationBuilder<double>(
                 tween: Tween(
@@ -144,9 +148,13 @@ class _PlaybackBarState extends State<PlaybackBar> {
       mainAxisSize: MainAxisSize.min,
       children: [
         bar,
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [elapsed, left],
+        // Up under the line, as close as when the place round it was 28 high
+        Transform.translate(
+          offset: Offset(0, -(barTouchHeight(context, 28) - 28) / 2),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [elapsed, left],
+          ),
         ),
       ],
     );

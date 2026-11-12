@@ -21,8 +21,6 @@ Widget buildVideoFrame() {
   );
 }
 
-void lookOfVideoFrame({required bool hidden, required bool crop}) {
-  videoFrameElement().classList
-    ..toggle('hidden', hidden)
-    ..toggle('crop', crop);
+void lookOfVideoFrame({required bool hidden}) {
+  videoFrameElement().classList.toggle('hidden', hidden);
 }

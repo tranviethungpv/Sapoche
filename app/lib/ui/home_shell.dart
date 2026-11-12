@@ -972,7 +972,7 @@ class _Rail extends StatelessWidget {
                                           .labelSmall
                                           ?.copyWith(
                                             color: tab == index
-                                                ? p.primary
+                                                ? p.link
                                                 : p.textSecondary,
                                           ),
                                     ),
@@ -1053,7 +1053,7 @@ class _Sidebar extends StatelessWidget {
                 customBorder: const StadiumBorder(),
                 onTap: onSearch,
                 child: SizedBox(
-                  height: 40,
+                  height: 48,
                   child: Row(
                     children: [
                       const SizedBox(width: 12),
@@ -1067,7 +1067,7 @@ class _Sidebar extends StatelessWidget {
                         child: Text(
                           S.tabSearch,
                           style: theme.bodyMedium?.copyWith(
-                            color: index == 1 ? p.primary : p.textSecondary,
+                            color: index == 1 ? p.link : p.textSecondary,
                           ),
                         ),
                       ),
@@ -1108,7 +1108,10 @@ class _Sidebar extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(10, 20, 10, 6),
               child: Text(
                 S.playlists.toUpperCase(),
-                style: theme.labelSmall?.copyWith(letterSpacing: 0.8),
+                style: theme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  color: p.textSecondary,
+                ),
               ),
             ),
             Expanded(
@@ -1206,7 +1209,7 @@ class _SideRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final color = selected ? p.primary : p.text;
+    final color = selected ? p.link : p.text;
     return Material(
       color: selected ? p.veilStrong : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
@@ -1214,7 +1217,8 @@ class _SideRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: SizedBox(
-          height: leading == null ? 42 : 46,
+          // Not lower than a thing to touch (the sidebar is touched too: a tablet)
+          height: 48,
           child: Row(
             children: [
               SizedBox(width: leading == null ? 12 : 6),
@@ -1239,7 +1243,9 @@ class _SideRow extends StatelessWidget {
                   style: leading == null
                       ? Theme.of(context).textTheme.titleSmall
                             ?.copyWith(color: color)
-                      : Theme.of(context).textTheme.bodyMedium,
+                      : Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: color,
+                        ),
                 ),
               ),
             ],
@@ -1552,15 +1558,25 @@ class _Tabs extends StatelessWidget {
                                       color: color,
                                       size: wide ? 22 : 26,
                                     );
-                                    final name = Text(
-                                      label,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelSmall
-                                          ?.copyWith(
-                                            color: color,
-                                            fontSize: 10.5,
-                                          ),
+                                    // The word is in the deep shade of the accent: the accent itself is 3.5:1 on the tint
+                                    // of the lit pill, which is too little for a word this small
+                                    final name = TweenAnimationBuilder<Color?>(
+                                      tween: ColorTween(
+                                        end: tab == index
+                                            ? p.link
+                                            : p.textSecondary,
+                                      ),
+                                      duration: const Duration(milliseconds: 200),
+                                      builder: (context, color, _) => Text(
+                                        label,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(
+                                              color: color,
+                                              fontSize: 10.5,
+                                            ),
+                                      ),
                                     );
                                     // On its side the label goes beside the icon: there is no height to stack them
                                     return wide

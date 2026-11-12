@@ -200,7 +200,7 @@ class _SyncedLyricsState extends State<_SyncedLyrics> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   child: AnimatedOpacity(
-                    opacity: i == _active ? 1 : 0.38,
+                    opacity: i == _active ? 1 : 0.55,
                     duration: const Duration(milliseconds: 300),
                     child: lines[i].text.isEmpty
                         ? Icon(Icons.more_horiz_rounded, color: p.text)
