@@ -11,6 +11,10 @@ protocol PlayerPort: AnyObject {
     /// again a song that stalled or failed wants that: the old address may be what is wrong, and it is kept for hours.
     func refresh(_ videoId: String) async
 
+    /// Get [videoId] ready to load while something else still plays, as it is about to be: where it streams from is
+    /// found and kept. Never throws; a failure is left to the load that follows.
+    func warm(_ videoId: String, withVideo: Bool) async
+
     /// Seek and return once the player is ready at the new position. Throws only when cancelled.
     func seekTo(_ positionMs: Int64) async throws
 
@@ -41,6 +45,10 @@ protocol PlayerPort: AnyObject {
 
     /// Called when playback fails after it started, e.g. the stream URL stopped working mid-track.
     var onError: ((Error) -> Void)? { get set }
+}
+
+extension PlayerPort {
+    func warm(_ videoId: String, withVideo: Bool) async {}
 }
 
 /// Why [PlayerPort.prepare] could not load an item. Trying again at once does not help with either.

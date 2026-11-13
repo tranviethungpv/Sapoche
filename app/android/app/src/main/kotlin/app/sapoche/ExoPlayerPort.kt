@@ -243,6 +243,7 @@ class ExoPlayerPort(private val player: ExoPlayer) : PlayerPort {
 
     private fun applyVideoSelection() {
         val enabled = videoOn && videoVisible
+        SapocheApp.pictureShown = enabled
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, !enabled)
             .build()

@@ -13,6 +13,7 @@ import app.sapoche.core.PrefetchedVisitors
 import app.sapoche.core.Probe
 import app.sapoche.core.QuickFirstResolver
 import app.sapoche.core.UpdateClient
+import app.sapoche.core.VideoPicker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,7 +44,7 @@ class SapocheApp : Application() {
         val limitMb = getSharedPreferences("sapoche", MODE_PRIVATE).getInt("cache_limit_mb", DEFAULT_CACHE_MB)
         caches = MediaCaches(this, limitMb * 1024L * 1024L)
         loudness = LoudnessBook(library, CoroutineScope(SupervisorJob() + Dispatchers.IO))
-        mediaData = MediaData(caches, streams, { videoMaxHeight }, { AudioQuality.effective(audioQuality, weakNetwork, bandwidthKbps) }, deviceMusic, loudness) { EventLog.d("cache", it) }
+        mediaData = MediaData(caches, streams, { videoMaxHeight }, { VideoPicker.budgetKbps(recentBestKbps, weakNetwork) }, { AudioQuality.effective(audioQuality, weakNetwork, bandwidthKbps) }, deviceMusic, loudness) { EventLog.d("cache", it) }
         downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
@@ -70,6 +71,10 @@ class SapocheApp : Application() {
         @Volatile
         var audioQuality = AudioQuality.MAX
 
+        /** The picture is on screen and so being loaded; read by the load control on the player's thread. */
+        @Volatile
+        var pictureShown = false
+
         /** The network is too weak for the plain rules (see `NetworkHealth`): songs are fetched in a lower quality. */
         @Volatile
         var weakNetwork = false
@@ -77,6 +82,19 @@ class SapocheApp : Application() {
         /** What the player last measured the network to carry, in kbps; 0 until it measured. */
         @Volatile
         var bandwidthKbps = 0L
+
+        /**
+         * The most the network was lately measured to carry, in kbps, letting go of 15% at each new measure: the
+         * player's own estimate is a median that a few small or shared transfers drag down to a fifth, and a picture
+         * chosen by it would be the smallest for no reason. 0 until it measured.
+         */
+        @Volatile
+        var recentBestKbps = 0L
+            private set
+
+        fun noteBandwidth(kbps: Long) {
+            recentBestKbps = maxOf(kbps, recentBestKbps * 85 / 100)
+        }
 
         lateinit var resolver: NewPipeResolver
             private set

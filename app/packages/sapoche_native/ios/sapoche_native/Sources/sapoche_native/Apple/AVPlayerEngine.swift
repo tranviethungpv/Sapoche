@@ -149,6 +149,15 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         await library.refresh(videoId)
     }
 
+    func warm(_ videoId: String, withVideo: Bool) async {
+        await library.warm(videoId)
+    }
+
+    /// What the picture may take of the link as it is now (see [VideoPicker.budgetKbps]).
+    private func pictureBudgetKbps() -> Int64 {
+        VideoPicker.budgetKbps(bandwidthKbps: NetworkState.shared.bandwidthKbps, weak: NetworkState.shared.weak)
+    }
+
     func seekTo(_ positionMs: Int64) async throws {
         pausedAtEnd = false
         _ = await seek(to: positionMs)
@@ -398,7 +407,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private func build(_ queued: QueueItem, _ playable: Playable, pictureInPieces: Bool) async -> Built {
         if wantsVideo && pictureInPieces {
             do {
-                if let both = try await library.pictured(queued.videoId, maxHeight: maxVideoHeight()) {
+                if let both = try await library.pictured(queued.videoId, maxHeight: maxVideoHeight(), budgetKbps: pictureBudgetKbps()) {
                     return Built(item: withPicture(plain(asset(both))), video: true, inPieces: true, streamed: true)
                 }
             } catch {
@@ -409,7 +418,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let audio = asset(playable)
         if wantsVideo {
             do {
-                if let picture = try await library.video(queued.videoId, maxHeight: maxVideoHeight()) {
+                if let picture = try await library.video(queued.videoId, maxHeight: maxVideoHeight(), budgetKbps: pictureBudgetKbps()) {
                     let item = try await withTimeout(ms: 20_000) { try await Self.compose(audio: audio, picture: self.asset(picture)) }
                     item.audioTimePitchAlgorithm = .timeDomain
                     return Built(item: withPicture(item), video: true, inPieces: false, streamed: true)

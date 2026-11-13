@@ -531,8 +531,18 @@ class GroupController(
         EventLog.d("local", "speed $playbackSpeed")
     }
 
-    /** Where the player draws the picture, or null to let go of the screen. */
+    /** The surface the player draws the picture on now; see [attachVideoSurface]. */
+    private var videoSurface: Surface? = null
+
+    /**
+     * Where the player draws the picture, or null to let go of the screen. Only a change is passed on: the player
+     * reports the size of the picture again each time it is given a surface, even the one it has, and whoever
+     * listens for the size gives the surface again, so the same surface set twice keeps two threads busy for as
+     * long as the picture is shown (a phone that gets hot, and an app that stops answering).
+     */
     fun attachVideoSurface(surface: Surface?) {
+        if (surface === videoSurface) return
+        videoSurface = surface
         if (surface == null) exo.clearVideoSurface() else exo.setVideoSurface(surface)
     }
 
@@ -921,7 +931,15 @@ class GroupController(
         val fresh = Queues.fresh(tracks, queue(), session?.snapshot?.value?.state?.index ?: 0)
         fresh.isEmpty() || send(Protocol.queueAddMany(fresh, playNext))
     }
-    fun requestSwap(itemId: String, track: TrackRef) = onQueue({ it.swap(itemId, track) }) { send(Protocol.queueSwap(itemId, track)) }
+    /**
+     * Plays [track], another release of the song, in place of the queue item [itemId]. What is playing carries on while
+     * the new release is made ready (its addresses are found and tried), so that the sound is cut only for the time the
+     * first of its data takes, not for all of the lookup as well.
+     */
+    suspend fun requestSwap(itemId: String, track: TrackRef): Boolean {
+        SapocheApp.mediaData.warm(track.videoId, videoMode)
+        return onQueue({ it.swap(itemId, track) }) { send(Protocol.queueSwap(itemId, track)) }
+    }
     fun requestRemove(itemId: String) = onQueue({ it.remove(itemId) }) { send(Protocol.queueRemove(itemId)) }
     fun requestMove(itemId: String, toIndex: Int) = onQueue({ it.move(itemId, toIndex) }) { send(Protocol.queueMove(itemId, toIndex)) }
 

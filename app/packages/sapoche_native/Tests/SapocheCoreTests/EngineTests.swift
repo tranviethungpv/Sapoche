@@ -964,6 +964,23 @@ final class SmallPartsTests: XCTestCase {
         XCTAssertEqual(VideoPicker.pick([source(720, "avc1.a", 500), source(720, "avc1.b", 900)], maxHeight: 720)?.bitrateKbps, 900)
     }
 
+    func testThePictureIsTheTallestOneTheLinkCanBring() {
+        func source(_ height: Int, _ kbps: Int) -> VideoSource {
+            VideoSource(url: "u\(height)", height: height, codec: "avc1.640028", bitrateKbps: kbps, itag: height)
+        }
+        let sources = [source(1080, 4200), source(720, 2200), source(480, 900), source(360, 500)]
+        XCTAssertEqual(VideoPicker.pick(sources, maxHeight: 1080, budgetKbps: 5000)?.height, 1080)
+        XCTAssertEqual(VideoPicker.pick(sources, maxHeight: 1080, budgetKbps: 2500)?.height, 720)
+        XCTAssertEqual(VideoPicker.pick(sources, maxHeight: 1080, budgetKbps: 1000)?.height, 480)
+        XCTAssertEqual(VideoPicker.pick(sources, maxHeight: 480, budgetKbps: 5000)?.height, 480, "the setting is still the most")
+        XCTAssertEqual(VideoPicker.pick(sources, maxHeight: 1080, budgetKbps: 1)?.height, 360, "the smallest when nothing fits")
+        XCTAssertEqual(VideoPicker.pick(sources, maxHeight: 1080, budgetKbps: 0)?.height, 1080, "no budget is no limit")
+        XCTAssertEqual(VideoPicker.budgetKbps(bandwidthKbps: 0, weak: false), 0)
+        XCTAssertEqual(VideoPicker.budgetKbps(bandwidthKbps: 0, weak: true), 1)
+        XCTAssertEqual(VideoPicker.budgetKbps(bandwidthKbps: 4300, weak: false), 2706)
+        XCTAssertEqual(VideoPicker.budgetKbps(bandwidthKbps: 150, weak: false), 1, "never below one: 0 would mean no limit")
+    }
+
     func testEachAudioQualityTakesTheBestStreamWithinItsLimit() {
         func source(_ itag: Int, _ kbps: Int) -> AudioSource {
             AudioSource(url: "u\(itag)", mimeType: "audio/mp4", bitrateKbps: kbps, contentLength: 1, itag: itag)

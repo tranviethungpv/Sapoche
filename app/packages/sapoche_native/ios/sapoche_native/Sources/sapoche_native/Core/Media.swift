@@ -302,10 +302,11 @@ actor StreamCache {
                     mimeType: best.mimeType, bitrateKbps: best.bitrateKbps, index: best.index)
     }
 
-    /// The picture-only stream of [videoId] that fits [maxHeight], or nil when the video has none that an iPhone plays.
-    func video(_ videoId: String, maxHeight: Int) async throws -> (source: VideoSource, userAgent: String)? {
+    /// The picture-only stream of [videoId] that fits [maxHeight] and what a link of [budgetKbps] can bring (see
+    /// [VideoPicker]), or nil when the video has none that an iPhone plays.
+    func video(_ videoId: String, maxHeight: Int, budgetKbps: Int64 = 0) async throws -> (source: VideoSource, userAgent: String)? {
         let resolved = try await resolved(videoId)
-        guard let pick = VideoPicker.pick(resolved.videos, maxHeight: maxHeight) else { return nil }
+        guard let pick = VideoPicker.pick(resolved.videos, maxHeight: maxHeight, budgetKbps: budgetKbps) else { return nil }
         return (pick, resolved.userAgent)
     }
 
@@ -490,19 +491,27 @@ actor MediaLibrary {
         await streams.invalidate(videoId)
     }
 
-    /// Where the picture of [videoId] is streamed from, at most [maxHeight] tall; nil when it has none that plays.
-    func video(_ videoId: String, maxHeight: Int) async throws -> Playable? {
+    /// Has where [videoId] streams from found and kept, so that the load of it that follows does not wait for the
+    /// lookup. A failure is left to that load, which tells it properly.
+    func warm(_ videoId: String) async {
+        if LocalMusic.isLocal(videoId) { return }
+        _ = try? await streams.track(videoId)
+    }
+
+    /// Where the picture of [videoId] is streamed from, at most [maxHeight] tall and what [budgetKbps] allows; nil when
+    /// it has none that plays.
+    func video(_ videoId: String, maxHeight: Int, budgetKbps: Int64 = 0) async throws -> Playable? {
         if LocalMusic.isLocal(videoId) { return nil }
-        guard let pick = try await streams.video(videoId, maxHeight: maxHeight), let url = URL(string: pick.source.url) else { return nil }
+        guard let pick = try await streams.video(videoId, maxHeight: maxHeight, budgetKbps: budgetKbps), let url = URL(string: pick.source.url) else { return nil }
         return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
     }
 
-    /// The sound of [videoId] with its picture, at most [maxHeight] tall, both played from their streams in pieces: one
+    /// The sound of [videoId] with its picture, at most [maxHeight] tall and what [budgetKbps] allows, both played from their streams in pieces: one
     /// playlist of the two. Nil when the video has no picture an iPhone plays or the picture has no index; throws
     /// when the pieces cannot be laid out.
-    func pictured(_ videoId: String, maxHeight: Int) async throws -> Playable? {
+    func pictured(_ videoId: String, maxHeight: Int, budgetKbps: Int64 = 0) async throws -> Playable? {
         if LocalMusic.isLocal(videoId) { return nil }
-        guard let picture = try await streams.video(videoId, maxHeight: maxHeight), let index = picture.source.index,
+        guard let picture = try await streams.video(videoId, maxHeight: maxHeight, budgetKbps: budgetKbps), let index = picture.source.index,
               let pictureURL = URL(string: picture.source.url) else { return nil }
         let sound = try await soundInPieces(videoId)
         let segments = try await pieces(pictureURL, index, contentLength: picture.source.contentLength, userAgent: picture.userAgent)

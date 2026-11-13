@@ -70,6 +70,9 @@ final class FakePlayer: PlayerEngine {
     var failWith: ((QueueItem) -> Error?)?
     var seeks: [Int64] = []
     var refreshed: [String] = []
+    /// What was made ready in advance, and the order of that against the loads.
+    var warmed: [String] = []
+    var events: [String] = []
     var queuedNext: QueueItem?
 
     var onEnded: (() -> Void)?
@@ -99,11 +102,17 @@ final class FakePlayer: PlayerEngine {
         refreshed.append(videoId)
     }
 
+    func warm(_ videoId: String, withVideo: Bool) async {
+        warmed.append(videoId)
+        events.append("warm \(videoId)")
+    }
+
     func prepare(_ item: QueueItem, seekToMs: Int64) async throws {
         try await time.sleep(ms: prepareDelayMs)
         if failPrepare { throw NSError(domain: "FakePlayer", code: 1, userInfo: [NSLocalizedDescriptionKey: "cannot load"]) }
         if let error = failWith?(item) { throw error }
         prepareCount += 1
+        events.append("prepare \(item.videoId)")
         advance()
         loaded = item
         queuedNext = nil

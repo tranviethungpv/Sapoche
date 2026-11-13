@@ -955,7 +955,17 @@ final class GroupController {
             return fresh.isEmpty || send(Wire.queueAddMany(fresh, playNext: playNext))
         }
     }
-    @discardableResult func requestSwap(_ itemId: String, _ track: TrackRef) -> Bool { onQueue({ $0.swap(itemId, track) }) { send(Wire.queueSwap(itemId, track)) } }
+    /// Plays [track], another release of the song, in place of the queue item [itemId]. What is playing carries on while
+    /// the new release is made ready, so that the sound is cut only for the time the first of its data takes, not for all
+    /// of the lookup as well.
+    @discardableResult func requestSwap(_ itemId: String, _ track: TrackRef) -> Bool {
+        let withVideo = videoMode
+        Task {
+            await engine.warm(track.videoId, withVideo: withVideo)
+            onQueue({ $0.swap(itemId, track) }) { send(Wire.queueSwap(itemId, track)) }
+        }
+        return true
+    }
     @discardableResult func requestRemove(_ itemId: String) -> Bool { onQueue({ $0.remove(itemId) }) { send(Wire.queueRemove(itemId)) } }
     @discardableResult func requestMove(_ itemId: String, _ toIndex: Int) -> Bool { onQueue({ $0.move(itemId, toIndex: toIndex) }) { send(Wire.queueMove(itemId, toIndex: toIndex)) } }
 

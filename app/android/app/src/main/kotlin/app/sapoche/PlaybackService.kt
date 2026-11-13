@@ -90,7 +90,9 @@ class PlaybackService : MediaLibraryService() {
                 .setBufferDurationsMs(30_000, 300_000, 2_500, 5_000)
                 .setTargetBufferBytes(48 * 1024 * 1024)
                 .build(),
-        ) { SapocheApp.weakNetwork }
+            weak = { SapocheApp.weakNetwork },
+            pictureShown = { SapocheApp.pictureShown },
+        )
 
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
@@ -702,6 +704,7 @@ class PlaybackService : MediaLibraryService() {
             bitrateEstimate: Long,
         ) {
             SapocheApp.bandwidthKbps = bitrateEstimate / 1000
+            SapocheApp.noteBandwidth(bitrateEstimate / 1000)
             EventLog.d("net", "bandwidth estimate=${bitrateEstimate / 1000}kbps sample=${totalBytesLoaded}B/${totalLoadTimeMs}ms")
         }
 

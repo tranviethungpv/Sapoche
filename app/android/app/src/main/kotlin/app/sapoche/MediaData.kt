@@ -32,6 +32,8 @@ class MediaData(
     private val caches: MediaCaches,
     private val streams: StreamCache,
     private val maxVideoHeight: () -> Int,
+    /** What the picture may take of the link, in kbps; 0 for no limit (see [app.sapoche.core.VideoPicker.budgetKbps]). */
+    private val videoBudgetKbps: () -> Long,
     private val audioQuality: () -> AudioQuality,
     private val device: DeviceMusic,
     private val loudness: LoudnessBook,
@@ -56,8 +58,22 @@ class MediaData(
                 pick.loudnessDb?.let { loudness.heard(videoId, it) }
                 spec.withUri(Uri.parse(pick.url))
             }
-            SapocheMediaSourceFactory.VIDEO_SCHEME -> spec.withUri(Uri.parse(streams.getVideo(videoId, maxVideoHeight())))
+            SapocheMediaSourceFactory.VIDEO_SCHEME -> spec.withUri(Uri.parse(streams.getVideo(videoId, maxVideoHeight(), videoBudgetKbps())))
             else -> spec
+        }
+    }
+
+    /**
+     * Has the addresses of [videoId] ready, as the loader will want them: the sound, and the picture when [withVideo].
+     * Whoever is about to load it calls this while something else still plays, so the load that follows does not
+     * wait for them. A failure is left to that load, which tells it properly.
+     */
+    suspend fun warm(videoId: String, withVideo: Boolean) = withContext(Dispatchers.IO) {
+        try {
+            streams.getAudio(videoId, caches.pinned(videoId), audioQuality())
+            if (withVideo) streams.getVideo(videoId, maxVideoHeight(), videoBudgetKbps())
+        } catch (e: IOException) {
+            log("$videoId could not be made ready in advance: ${e.message}")
         }
     }
 

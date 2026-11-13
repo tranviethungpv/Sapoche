@@ -101,6 +101,13 @@ class SapocheBridge(
     /** Where the player's picture is drawn for Flutter's Texture widget; made when first asked for. */
     private var picture: TextureRegistry.SurfaceProducer? = null
 
+    /**
+     * Takes the size listener off the player. The player outlives this bridge (the service keeps it when the screen is
+     * closed), so a listener left behind keeps pushing its dead producer's surface: with the next bridge's listener
+     * doing the same, each surface change reports the size again and the two swap forever, which hangs the app.
+     */
+    private var dropPictureListener: (() -> Unit)? = null
+
     private val pip = PictureInPicture(activity)
 
     /** The UI shows the picture. The small window shows it too, whatever the UI last said. */
@@ -263,6 +270,8 @@ class SapocheBridge(
     private var lastRenew = 0L
 
     fun dispose() {
+        dropPictureListener?.invoke()
+        dropPictureListener = null
         picture?.let {
             SapocheApp.group.value?.setVideoVisible(false)
             SapocheApp.group.value?.attachVideoSurface(null)
@@ -1005,13 +1014,15 @@ class SapocheBridge(
             override fun onSurfaceCleanup() = group.attachVideoSurface(null)
         })
         group.attachVideoSurface(producer.surface)
-        group.addPlayerListener(object : Player.Listener {
+        val sizeListener = object : Player.Listener {
             override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
                 if (size.width <= 0 || size.height <= 0) return
                 producer.setSize(size.width, size.height)
                 group.attachVideoSurface(producer.surface)
             }
-        })
+        }
+        group.addPlayerListener(sizeListener)
+        dropPictureListener = { group.removePlayerListener(sizeListener) }
         picture = producer
         return producer.id()
     }

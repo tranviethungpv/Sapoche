@@ -411,6 +411,19 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(engine.loaded?.title, "Song 2")
     }
 
+    func testTheOtherReleaseIsMadeReadyBeforeItReplacesTheSongThatPlays() async throws {
+        _ = try await call("add", song(1))
+        await time.advance(100)
+        let id = try XCTUnwrap((states().last?["queue"] as? [[String: Any]])?.first?["id"] as? String)
+        engine.events = []
+        var other = song(2)
+        other["title"] = "Song 1 (Video)"
+        _ = try await call("swap", ["id": id, "track": other])
+        await time.advance(100)
+        XCTAssertEqual(engine.events, ["warm video000002", "prepare video000002"], "found out first, loaded after, the sound meanwhile playing on")
+        XCTAssertEqual(engine.loaded?.videoId, "video000002")
+    }
+
     func testThePositionIsSentWhileTheScreenIsOn() async throws {
         _ = try await call("add", song(1))
         await time.advance(2500)

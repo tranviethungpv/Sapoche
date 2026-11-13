@@ -123,13 +123,27 @@ enum AudioQuality: Int, CaseIterable {
 
 /// Chooses which video-only stream to play beside the audio.
 enum VideoPicker {
-    /// The tallest stream that fits within [maxHeight]. When nothing fits (the video has only larger streams) the
-    /// smallest available one is used rather than none at all. Only H.264 is on offer: it is what an iPhone plays.
-    static func pick(_ sources: [VideoSource], maxHeight: Int) -> VideoSource? {
+    /// What the sound that plays beside the picture takes, off the share of the link the picture may have.
+    private static let soundKbps: Int64 = 160
+
+    /// What the picture may take, in kbps, of a link that [bandwidthKbps] was measured to carry: two thirds of it, as the
+    /// audio's steps keep room to spare, less what the sound takes. 0 means no limit (nothing was measured); on a [weak]
+    /// network with nothing measured it is 1, which picks the least demanding picture there is.
+    static func budgetKbps(bandwidthKbps: Int64, weak: Bool) -> Int64 {
+        if bandwidthKbps <= 0 { return weak ? 1 : 0 }
+        return max(1, bandwidthKbps * 2 / 3 - soundKbps)
+    }
+
+    /// The tallest stream that fits within [maxHeight] and, when [budgetKbps] is above 0, takes no more than it. When
+    /// nothing fits (the video has only larger streams, or only dearer ones) the smallest available one is used rather
+    /// than none at all. Only H.264 is on offer: it is what an iPhone plays.
+    static func pick(_ sources: [VideoSource], maxHeight: Int, budgetKbps: Int64 = 0) -> VideoSource? {
         let playable = sources.filter { $0.codec.hasPrefix("avc1") }
         guard !playable.isEmpty else { return nil }
-        let fitting = playable.filter { $0.height <= maxHeight }
-        guard let tallest = fitting.map(\.height).max() else { return playable.min { $0.height < $1.height } }
+        let fitting = playable.filter { $0.height <= maxHeight && (budgetKbps <= 0 || Int64($0.bitrateKbps) <= budgetKbps) }
+        guard let tallest = fitting.map(\.height).max() else {
+            return playable.min { ($0.height, $0.bitrateKbps) < ($1.height, $1.bitrateKbps) }
+        }
         return fitting.filter { $0.height == tallest }.max { $0.bitrateKbps < $1.bitrateKbps }
     }
 }

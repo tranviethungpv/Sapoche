@@ -88,23 +88,25 @@ class StreamCache(
 
     /**
      * Returns a validated URL of the picture-only stream for [videoId], the tallest one within
-     * [maxHeight] (see [VideoPicker]). It comes from the same resolve as the audio URL.
+     * [maxHeight] that a link carrying what [budgetKbps] allows can bring (see [VideoPicker]). It comes from the same
+     * resolve as the audio URL. The address is kept by the stream it is of, not by the limits that picked it, as those
+     * change with the network from one song to the next.
      */
-    fun getVideo(videoId: String, maxHeight: Int): String {
-        val key = "$videoId@$maxHeight"
-        videoEntries[key]?.takeIf { System.currentTimeMillis() - it.resolvedAtMs < MAX_AGE_MS }?.let { return it.url }
+    fun getVideo(videoId: String, maxHeight: Int, budgetKbps: Long = 0): String {
         synchronized(locks.getOrPut(videoId) { Any() }) {
-            videoEntries[key]?.takeIf { System.currentTimeMillis() - it.resolvedAtMs < MAX_AGE_MS }?.let { return it.url }
             var lastProblem = "unknown"
             for (attempt in 1..MAX_ATTEMPTS) {
                 val entry = entry(videoId)
-                val pick = VideoPicker.pick(entry.videos, maxHeight)
+                val pick = VideoPicker.pick(entry.videos, maxHeight, budgetKbps)
                     ?: throw IOException("$videoId has no video stream")
+                val key = "$videoId#${pick.itag}"
+                videoEntries[key]?.takeIf { System.currentTimeMillis() - it.resolvedAtMs < MAX_AGE_MS }?.let { return it.url }
                 val probed = runBlocking { probe.check(pick.url, pick.contentLength) }
                 EventLog.d(
                     "resolve",
                     "$videoId video attempt=$attempt itag=${pick.itag} ${pick.height}p ${pick.format} ${pick.codec} " +
-                        "${pick.bitrateKbps}kbps probe=${probed.headStatus}/${probed.midStatus}/${probed.tailStatus} " +
+                        "${pick.bitrateKbps}kbps (up to ${maxHeight}p, budget ${budgetKbps}kbps) " +
+                        "probe=${probed.headStatus}/${probed.midStatus}/${probed.tailStatus} " +
                         if (probed.ok) "OK" else "POISONED",
                 )
                 if (probed.ok) {
@@ -159,7 +161,7 @@ class StreamCache(
     /** Drops the cached URLs so the next [get] resolves again. */
     fun invalidate(videoId: String) {
         entries.remove(videoId)
-        videoEntries.keys.removeIf { it.startsWith("$videoId@") }
+        videoEntries.keys.removeIf { it.startsWith("$videoId#") }
     }
 
     /**

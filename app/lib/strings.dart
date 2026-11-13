@@ -1085,8 +1085,8 @@ abstract final class S {
   static String get videoSection => _t('Video', 'Video');
   static String get videoQuality => _t('Picture quality', 'Chất lượng hình');
   static String get videoQualityHelp => _t(
-    'Applies from the next song. Higher quality uses more data. Music keeps playing when the screen is off; the picture does not.',
-    'Áp dụng từ bài sau. Chất lượng cao hơn tốn nhiều dữ liệu hơn. Nhạc vẫn phát khi tắt màn hình; hình thì không.',
+    'Applies from the next song. This is the most: on a slow connection the picture is lowered by itself to keep up. Higher quality uses more data. Music keeps playing when the screen is off; the picture does not.',
+    'Áp dụng từ bài sau. Đây là mức cao nhất: khi mạng chậm, hình tự hạ xuống để theo kịp. Chất lượng cao hơn tốn nhiều dữ liệu hơn. Nhạc vẫn phát khi tắt màn hình; hình thì không.',
   );
   static String get videoQualityHelpWeb => _t(
     'Applies from the next song, or at once for a higher quality. A browser does not show a picture below 480p, so 480p is the lowest; the connection can still bring less. Higher quality uses more data.',
