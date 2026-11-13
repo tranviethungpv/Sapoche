@@ -331,7 +331,7 @@ class _BodyState extends State<_Body> {
                   Positioned(
                     left: margin,
                     width: left,
-                    top: 8,
+                    top: 0,
                     child: Center(child: _ModePill(controller: _c)),
                   ),
                 ],
@@ -1499,7 +1499,8 @@ class _RoomStrip extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           onTap: () => showMembersSheet(context),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            // 30 high faces and 9 above and below: the 48 a finger needs
+            padding: const EdgeInsets.symmetric(vertical: 9),
             child: Semantics(
               label: S.listening(snapshot.listeningCount),
               child: AvatarStack(members: snapshot.members, size: 30, max: 3),

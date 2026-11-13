@@ -9,6 +9,7 @@ import '../../data/models.dart';
 import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
+import 'touch_box.dart';
 
 /// The quick reactions, one tap each, and the way to all the others: they fly up here at once and on the screens of
 /// the others.
@@ -35,11 +36,17 @@ class ReactionBar extends StatelessWidget {
                 HapticFeedback.selectionClick();
                 controller.react(reaction);
               },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Text(
-                  reaction.emoji,
-                  style: const TextStyle(fontSize: 22),
+              child: ConstrainedBox(
+                // The emoji is 22 high; a finger gets the full 48 round it
+                constraints: const BoxConstraints(
+                  minWidth: touchSize,
+                  minHeight: touchSize,
+                ),
+                child: Center(
+                  child: Text(
+                    reaction.emoji,
+                    style: const TextStyle(fontSize: 22),
+                  ),
                 ),
               ),
             ),
@@ -108,7 +115,7 @@ class _ReactionPicker extends StatelessWidget {
                 child: Text(
                   S.reactKeepTapping,
                   style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: p.textTertiary),
+                      ?.copyWith(color: p.textSecondary),
                 ),
               ),
             ),

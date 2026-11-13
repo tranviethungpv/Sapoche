@@ -12,6 +12,7 @@ import 'now_playing_page.dart' show SyncChip;
 import 'player_sheet.dart';
 import 'rooms_sheet.dart';
 import 'scope.dart';
+import 'widgets/touch_box.dart';
 import 'widgets/appear.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
@@ -786,25 +787,35 @@ class _RoomButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Material(
-      color: p.primaryContainer,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
+    // The pill is drawn as high as its words; a touch answers in the 48 round it
+    return TouchBox(
+      onTap: () => showRoomSheet(context),
+      child: Material(
+        color: p.primaryContainer,
         borderRadius: BorderRadius.circular(999),
-        onTap: () => showRoomSheet(context),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.groups_rounded, size: 18, color: p.onPrimaryContainer),
-              const SizedBox(width: 8),
-              Text(
-                S.tabRoom,
-                style: Theme.of(context).textTheme.labelLarge
-                    ?.copyWith(color: p.onPrimaryContainer),
-              ),
-            ],
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          excludeFromSemantics: true,
+          onTap: () => showRoomSheet(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.groups_rounded,
+                  size: 18,
+                  color: p.onPrimaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  S.tabRoom,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: p.onPrimaryContainer,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -9,6 +9,7 @@ import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
+import '../widgets/touch_box.dart';
 import '../widgets/delete_background.dart';
 import '../widgets/edge_fade.dart';
 import '../widgets/queued_autoplay.dart';
@@ -343,7 +344,10 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Tooltip(
+    // The pill is drawn 40 high; a touch answers in the 48 round it
+    return TouchBox(
+      onTap: onPressed,
+      child: Tooltip(
       message: tooltip,
       child: Material(
         color: on ? p.primary : p.primary.withValues(alpha: 0.12),
@@ -359,6 +363,7 @@ class _Pill extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
+          excludeFromSemantics: true,
           onTap: onPressed,
           child: SizedBox(
             height: 40,
@@ -388,6 +393,7 @@ class _Pill extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

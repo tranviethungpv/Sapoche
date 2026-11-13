@@ -23,8 +23,15 @@ class ErrorCatcher {
       final text = details.toString(minLevel: DiagnosticLevel.info);
       if (text.contains('overflowed')) {
         // And the widget that overflowed, which the report names a few lines down
-        final at = RegExp(r'error-causing widget was:\s*\n\s*(.+)').firstMatch(text);
-        final what = text.split('\n').firstWhere((l) => l.contains('overflowed'), orElse: () => 'overflowed').trim();
+        final at = RegExp(r'error-causing widget was:\s*\n\s*(.+)')
+            .firstMatch(text);
+        final what = text
+            .split('\n')
+            .firstWhere(
+              (l) => l.contains('overflowed'),
+              orElse: () => 'overflowed',
+            )
+            .trim();
         overflows.add('$what${at == null ? '' : ' in ${at.group(1)!.trim()}'}');
       } else {
         others.add(text.split('\n').first.trim());
@@ -221,6 +228,104 @@ List<String> auditText(WidgetTester tester, Set<String> barLabels) {
   return found;
 }
 
+/// A finding of the machine eye that is known, and why it stays (`docs/archive/2026-11-12-ui-fixed-yardstick.md` 5.3 and the
+/// risks: "each exception named, with its reason, and not the whole rule switched off"). Its line is kept in the report
+/// under `exempt/<name>` so that it is counted and can be read, and is not among the findings that fail the yardstick.
+class _Exempt {
+  const _Exempt(this.name, this.rules, this.label, this.reason);
+
+  final String name;
+  final Set<String> rules;
+  final RegExp label;
+  final String reason;
+}
+
+final _exempt = <_Exempt>[
+  _Exempt(
+    'seek-and-volume-bars',
+    {'tap-size-android', 'tap-size-ios'},
+    RegExp(r'^"(Song position|Vị trí trong bài|Volume|Âm lượng)"'),
+    'the bar of a wide window and of a window lower than 500 dp (a phone on its side) is lower than 48 on purpose: 20 dp more '
+        'overflows the controls (`PlaybackBar`, `VolumeBar`, `barTouchHeight`)',
+  ),
+  _Exempt(
+    'mini-player-height',
+    {'tap-size-android', 'tap-size-ios'},
+    RegExp(r'^"(Play|Pause|Phát|Tạm dừng|)" 4[0-9]x4[0-9] |^"[^"]*\\n[^"]*" \d{3}x46 '),
+    'the mini player of a phone is 46 dp high and its buttons are 48 wide: the bar is the limit',
+  ),
+  _Exempt(
+    'emoji-picker',
+    {'tap-size-android', 'tap-size-ios', 'unlabeled'},
+    RegExp(
+      // ignore: valid_regexps
+      r'^"(Tab \d+ (of|trên|trong tổng số) \d+|\p{Extended_Pictographic}[^"]*)" \d+x\d+ |^"" 40x40 ',
+      unicode: true,
+    ),
+    'the grid and the tabs of the emoji of `emoji_picker_flutter`, a library of ours only in name',
+  ),
+  _Exempt(
+    'text-link',
+    {'tap-size-android', 'tap-size-ios'},
+    RegExp(r'^"[^"\n]*(\\n[^"]*)?" \d+x(19|21|24|28) '),
+    'a name, a year or a line of words that opens a page (the album of a row in a wide list, the artist under a title): '
+    'a link in a line of text, in a row or a block that is itself higher than 48',
+  ),
+  _Exempt(
+    'glass-and-sheets',
+    {'contrast'},
+    RegExp(
+      r'^"(Home|Library|Listen|Room|Trang chủ|Thư viện|Nghe|Phòng|On this phone|Trên máy này|Chat|Trò chuyện|Say something…|'
+      r'Nhắn gì đó…|\d+ people listening|\d+ người đang nghe|Tap as many as you like|Chạm bao nhiêu lần tuỳ ý|'
+      r'Release notes|Lịch sử bản phát hành|\d+ songs · \d+ minutes|\d+ bài · \d+ phút|)"',
+    ),
+    'text over a blurred bar, a blurred sheet or the colours of a cover: `flutter test` draws no blur, so the ground the '
+        'checker reads is not the one on the screen; measured on a Sharp SH-51G from a photo, the tab labels are 5.3 to 7.4:1, '
+        'the line of the chat 6.7:1 and its field 5.3:1 (`docs/archive/2026-11-12-ui-fixed-yardstick.md` step 10)',
+  ),
+  _Exempt(
+    'short-count-text',
+    {'contrast'},
+    RegExp(r'^"\d+ (bài|songs?)" '),
+    'the region the checker reads is 30 by 16 and mostly anti-aliasing; from the pixels of the picture the count is '
+    '6.6:1 (`liked__w411-light-vi`)',
+  ),
+  _Exempt(
+    'placeholder-without-picture',
+    {'overlap'},
+    RegExp(r'^"[^"]{1,2}" over "(Sơn Tùng M.TP|MIXED FOR YOU|MIX DÀNH CHO BẠN)"'),
+    'the picture holder (a note, a person) drawn where a picture would be: the pictures of this set have none; with a picture it is '
+    'not there (`docs/archive/2026-11-12-ui-fixed-yardstick.md` #51)',
+  ),
+  _Exempt(
+    'lyrics-not-playing',
+    {'contrast'},
+    RegExp(
+      r'^"(I was wondering if after all these years|You.d like to meet, to go over everything|Hello, it.s me)"',
+    ),
+    'the lines of lyrics that are not playing are faded to 0.55 on purpose (3:1 for words this large): the cover under them is '
+        'not drawn here; photographed on the phone they read clearly (step 10)',
+  ),
+];
+
+/// Moves the findings that are named exceptions under `exempt/<name>`.
+List<String> sortAudit(List<String> found) => _sort(found);
+
+List<String> _sort(List<String> found) => [
+  for (final line in found)
+    () {
+      final colon = line.indexOf(': ');
+      final rule = line.substring(0, colon);
+      final rest = line.substring(colon + 2);
+      for (final e in _exempt) {
+        if (e.rules.contains(rule) && e.label.hasMatch(rest)) {
+          return 'exempt/${e.name}: $rest';
+        }
+      }
+      return line;
+    }(),
+];
+
 /// Flutter's own checks: contrast of text, the size of what can be tapped, and that what can be tapped is named.
 Future<List<String>> auditGuidelines(WidgetTester tester) async {
   final found = <String>[];
@@ -253,7 +358,7 @@ Future<List<String>> auditGuidelines(WidgetTester tester) async {
       flush();
     }
   }
-  return found;
+  return _sort(found);
 }
 
 final _rect = RegExp(

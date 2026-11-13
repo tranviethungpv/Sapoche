@@ -1,0 +1,3 @@
+Vùng chạm cho những nút nhỏ cuối cùng
+- Các cảm xúc nhanh, ô nhập tin nhắn trong chat, dải người nghe ở trình phát, nút Phòng ở trang Nghe và ba nút Trộn bài, Lặp lại, Tự động phát giờ nhận chạm trong một khoảng rộng bằng đầu ngón tay, mà nhìn không to hơn.
+- Chữ gợi ý của ô chat đậm hơn một chút, dễ đọc hơn ở giao diện sáng.

@@ -169,6 +169,18 @@ final shotScreens = <ShotScreen>[
     await t.tap(find.byIcon(Icons.more_horiz_rounded).first);
     await _settle(t);
   }),
+  ShotScreen(
+    'playlist-empty',
+    prepare: (b) {
+      b.playlistNames[1] = 'Road trip';
+      b.playlistSongs[1] = [];
+    },
+    (t, b) async {
+      await _state(t, b, const RoomSnapshot());
+      await _tab(t, S.tabLibrary);
+      await _tab(t, 'Road trip');
+    },
+  ),
   ShotScreen('downloaded-empty', (t, b) async {
     await _state(t, b, const RoomSnapshot());
     await _tab(t, S.tabLibrary);

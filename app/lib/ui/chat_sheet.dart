@@ -38,6 +38,7 @@ import 'widgets/menu_lines.dart';
 import 'widgets/staged_photos.dart';
 import 'widgets/sticker_image.dart';
 import 'widgets/transport.dart';
+import 'widgets/touch_box.dart';
 
 /// The room's chat, over whatever is shown: messages, the reactions, and a field to write in.
 Future<void> showChatSheet(BuildContext context) async {
@@ -918,7 +919,10 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                                 : null,
                         decoration: InputDecoration(
                           hintText: S.chatHint,
+                          hintStyle: TextStyle(color: p.textSecondary),
                           isDense: true,
+                          // As high as a finger: the field's own 45 was short of it
+                          constraints: const BoxConstraints(minHeight: touchSize),
                           filled: true,
                           fillColor: (look?.accent ?? p.primary).withValues(
                             alpha: 0.10,
@@ -2534,6 +2538,8 @@ class _MessageMenu extends StatelessWidget {
                         radius: 24,
                         onTap: () => give(reaction),
                         child: Container(
+                          // The disc is as large as the emoji needs; a finger gets 48 wide
+                          constraints: const BoxConstraints(minWidth: touchSize),
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,

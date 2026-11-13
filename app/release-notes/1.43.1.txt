@@ -1,0 +1,3 @@
+Touch areas for the last small buttons
+- The quick reactions, the message box in the chat, the listeners strip in the player, the Room button on Listen and the Shuffle, Repeat and Autoplay buttons now react to a touch in a space as large as a finger, without looking any bigger.
+- The chat's hint text is a little darker, so it reads better in the light theme.

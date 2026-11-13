@@ -48,7 +48,7 @@ void main() {
           await expectLater(find.byType(MaterialApp).first, matchesGoldenFile('${screen.id}__${combo.name}.png'));
           final lines = [
             for (final e in catcher.overflows) 'overflow: $e',
-            ...auditText(tester, {S.tabHome, S.tabLibrary, S.tabListen, S.tabRoom}),
+            ...sortAudit(auditText(tester, {S.tabHome, S.tabLibrary, S.tabListen, S.tabRoom})),
             ...await auditGuidelines(tester),
           ];
           for (final l in lines) {
