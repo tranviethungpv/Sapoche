@@ -73,7 +73,10 @@ final class FakePlatform: PlatformServices {
 
     func clearNotices() { noticesCleared += 1 }
 
-    func whileInBackground(_ work: @escaping () async -> Void) async { await work() }
+    func whileInBackground(timeUp: @escaping @Sendable () -> Void, _ work: @escaping () async -> Void) async { await work() }
+
+    var activitySteps: [DownloadActivityPlan.Step] = []
+    func downloadActivity(_ step: DownloadActivityPlan.Step) { activitySteps.append(step) }
 }
 
 @MainActor
@@ -185,7 +188,8 @@ final class BridgeTests: XCTestCase {
         let media = MediaLibrary(files: files, streams: streams, fetcher: FakeFetcher())
         let music = MusicFeed(music: MusicClient { _, _ in JSON.parse("{}")! }, lyricsClient: LyricsClient { _ in nil }, lyricsStore: LyricsStore(dir: dir.appendingPathComponent("l")))
         let suggestions = SuggestionFeed(store: store, resolver: resolver, music: music)
-        let downloader = Downloader(store: store, fetch: { try await media.download($0) })
+        let downloader = Downloader(store: store, fetch: { try await media.download($0) },
+                                    onProgress: { [weak self] batch in Task { @MainActor in self?.bridge?.downloadsChanged(batch) } })
         let prefs = prefs!
         controller = GroupController(engine: engine, prefs: prefs, queueFile: QueueFile(url: dir.appendingPathComponent("queue.json")),
                                      config: { ServerConfig.load(prefs) }, time: time, sockets: sockets)
@@ -579,6 +583,19 @@ final class BridgeTests: XCTestCase {
         let list = try await result("downloads", as: [[String: Any]].self)
         XCTAssertEqual(list.first?["state"] as? String, "done")
         XCTAssertEqual(JSON(list.first?["bytes"]).int64, 10)
+        // The screen is told how the run went on its own, not by reading the whole library again
+        let progress = events.filter { $0["type"] as? String == "downloads" }
+        XCTAssertEqual(progress.first?["total"] as? Int, 0, "what the screen is told when it comes: no run")
+        XCTAssertEqual(progress.dropFirst().first?["active"] as? String, "video000001")
+        XCTAssertEqual(progress.dropFirst().first?["total"] as? Int, 1)
+        XCTAssertTrue(progress.last?["active"] is NSNull, "the run is over")
+        XCTAssertEqual(progress.last?["done"] as? Int, 1)
+        XCTAssertEqual(progress.last?["total"] as? Int, 1)
+        // The same run on the lock screen: opened with the song's name, closed with how it went
+        XCTAssertEqual(platform.activitySteps, [
+            .start(DownloadActivityContent(title: "Song 1", done: 0, total: 1, failed: 0, language: "en")),
+            .finish(DownloadActivityContent(title: "", done: 1, total: 1, failed: 0, finished: true, language: "en")),
+        ])
         let storage = try await result("storage", as: [String: Any].self)
         XCTAssertEqual(storage["downloadCount"] as? Int, 1)
         XCTAssertEqual(JSON(storage["downloadBytes"]).int64, 10)

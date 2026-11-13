@@ -189,7 +189,7 @@ class _LibraryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final library = AppScope.of(context).library;
     return ListenableBuilder(
-      listenable: library,
+      listenable: Listenable.merge([library, library.downloadNews]),
       builder: (context, _) => switch (open) {
         _Liked() => _TrackList(
           title: S.likedSongs,
@@ -217,6 +217,7 @@ class _LibraryScreen extends StatelessWidget {
             for (final d in library.downloads)
               '${d.track.artist} · ${switch (d.state) {
                 DownloadState.done => formatBytes(d.bytes),
+                DownloadState.queued || DownloadState.waiting when d.track.videoId == library.downloadBatch.value.active => S.downloading,
                 DownloadState.queued => S.queuedToDownload,
                 DownloadState.waiting => S.waitingToDownload,
                 DownloadState.failed => S.downloadFailed,
@@ -231,6 +232,9 @@ class _LibraryScreen extends StatelessWidget {
           ),
           emptyTitle: S.noDownloadsTitle,
           emptyBody: S.noDownloadsBody,
+          filterBar: library.downloadBatch.value.running
+              ? _DownloadProgress(library.downloadBatch.value)
+              : null,
           menu: [
             if (library.downloads.isNotEmpty)
               _MenuAction(Icons.delete_outline_rounded, S.deleteAll,
@@ -362,15 +366,17 @@ class _Overview extends StatelessWidget {
           ),
           // A browser downloads nothing, so the list would never have a song
           if (!kIsWeb)
-            _CollectionRow(
-              leading: const _IconTile(Icons.download_done_rounded),
-              title: S.downloadedSongs,
-              subtitle: S.songCount(
-                library.downloads
-                    .where((d) => d.state == DownloadState.done)
-                    .length,
+            // The count is told by the list of downloads, which does not tell the library
+            ValueListenableBuilder(
+              valueListenable: library.downloadList,
+              builder: (context, downloads, _) => _CollectionRow(
+                leading: const _IconTile(Icons.download_done_rounded),
+                title: S.downloadedSongs,
+                subtitle: S.songCount(
+                  downloads.where((d) => d.state == DownloadState.done).length,
+                ),
+                onTap: () => onOpen(const _Downloaded()),
               ),
-              onTap: () => onOpen(const _Downloaded()),
             ),
           if (library.localStatus.enabled)
             _CollectionRow(
@@ -1231,6 +1237,36 @@ class _MenuAction {
 /// The songs of one collection, laid out as the page of an album is: the cover, what the collection is called, play
 /// and shuffle, then the songs. With [onMove] the rows can be dragged into another order, with [onRemove] they can be
 /// swiped away.
+/// The line above the downloaded songs while a run goes on: which song of how many.
+class _DownloadProgress extends StatelessWidget {
+  const _DownloadProgress(this.batch);
+
+  final DownloadBatch batch;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+      child: Row(
+        children: [
+          SizedBox.square(
+            dimension: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: p.primary),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            S.downloadingOf(batch.position, batch.total),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: p.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TrackList extends StatelessWidget {
   const _TrackList({
     required this.title,

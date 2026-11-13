@@ -148,16 +148,21 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
         return try String(contentsOf: url, encoding: .utf8)
     }
 
-    func whileInBackground(_ work: @escaping () async -> Void) async {
+    func whileInBackground(timeUp: @escaping @Sendable () -> Void, _ work: @escaping () async -> Void) async {
         var task = UIBackgroundTaskIdentifier.invalid
         task = UIApplication.shared.beginBackgroundTask(withName: "sapoche.work") {
             // Time is up: the song being fetched stays on the list as it was
+            timeUp()
             if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
             task = .invalid
         }
         await work()
         if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
     }
+
+    private let downloadActivityHost = DownloadActivityHost()
+
+    func downloadActivity(_ step: DownloadActivityPlan.Step) { downloadActivityHost.run(step) }
 
     // ------------------------------------------------------------------ music on this phone
 

@@ -1173,12 +1173,15 @@ class _StorageGroupState extends State<_StorageGroup> {
   void initState() {
     super.initState();
     widget.library.addListener(_load);
+    // A song finished does not tell the library, only the list of downloads
+    widget.library.downloadList.addListener(_load);
     _load();
   }
 
   @override
   void dispose() {
     widget.library.removeListener(_load);
+    widget.library.downloadList.removeListener(_load);
     super.dispose();
   }
 

@@ -10,6 +10,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 /**
@@ -32,9 +35,46 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             }
             SapocheApp.library.requestDownloads(SapocheApp.library.likedToDownload(), waiting = true)
         }
-        val result = SapocheApp.downloader.drain(waiting)
+        val result = if (waiting) SapocheApp.downloader.drain(true) else drainShowingProgress()
         EventLog.d("download", "job done: ${result.done} songs${if (result.retryLater) ", some to try again" else ""}")
         return if (result.retryLater) Result.retry() else Result.success()
+    }
+
+    /**
+     * Songs the person asked for are fetched as a foreground job with a notification that says which song of how many.
+     * That also lifts the ten minutes a plain job is given. Liked songs saved by themselves stay quiet (and run when the
+     * app is in the background, where a foreground job cannot be started).
+     */
+    private suspend fun drainShowingProgress(): Downloader.Result = coroutineScope {
+        val notifier = DownloadNotifier(applicationContext)
+        var foreground = true
+        val watcher = launch {
+            SapocheApp.downloader.progress.collect { batch ->
+                val active = batch.active
+                if (active == null || !foreground) return@collect
+                val title = SapocheApp.library.downloads().firstOrNull { it.track.videoId == active }?.track?.title
+                try {
+                    setForeground(notifier.progress(batch, title))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: IllegalStateException) {
+                    // The system does not let a job in the background become a foreground one: it goes on without the notice
+                    foreground = false
+                    EventLog.d("download", "no notification for the run: ${e.javaClass.simpleName}")
+                } catch (e: SecurityException) {
+                    foreground = false
+                    EventLog.d("download", "no notification for the run: ${e.javaClass.simpleName}")
+                }
+            }
+        }
+        val result = try {
+            SapocheApp.downloader.drain(false)
+        } finally {
+            watcher.cancel()
+        }
+        val batch = SapocheApp.downloader.progress.value
+        if (batch.active == null && batch.total > 0 && !SapocheApp.uiVisible.value) notifier.finished(batch)
+        result
     }
 
     companion object {

@@ -630,16 +630,21 @@ actor LibraryStore {
             .compactMap { $0[0].text }.first { !skip.contains($0) }
     }
 
+    /// How many songs are still to download in [state], other than those in [skip].
+    func pendingDownloads(_ state: String, skip: Set<String> = []) throws -> Int {
+        try db.rows("SELECT video_id FROM downloads WHERE state = ?", [.text(state)]).compactMap { $0[0].text }.filter { !skip.contains($0) }.count
+    }
+
+    // finishDownload and failDownload do not announce a change of the library: the downloader says how the list stands
+    // (Downloader.progress), and the screen reads the list of downloads alone, not the whole library, each time
     func finishDownload(_ videoId: String, bytes: Int64, at: Int64 = LibraryStore.now()) throws {
         try db.run("UPDATE downloads SET state = ?, bytes = ?, at = ?, tries = 0 WHERE video_id = ?", [.text(Self.done), .int(bytes), .int(at), .text(videoId)])
-        onChange()
     }
 
     /// One try failed. After [maxTries] the song is marked failed; true when that happened.
     func failDownload(_ videoId: String) throws -> Bool {
         try db.run("UPDATE downloads SET tries = tries + 1 WHERE video_id = ?", [.text(videoId)])
         try db.run("UPDATE downloads SET state = ? WHERE video_id = ? AND tries >= ?", [.text(Self.failed), .text(videoId), .int(Int64(Self.maxTries))])
-        onChange()
         return try db.rows("SELECT state FROM downloads WHERE video_id = ?", [.text(videoId)]).first?[0].text == Self.failed
     }
 

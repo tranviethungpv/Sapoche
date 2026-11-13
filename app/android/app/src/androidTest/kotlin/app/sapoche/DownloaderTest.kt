@@ -3,6 +3,8 @@ package app.sapoche
 import androidx.test.core.app.ApplicationProvider
 import app.sapoche.sync.TrackRef
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -104,5 +106,59 @@ class DownloaderTest {
         val result = downloader.drain(waiting = false)
         assertEquals(0, result.done)
         assertFalse(result.retryLater)
+    }
+
+    @Test
+    fun theRunSaysWhichSongIsBeingFetchedAndHowFarItHasGone() = runTest {
+        broken += "bb"
+        lateinit var seen: Downloader
+        val during = mutableListOf<Downloader.Batch>()
+        seen = Downloader(store, fetch = { id ->
+            during += seen.progress.value
+            if (id in broken) throw IOException("no network")
+            100L
+        })
+        store.requestDownloads(listOf(song("a"), song("bb"), song("c")))
+        seen.drain(waiting = false)
+        assertEquals(
+            listOf(Downloader.Batch("a", 0, 3, 0), Downloader.Batch("bb", 1, 3, 0), Downloader.Batch("c", 1, 3, 1)),
+            during,
+        )
+        assertEquals("over: no song is active, the numbers stay", Downloader.Batch(null, 2, 3, 1), seen.progress.value)
+    }
+
+    @Test
+    fun songsAddedWhileTheRunGoesOnMakeItLonger() = runTest {
+        lateinit var seen: Downloader
+        val totals = mutableListOf<Int>()
+        seen = Downloader(store, fetch = { id ->
+            totals += seen.progress.value.total
+            if (id == "a") store.requestDownloads(listOf(song("late")))
+            100L
+        })
+        store.requestDownloads(listOf(song("a"), song("b")))
+        seen.drain(waiting = false)
+        assertEquals(listOf(2, 3, 3), totals)
+    }
+
+    @Test
+    fun aRunThatWasStoppedAnnouncesNothing() = runTest {
+        stopAt = "bb"
+        store.requestDownloads(listOf(song("a"), song("bb")))
+        try {
+            downloader.drain(waiting = false)
+        } catch (_: CancellationException) {
+        }
+        assertEquals(Downloader.Batch.IDLE, downloader.progress.value)
+    }
+
+    @Test
+    fun aSongFinishedDoesNotSayTheLibraryChanged() = runTest {
+        store.requestDownloads(listOf(song("a")))
+        var news = 0
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { store.changes.collect { news++ } }
+        downloader.drain(waiting = false)
+        job.cancel()
+        assertEquals(0, news)
     }
 }

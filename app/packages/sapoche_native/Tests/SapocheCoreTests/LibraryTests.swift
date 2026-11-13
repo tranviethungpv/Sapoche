@@ -535,6 +535,20 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertNil(waiting)
     }
 
+    func testAFinishedOrFailedDownloadDoesNotSayTheLibraryChanged() async throws {
+        let counter = Counter()
+        let own = try LibraryStore(path: ":memory:", onChange: { counter.bump() })
+        try await own.requestDownloads([song("a"), song("b"), song("c")])
+        let asked = counter.count
+        try await own.finishDownload("a", bytes: 1)
+        _ = try await own.failDownload("b")
+        XCTAssertEqual(counter.count, asked, "the downloader says how the list stands; the screen reads that alone")
+        let pending = try await own.pendingDownloads(LibraryStore.queued)
+        XCTAssertEqual(pending, 2)
+        let skipping = try await own.pendingDownloads(LibraryStore.queued, skip: ["b"])
+        XCTAssertEqual(skipping, 1)
+    }
+
     func testASongAlreadyDoneStaysDoneWhenAskedAgain() async throws {
         try await store.requestDownloads([song("a")])
         try await store.finishDownload("a", bytes: 10)

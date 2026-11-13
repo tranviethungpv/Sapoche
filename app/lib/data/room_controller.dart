@@ -316,8 +316,8 @@ class RoomController extends ChangeNotifier {
         notifyListeners();
       case VolumeEvent(:final level):
         volume.value = level;
-      case LibraryEvent():
-        break; // LibraryController listens for this itself
+      case LibraryEvent() || DownloadsEvent():
+        break; // LibraryController listens for these itself
       case UpdateEvent():
         break; // and UpdateController for this
       case CalmEvent(:final on, :final weak):

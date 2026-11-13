@@ -55,6 +55,12 @@ class LibraryEvent extends BackendEvent {
   const LibraryEvent();
 }
 
+/// How the run of downloads stands (a song started, finished or failed). The list itself is read with [Backend.downloads].
+class DownloadsEvent extends BackendEvent {
+  const DownloadsEvent(this.batch);
+  final DownloadBatch batch;
+}
+
 /// The sleep timer was set, ran out or was turned off.
 class SleepEvent extends BackendEvent {
   const SleepEvent(this.sleep);
@@ -555,6 +561,14 @@ class NativeBackend implements Backend {
     return switch (json['type']) {
       'position' => PositionEvent(PlayerPosition.fromJson(json)),
       'library' => const LibraryEvent(),
+      'downloads' => DownloadsEvent(
+        DownloadBatch(
+          active: json['active'] as String?,
+          done: (json['done'] as num).toInt(),
+          total: (json['total'] as num).toInt(),
+          failed: (json['failed'] as num).toInt(),
+        ),
+      ),
       'update' => UpdateEvent(UpdateInfo.fromJson(json)),
       'calm' => CalmEvent(json['on'] as bool, weak: json['weak'] == true),
       'pip' => PipEvent(json['on'] as bool),

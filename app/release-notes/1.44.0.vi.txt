@@ -1,0 +1,5 @@
+Tải về cho biết đến đâu rồi, và xem video không còn nóng máy
+- Bài đang tải có vòng xoay nhỏ, bài đang chờ có mũi tên mờ, bài tải không được có dấu cảnh báo. Trang Đã tải ghi "Đang tải 3/25", và có một thông báo cho biết cả mẻ tải xong ra sao.
+- App không còn khựng mỗi khi một bài tải xong, rõ nhất khi tải cả playlist.
+- Trên Android, một thông báo cho biết đang tải bài thứ mấy trên tổng số, nên playlist dài vẫn chạy tiếp khi tắt màn hình, và một thông báo khác cho biết kết quả khi xong. Trên iPhone iOS 17, Live Activity ở màn khoá và Dynamic Island làm việc tương tự khi app đang chạy.
+- Xem video không còn làm máy nóng hay đơ app, và chất lượng hình tự theo tốc độ mạng.

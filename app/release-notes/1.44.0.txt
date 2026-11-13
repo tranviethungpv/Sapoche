@@ -1,0 +1,5 @@
+Downloads show how far they are, and video stays cool
+- A song that is downloading shows a small wheel, one that waits shows a faded arrow, and one that failed shows a warning mark. The Downloaded page says "Downloading 3 of 25", and a message tells you how the whole batch went.
+- The app no longer stutters each time a song finishes downloading, which showed most when downloading a whole playlist.
+- On Android a notification shows which song of how many is being downloaded, so a long playlist goes on with the screen off, and another says how it went when it is done. On an iPhone with iOS 17 a Live Activity on the lock screen and in the Dynamic Island does the same while the app is running.
+- Watching a video no longer heats the phone up or freezes the app, and the picture quality follows the speed of the network by itself.

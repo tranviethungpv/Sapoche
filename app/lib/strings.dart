@@ -272,6 +272,16 @@ abstract final class S {
     n == 1 ? 'Downloading 1 song' : 'Downloading $n songs',
     'Đang tải $n bài',
   );
+  static String downloadingOf(int n, int total) =>
+      _t('Downloading $n of $total', 'Đang tải $n/$total');
+  static String downloadedAll(int n) => _t(
+    n == 1 ? 'Downloaded 1 song' : 'Downloaded $n songs',
+    'Đã tải xong $n bài',
+  );
+  static String downloadedSome(int n, int failed) => _t(
+    'Downloaded $n, $failed could not be downloaded',
+    'Đã tải $n bài, $failed bài không tải được',
+  );
   static String get useMobileData =>
       _t('Use mobile data?', 'Dùng dữ liệu di động?');
   static String get useMobileDataBody => _t(

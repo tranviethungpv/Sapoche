@@ -147,7 +147,7 @@ class _HomePageState extends State<HomePage> {
             library.blocked,
             library.tasteProfile,
             library.listens,
-            library.downloads,
+            library.hasDownloaded,
             library.playlists,
             library.localStatus,
             _order,
@@ -253,7 +253,7 @@ class _HomePageState extends State<HomePage> {
           cover: (side) => QuickIconCover(Icons.favorite_rounded, side: side),
           onTap: () => openLibrarySpot(context, LibraryRequests.liked),
         ),
-      if (library.downloads.any((d) => d.state == DownloadState.done))
+      if (library.hasDownloaded)
         QuickTile(
           id: 'downloaded',
           title: S.downloadedSongs,

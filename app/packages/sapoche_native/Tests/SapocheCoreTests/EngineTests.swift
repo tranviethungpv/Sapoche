@@ -1421,6 +1421,35 @@ final class FeedsTests: XCTestCase {
         XCTAssertEqual(states.last, "bad queued")
     }
 
+    func testTheDownloaderSaysWhichSongIsOnAndHowFarTheRunHasGone() async throws {
+        let store = try LibraryStore(path: ":memory:")
+        func song(_ id: String) -> TrackRef { TrackRef(videoId: id, title: id, artist: "", thumb: nil, durMs: 1000) }
+        try await store.requestDownloads([song("a"), song("bad"), song("c")])
+        let seen = Seen()
+        let downloader = Downloader(store: store, fetch: { id in
+            if id == "bad" { throw URLError(.networkConnectionLost) }
+            return 5
+        }, onProgress: { seen.add($0) })
+        _ = try await downloader.drain(waiting: false)
+        XCTAssertEqual(seen.items, [
+            Downloader.Batch(active: "a", done: 0, total: 3, failed: 0),
+            Downloader.Batch(active: "bad", done: 1, total: 3, failed: 0),
+            Downloader.Batch(active: "c", done: 1, total: 3, failed: 1),
+            Downloader.Batch(active: nil, done: 2, total: 3, failed: 1),
+        ], "the failed one still counts in the total; the run keeps its numbers when it is over")
+    }
+
+    func testARunThatWasStoppedAnnouncesNothing() async throws {
+        let store = try LibraryStore(path: ":memory:")
+        try await store.requestDownloads([TrackRef(videoId: "a", title: "a", artist: "", thumb: nil, durMs: 1000)])
+        let seen = Seen()
+        let downloader = Downloader(store: store, fetch: { _ in throw CancellationError() }, onProgress: { seen.add($0) })
+        do { _ = try await downloader.drain(waiting: false); XCTFail("expected the stop to pass through") } catch is CancellationError {}
+        XCTAssertEqual(seen.items.last, .idle)
+        let now = await downloader.progress
+        XCTAssertEqual(now, .idle)
+    }
+
     func testSuggestionsComeFromTheSeedsAndKeepForHalfADay() async throws {
         let store = try LibraryStore(path: ":memory:")
         func song(_ id: String, _ seconds: Int64 = 200) -> TrackRef { TrackRef(videoId: id, title: id, artist: "", thumb: nil, durMs: seconds * 1000) }
@@ -1448,6 +1477,14 @@ final class FeedsTests: XCTestCase {
         let after = try await feed.after("seed", exclude: [], count: 5)
         XCTAssertEqual(after.map(\.videoId), ["rel00000001"])
     }
+}
+
+final class Seen: @unchecked Sendable {
+    private let lock = NSLock()
+    private var all: [Downloader.Batch] = []
+    var items: [Downloader.Batch] { lock.lock(); defer { lock.unlock() }; return all }
+
+    func add(_ batch: Downloader.Batch) { lock.lock(); all.append(batch); lock.unlock() }
 }
 
 actor Collected2 {

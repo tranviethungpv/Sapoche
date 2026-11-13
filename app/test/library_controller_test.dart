@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/library_controller.dart';
 import 'package:sapoche/data/models.dart';
+import 'package:sapoche/strings.dart';
 
 import 'fake_backend.dart';
 
@@ -292,6 +293,92 @@ void main() {
       await library.clearDownloads();
       expect(library.downloads, isEmpty);
       expect(library.downloadState(_b.videoId), isNull);
+    });
+
+    test(
+      'a song finished reads the list of downloads alone and tells the library only when the first one is on the phone',
+      () async {
+        backend.downloadList.addAll([
+          const DownloadEntry(track: _a, state: DownloadState.queued),
+          const DownloadEntry(track: _b, state: DownloadState.queued),
+        ]);
+        await library.start();
+        backend.calls.clear();
+        var heard = 0;
+        library.addListener(() => heard++);
+
+        backend.downloadList[0] = const DownloadEntry(
+          track: _a,
+          state: DownloadState.done,
+          bytes: 5,
+        );
+        backend.emit(
+          DownloadsEvent(
+            DownloadBatch(active: _b.videoId, done: 1, total: 2),
+          ),
+        );
+        await settle();
+        expect(backend.calls, ['downloads'], reason: 'one read, not twelve');
+        expect(heard, 1, reason: 'the home page gets its "Downloaded" tile');
+        expect(library.hasDownloaded, isTrue);
+        expect(library.downloadBatch.value.active, _b.videoId);
+        expect(library.downloadState(_a.videoId), DownloadState.done);
+
+        backend.downloadList[1] = const DownloadEntry(
+          track: _b,
+          state: DownloadState.done,
+          bytes: 5,
+        );
+        backend.emit(const DownloadsEvent(DownloadBatch(done: 2, total: 2)));
+        await settle();
+        expect(backend.calls, ['downloads', 'downloads']);
+        expect(heard, 1, reason: 'the second song changes nothing for them');
+        expect(library.downloadBatch.value.running, isFalse);
+      },
+    );
+
+    test('the end of a run is told once, with how it went', () async {
+      await library.start();
+      final messages = <String>[];
+      library.messages.listen(messages.add);
+
+      backend.emit(
+        DownloadsEvent(DownloadBatch(active: _a.videoId, total: 3)),
+      );
+      await settle();
+      expect(messages, isEmpty, reason: 'a run that goes on says nothing');
+      backend.emit(const DownloadsEvent(DownloadBatch(done: 3, total: 3)));
+      await settle();
+      expect(messages, [S.downloadedAll(3)]);
+
+      backend.emit(
+        DownloadsEvent(DownloadBatch(active: _a.videoId, total: 3)),
+      );
+      await settle();
+      backend.emit(
+        const DownloadsEvent(DownloadBatch(done: 2, total: 3, failed: 1)),
+      );
+      await settle();
+      expect(messages.last, S.downloadedSome(2, 1));
+    });
+
+    test('a run cut short or one met after it was over says nothing', () async {
+      await library.start();
+      final messages = <String>[];
+      library.messages.listen(messages.add);
+
+      // Met after it was over: the screen was not looking while it ran
+      backend.emit(const DownloadsEvent(DownloadBatch(done: 3, total: 3)));
+      await settle();
+      backend.emit(
+        DownloadsEvent(DownloadBatch(active: _a.videoId, total: 3)),
+      );
+      await settle();
+      // Cut short: the phone ends it with no numbers
+      backend.emit(const DownloadsEvent(DownloadBatch.idle));
+      await settle();
+      expect(messages, isEmpty);
+      expect(library.downloadBatch.value, DownloadBatch.idle);
     });
 
     test('a download that cannot be asked for says so', () async {

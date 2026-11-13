@@ -147,21 +147,10 @@ class _TrackTileState extends State<TrackTile> {
           const SizedBox(height: 2),
           Row(
             children: [
-              // A song that is on the phone says so
+              // A song that is on the phone says so, and one on its way says where it stands
               ListenableBuilder(
-                listenable: AppScope.of(context).library,
-                builder: (context, _) =>
-                    AppScope.of(context).library.downloadState(track.videoId) ==
-                        DownloadState.done
-                    ? Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Icon(
-                          Icons.download_done_rounded,
-                          size: 15,
-                          color: p.primary,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+                listenable: AppScope.of(context).library.downloadNews,
+                builder: (context, _) => _DownloadMark(track.videoId),
               ),
               Expanded(
                 child: MetaLine(
@@ -290,6 +279,50 @@ class _AlbumCell extends StatelessWidget {
           child: text,
         ),
       ),
+    );
+  }
+}
+
+/// Where a song stands on the way onto the phone, the size of a line of text: nothing when it was never asked for.
+class _DownloadMark extends StatelessWidget {
+  const _DownloadMark(this.videoId);
+
+  final String videoId;
+
+  @override
+  Widget build(BuildContext context) {
+    final library = AppScope.of(context).library;
+    final p = context.palette;
+    final Widget? mark;
+    if (library.downloadBatch.value.active == videoId) {
+      mark = SizedBox.square(
+        dimension: 12,
+        child: CircularProgressIndicator(strokeWidth: 1.5, color: p.primary),
+      );
+    } else {
+      mark = switch (library.downloadState(videoId)) {
+        DownloadState.done => Icon(
+          Icons.download_done_rounded,
+          size: 15,
+          color: p.primary,
+        ),
+        DownloadState.queued || DownloadState.waiting => Icon(
+          Icons.arrow_circle_down_outlined,
+          size: 15,
+          color: p.textTertiary,
+        ),
+        DownloadState.failed => Icon(
+          Icons.error_outline_rounded,
+          size: 15,
+          color: p.error,
+        ),
+        null => null,
+      };
+    }
+    if (mark == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: SizedBox.square(dimension: 15, child: Center(child: mark)),
     );
   }
 }

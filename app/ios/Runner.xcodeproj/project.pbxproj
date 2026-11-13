@@ -23,6 +23,9 @@
 		27455DCC36858EC0847432CE /* Controls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7383D1721F4B4B8AC54AD17D /* Controls.swift */; };
 		86FC9F27A0F1B61A0C6A32FF /* SapocheIntents.swift (widgets) in Sources */ = {isa = PBXBuildFile; fileRef = AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift (widgets) */; };
 		951A0C3A1A4AA9E49BE782B7 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */; };
+		8C2894D4509D48D6BEB3F60D /* DownloadLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E51AD3BA52424998E95972 /* DownloadLiveActivity.swift */; };
+		51CB724D8BEE4B58B5BA592A /* DownloadActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ADB0CBB16514F80B5EB1C44 /* DownloadActivityAttributes.swift */; };
+		D37D98C7688A4B9486832B01 /* DownloadActivityContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A004AA5A4D6B458AADEFE32F /* DownloadActivityContent.swift */; };
 		285A9349391ACD28E6E10884 /* SapocheIntents.swift (runner) in Sources */ = {isa = PBXBuildFile; fileRef = AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift (runner) */; };
 		0EF5578BDC9BB7697F2EEBD2 /* SapocheWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D553F93CAF9A594E5B09E287 /* SapocheWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AAD76598525B1F4B3DA7B627 /* RoomsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54121C26C0EACF307B0DDEDB /* RoomsWidget.swift */; };
@@ -98,6 +101,9 @@
 		3EAED26DED0108E6C2F0DC8A /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		AC33ACD5B55AF59368AF3A74 /* SapocheIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SapocheIntents.swift; sourceTree = "<group>"; };
 		30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetSnapshot.swift; path = ../packages/sapoche_native/ios/sapoche_native/Sources/sapoche_native/Core/WidgetSnapshot.swift; sourceTree = "<group>"; };
+		90E51AD3BA52424998E95972 /* DownloadLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadLiveActivity.swift; sourceTree = "<group>"; };
+		1ADB0CBB16514F80B5EB1C44 /* DownloadActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DownloadActivityAttributes.swift; path = ../packages/sapoche_native/ios/sapoche_native/Sources/sapoche_native/Apple/DownloadActivityAttributes.swift; sourceTree = "<group>"; };
+		A004AA5A4D6B458AADEFE32F /* DownloadActivityContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DownloadActivityContent.swift; path = ../packages/sapoche_native/ios/sapoche_native/Sources/sapoche_native/Core/DownloadActivityContent.swift; sourceTree = "<group>"; };
 		D553F93CAF9A594E5B09E287 /* SapocheWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SapocheWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		54121C26C0EACF307B0DDEDB /* RoomsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomsWidget.swift; sourceTree = "<group>"; };
 		13B4329B51AB96C015A9222E /* QuickWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickWidget.swift; sourceTree = "<group>"; };
@@ -192,6 +198,7 @@
 				13B4329B51AB96C015A9222E /* QuickWidget.swift */,
 				54121C26C0EACF307B0DDEDB /* RoomsWidget.swift */,
 				7383D1721F4B4B8AC54AD17D /* Controls.swift */,
+				90E51AD3BA52424998E95972 /* DownloadLiveActivity.swift */,
 				0A8865E3716D899A83EA88FD /* Info.plist */,
 				2C563CDE86A53B94650D7324 /* SapocheWidgets.entitlements */,
 			);
@@ -202,6 +209,8 @@
 			isa = PBXGroup;
 			children = (
 				30FB6757985A314C2E6C6557 /* WidgetSnapshot.swift */,
+				1ADB0CBB16514F80B5EB1C44 /* DownloadActivityAttributes.swift */,
+				A004AA5A4D6B458AADEFE32F /* DownloadActivityContent.swift */,
 			);
 			name = "Shared with the widgets";
 			sourceTree = "<group>";
@@ -409,6 +418,9 @@
 				27455DCC36858EC0847432CE,
 				86FC9F27A0F1B61A0C6A32FF,
 				951A0C3A1A4AA9E49BE782B7,
+				8C2894D4509D48D6BEB3F60D,
+				51CB724D8BEE4B58B5BA592A,
+				D37D98C7688A4B9486832B01,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -123,6 +123,8 @@ class SapocheBridge(
                 if (visible) emit(UiJson.library()) else libraryDirty = true
             }
         }
+        // How the downloads stand is told on its own, so that a song finished does not make the screen read the library again
+        scope.launch { SapocheApp.downloader.progress.collect { if (visible) emit(UiJson.downloads(it)) } }
         // The screen slows its small moving parts down while the phone is warm
         scope.launch { SapocheApp.heat.calm.collect { if (visible) emit(UiJson.calm(it, SapocheApp.heat.weak)) } }
         scope.launch { outputs.current.collect { if (visible) emit(UiJson.output(it)) } }
@@ -221,6 +223,7 @@ class SapocheBridge(
             }
             ensureService()
             display.reapply()
+            emit(UiJson.downloads(SapocheApp.downloader.progress.value))
             emit(UiJson.calm(SapocheApp.heat.calm.value, SapocheApp.heat.weak))
             outputs.refresh()
             emit(UiJson.output(outputs.current.value))

@@ -2016,6 +2016,59 @@ void main() {
       durMs: 100000,
     );
 
+    testWidgets('a row tells waiting, on its way, done and failed apart', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.downloadList.add(
+        const DownloadEntry(track: songA, state: DownloadState.queued),
+      );
+      backend.searchResults = [songA];
+      backend.emit(const LibraryEvent());
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'alpha');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.arrow_circle_down_outlined), findsOneWidget);
+
+      // Its turn: a small wheel turns where the arrow was. (It never stops, so the test does not wait for it to.)
+      backend.emit(
+        DownloadsEvent(DownloadBatch(active: songA.videoId, total: 1)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byIcon(Icons.arrow_circle_down_outlined), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(TrackTile),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+
+      backend.downloadList[0] = const DownloadEntry(
+        track: songA,
+        state: DownloadState.done,
+      );
+      backend.emit(const DownloadsEvent(DownloadBatch(done: 1, total: 1)));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.download_done_rounded), findsOneWidget);
+      expect(find.text('Downloaded 1 song'), findsOneWidget);
+
+      backend.downloadList[0] = const DownloadEntry(
+        track: songA,
+        state: DownloadState.failed,
+      );
+      backend.emit(const DownloadsEvent(DownloadBatch(failed: 1, total: 1)));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.download_done_rounded), findsNothing);
+    });
+
     Future<FakeBackend> openLibrary(WidgetTester tester) async {
       final (backend, _) = await pumpApp(tester);
       backend.likedSongs = [songA, songB];
@@ -2518,6 +2571,37 @@ void main() {
       expect(find.text('Ann · 4.0 MB'), findsOneWidget);
       expect(find.text('Ben · Waiting to download'), findsOneWidget);
     });
+
+    testWidgets(
+      'while a run goes on the page says which song of how many and which is on its way',
+      (tester) async {
+        final backend = await openLibrary(tester);
+        await tester.tap(find.text('Downloaded'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Downloading 2 of'), findsNothing);
+
+        backend.emit(
+          DownloadsEvent(
+            DownloadBatch(active: songB.videoId, done: 1, total: 2),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('Downloading 2 of 2'), findsOneWidget);
+        expect(find.text('Ben · Downloading…'), findsOneWidget);
+
+        backend.downloadList[1] = const DownloadEntry(
+          track: songB,
+          state: DownloadState.done,
+          bytes: 4 * 1024 * 1024,
+        );
+        backend.emit(const DownloadsEvent(DownloadBatch(done: 2, total: 2)));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Downloading 2 of'), findsNothing);
+        expect(find.text('Ben · 4.0 MB'), findsOneWidget);
+        expect(find.text('Downloaded 2 songs'), findsOneWidget);
+      },
+    );
 
     testWidgets('all downloads can be deleted after a question', (
       tester,

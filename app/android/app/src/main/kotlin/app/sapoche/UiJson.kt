@@ -151,6 +151,10 @@ object UiJson {
     /** Liked songs or the history changed: the UI reads them again. */
     fun library(): String = JSONObject().put("type", "library").toString()
 
+    /** How the downloads stand; see [Downloader.Batch]. The list itself is read with the `downloads` call. */
+    fun downloads(batch: Downloader.Batch): String = JSONObject().put("type", "downloads").put("active", batch.active ?: JSONObject.NULL)
+        .put("done", batch.done).put("total", batch.total).put("failed", batch.failed).toString()
+
     /** An invitation link was opened: the UI offers to join that room. */
     /** A member's picture as base64, or none; the screen keeps it by the member's id. */
     fun avatar(avatar: GroupController.Avatar): String =

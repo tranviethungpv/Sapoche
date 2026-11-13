@@ -129,6 +129,11 @@ enum UiJson {
     /// Liked songs or the history changed: the UI reads them again.
     static func library() -> String { JSONText.encode(["type": "library"]) }
 
+    /// How the downloads stand; see `Downloader.Batch`. The list itself is read with the `downloads` call.
+    static func downloads(_ batch: Downloader.Batch) -> String {
+        JSONText.encode(["type": "downloads", "active": batch.active ?? NSNull(), "done": batch.done, "total": batch.total, "failed": batch.failed] as [String: Any])
+    }
+
     /// An invitation link was opened: the UI offers to join that room.
     static func invite(_ code: String) -> String { JSONText.encode(["type": "invite", "code": code]) }
 

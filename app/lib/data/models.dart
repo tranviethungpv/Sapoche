@@ -63,6 +63,41 @@ enum DownloadState {
       DownloadState.values.asNameMap()[name] ?? DownloadState.queued;
 }
 
+/// How the run of downloads in hand stands, as the phone tells it: [active] is the song being fetched, null when none is.
+/// [total] is what the run took so far and what is still to take. A run that is over keeps its numbers (null [active],
+/// [total] above zero) until the next one starts; [idle] is no run at all.
+class DownloadBatch {
+  const DownloadBatch({
+    this.active,
+    this.done = 0,
+    this.total = 0,
+    this.failed = 0,
+  });
+
+  static const idle = DownloadBatch();
+
+  final String? active;
+  final int done;
+  final int total;
+  final int failed;
+
+  bool get running => active != null;
+
+  /// The place of the song being fetched among the run's, from 1.
+  int get position => (done + failed + 1).clamp(1, total < 1 ? 1 : total);
+
+  @override
+  bool operator ==(Object other) =>
+      other is DownloadBatch &&
+      other.active == active &&
+      other.done == done &&
+      other.total == total &&
+      other.failed == failed;
+
+  @override
+  int get hashCode => Object.hash(active, done, total, failed);
+}
+
 /// A song on the list of downloads.
 class DownloadEntry {
   const DownloadEntry({

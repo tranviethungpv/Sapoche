@@ -47,8 +47,12 @@ protocol PlatformServices: AnyObject {
     /// The text of a file the person picks; nil when they backed out.
     func importFile() async throws -> String?
 
-    /// Runs [work] and asks the system to let it finish if the app goes to the background meanwhile.
-    func whileInBackground(_ work: @escaping () async -> Void) async
+    /// Runs [work] and asks the system to let it finish if the app goes to the background meanwhile. [timeUp] is called when
+    /// the system takes the time back, after which [work] is suspended until the app is opened again.
+    func whileInBackground(timeUp: @escaping @Sendable () -> Void, _ work: @escaping () async -> Void) async
+
+    /// Shows a step of the Live Activity of a run of downloads (iOS 17 and later); nowhere else is there one.
+    func downloadActivity(_ step: DownloadActivityPlan.Step)
 
     /// The folder of the app that the Files app shows as On My iPhone › Sapoche: where the music on this phone is.
     var musicFolder: URL { get }
@@ -147,6 +151,15 @@ final class Bridge {
     /// The library changed while the screen was off; the UI is told when it comes back.
     private var libraryDirty = false
 
+    /// How the downloads stood when last told.
+    private var lastDownloads = Downloader.Batch.idle
+
+    /// What the Live Activity of a run of downloads does, one step after another (finding the song's name takes a moment).
+    private var downloadActivity = DownloadActivityPlan()
+    private var downloadActivitySteps: Task<Void, Never>?
+    /// The run now going is the one the phone makes by itself for liked songs: no activity for it.
+    private var quietRun = false
+
     private var lastRenew: Int64 = 0
     private var draining: [Bool: Job] = [:]
     private var drainAgain: Set<Bool> = []
@@ -240,6 +253,32 @@ final class Bridge {
         if visible { emit(UiJson.library()) } else { libraryDirty = true }
     }
 
+    /// How the downloads stand: told on its own, so that a song finished does not make the screen read the library again.
+    func downloadsChanged(_ batch: Downloader.Batch) {
+        lastDownloads = batch
+        if visible { emit(UiJson.downloads(batch)) }
+        showDownloadActivity(batch, timeUp: false)
+    }
+
+    /// Moves the Live Activity of the run with it. [timeUp]: the system took the background time back instead.
+    private func showDownloadActivity(_ batch: Downloader.Batch, timeUp: Bool) {
+        let before = downloadActivitySteps
+        downloadActivitySteps = Task {
+            await before?.value
+            let step: DownloadActivityPlan.Step
+            if timeUp {
+                step = self.downloadActivity.timeUp()
+            } else {
+                var title = ""
+                if let id = batch.active {
+                    title = (try? await self.store.downloads().first { $0.track.videoId == id }?.track.title) ?? ""
+                }
+                step = self.downloadActivity.step(batch, title: title, language: self.language, canOpen: self.visible, quiet: self.quietRun)
+            }
+            if step != .none { self.platform.downloadActivity(step) }
+        }
+    }
+
     func setVisible(_ value: Bool) {
         if value {
             platform.clearNotices() // what was said is on the screen now
@@ -249,6 +288,8 @@ final class Bridge {
                 libraryDirty = false
                 emit(UiJson.library())
             }
+            emit(UiJson.downloads(lastDownloads))
+            if lastDownloads.active != nil { showDownloadActivity(lastDownloads, timeUp: false) }
             emit(UiJson.calm(platform.calm.value))
             emit(UiJson.output(platform.output.value))
             emit(UiJson.volume(platform.volume.value))
@@ -986,7 +1027,10 @@ final class Bridge {
                     try await store.requestDownloads(try await store.likedToDownload(), waiting: true)
                 }
                 var result = Downloader.Result(done: 0, retryLater: false)
-                await platform.whileInBackground {
+                self.quietRun = waiting
+                await platform.whileInBackground(timeUp: { [weak self] in
+                    Task { @MainActor in self?.downloadsTimeUp() }
+                }) {
                     result = (try? await downloader.drain(waiting: waiting)) ?? result
                 }
                 EventLog.d("download", "run done: \(result.done) songs\(result.retryLater ? ", some to try again" : "")")
@@ -999,6 +1043,10 @@ final class Bridge {
                 return
             }
         }
+    }
+
+    private func downloadsTimeUp() {
+        if lastDownloads.active != nil { showDownloadActivity(lastDownloads, timeUp: true) }
     }
 
     // ------------------------------------------------------------------ backup

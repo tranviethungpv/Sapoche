@@ -232,15 +232,33 @@ actor Downloader {
         let retryLater: Bool
     }
 
+    /// How the run in hand stands: [active] is the song being fetched, nil when none is. [total] is what the run has taken
+    /// so far and what is still to take, so it grows when songs are added meanwhile. A run that is over keeps its numbers
+    /// (nil [active], [total] above zero) until the next run starts; [idle] is no run at all.
+    struct Batch: Equatable, Sendable {
+        let active: String?
+        let done: Int
+        let total: Int
+        let failed: Int
+        static let idle = Batch(active: nil, done: 0, total: 0, failed: 0)
+    }
+
     private let store: LibraryStore
     /// Brings the whole song onto the phone and gives back its size in bytes; throws when it cannot.
     private let fetch: @Sendable (String) async throws -> Int64
     private let log: @Sendable (String) -> Void
+    /// Told whenever [progress] changes.
+    private let onProgress: @Sendable (Batch) -> Void
+    private(set) var progress = Batch.idle {
+        didSet { if progress != oldValue { onProgress(progress) } }
+    }
 
-    init(store: LibraryStore, fetch: @escaping @Sendable (String) async throws -> Int64, log: @escaping @Sendable (String) -> Void = { _ in }) {
+    init(store: LibraryStore, fetch: @escaping @Sendable (String) async throws -> Int64, log: @escaping @Sendable (String) -> Void = { _ in },
+         onProgress: @escaping @Sendable (Batch) -> Void = { _ in }) {
         self.store = store
         self.fetch = fetch
         self.log = log
+        self.onProgress = onProgress
     }
 
     func drain(waiting: Bool) async throws -> Result {
@@ -249,18 +267,28 @@ actor Downloader {
         var failedNow: Set<String> = []
         var done = 0
         var retryLater = false
-        while let videoId = try await store.nextDownload(state, skip: failedNow) {
-            do {
-                try await store.finishDownload(videoId, bytes: try await fetch(videoId))
-                done += 1
-            } catch is CancellationError {
-                throw CancellationError() // stopped: the song stays on the list as it was
-            } catch {
-                log("could not download \(videoId): \(error.localizedDescription)")
-                failedNow.insert(videoId)
-                if try await !store.failDownload(videoId) { retryLater = true }
+        progress = .idle
+        do {
+            while let videoId = try await store.nextDownload(state, skip: failedNow) {
+                progress = Batch(active: videoId, done: done, total: done + failedNow.count + (try await store.pendingDownloads(state, skip: failedNow)),
+                                 failed: failedNow.count)
+                do {
+                    try await store.finishDownload(videoId, bytes: try await fetch(videoId))
+                    done += 1
+                } catch is CancellationError {
+                    throw CancellationError() // stopped: the song stays on the list as it was
+                } catch {
+                    log("could not download \(videoId): \(error.localizedDescription)")
+                    failedNow.insert(videoId)
+                    if try await !store.failDownload(videoId) { retryLater = true }
+                }
             }
+        } catch {
+            progress = .idle // a run that was cut short is not a finished one: nothing to announce
+            throw error
         }
+        let taken = done + failedNow.count
+        progress = taken == 0 ? .idle : Batch(active: nil, done: done, total: taken, failed: failedNow.count)
         return Result(done: done, retryLater: retryLater)
     }
 }

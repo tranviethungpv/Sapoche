@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../strings.dart';
 import 'backend.dart';
 import 'models.dart';
 import 'music_models.dart';
@@ -47,8 +48,9 @@ class LibraryController extends ChangeNotifier {
   ContextMix _context = const ContextMix();
   List<BlockedItem> _blocked = const [];
   TasteProfile _profile = const TasteProfile();
-  List<DownloadEntry> _downloads = const [];
   Map<String, DownloadState> _downloadStates = const {};
+  bool _hasDownloaded = false;
+  int _downloadsRead = 0;
   LocalStatus _localStatus = const LocalStatus();
   LocalScan _lastScan = const LocalScan();
   bool _localOpen = false;
@@ -57,6 +59,18 @@ class LibraryController extends ChangeNotifier {
   /// reads and scans as it opens, and telling every screen that listens to the library each time would make the home
   /// page work out all its rows again (a tenth of a second on a phone) for nothing, with the page stuttering as it opens.
   final localSongs = ValueNotifier<List<LocalSong>>(const []);
+
+  /// The list of downloads and how the run in hand stands. They have their own notifiers, apart from the library's: a song
+  /// is done every few seconds while a playlist downloads, and telling every screen that listens to the library each
+  /// time made the phone read all of it again and draw the home page again, which showed as a stutter.
+  final downloadList = ValueNotifier<List<DownloadEntry>>(const []);
+  final downloadBatch = ValueNotifier<DownloadBatch>(DownloadBatch.idle);
+
+  /// Tells when either of the two does.
+  late final Listenable downloadNews = Listenable.merge([
+    downloadList,
+    downloadBatch,
+  ]);
 
   /// Songs of the playlists that were opened, kept up to date while they are.
   final _items = <int, List<Track>>{};
@@ -89,7 +103,10 @@ class LibraryController extends ChangeNotifier {
   ];
 
   /// Songs on the list of downloads, what is on the phone first.
-  List<DownloadEntry> get downloads => _downloads;
+  List<DownloadEntry> get downloads => downloadList.value;
+
+  /// There is a song on the phone; this, unlike the list, tells the library's listeners when it changes.
+  bool get hasDownloaded => _hasDownloaded;
 
   /// Where the list of the music on this phone stands.
   LocalStatus get localStatus => _localStatus;
@@ -143,7 +160,12 @@ class LibraryController extends ChangeNotifier {
     // What changes by itself comes in bursts (a fetch of suggestions writes one seed after another and says so each time,
     // and every read builds the home page again): it is read at most once in [quiet]. What the person does is read at
     // once, by [_change].
-    _subscription = _backend.events.where((e) => e is LibraryEvent).listen((_) {
+    _subscription = _backend.events.listen((e) {
+      if (e is DownloadsEvent) {
+        unawaited(_downloadsNews(e.batch));
+        return;
+      }
+      if (e is! LibraryEvent) return;
       // A pull to refresh writes the suggestions itself and reads them when it is done
       if (_pulling) return;
       if (quiet == Duration.zero) {
@@ -189,6 +211,7 @@ class LibraryController extends ChangeNotifier {
       final discover = await _backend.discover().catchError((_) => _discover);
       final blocked = await _backend.blocked().catchError((_) => _blocked);
       final profile = await _backend.tasteProfile().catchError((_) => _profile);
+      final downloadsRead = _downloadsRead;
       final downloads = await _backend.downloads();
       // The music on the phone is extra, and its list is only read while someone looks at it
       final localStatus = await _backend.localStatus().catchError(
@@ -249,9 +272,8 @@ class LibraryController extends ChangeNotifier {
         _profile = profile;
         changed = true;
       }
-      if (!_same(_downloads, downloads, _sameDownload)) {
-        _downloads = downloads;
-        _downloadStates = {for (final d in downloads) d.track.videoId: d.state};
+      // Unless the news of a download came meanwhile: it reads the list itself and is the newer
+      if (downloadsRead == _downloadsRead && _setDownloads(downloads)) {
         changed = true;
       }
       if (localStatus != _localStatus) {
@@ -269,6 +291,42 @@ class LibraryController extends ChangeNotifier {
       unawaited(_refreshContext());
     } on Object {
       // Nothing to show is better than an error on every screen
+    }
+  }
+
+  /// Keeps the list of downloads if it is new. True when the library's listeners are to be told: only when there is a
+  /// song on the phone where there was none, or the other way, which is all the home page makes of the list.
+  bool _setDownloads(List<DownloadEntry> downloads) {
+    if (_same(downloadList.value, downloads, _sameDownload)) return false;
+    _downloadStates = {for (final d in downloads) d.track.videoId: d.state};
+    downloadList.value = downloads;
+    final has = downloads.any((d) => d.state == DownloadState.done);
+    if (has == _hasDownloaded) return false;
+    _hasDownloaded = has;
+    return true;
+  }
+
+  /// A song of the run started, finished or failed: the list is read again, and nothing else.
+  Future<void> _downloadsNews(DownloadBatch batch) async {
+    final read = ++_downloadsRead;
+    final List<DownloadEntry> downloads;
+    try {
+      downloads = await _backend.downloads();
+    } on Object {
+      return;
+    }
+    if (read != _downloadsRead) return; // a newer piece of news is reading it
+    final tellLibrary = _setDownloads(downloads);
+    final before = downloadBatch.value;
+    downloadBatch.value = batch;
+    if (tellLibrary) notifyListeners();
+    // The run is over: tell how it went. Not for a run that was cut short (it ends with no numbers)
+    if (before.running && !batch.running && batch.total > 0) {
+      _messages.add(
+        batch.failed == 0
+            ? S.downloadedAll(batch.done)
+            : S.downloadedSome(batch.done, batch.failed),
+      );
     }
   }
 
@@ -673,6 +731,8 @@ class LibraryController extends ChangeNotifier {
     _quiet?.cancel();
     _messages.close();
     localSongs.dispose();
+    downloadList.dispose();
+    downloadBatch.dispose();
     super.dispose();
   }
 }

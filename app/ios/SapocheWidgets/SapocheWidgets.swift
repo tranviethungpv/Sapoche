@@ -8,6 +8,7 @@ struct SapocheWidgets: WidgetBundle {
         RoomsWidget()
         QuickWidget()
         LockScreenWidget()
+        DownloadLiveActivity()
         if #available(iOS 18.0, *) {
             PlayPauseControl()
             OpenRoomControl()

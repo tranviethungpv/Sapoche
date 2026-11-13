@@ -792,12 +792,22 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         }
     }
 
+    /** How many songs are still to download in [state], other than those in [skip]. */
+    suspend fun pendingDownloads(state: String, skip: Set<String> = emptySet()): Int = withContext(io) {
+        readableDatabase.rawQuery("SELECT video_id FROM downloads WHERE state = ?", arrayOf(state)).use { c ->
+            var n = 0
+            while (c.moveToNext()) if (c.getString(0) !in skip) n++
+            n
+        }
+    }
+
+    // finishDownload and failDownload do not announce a change of the library: the downloader says how the list stands
+    // ([Downloader.progress]), and the screen reads the list of downloads alone, not the whole library, each time
     suspend fun finishDownload(videoId: String, bytes: Long, at: Long = System.currentTimeMillis()) = withContext(io) {
         writableDatabase.execSQL(
             "UPDATE downloads SET state = ?, bytes = ?, at = ?, tries = 0 WHERE video_id = ?",
             arrayOf<Any?>(DONE, bytes, at, videoId),
         )
-        _changes.tryEmit(Unit)
     }
 
     /** One try failed. After [MAX_TRIES] the song is marked failed; true when that happened. */
@@ -805,7 +815,6 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         val db = writableDatabase
         db.execSQL("UPDATE downloads SET tries = tries + 1 WHERE video_id = ?", arrayOf<Any?>(videoId))
         db.execSQL("UPDATE downloads SET state = ? WHERE video_id = ? AND tries >= ?", arrayOf<Any?>(FAILED, videoId, MAX_TRIES))
-        _changes.tryEmit(Unit)
         db.rawQuery("SELECT state FROM downloads WHERE video_id = ?", arrayOf(videoId)).use { it.moveToFirst() && it.getString(0) == FAILED }
     }
 
