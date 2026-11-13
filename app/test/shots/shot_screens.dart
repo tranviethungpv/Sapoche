@@ -68,6 +68,15 @@ Future<void> _tab(WidgetTester t, String label) async {
   await _settle(t);
 }
 
+/// Two songs on the phone, one on its way, one waiting and one that failed.
+void _someDownloads(FakeBackend b) {
+  const states = [DownloadState.done, DownloadState.done, DownloadState.queued, DownloadState.queued, DownloadState.failed];
+  b.downloadList.addAll([
+    for (final (i, t) in tracks.indexed)
+      DownloadEntry(track: t, state: states[i], bytes: states[i] == DownloadState.done ? 4200000 + i * 900000 : 0),
+  ]);
+}
+
 /// Every screen of the picture set. Add a screen here, and it is drawn at every size, in both themes and languages.
 final shotScreens = <ShotScreen>[
   ShotScreen('home', prepare: (b) {
@@ -186,6 +195,41 @@ final shotScreens = <ShotScreen>[
     await _tab(t, S.tabLibrary);
     await _tab(t, S.downloadedSongs);
   }),
+  // The page of the downloaded songs with something to say above them: a run in hand, songs that did not get downloaded
+  ShotScreen('downloaded-run', prepare: _someDownloads, (t, b) async {
+    await _state(t, b, const RoomSnapshot());
+    await _tab(t, S.tabLibrary);
+    await _tab(t, S.downloadedSongs);
+    b.emit(DownloadsEvent(DownloadBatch(active: tracks[2].videoId, done: 2, total: 4)));
+    await _settle(t);
+  }),
+  ShotScreen('downloaded-stuck', prepare: _someDownloads, (t, b) async {
+    await _state(t, b, const RoomSnapshot());
+    await _tab(t, S.tabLibrary);
+    await _tab(t, S.downloadedSongs);
+    b.emit(const DownloadsEvent(DownloadBatch(done: 2, total: 4)));
+    await _settle(t);
+  }),
+  ShotScreen('downloaded-stuck-open', prepare: _someDownloads, (t, b) async {
+    await _state(t, b, const RoomSnapshot());
+    await _tab(t, S.tabLibrary);
+    await _tab(t, S.downloadedSongs);
+    b.emit(const DownloadsEvent(DownloadBatch(done: 2, total: 4)));
+    await _settle(t);
+    await t.tap(find.byKey(const ValueKey('stuck-header')));
+    await _settle(t);
+  }),
+  ShotScreen(
+    'downloaded-only-stuck',
+    prepare: (b) => b.downloadList.add(DownloadEntry(track: tracks[0], state: DownloadState.failed)),
+    (t, b) async {
+      await _state(t, b, const RoomSnapshot());
+      await _tab(t, S.tabLibrary);
+      await _tab(t, S.downloadedSongs);
+      b.emit(const DownloadsEvent(DownloadBatch(failed: 1, total: 1)));
+      await _settle(t);
+    },
+  ),
   ShotScreen('album', prepare: (b) => b.collectionResult = albumPage, (t, b) async {
     await _state(t, b, const RoomSnapshot());
     openCollection(_shell(t), id: albumPage.id, title: albumPage.title);

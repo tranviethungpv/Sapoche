@@ -1,0 +1,2 @@
+Clearer rows on the Downloaded page
+- Under a song that could not be downloaded, the line now starts with what happened ("Will try again", "Download failed") and the artist comes after it, so a long artist name can no longer hide it.

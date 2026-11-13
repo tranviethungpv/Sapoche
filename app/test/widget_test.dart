@@ -2575,12 +2575,12 @@ void main() {
       await tester.tap(find.text('Downloaded'));
       await tester.pumpAndSettle();
       expect(find.text('Ann · 4.0 MB'), findsOneWidget);
-      expect(find.text('Ben · Waiting to download'), findsNothing);
+      expect(find.text('Waiting to download · Ben'), findsNothing);
       expect(find.text('1 song not downloaded'), findsOneWidget);
-      expect(find.text('Ben · Will try again'), findsNothing, reason: 'folded');
+      expect(find.text('Will try again · Ben'), findsNothing, reason: 'folded');
       await tester.tap(find.byKey(const ValueKey('stuck-header')));
       await tester.pumpAndSettle();
-      expect(find.text('Ben · Will try again'), findsOneWidget);
+      expect(find.text('Will try again · Ben'), findsOneWidget);
       expect(find.text('Takes 4.0 MB on this phone'), findsOneWidget);
     });
 
@@ -2597,7 +2597,7 @@ void main() {
       expect(find.text('2 songs not downloaded'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('stuck-header')));
       await tester.pumpAndSettle();
-      expect(find.text('Cy · Download failed'), findsOneWidget);
+      expect(find.text('Download failed · Cy'), findsOneWidget);
 
       await tester.tap(
         find.descendant(

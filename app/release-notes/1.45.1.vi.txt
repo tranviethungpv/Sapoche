@@ -1,0 +1,2 @@
+Dòng rõ hơn ở trang Đã tải
+- Dưới bài chưa tải được, dòng phụ nay bắt đầu bằng điều đã xảy ra ("Sẽ thử lại", "Tải không được"), tên nghệ sĩ nằm sau, nên tên nghệ sĩ dài không còn che mất nó.

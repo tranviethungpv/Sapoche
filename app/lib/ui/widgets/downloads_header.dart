@@ -190,12 +190,13 @@ class _DownloadsHeaderState extends State<DownloadsHeader> {
                                   overflow: TextOverflow.ellipsis,
                                   style: text.bodyLarge,
                                 ),
+                                // What happened comes first: it is what the row is for, and a long artist is cut at the end
                                 Text(
-                                  '${d.track.artist} · ${switch (d.state) {
+                                  '${switch (d.state) {
                                     DownloadState.failed => S.downloadFailed,
                                     DownloadState.waiting => S.waitingToDownload,
                                     _ => S.willTryAgain,
-                                  }}',
+                                  }} · ${d.track.artist}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: text.bodySmall?.copyWith(

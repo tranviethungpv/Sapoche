@@ -284,6 +284,14 @@ final _exempt = <_Exempt>[
         'the line of the chat 6.7:1 and its field 5.3:1 (`docs/archive/2026-11-12-ui-fixed-yardstick.md` step 10)',
   ),
   _Exempt(
+    'stuck-row-state',
+    {'contrast'},
+    RegExp(r'^"(Sẽ thử lại|Tải không được|Đang chờ tải) · [^"]+" '),
+    'the line under a song that is not downloaded, in Vietnamese with the card open: the checker reads a rectangle that is '
+    'not where the words are drawn (the first row is 6.4:1 light and 7.3:1 dark from the pixels of '
+    '`downloaded-stuck-open__w411-light-vi` and its dark twin); the same line in English passes',
+  ),
+  _Exempt(
     'short-count-text',
     {'contrast'},
     RegExp(r'^"\d+ (bài|songs?)" '),
