@@ -1,0 +1,4 @@
+Manage your downloads
+- The Downloaded page now has a Stop button while a batch is downloading. It stops the batch and takes the songs that were not downloaded yet off the list; what is already on your phone stays.
+- Songs that could not be downloaded are gathered in one folded card at the top, "4 songs not downloaded". Open it to try one again or let it go, or try them all again with one tap. Songs that will be tried again no longer say "Waiting to download" when nothing is running.
+- The page tells how much space your downloaded songs take, and Play and Shuffle only use songs that are really on your phone.

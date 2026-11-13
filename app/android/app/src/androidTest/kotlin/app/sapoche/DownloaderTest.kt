@@ -102,6 +102,21 @@ class DownloaderTest {
     }
 
     @Test
+    fun aRunThatWasCancelledLeavesNothingToTakeAgain() = runTest {
+        stopAt = "bb"
+        store.requestDownloads(listOf(song("a"), song("bb"), song("c")))
+        try {
+            downloader.drain(waiting = false)
+        } catch (_: CancellationException) {
+        }
+        store.cancelQueuedDownloads()
+        stopAt = null
+        assertEquals(mapOf("a" to LibraryStore.DONE), store.downloads().associate { it.track.videoId to it.state })
+        assertEquals(0, downloader.drain(waiting = false).done)
+        assertEquals(Downloader.Batch.IDLE, downloader.progress.value)
+    }
+
+    @Test
     fun anEmptyListIsNothingToDo() = runTest {
         val result = downloader.drain(waiting = false)
         assertEquals(0, result.done)

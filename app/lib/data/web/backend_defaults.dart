@@ -85,6 +85,9 @@ abstract class BackendDefaults implements Backend {
   Future<void> clearDownloads() async {}
 
   @override
+  Future<void> cancelDownloads() async {}
+
+  @override
   Future<LocalStatus> localStatus() async => const LocalStatus(enabled: false);
 
   @override

@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -640,6 +641,18 @@ class SapocheBridge(
                 val videoId = call.argument<String>("videoId").orEmpty()
                 SapocheApp.library.removeDownload(videoId)
                 withContext(Dispatchers.IO) { SapocheApp.caches.downloads.removeResource(videoId) }
+                return null
+            }
+            "downloadCancel" -> {
+                // Only a song asked for is dropped: one fetched for the liked songs saved by themselves goes on
+                val active = SapocheApp.downloader.progress.value.active?.takeIf { id ->
+                    SapocheApp.library.downloads().any { it.track.videoId == id && it.state == LibraryStore.QUEUED }
+                }
+                DownloadWorker.cancelQueued(activity)
+                // The job stops a moment after it is told to: wait for it, so that it does not write a song to a list that no longer has it
+                if (active != null) withTimeoutOrNull(3000) { SapocheApp.downloader.progress.first { it.active == null } }
+                SapocheApp.library.cancelQueuedDownloads()
+                if (active != null) withContext(Dispatchers.IO) { SapocheApp.caches.downloads.removeResource(active) }
                 return null
             }
             "downloadClear" -> {

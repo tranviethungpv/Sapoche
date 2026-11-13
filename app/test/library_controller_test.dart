@@ -9,6 +9,7 @@ import 'fake_backend.dart';
 
 const _a = Track(videoId: 'aaaaaaaaaaa', title: 'A', artist: 'x', durMs: 1000);
 const _b = Track(videoId: 'bbbbbbbbbbb', title: 'B', artist: 'y', durMs: 2000);
+const _c = Track(videoId: 'ccccccccccc', title: 'C', artist: 'z', durMs: 3000);
 
 void main() {
   late FakeBackend backend;
@@ -280,6 +281,37 @@ void main() {
       expect(library.downloads, isEmpty);
       expect(await library.download([_a], allowMetered: true), isTrue);
       expect(library.downloadState(_a.videoId), DownloadState.queued);
+    });
+
+    test('what is not on the phone is told apart from what is being fetched', () async {
+      backend.downloadList.addAll([
+        const DownloadEntry(track: _a, state: DownloadState.done, bytes: 10),
+        const DownloadEntry(track: _b, state: DownloadState.queued),
+        const DownloadEntry(track: _c, state: DownloadState.failed),
+      ]);
+      await library.start();
+      expect(library.downloaded.map((d) => d.track.videoId), [_a.videoId]);
+      expect(library.downloadedBytes, 10);
+      // Nothing is being fetched: the song that waits for its next try is as good as one that failed
+      expect(library.notDownloaded.map((d) => d.track.videoId), [_b.videoId, _c.videoId]);
+      expect(library.canCancelDownloads, isFalse);
+
+      backend.emit(DownloadsEvent(DownloadBatch(active: _b.videoId, total: 2)));
+      await settle();
+      expect(library.notDownloaded.map((d) => d.track.videoId), [_c.videoId]);
+      expect(library.canCancelDownloads, isTrue);
+    });
+
+    test('cancelling takes the songs not fetched off the list and keeps the rest', () async {
+      backend.downloadList.addAll([
+        const DownloadEntry(track: _a, state: DownloadState.done, bytes: 10),
+        const DownloadEntry(track: _b, state: DownloadState.queued),
+        const DownloadEntry(track: _c, state: DownloadState.waiting),
+      ]);
+      await library.start();
+      await library.cancelDownloads();
+      expect(backend.calls, contains('cancelDownloads'));
+      expect(library.downloads.map((d) => d.track.videoId), [_a.videoId, _c.videoId]);
     });
 
     test('removing one or all takes them off the list', () async {

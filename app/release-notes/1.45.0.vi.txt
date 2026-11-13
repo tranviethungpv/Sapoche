@@ -1,0 +1,4 @@
+Quản lý việc tải về gọn hơn
+- Trang Đã tải có nút Dừng khi đang tải cả mẻ. Dừng sẽ ngưng việc tải và bỏ những bài chưa tải khỏi danh sách; bài đã có trên máy vẫn còn.
+- Bài không tải được gom vào một thẻ thu gọn ở đầu trang, "4 bài chưa tải được". Mở ra để thử lại hoặc bỏ từng bài, hoặc thử lại tất cả bằng một chạm. Bài sắp được thử lại không còn ghi "Đang chờ tải" khi chẳng có gì đang chạy.
+- Trang cho biết các bài đã tải chiếm bao nhiêu dung lượng, và Phát cùng Xáo trộn chỉ dùng những bài thật sự có trên máy.

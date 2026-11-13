@@ -352,6 +352,10 @@ abstract class Backend {
   Future<void> removeDownload(String videoId);
   Future<void> clearDownloads();
 
+  /// Stops the run of downloads asked for and takes the songs it has not fetched yet off the list. What is on the phone
+  /// stays, and so do the liked songs that wait for Wi-Fi and a charger.
+  Future<void> cancelDownloads();
+
   /// Where the list of the music on this phone stands.
   Future<LocalStatus> localStatus();
   Future<void> setLocalEnabled(bool on);
@@ -975,6 +979,9 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> clearDownloads() => _call('downloadClear');
+
+  @override
+  Future<void> cancelDownloads() => _call('downloadCancel');
 
   @override
   Future<LocalStatus> localStatus() async =>

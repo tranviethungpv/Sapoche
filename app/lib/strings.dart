@@ -293,6 +293,24 @@ abstract final class S {
   static String get queuedToDownload =>
       _t('Waiting to download', 'Đang chờ tải');
   static String get downloadFailed => _t('Download failed', 'Tải không được');
+  static String get willTryAgain => _t('Will try again', 'Sẽ thử lại');
+  static String downloadsTake(String size) =>
+      _t('Takes $size on this phone', 'Chiếm $size trên điện thoại');
+  static String notDownloadedCount(int n) => _t(
+    n == 1 ? '1 song not downloaded' : '$n songs not downloaded',
+    '$n bài chưa tải được',
+  );
+  static String get dropFromList => _t('Remove from list', 'Bỏ khỏi danh sách');
+  static String get dropAll => _t('Remove all', 'Bỏ tất cả');
+  static String dropAllQuestion(int n) => _t(
+    'Remove $n songs that could not be downloaded from the list?',
+    'Bỏ $n bài chưa tải được khỏi danh sách?',
+  );
+  static String get stopDownloading => _t('Stop', 'Dừng');
+  static String stopDownloadingQuestion(int n) => _t(
+    'Stop downloading and take the $n songs not downloaded yet off the list? What is on the phone stays.',
+    'Dừng tải và bỏ $n bài chưa tải khỏi danh sách? Bài đã tải vẫn còn trên máy.',
+  );
   static String get deleteAll => _t('Delete all', 'Xóa tất cả');
   static String get deleteDownloadsQuestion => _t(
     'Remove every downloaded song from this phone?',

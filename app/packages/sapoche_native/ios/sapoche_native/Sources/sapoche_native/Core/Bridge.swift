@@ -648,6 +648,18 @@ final class Bridge {
             try await store.removeDownload(videoId)
             files.removeDownload(videoId)
             return nil
+        case "downloadCancel":
+            // Only a song asked for is dropped: one fetched for the liked songs saved by themselves goes on
+            let active = try await store.downloads().first { $0.track.videoId == lastDownloads.active && $0.state == LibraryStore.queued }
+            // The run is over before the list is touched, so that it does not write a song to a list that no longer has it
+            drainAgain.remove(false)
+            if let run = draining[false] {
+                run.cancel()
+                await run.join()
+            }
+            try await store.cancelQueuedDownloads()
+            if let active { files.removeDownload(active.track.videoId) }
+            return nil
         case "downloadClear":
             try await store.clearDownloads()
             files.clearDownloads()
@@ -1034,6 +1046,8 @@ final class Bridge {
                     result = (try? await downloader.drain(waiting: waiting)) ?? result
                 }
                 EventLog.d("download", "run done: \(result.done) songs\(result.retryLater ? ", some to try again" : "")")
+                // Stopped by the person: the run must not start again by itself
+                if Task.isCancelled { return }
                 if self.drainAgain.remove(waiting) != nil { continue }
                 if result.retryLater && tries < Self.downloadRetries {
                     guard await self.time.wait(ms: Self.downloadRetryMs << Int64(tries)) else { return }

@@ -338,6 +338,12 @@ class FakeBackend implements Backend {
   }
 
   @override
+  Future<void> cancelDownloads() async {
+    await _record('cancelDownloads');
+    downloadList.removeWhere((e) => e.state == DownloadState.queued);
+  }
+
+  @override
   Future<StorageInfo> storage() async {
     await _record('storage');
     return storageInfo;

@@ -108,6 +108,34 @@ class LibraryController extends ChangeNotifier {
   /// There is a song on the phone; this, unlike the list, tells the library's listeners when it changes.
   bool get hasDownloaded => _hasDownloaded;
 
+  /// The songs on the phone.
+  List<DownloadEntry> get downloaded => [
+    for (final d in downloads)
+      if (d.state == DownloadState.done) d,
+  ];
+
+  /// What the songs on the phone take.
+  int get downloadedBytes => downloaded.fold(0, (sum, d) => sum + d.bytes);
+
+  /// Songs that are not on the phone and not being fetched: the ones that failed, and, with no run going on, the ones
+  /// asked for or waiting. A run that failed a song leaves it queued for another try, which is no reason to say it is
+  /// still to be downloaded.
+  List<DownloadEntry> get notDownloaded {
+    final running = downloadBatch.value.running;
+    return [
+      for (final d in downloads)
+        if (d.state == DownloadState.failed ||
+            (!running && d.state != DownloadState.done))
+          d,
+    ];
+  }
+
+  /// Whether Cancel has a run to stop: songs asked for are on the list while one goes on (liked songs saved by themselves
+  /// are not stopped by it).
+  bool get canCancelDownloads =>
+      downloadBatch.value.running &&
+      downloads.any((d) => d.state == DownloadState.queued);
+
   /// Where the list of the music on this phone stands.
   LocalStatus get localStatus => _localStatus;
 
@@ -464,7 +492,12 @@ class LibraryController extends ChangeNotifier {
 
   /// Puts a mark on the taste (see [TasteMarks]) or, with [on] false, takes it off; the mixes and suggestions that
   /// the taste makes are read again.
-  Future<void> setTasteMark(String kind, String key, String label, {required bool on}) async {
+  Future<void> setTasteMark(
+    String kind,
+    String key,
+    String label, {
+    required bool on,
+  }) async {
     await _run(() => _backend.tasteMark(kind, key, label, on: on));
     await refresh();
   }
@@ -541,6 +574,9 @@ class LibraryController extends ChangeNotifier {
       _change(() => _backend.removeDownload(videoId));
 
   Future<void> clearDownloads() => _change(_backend.clearDownloads);
+
+  /// Stops the run in hand and drops the songs it had not fetched; the batch is told to be over by the phone.
+  Future<void> cancelDownloads() => _change(_backend.cancelDownloads);
 
   /// What the kept songs take, for the settings; null when it cannot be read.
   Future<StorageInfo?> storage() async {

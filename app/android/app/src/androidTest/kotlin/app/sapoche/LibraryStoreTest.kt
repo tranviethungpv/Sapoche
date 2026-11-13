@@ -615,6 +615,26 @@ class LibraryStoreTest {
     }
 
     @Test
+    fun cancellingDropsTheSongsNotFetchedAndKeepsTheRest() = runTest {
+        store.setLiked(song("q"), true, at = 1)
+        store.requestDownloads(listOf(song("done"), song("failed"), song("queued"), song("q")))
+        store.requestDownloads(listOf(song("auto")), waiting = true)
+        store.finishDownload("done", 5)
+        repeat(LibraryStore.MAX_TRIES) { store.failDownload("failed") }
+        store.cancelQueuedDownloads()
+        assertEquals(
+            mapOf(
+                "done" to LibraryStore.DONE,
+                "failed" to LibraryStore.FAILED,
+                "auto" to LibraryStore.WAITING,
+            ),
+            states(),
+        )
+        assertEquals("a liked song keeps its place", "Title q", store.liked().single().track.title)
+        assertNull(store.nextDownload(LibraryStore.QUEUED))
+    }
+
+    @Test
     fun aDownloadedSongSurvivesEverythingElseLettingGo() = runTest {
         store.requestDownloads(listOf(song("a")))
         store.recordListen(song("a"), at = 1)

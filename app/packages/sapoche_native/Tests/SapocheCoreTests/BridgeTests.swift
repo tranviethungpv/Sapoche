@@ -145,8 +145,26 @@ final class FakeResolver: StreamResolver, @unchecked Sendable {
 }
 
 /// Writes ten bytes wherever it is asked to, like a transfer that worked.
+/// Lets a test hold the transfers: while held they wait, until the task is cancelled.
+final class FetchGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var held = false
+    private var waiting = 0
+
+    var isHeld: Bool { lock.lock(); defer { lock.unlock() }; return held }
+    var waiters: Int { lock.lock(); defer { lock.unlock() }; return waiting }
+    func hold() { lock.lock(); held = true; lock.unlock() }
+    func entered() { lock.lock(); waiting += 1; lock.unlock() }
+}
+
 struct FakeFetcher: FileFetcher {
+    var gate: FetchGate?
+
     func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
+        if let gate, gate.isHeld {
+            gate.entered()
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+        }
         try Data(repeating: 7, count: 10).write(to: file)
         return 10
     }
@@ -166,6 +184,7 @@ final class BridgeTests: XCTestCase {
     private var http: FakeHTTP!
     private var events: [[String: Any]] = []
     private var libraryChanges = Counter()
+    private let gate = FetchGate()
 
     override func setUp() async throws {
         time = VirtualTime()
@@ -185,7 +204,7 @@ final class BridgeTests: XCTestCase {
         })
         let streams = StreamCache(resolver: resolver)
         let files = MediaFiles(downloadsDir: dir.appendingPathComponent("d"), playDir: dir.appendingPathComponent("p"), playLimitBytes: 1 << 20)
-        let media = MediaLibrary(files: files, streams: streams, fetcher: FakeFetcher())
+        let media = MediaLibrary(files: files, streams: streams, fetcher: FakeFetcher(gate: gate))
         let music = MusicFeed(music: MusicClient { _, _ in JSON.parse("{}")! }, lyricsClient: LyricsClient { _ in nil }, lyricsStore: LyricsStore(dir: dir.appendingPathComponent("l")))
         let suggestions = SuggestionFeed(store: store, resolver: resolver, music: music)
         let downloader = Downloader(store: store, fetch: { try await media.download($0) },
@@ -604,6 +623,25 @@ final class BridgeTests: XCTestCase {
         _ = try await call("downloadRemove", ["videoId": "video000001"])
         let empty = try await result("downloads", as: [Any].self)
         XCTAssertEqual(empty.count, 0)
+    }
+
+    func testCancellingStopsTheRunDropsWhatWasNotFetchedAndDoesNotStartAgain() async throws {
+        _ = try await call("download", ["tracks": [song(1)], "allowMetered": false])
+        await settle()
+        gate.hold()
+        _ = try await call("download", ["tracks": [song(2), song(3)], "allowMetered": false])
+        await settle()
+        XCTAssertEqual(gate.waiters, 1, "the second song is on its way and held")
+        // Asking again while the run goes on would make it look again at the end
+        _ = try await call("download", ["tracks": [song(4)], "allowMetered": false])
+
+        _ = try await call("downloadCancel")
+        await settle()
+        let list = try await result("downloads", as: [[String: Any]].self)
+        XCTAssertEqual(list.map { $0["videoId"] as? String }, ["video000001"], "what is on the phone stays, the rest is gone")
+        XCTAssertEqual(gate.waiters, 1, "the run did not start again by itself")
+        XCTAssertTrue(events.filter { $0["type"] as? String == "downloads" }.last?["active"] is NSNull)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("d").appendingPathComponent("video000002.part").path))
     }
 
     func testMobileDataIsAskedAboutBeforeDownloading() async throws {

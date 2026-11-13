@@ -621,6 +621,21 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(list.map(\.track.videoId), [])
     }
 
+    func testCancellingDropsTheSongsNotFetchedAndKeepsTheRest() async throws {
+        try await store.setLiked(song("q"), true, at: 1)
+        try await store.requestDownloads([song("done"), song("failed"), song("queued"), song("q")])
+        try await store.requestDownloads([song("auto")], waiting: true)
+        try await store.finishDownload("done", bytes: 5)
+        for _ in 0..<3 { _ = try await store.failDownload("failed") }
+        try await store.cancelQueuedDownloads()
+        let all = try await states()
+        XCTAssertEqual(all, ["done": LibraryStore.done, "failed": LibraryStore.failed, "auto": LibraryStore.waiting])
+        let liked = try await store.liked()
+        XCTAssertEqual(liked.first?.track.title, "Title q", "a liked song keeps its place")
+        let none = try await store.nextDownload(LibraryStore.queued)
+        XCTAssertNil(none)
+    }
+
     func testADownloadedSongSurvivesEverythingElseLettingGo() async throws {
         try await store.requestDownloads([song("a")])
         try await store.recordListen(song("a"), at: 1)

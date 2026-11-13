@@ -657,6 +657,17 @@ actor LibraryStore {
         onChange()
     }
 
+    /// Takes the songs asked for and not fetched yet off the list. What is on the phone stays, and so do the failed ones and
+    /// those that wait for Wi-Fi and a charger. The caller stops the run first and removes the file of the song that was
+    /// being fetched.
+    func cancelQueuedDownloads() throws {
+        try db.transaction {
+            try db.run("DELETE FROM downloads WHERE state = ?", [.text(Self.queued)])
+            try dropUnusedTracks()
+        }
+        onChange()
+    }
+
     func clearDownloads() throws {
         try db.transaction {
             try db.run("DELETE FROM downloads")

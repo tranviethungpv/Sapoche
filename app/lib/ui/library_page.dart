@@ -13,6 +13,7 @@ import 'scope.dart';
 import 'settings_page.dart';
 import 'widgets/delete_background.dart';
 import 'widgets/download_actions.dart';
+import 'widgets/downloads_header.dart';
 import 'widgets/folder_cover.dart';
 import 'widgets/folder_sheets.dart';
 import 'widgets/menu_lines.dart';
@@ -212,16 +213,11 @@ class _LibraryScreen extends StatelessWidget {
         ),
         _Downloaded() => _TrackList(
           title: S.downloadedSongs,
-          tracks: [for (final d in library.downloads) d.track],
+          // Only what is on the phone is a song to play; the rest is told by the header
+          tracks: [for (final d in library.downloaded) d.track],
           subtitles: [
-            for (final d in library.downloads)
-              '${d.track.artist} · ${switch (d.state) {
-                DownloadState.done => formatBytes(d.bytes),
-                DownloadState.queued || DownloadState.waiting when d.track.videoId == library.downloadBatch.value.active => S.downloading,
-                DownloadState.queued => S.queuedToDownload,
-                DownloadState.waiting => S.waitingToDownload,
-                DownloadState.failed => S.downloadFailed,
-              }}',
+            for (final d in library.downloaded)
+              '${d.track.artist} · ${formatBytes(d.bytes)}',
           ],
           compactHead: true,
           cover: (side) => _IconTile(
@@ -232,9 +228,7 @@ class _LibraryScreen extends StatelessWidget {
           ),
           emptyTitle: S.noDownloadsTitle,
           emptyBody: S.noDownloadsBody,
-          filterBar: library.downloadBatch.value.running
-              ? _DownloadProgress(library.downloadBatch.value)
-              : null,
+          filterBar: DownloadsHeader(library: library),
           menu: [
             if (library.downloads.isNotEmpty)
               _MenuAction(Icons.delete_outline_rounded, S.deleteAll,
@@ -1237,36 +1231,6 @@ class _MenuAction {
 /// The songs of one collection, laid out as the page of an album is: the cover, what the collection is called, play
 /// and shuffle, then the songs. With [onMove] the rows can be dragged into another order, with [onRemove] they can be
 /// swiped away.
-/// The line above the downloaded songs while a run goes on: which song of how many.
-class _DownloadProgress extends StatelessWidget {
-  const _DownloadProgress(this.batch);
-
-  final DownloadBatch batch;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-      child: Row(
-        children: [
-          SizedBox.square(
-            dimension: 16,
-            child: CircularProgressIndicator(strokeWidth: 2, color: p.primary),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            S.downloadingOf(batch.position, batch.total),
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: p.textSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _TrackList extends StatelessWidget {
   const _TrackList({
     required this.title,

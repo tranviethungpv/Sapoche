@@ -2440,6 +2440,12 @@ void main() {
       artist: 'Ben',
       durMs: 100000,
     );
+    const songC = Track(
+      videoId: 'ccccccccccc',
+      title: 'Gamma',
+      artist: 'Cy',
+      durMs: 100000,
+    );
 
     Future<FakeBackend> openSearchWith(
       WidgetTester tester, {
@@ -2569,7 +2575,90 @@ void main() {
       await tester.tap(find.text('Downloaded'));
       await tester.pumpAndSettle();
       expect(find.text('Ann · 4.0 MB'), findsOneWidget);
-      expect(find.text('Ben · Waiting to download'), findsOneWidget);
+      expect(find.text('Ben · Waiting to download'), findsNothing);
+      expect(find.text('1 song not downloaded'), findsOneWidget);
+      expect(find.text('Ben · Will try again'), findsNothing, reason: 'folded');
+      await tester.tap(find.byKey(const ValueKey('stuck-header')));
+      await tester.pumpAndSettle();
+      expect(find.text('Ben · Will try again'), findsOneWidget);
+      expect(find.text('Takes 4.0 MB on this phone'), findsOneWidget);
+    });
+
+    testWidgets('a song that is not downloaded can be tried again or let go', (
+      tester,
+    ) async {
+      final backend = await openLibrary(tester);
+      backend.downloadList.add(
+        const DownloadEntry(track: songC, state: DownloadState.failed),
+      );
+      backend.emit(const DownloadsEvent(DownloadBatch(done: 1, total: 3)));
+      await tester.tap(find.text('Downloaded'));
+      await tester.pumpAndSettle();
+      expect(find.text('2 songs not downloaded'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('stuck-header')));
+      await tester.pumpAndSettle();
+      expect(find.text('Cy · Download failed'), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(ValueKey('stuck ${songC.videoId}')),
+          matching: find.byTooltip('Try again'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('download ${songC.videoId} metered=false'));
+
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(ValueKey('stuck ${songB.videoId}')),
+          matching: find.byTooltip('Remove from list'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('removeDownload ${songB.videoId}'));
+      expect(find.text('1 song not downloaded'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('retry-all')));
+      await tester.pumpAndSettle();
+      expect(
+        backend.calls.where((c) => c == 'download ${songC.videoId} metered=false'),
+        hasLength(2),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('drop-all')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Remove 1 songs'), findsOneWidget);
+      await tester.tap(find.text('Remove all').last);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('not downloaded'), findsNothing);
+    });
+
+    testWidgets('stopping a run asks first, then drops what was not fetched', (
+      tester,
+    ) async {
+      final backend = await openLibrary(tester);
+      await tester.tap(find.text('Downloaded'));
+      await tester.pumpAndSettle();
+      backend.emit(
+        DownloadsEvent(DownloadBatch(active: songB.videoId, done: 1, total: 2)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.textContaining('not downloaded'), findsNothing, reason: 'it is on its way');
+
+      await tester.tap(find.byKey(const ValueKey('stop-downloads')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Stop downloading and take the 1 songs'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, isNot(contains('cancelDownloads')));
+
+      await tester.tap(find.byKey(const ValueKey('stop-downloads')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stop').last);
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('cancelDownloads'));
+      expect(backend.downloadList.map((d) => d.track.videoId), [songA.videoId]);
     });
 
     testWidgets(
@@ -2588,7 +2677,7 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 50));
         expect(find.text('Downloading 2 of 2'), findsOneWidget);
-        expect(find.text('Ben · Downloading…'), findsOneWidget);
+        expect(find.text('Beta'), findsOneWidget, reason: 'the song on its way');
 
         backend.downloadList[1] = const DownloadEntry(
           track: songB,

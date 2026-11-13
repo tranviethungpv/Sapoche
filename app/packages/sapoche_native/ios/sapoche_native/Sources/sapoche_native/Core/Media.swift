@@ -203,6 +203,7 @@ final class MediaFiles: @unchecked Sendable {
 
     func removeDownload(_ videoId: String) {
         try? FileManager.default.removeItem(at: downloaded(videoId))
+        try? FileManager.default.removeItem(at: part(videoId, download: true))
     }
 
     func clearDownloads() { empty(downloadsDir) }

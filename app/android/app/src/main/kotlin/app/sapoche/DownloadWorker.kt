@@ -101,6 +101,11 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             )
         }
 
+        /** Stops the job for asked-for songs, and the retries it has waiting. */
+        fun cancelQueued(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork("download-queued")
+        }
+
         fun cancelWaiting(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork("download-waiting")
         }

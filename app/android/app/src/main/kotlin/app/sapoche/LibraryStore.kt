@@ -828,6 +828,20 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         _changes.tryEmit(Unit)
     }
 
+    /**
+     * Takes the songs asked for and not fetched yet off the list. What is on the phone stays, and so do the failed ones
+     * and those that wait for Wi-Fi and a charger. The caller stops the job first and removes the bytes of the song that
+     * was being fetched.
+     */
+    suspend fun cancelQueuedDownloads() = withContext(io) {
+        val db = writableDatabase
+        db.transaction {
+            delete("downloads", "state = ?", arrayOf(QUEUED))
+            dropUnusedTracks()
+        }
+        _changes.tryEmit(Unit)
+    }
+
     suspend fun clearDownloads() = withContext(io) {
         val db = writableDatabase
         db.transaction {
