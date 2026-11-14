@@ -26,6 +26,7 @@ import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/cached_cover.dart';
 import 'widgets/kept_alive.dart';
+import 'widgets/meta_line.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/play_row.dart';
 import 'widgets/playlist_cover.dart';
@@ -1344,6 +1345,8 @@ class _QuickRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
+    final views = AppScope.of(context).music.viewsFor(track);
+    final artistStyle = theme.bodySmall?.copyWith(color: p.textSecondary);
     return InkWell(
       onTap: () => playNow(context, track, source: ListenSource.shelf),
       child: SizedBox(
@@ -1365,12 +1368,10 @@ class _QuickRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: theme.titleSmall,
                     ),
-                    Text(
-                      track.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                    ),
+                    // The count goes after the artist, and gives way before the artist is cut
+                    views == null
+                        ? Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: artistStyle)
+                        : MetaLine(text: track.artist, meta: views, style: artistStyle),
                   ],
                 ),
               ),
@@ -1504,9 +1505,9 @@ class _TrendingState extends State<_Trending> {
                       onTap: () => playNow(context, t),
                     ),
                   for (final list in shelf.playlists)
-                    SongCard(
+                    SongCard.listing(
                       title: list.title,
-                      subtitle: list.subtitle ?? '',
+                      subtitle: list.subtitle,
                       thumb: list.thumb,
                       onTap: () => openCollection(
                         context,

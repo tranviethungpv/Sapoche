@@ -56,12 +56,28 @@ String shortViews(String views) {
 final _viewsEnd = RegExp(r'\b(views?|plays?|listens?)\s*$', caseSensitive: false);
 final _viewsSegment = RegExp(r'^\s*([\d.,]+)\s*([KMB])?\s*(views?|plays?|listens?)\s*$', caseSensitive: false);
 
+typedef ViewsSplit = ({String text, String? views});
+
+// What a line was split into, by the line, so that a row drawn again does not run the patterns again. Emptied when the
+// language changes, as the words in it are of one language
+final _splits = <String, ViewsSplit>{};
+var _splitsIn = '';
+const _splitsMax = 4000;
+
 /// YouTube writes "1.8B views · 19M likes", or "Anna · 1.2M views" for a playlist (in English: the app asks for
 /// that). Splits it into what is left once the views or plays are taken out, and those, said in the language of the
 /// app. Likes are dropped with whatever else comes after the views; a line with no views is left alone, and views
 /// that cannot be read are kept as YouTube wrote them.
-({String text, String? views}) splitViews(String? line) {
+ViewsSplit splitViews(String? line) {
   if (line == null || line.isEmpty) return (text: '', views: null);
+  if (_splitsIn != S.current || _splits.length >= _splitsMax) {
+    _splits.clear();
+    _splitsIn = S.current;
+  }
+  return _splits[line] ??= _splitViews(line);
+}
+
+ViewsSplit _splitViews(String line) {
   final parts = line.split(RegExp(r'\s[·•]\s'));
   final at = parts.lastIndexWhere(_viewsEnd.hasMatch);
   if (at < 0) return (text: line, views: null);

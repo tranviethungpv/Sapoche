@@ -32,10 +32,15 @@ class MusicController {
   /// so the number the person saw in the list is the one the player and the song's info use: one number for a song.
   final _seen = <String, String>{};
 
-  static const _keepSeen = 200;
+  // About 100 KB; kept in memory only, so that nothing is read or written when the app starts or stops
+  static const _keepSeen = 2000;
 
   /// The count a list showed for [videoId], said in the language of the app, or null when none did.
   String? seenViews(String videoId) => splitViews(_seen[videoId]).views;
+
+  /// The count to show beside [track]: the one its own list gave, else one a list showed earlier. Asks nothing.
+  String? viewsFor(Track track) =>
+      splitViews(track is MusicTrack ? track.stats : null).views ?? seenViews(track.videoId);
 
   void _see(Iterable<MusicTrack> tracks) {
     for (final t in tracks) {
@@ -64,7 +69,10 @@ class MusicController {
   }
 
   Future<SongRadio> radio(String videoId) =>
-      _cached(_radio, videoId, () => _backend.musicNext(videoId));
+      _cached(_radio, videoId, () => _backend.musicNext(videoId)).then((radio) {
+        _see(radio.tracks);
+        return radio;
+      });
 
   /// How many times the video was watched or the song played, once YouTube has said; not kept while it has not.
   Future<int?> views(String videoId) => _cached(
@@ -98,7 +106,11 @@ class MusicController {
       });
 
   Future<CollectionPage> collection(String id) =>
-      _cached(_collections, id, () => _backend.musicCollection(id));
+      _cached(_collections, id, () => _backend.musicCollection(id)).then((page) {
+        _see(page.tracks);
+        _seeShelves(page.shelves);
+        return page;
+      });
 
   /// What YouTube Music finds for [query], all of it or one kind with [params]; the same answer when asked again.
   Future<SearchResults> searchPage(String query, {String? params}) => _cached(
@@ -112,7 +124,10 @@ class MusicController {
       _backend.musicSearchMore(token).then(_seeResults);
 
   /// The songs after those a page has; asked for as the person scrolls, so not kept.
-  Future<MoreTracks> more(String token) => _backend.musicMore(token);
+  Future<MoreTracks> more(String token) => _backend.musicMore(token).then((more) {
+    _see(more.tracks);
+    return more;
+  });
 
   /// What YouTube Music shows everybody; the same answer for the rest of the session.
   Future<List<MusicShelf>> trending() =>

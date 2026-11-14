@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
+import '../../format.dart';
 import '../../theme/theme.dart';
 import '../home_shell.dart';
 import '../player/track_section.dart';
+import '../scope.dart';
 import 'artwork.dart';
+import 'meta_line.dart';
 import 'not_interested.dart';
 
-/// A cover with two lines under it, for a row that scrolls sideways.
+/// A cover with two lines under it, and a third for a count of views when there is one, for a row that scrolls sideways.
 class SongCard extends StatelessWidget {
   const SongCard({
     super.key,
@@ -18,9 +21,31 @@ class SongCard extends StatelessWidget {
     this.onLongPress,
     this.size,
     this.video = false,
+    this.meta,
   });
 
+  /// A card for an album or a playlist: YouTube writes the views of a playlist after its maker ("Anna • 2.2M views"),
+  /// and the count goes to a line of its own, in the language of the app.
+  factory SongCard.listing({
+    Key? key,
+    required String title,
+    required String? subtitle,
+    required String? thumb,
+    required VoidCallback onTap,
+  }) {
+    final split = splitViews(subtitle);
+    return SongCard(
+      key: key,
+      title: title,
+      subtitle: split.views == null ? subtitle ?? '' : split.text,
+      meta: split.views,
+      thumb: thumb,
+      onTap: onTap,
+    );
+  }
+
   /// A card for a song; holding it down asks whether the person is interested in it. A [video] has a wide cover.
+  /// The count is the one the song's list gave, or one shown for it earlier.
   factory SongCard.track(
     BuildContext context,
     Track track, {
@@ -33,6 +58,7 @@ class SongCard extends StatelessWidget {
     onTap: onTap,
     onLongPress: () => showNotInterested(context, track),
     video: video,
+    meta: AppScope.of(context).music.viewsFor(track),
   );
 
   final String title;
@@ -40,6 +66,9 @@ class SongCard extends StatelessWidget {
   final String? thumb;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+
+  /// How many watched or played it ("2.3M plays"), on a line under the artist; left out when it does not fit whole.
+  final String? meta;
 
   /// Side of the cover; by default the one that suits the window.
   final double? size;
@@ -87,6 +116,8 @@ class SongCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: theme.bodySmall?.copyWith(color: p.textSecondary),
             ),
+            if (meta != null)
+              MetaLine(text: '', meta: meta, style: theme.bodySmall?.copyWith(color: p.textSecondary)),
           ],
         ),
       ),
@@ -112,15 +143,19 @@ class CardShelf extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (cards.isEmpty) return const SizedBox.shrink();
+    // The line for a count is made once for the whole shelf, from what its cards hold, so that its height is the same
+    // from the first frame and the cards stand level whether they have a count or not
+    final counted = cards.any((c) => c is SongCard && c.meta != null);
+    final line = counted ? MediaQuery.textScalerOf(context).scale(18) : 0.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeading(title),
         SizedBox(
-          // The cover and its two lines
+          // The cover and its two lines, and a third when a card has a count
           height: video
-              ? SongCard.videoWidth(HomeShell.cardSizeOf(context)) * 9 / 16 + 60
-              : HomeShell.cardSizeOf(context) + 60,
+              ? SongCard.videoWidth(HomeShell.cardSizeOf(context)) * 9 / 16 + 60 + line
+              : HomeShell.cardSizeOf(context) + 60 + line,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),

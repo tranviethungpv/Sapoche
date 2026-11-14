@@ -49,7 +49,8 @@ class TrackTile extends StatefulWidget {
   /// Replaces the artist line, e.g. "Added by Anna".
   final String? subtitle;
 
-  /// A count ("1.8B views") at the end of the line under the title, which gives way before the artist is cut.
+  /// A count ("1.8B views") at the end of the line under the title, which gives way before the artist is cut. When it is
+  /// not given and the row has no [subtitle], it is the count the song's list gave, or one shown for it earlier.
   final String? meta;
 
   /// What kind of thing it is ("Song"), at the start of that line, the first to give way.
@@ -83,7 +84,6 @@ class _TrackTileState extends State<TrackTile> {
     final TrackTile(
       :track,
       :subtitle,
-      :meta,
       :lead,
       :trailing,
       :onTap,
@@ -94,6 +94,8 @@ class _TrackTileState extends State<TrackTile> {
       :dimmed,
       :dense,
     ) = widget;
+    // A row with no line of its own ("Added by Anna") shows the count that a list gave the song, if one did
+    final meta = widget.meta ?? (subtitle == null ? AppScope.of(context).music.viewsFor(track) : null);
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     final length = track.durMs > 0

@@ -661,7 +661,7 @@ void main() {
       expect(find.text('145M'), findsOneWidget);
     });
 
-    testWidgets('the info sheet falls back on what YouTube Music said of a video', (
+    testWidgets('the info sheet falls back on what YouTube Music said of a video, as the one number of it', (
       tester,
     ) async {
       final backend = await openPlayer(tester);
@@ -679,7 +679,9 @@ void main() {
       await openMenu(tester, 'Song info');
 
       expect(find.text('Reach'), findsOneWidget);
-      expect(find.text('1.8B views · 19M likes'), findsOneWidget);
+      // The radio's own count is the one a list showed: said once, in short, with no likes
+      expect(find.text('1.8B'), findsOneWidget);
+      expect(find.textContaining('likes'), findsNothing);
     });
 
     testWidgets('the artist is opened from the sheet', (tester) async {

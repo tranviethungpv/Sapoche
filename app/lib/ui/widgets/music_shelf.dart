@@ -40,9 +40,9 @@ class MusicShelfView extends StatelessWidget {
                 onTap: () => playNow(context, t),
               ),
             for (final r in [...shelf.albums, ...shelf.playlists])
-              SongCard(
+              SongCard.listing(
                 title: r.title,
-                subtitle: r.subtitle ?? '',
+                subtitle: r.subtitle,
                 thumb: r.thumb,
                 onTap: () => openCollection(
                   context,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/music_models.dart';
+import '../format.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'artist_page.dart';
@@ -455,7 +456,7 @@ class _ContentState extends State<_Content> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
                   child: Text(
-                    _page.stats.join(' · '),
+                    _page.stats.map(_stat).join(' · '),
                     style: theme.bodySmall?.copyWith(color: p.textSecondary),
                   ),
                 ),
@@ -594,6 +595,12 @@ class _ContentState extends State<_Content> {
     );
   }
 
+  /// A fact under the title, with its views or plays said in the language of the app ("5M views" is "5 Tr lượt xem").
+  static String _stat(String fact) {
+    final split = splitViews(fact);
+    return split.views == null ? fact : [split.text, split.views!].where((e) => e.isNotEmpty).join(' · ');
+  }
+
   Widget _row(BuildContext context, int i) {
     final track = _tracks[i];
     final p = context.palette;
@@ -614,9 +621,8 @@ class _ContentState extends State<_Content> {
               ),
             )
           : null,
-      subtitle: _isAlbum
-          ? (track.artist == _page.owner ? (track.stats ?? '') : track.artist)
-          : null,
+      subtitle: _isAlbum ? (track.artist == _page.owner ? '' : track.artist) : null,
+      meta: _isAlbum ? splitViews(track.stats).views : null,
       trailing: TrackMenu(
         track: track,
         onAdd: () => queueTrack(context, track),

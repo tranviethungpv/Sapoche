@@ -414,10 +414,15 @@ void main() {
         ..physicalSize = const Size(400, 800);
       addTearDown(tester.view.reset);
       await pumpApp(tester);
+      // A card looks up the count of its song in the app's memory of what lists showed
+      final model = AppScope.of(tester.element(find.byType(MaterialApp).first));
       await tester.pumpWidget(
-        MaterialApp(
-          theme: buildTheme(Palette.dark),
-          home: Scaffold(body: MusicShelfView(shelf: shelf)),
+        AppScope(
+          model: model,
+          child: MaterialApp(
+            theme: buildTheme(Palette.dark),
+            home: Scaffold(body: MusicShelfView(shelf: shelf)),
+          ),
         ),
       );
       return [
