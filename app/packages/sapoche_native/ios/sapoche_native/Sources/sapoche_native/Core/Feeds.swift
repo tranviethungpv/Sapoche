@@ -247,18 +247,82 @@ actor Downloader {
     /// Brings the whole song onto the phone and gives back its size in bytes; throws when it cannot.
     private let fetch: @Sendable (String) async throws -> Int64
     private let log: @Sendable (String) -> Void
+    /// The phone has a working internet connection (not only a network): asked after a song failed, to tell why.
+    private let online: @Sendable () -> Bool
+    /// Waits this many milliseconds; a test makes it instant.
+    private let pause: @Sendable (Int64) async throws -> Void
     /// Told whenever [progress] changes.
     private let onProgress: @Sendable (Batch) -> Void
     private(set) var progress = Batch.idle {
         didSet { if progress != oldValue { onProgress(progress) } }
     }
 
+    /// A hiccup is tried again after these pauses (milliseconds) before it counts as a failed try.
+    static let quickRetryMs: [Int64] = [2_000, 6_000]
+
     init(store: LibraryStore, fetch: @escaping @Sendable (String) async throws -> Int64, log: @escaping @Sendable (String) -> Void = { _ in },
+         online: @escaping @Sendable () -> Bool = { true },
+         pause: @escaping @Sendable (Int64) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64($0) * 1_000_000) },
          onProgress: @escaping @Sendable (Batch) -> Void = { _ in }) {
         self.store = store
         self.fetch = fetch
         self.log = log
+        self.online = online
+        self.pause = pause
         self.onProgress = onProgress
+    }
+
+    /// Why a song did not come: what to do about it differs.
+    private enum Why {
+        /// YouTube will not give it out, and will not on any try.
+        case unavailable
+        /// There is no room on the phone for it: no other song will fit either, and trying again is no use until room is made.
+        case noSpace
+        /// There is no internet: it is not the song's fault, so no try is used up, and the other songs would fail as well.
+        case offline
+        /// A hiccup of the network or of YouTube's: worth another go in a moment.
+        case transient
+    }
+
+    private func why(_ error: Error) -> Why {
+        let reason = (error as? LoadFailure)?.reason
+        if reason == .unplayable { return .unavailable }
+        if Self.noSpace(error) { return .noSpace }
+        if reason == .offline || !online() { return .offline }
+        return .transient
+    }
+
+    /// The phone has no room: what the file system says (the Cocoa error for a write with no room, `ENOSPC`, or the words of
+    /// either), however deep the error was wrapped.
+    static func noSpace(_ error: Error) -> Bool {
+        var current: NSError? = error as NSError
+        for _ in 0..<8 {
+            guard let e = current else { return false }
+            if e.domain == NSCocoaErrorDomain && e.code == 640 { return true } // NSFileWriteOutOfSpaceError
+            if e.domain == NSPOSIXErrorDomain && e.code == 28 { return true } // ENOSPC
+            if e.localizedDescription.range(of: "No space left on device", options: .caseInsensitive) != nil { return true }
+            current = e.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return false
+    }
+
+    /// Brings the song, going on at once with a pause between two or three times when the failure was a hiccup (what was
+    /// written is kept, so each try goes on from there), before it counts as a failed try of the song.
+    private func fetchPatiently(_ videoId: String) async throws -> Int64 {
+        var tried = 0
+        while true {
+            do {
+                return try await fetch(videoId)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if tried >= Self.quickRetryMs.count || why(error) != .transient { throw error }
+                let wait = Self.quickRetryMs[tried]
+                tried += 1
+                log("could not download \(videoId) (\(error.localizedDescription)), trying again in \(wait)ms")
+                try await pause(wait)
+            }
+        }
     }
 
     func drain(waiting: Bool) async throws -> Result {
@@ -267,24 +331,44 @@ actor Downloader {
         var failedNow: Set<String> = []
         var done = 0
         var retryLater = false
+        // Songs that were put to failed at once without being tried (no room on the phone): they count as failed in the run
+        var setAside = 0
         progress = .idle
         do {
-            while let videoId = try await store.nextDownload(state, skip: failedNow) {
-                progress = Batch(active: videoId, done: done, total: done + failedNow.count + (try await store.pendingDownloads(state, skip: failedNow)),
-                                 failed: failedNow.count)
+            songs: while let videoId = try await store.nextDownload(state, skip: failedNow) {
+                progress = Batch(active: videoId, done: done,
+                                 total: done + failedNow.count + setAside + (try await store.pendingDownloads(state, skip: failedNow)),
+                                 failed: failedNow.count + setAside)
                 do {
-                    try await store.finishDownload(videoId, bytes: try await fetch(videoId))
+                    try await store.finishDownload(videoId, bytes: try await fetchPatiently(videoId))
                     done += 1
                 } catch is CancellationError {
                     throw CancellationError() // stopped: the song stays on the list as it was
                 } catch {
                     log("could not download \(videoId): \(error.localizedDescription)")
-                    failedNow.insert(videoId)
-                    // A video YouTube will not give out is the same on every try: it says so now instead of after three
-                    if (error as? LoadFailure)?.reason == .unplayable {
+                    switch why(error) {
+                    case .unavailable:
+                        // A video YouTube will not give out is the same on every try: it says so now instead of after three
+                        failedNow.insert(videoId)
                         try await store.markUnavailable(videoId)
-                    } else if try await !store.failDownload(videoId) {
+                    case .offline:
+                        // The run stops where it is: every other song would meet the same, and a try used up on each would
+                        // leave them all failed for want of a network that comes back. They stay on the list, and the job is
+                        // asked to run again
+                        log("no internet: the run stops, and no try of the songs is used up")
                         retryLater = true
+                        break songs
+                    case .noSpace:
+                        // No room: this song and the ones waiting are put to failed at once, so that the person sees it and,
+                        // once there is room, tries them again with one button, instead of the job going on and on
+                        log("no room on the phone: the run stops, and the songs on the list are set aside")
+                        failedNow.insert(videoId)
+                        try await store.failNow(videoId)
+                        setAside += try await store.failAllWaiting(state)
+                        break songs
+                    case .transient:
+                        failedNow.insert(videoId)
+                        if try await !store.failDownload(videoId) { retryLater = true }
                     }
                 }
             }
@@ -292,8 +376,9 @@ actor Downloader {
             progress = .idle // a run that was cut short is not a finished one: nothing to announce
             throw error
         }
-        let taken = done + failedNow.count
-        progress = taken == 0 ? .idle : Batch(active: nil, done: done, total: taken, failed: failedNow.count)
+        let failed = failedNow.count + setAside
+        let taken = done + failed
+        progress = taken == 0 ? .idle : Batch(active: nil, done: done, total: taken, failed: failed)
         return Result(done: done, retryLater: retryLater)
     }
 }

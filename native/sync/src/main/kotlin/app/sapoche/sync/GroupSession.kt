@@ -225,6 +225,9 @@ class GroupSession(
     /** The item whose failed load the person was told about, so that retrying it does not tell them again and again. */
     private var reportedFailure: String? = null
 
+    /** The last song this device could not load is one YouTube will not give out: trying again is no use. */
+    private var lastFailureUnplayable = false
+
     init {
         player.onEnded = {
             scope.launch {
@@ -453,19 +456,32 @@ class GroupSession(
         soloPlayOnLoad = play
         _snapshot.update { it.copy(loading = play) }
         soloJob = scope.launch {
-            try {
-                player.prepare(item, positionMs)
-                loaded(item)
-                _snapshot.update { it.copy(soloItemId = item.id, loading = false) }
-                if (soloPlayOnLoad) player.play()
-                soloPreload()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                log("could not load '${item.title}' while alone: ${e.message}")
-                loadedItemId = null
-                _snapshot.update { it.copy(loading = false) }
-                loadFailed(item, e)
+            var retried = false
+            while (true) {
+                try {
+                    if (retried) player.refresh(item.videoId)
+                    player.prepare(item, positionMs)
+                    loaded(item)
+                    _snapshot.update { it.copy(soloItemId = item.id, loading = false) }
+                    if (soloPlayOnLoad) player.play()
+                    soloPreload()
+                    return@launch
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log("could not load '${item.title}' while alone: ${e.message}")
+                    loadedItemId = null
+                    // As alone outside a room (see [LocalSession.load]): a blip gets one more try, from a new address
+                    if (!retried && LoadFailure.of(e) == null && soloPlayOnLoad) {
+                        retried = true
+                        player.stop()
+                        delay(RETRY_AFTER_MS)
+                        if (soloPlayOnLoad) continue
+                    }
+                    _snapshot.update { it.copy(loading = false) }
+                    loadFailed(item, e)
+                    return@launch
+                }
             }
         }
     }
@@ -611,7 +627,17 @@ class GroupSession(
                 if (item == null) return@launch
                 loadPaused(item, msg.positionMs)
             }
-            if (loadedItemId == null) return@launch // could not load; sit this one out
+            if (loadedItemId == null) {
+                // Could not load, twice. The room plays on, and this device keeps trying, from a new address, as the play
+                // button would (see [catchUp]); a song nobody can play is left alone
+                if (item == null || lastFailureUnplayable) return@launch
+                delay(RETRY_AFTER_MS)
+                if (solo || loadedItemId != null || state?.current?.id != item.id || state?.phase != "playing") return@launch
+                player.refresh(item.videoId)
+                log("'${item.title}' did not load, catching up with the room")
+                catchUpPlaying(item, state?.startedAt ?: (msg.startAt - msg.positionMs))
+                return@launch
+            }
             runStart(msg.startAt, msg.positionMs)
         }
     }
@@ -798,6 +824,7 @@ class GroupSession(
 
     /** Tells the person, once for each item, that this device could not load it: the room may play on without it. */
     private fun loadFailed(item: QueueItem, error: Exception) {
+        lastFailureUnplayable = LoadFailure.of(error)?.reason == LoadFailure.Reason.UNPLAYABLE
         if (reportedFailure == item.id) return
         reportedFailure = item.id
         _events.tryEmit(RoomEvent.LoadFailed(item.title, LoadFailure.of(error)?.reason))
@@ -845,7 +872,9 @@ class GroupSession(
             val guessed = clock.toServer(nowMs()) - startedAt + health.loadMs
             loadPaused(item, guessed.coerceAtLeast(0))
             if (loadedItemId != null) break
-            if (++attempt >= CATCH_UP_MAX_ATTEMPTS) {
+            // A song YouTube will not give out will not be given out in five minutes either
+            attempt++
+            if (lastFailureUnplayable || attempt >= CATCH_UP_MAX_ATTEMPTS) {
                 log("giving up loading '${item.title}' after $attempt attempts")
                 return
             }
@@ -1119,6 +1148,9 @@ class GroupSession(
         const val JUMP_MIN_SPARE_MS = 100L
         const val CATCH_UP_LEAD_MS = 400L
         const val CATCH_UP_RETRY_MS = 5000L
+
+        /** A song that did not load gets another try after this long, from a new stream address. */
+        const val RETRY_AFTER_MS = 3_000L
         const val CATCH_UP_MAX_ATTEMPTS = 60 // about five minutes plus the time each attempt takes
 
         /** Continuous playing this long counts as healthy again: earlier recoveries are forgotten. */

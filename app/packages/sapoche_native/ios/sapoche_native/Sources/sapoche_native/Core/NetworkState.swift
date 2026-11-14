@@ -8,11 +8,19 @@ final class NetworkState: @unchecked Sendable {
     private let lock = NSLock()
     private var weakValue = false
     private var bandwidthValue: Int64 = 0
+    private var onlineValue = true
 
     /// The network is too weak for the plain rules: songs are fetched in a lower quality.
     var weak: Bool {
         get { lock.withLock { weakValue } }
         set { lock.withLock { weakValue = newValue } }
+    }
+
+    /// The phone reaches the internet, as the system says (`NWPath.status`); true until told otherwise, so that a doubt never
+    /// keeps a download from being tried. Written by the platform when the path changes.
+    var online: Bool {
+        get { lock.withLock { onlineValue } }
+        set { lock.withLock { onlineValue = newValue } }
     }
 
     /// What the player last measured the network to carry, in kbps; 0 until it measured.

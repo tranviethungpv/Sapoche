@@ -55,7 +55,11 @@ internal class FakePlayer(private val now: () -> Long) : PlayerPort {
         refreshed += videoId
     }
 
+    /** Every try to prepare, the ones that failed too; [prepareCount] has only those that loaded. */
+    var prepareAttempts = 0
+
     override suspend fun prepare(item: QueueItem, seekToMs: Long) {
+        prepareAttempts++
         delay(prepareDelayMs)
         if (failPrepare) error("cannot load")
         failWith?.invoke(item)?.let { throw it }
@@ -1104,5 +1108,66 @@ class GroupSessionTest {
         h.session.onReconnected()
         step(100)
         assertTrue(h.sent.any { it.contains("\"solo\"") && it.contains("true") })
+    }
+
+    @Test
+    fun `a room song that could not be loaded twice is tried again by itself, from a new address, and joins the room`() = runTest {
+        val h = harness()
+        var failures = 2 // the preparation, and the load at the start
+        h.player.failWith = { if (failures > 0) java.io.IOException("blip").also { failures-- } else null }
+        h.session.onMessage(state("preparing", epoch = 1))
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Start(1, h.serverNow() + 1500, 0))
+        step(1_000)
+        assertNull(h.player.loaded, "it could not load it")
+        step(3_000L + 10_000)
+        assertEquals(item, h.player.loaded)
+        assertTrue(h.player.playing)
+        assertEquals(listOf(item.videoId), h.player.refreshed, "the new try asks for a new address")
+    }
+
+    @Test
+    fun `a room song YouTube will not give out is not tried again by itself`() = runTest {
+        val h = harness()
+        h.player.failWith = { LoadFailure(LoadFailure.Reason.UNPLAYABLE, "gone") }
+        h.session.onMessage(state("preparing", epoch = 1))
+        h.session.onMessage(ServerMessage.Prepare(1, 0, item, 0))
+        runCurrent()
+        h.session.onMessage(ServerMessage.Start(1, h.serverNow() + 1500, 0))
+        step(60_000)
+        assertEquals(2, h.player.prepareAttempts, "the preparation and the load at the start, and no more")
+        assertTrue(h.player.refreshed.isEmpty())
+    }
+
+    @Test
+    fun `alone, a song that did not load gets one more try from a new address`() = runTest {
+        val h = playingFirstOfTwo()
+        h.session.goSolo()
+        step(500)
+        var failures = 1
+        h.player.failWith = { if (failures > 0) java.io.IOException("blip").also { failures-- } else null }
+        h.session.soloNext()
+        step(500)
+        assertTrue(h.session.snapshot.value.loading, "it shows that something is going on while it waits")
+        step(3_000L)
+        assertEquals(item2, h.player.loaded)
+        assertTrue(h.player.playing)
+        assertEquals(listOf(item2.videoId), h.player.refreshed)
+        assertFalse(h.session.snapshot.value.loading)
+    }
+
+    @Test
+    fun `alone, a song that fails twice is told once and nothing is skipped`() = runTest {
+        val h = playingFirstOfTwo()
+        val seen = mutableListOf<GroupSession.RoomEvent>()
+        backgroundScope.launch { h.session.events.collect { seen += it } }
+        h.session.goSolo()
+        step(500)
+        h.player.failWith = { java.io.IOException("blip") }
+        h.session.soloNext()
+        step(3_000L + 500)
+        assertEquals(listOf("Song 2"), seen.filterIsInstance<GroupSession.RoomEvent.LoadFailed>().map { it.title })
+        assertFalse(h.session.snapshot.value.loading)
     }
 }

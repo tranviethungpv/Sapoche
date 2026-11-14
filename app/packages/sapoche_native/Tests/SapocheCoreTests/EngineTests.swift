@@ -1411,11 +1411,11 @@ final class FeedsTests: XCTestCase {
             await log.add(id)
             if id == "bad" { throw URLError(.networkConnectionLost) }
             return 5
-        })
+        }, pause: { _ in })
         let result = try await downloader.drain(waiting: false)
         XCTAssertEqual(result, Downloader.Result(done: 2, retryLater: true))
         let tried = await log.items
-        XCTAssertEqual(tried, ["a", "bad", "c"], "the failed one is not taken again in the same run")
+        XCTAssertEqual(tried, ["a", "bad", "bad", "bad", "c"], "the failed one is tried again at once, twice, and then not taken again in the same run")
         let states = try await store.downloads().map { "\($0.track.videoId) \($0.state)" }
         XCTAssertEqual(Set(states.prefix(2)), ["a done", "c done"], "what is on the phone comes first")
         XCTAssertEqual(states.last, "bad queued")
@@ -1453,6 +1453,103 @@ final class FeedsTests: XCTestCase {
         XCTAssertEqual(states, ["queued"])
     }
 
+    func testWithoutInternetTheRunStopsAndNoTryOfTheSongsIsUsedUp() async throws {
+        let store = try LibraryStore(path: ":memory:")
+        func song(_ id: String) -> TrackRef { TrackRef(videoId: id, title: id, artist: "", thumb: nil, durMs: 1000) }
+        try await store.requestDownloads([song("a"), song("bb"), song("c")])
+        let attempts = Collected2()
+        let downloader = Downloader(store: store, fetch: { id in
+            await attempts.add(id)
+            throw URLError(.cannotFindHost)
+        }, online: { false }, pause: { _ in })
+        for _ in 0..<5 {
+            let result = try await downloader.drain(waiting: false)
+            XCTAssertEqual(result, Downloader.Result(done: 0, retryLater: true))
+        }
+        let tried = await attempts.items
+        XCTAssertEqual(tried, ["a", "a", "a", "a", "a"], "one song is tried per run, the others are left alone")
+        var states = try await store.downloads().map { $0.state }
+        XCTAssertEqual(states, ["queued", "queued", "queued"], "five runs without internet, and every song has all its tries")
+
+        let fine = Downloader(store: store, fetch: { _ in 100 }, online: { true }, pause: { _ in })
+        let result = try await fine.drain(waiting: false)
+        XCTAssertEqual(result.done, 3)
+        states = try await store.downloads().map { $0.state }
+        XCTAssertEqual(states, ["done", "done", "done"])
+    }
+
+    func testAHiccupIsTriedAgainInTheSameRunAndTheSongIsDoneWithoutUsingATry() async throws {
+        let store = try LibraryStore(path: ":memory:")
+        try await store.requestDownloads([TrackRef(videoId: "a", title: "a", artist: "", thumb: nil, durMs: 1000)])
+        let failures = Collected2()
+        let waits = Collected2()
+        let downloader = Downloader(store: store, fetch: { _ in
+            if await failures.items.count < 2 {
+                await failures.add("x")
+                throw URLError(.timedOut)
+            }
+            return 5
+        }, pause: { await waits.add("\($0)") })
+        let result = try await downloader.drain(waiting: false)
+        XCTAssertEqual(result, Downloader.Result(done: 1, retryLater: false))
+        let paused = await waits.items
+        XCTAssertEqual(paused, ["2000", "6000"], "it waits a little longer each time")
+        let states = try await store.downloads().map { $0.state }
+        XCTAssertEqual(states, ["done"])
+    }
+
+    func testASongThatKeepsFailingUsesUpOneTryPerRunNotPerQuickRetry() async throws {
+        let store = try LibraryStore(path: ":memory:")
+        try await store.requestDownloads([TrackRef(videoId: "a", title: "a", artist: "", thumb: nil, durMs: 1000)])
+        let downloader = Downloader(store: store, fetch: { _ in throw URLError(.timedOut) }, pause: { _ in })
+        var result = try await downloader.drain(waiting: false)
+        XCTAssertTrue(result.retryLater)
+        var states = try await store.downloads().map { $0.state }
+        XCTAssertEqual(states, ["queued"])
+        _ = try await downloader.drain(waiting: false)
+        states = try await store.downloads().map { $0.state }
+        XCTAssertEqual(states, ["queued"])
+        result = try await downloader.drain(waiting: false)
+        XCTAssertFalse(result.retryLater)
+        states = try await store.downloads().map { $0.state }
+        XCTAssertEqual(states, ["failed"], "three runs, three tries")
+    }
+
+    func testNoRoomOnThePhoneStopsTheRunAndPutsTheSongsToFailedAtOnce() async throws {
+        let store = try LibraryStore(path: ":memory:")
+        func song(_ id: String) -> TrackRef { TrackRef(videoId: id, title: id, artist: "", thumb: nil, durMs: 1000) }
+        try await store.requestDownloads([song("a"), song("bb"), song("c"), song("d")])
+        let attempts = Collected2()
+        let seen = Seen()
+        let full = Downloader(store: store, fetch: { id in
+            await attempts.add(id)
+            if id == "bb" { throw NSError(domain: NSCocoaErrorDomain, code: 640) }
+            return 100
+        }, pause: { _ in }, onProgress: { seen.add($0) })
+        let result = try await full.drain(waiting: false)
+        let tried = await attempts.items
+        XCTAssertEqual(tried, ["a", "bb"], "after the song that did not fit, the others are not tried")
+        XCTAssertEqual(result, Downloader.Result(done: 1, retryLater: false), "trying again is no use until there is room")
+        let states = try await store.downloads().map { "\($0.track.videoId) \($0.state)" }
+        XCTAssertEqual(Set(states), ["a done", "bb failed", "c failed", "d failed"])
+        XCTAssertEqual(seen.items.last, Downloader.Batch(active: nil, done: 1, total: 4, failed: 3))
+
+        // Once there is room, the person tries them again, and they go
+        let roomy = Downloader(store: store, fetch: { _ in 100 }, pause: { _ in })
+        try await store.requestDownloads([song("bb"), song("c"), song("d")])
+        let again = try await roomy.drain(waiting: false)
+        XCTAssertEqual(again.done, 3)
+    }
+
+    func testNoRoomIsToldFromTheWayTheFileSystemSaysIt() {
+        XCTAssertTrue(Downloader.noSpace(NSError(domain: NSCocoaErrorDomain, code: 640)))
+        XCTAssertTrue(Downloader.noSpace(NSError(domain: NSPOSIXErrorDomain, code: 28)))
+        XCTAssertTrue(Downloader.noSpace(NSError(domain: "x", code: 1, userInfo: [NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: 28)])))
+        XCTAssertTrue(Downloader.noSpace(NSError(domain: "x", code: 1, userInfo: [NSLocalizedDescriptionKey: "No space left on device"])))
+        XCTAssertFalse(Downloader.noSpace(URLError(.cannotFindHost)))
+        XCTAssertFalse(Downloader.noSpace(NSError(domain: NSCocoaErrorDomain, code: 4)))
+    }
+
     func testTheDownloaderSaysWhichSongIsOnAndHowFarTheRunHasGone() async throws {
         let store = try LibraryStore(path: ":memory:")
         func song(_ id: String) -> TrackRef { TrackRef(videoId: id, title: id, artist: "", thumb: nil, durMs: 1000) }
@@ -1461,14 +1558,14 @@ final class FeedsTests: XCTestCase {
         let downloader = Downloader(store: store, fetch: { id in
             if id == "bad" { throw URLError(.networkConnectionLost) }
             return 5
-        }, onProgress: { seen.add($0) })
+        }, pause: { _ in }, onProgress: { seen.add($0) })
         _ = try await downloader.drain(waiting: false)
         XCTAssertEqual(seen.items, [
             Downloader.Batch(active: "a", done: 0, total: 3, failed: 0),
             Downloader.Batch(active: "bad", done: 1, total: 3, failed: 0),
             Downloader.Batch(active: "c", done: 1, total: 3, failed: 1),
             Downloader.Batch(active: nil, done: 2, total: 3, failed: 1),
-        ], "the failed one still counts in the total; the run keeps its numbers when it is over")
+        ], "the failed one still counts in the total; the run keeps its numbers when it is over (a repeated batch is not told twice)")
     }
 
     func testARunThatWasStoppedAnnouncesNothing() async throws {

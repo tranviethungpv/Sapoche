@@ -9,6 +9,10 @@ import FoundationNetworking
 /// that hold the same file: the signature does not cover the name of the server, so the same path on the second one gives
 /// the same bytes (read 2026-11-14: a range of three songs answered 206 from either). When the first cannot be connected
 /// to, which on some networks happens to one cache server of the provider and not to another, the second can be.
+///
+/// The number in `rr1` is not the same for every server: the provider's cache servers have `rr1` to `rr12`, the others
+/// (read 2026-11-14) only `rr1` to `rr5`, and the name of one that does not exist is no host at all. So the first server
+/// keeps the name the address gives it and the others are read as `rr1`, which every server has.
 /// Mirrors `StreamHosts.kt`.
 final class StreamHosts: @unchecked Sendable {
     /// Long enough for the songs of one sitting to skip a server that is down; short enough to try it again.
@@ -49,7 +53,7 @@ final class StreamHosts: @unchecked Sendable {
     /// lists them, then the ones that could not be reached lately. One address when it names no other server.
     func candidates(for url: URL) -> [URL] {
         guard let host = url.host?.lowercased(), host.hasSuffix(domain),
-              let (prefix, own) = Self.split(String(host.dropLast(domain.count))),
+              let (letters, number, own) = Self.split(String(host.dropLast(domain.count))),
               var parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let list = parts.queryItems?.first(where: { $0.name == "mn" })?.value else { return [url] }
         let listed = list.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -57,7 +61,7 @@ final class StreamHosts: @unchecked Sendable {
         var servers = [own]
         for server in listed where !servers.contains(server) { servers.append(server) }
         let addresses = servers.compactMap { server -> URL? in
-            parts.host = prefix + server + domain
+            parts.host = letters + (server == own ? number : "1") + "---" + server + domain
             return parts.url
         }
         guard addresses.count == servers.count else { return [url] }
@@ -71,12 +75,15 @@ final class StreamHosts: @unchecked Sendable {
         return first.absoluteString
     }
 
-    /// [url]'s server could not be connected to: it is not tried first for a while.
-    func markUnreachable(_ url: URL) {
-        guard let host = url.host?.lowercased() else { return }
+    /// [url]'s server could not be connected to: it is not tried first for a while. True when it was not already known to
+    /// be down, which is when it is worth telling.
+    @discardableResult
+    func markUnreachable(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased(), !isUnreachable(url) else { return false }
         lock.lock()
         unreachable[host] = now().addingTimeInterval(remember)
         lock.unlock()
+        return true
     }
 
     private func isUnreachable(_ url: URL) -> Bool {
@@ -89,20 +96,25 @@ final class StreamHosts: @unchecked Sendable {
         return false
     }
 
-    /// `rr1---sn-aaa` as the prefix `rr1---` and the name of the server `sn-aaa`, which the `mn` list repeats.
-    private static func split(_ label: String) -> (String, String)? {
+    /// `rr1---sn-aaa` as the `rr`, its number `1`, and the name of the server `sn-aaa`, which the `mn` list repeats.
+    private static func split(_ label: String) -> (String, String, String)? {
         guard let dashes = label.range(of: "---") else { return nil }
-        let prefix = label[..<dashes.upperBound].dropLast(3)
+        let prefix = label[..<dashes.lowerBound]
         let server = label[dashes.upperBound...]
-        guard prefix.first == "r", prefix.allSatisfy({ $0 == "r" || $0.isASCII && $0.isNumber }), prefix.last?.isNumber == true,
+        let letters = prefix.prefix { $0 == "r" }
+        let number = prefix.dropFirst(letters.count)
+        guard !letters.isEmpty, !number.isEmpty, number.allSatisfy({ $0.isASCII && $0.isNumber }),
               server.hasPrefix("sn-"), server.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "-") }) else { return nil }
-        return (String(label[..<dashes.upperBound]), String(server))
+        return (String(letters), String(number), String(server))
     }
 
-    /// The server could not be connected to (refused, or no answer to the first packet), as opposed to one that answered
-    /// badly or stopped halfway, which another server will not mend. A timeout after some bytes arrived is the second kind.
+    /// The server could not be connected to (refused, no answer to the first packet, no address for its name), as opposed
+    /// to one that answered badly or stopped halfway, which another server will not mend. A timeout after some bytes
+    /// arrived is the second kind. With no network at all every server fails this way, and then the failure is the one of
+    /// the first, as it always was.
     static func isConnectFailure(_ error: Error, receivedNothing: Bool) -> Bool {
         guard receivedNothing, let failure = error as? URLError else { return false }
         return failure.code == .cannotConnectToHost || failure.code == .timedOut
+            || failure.code == .cannotFindHost || failure.code == .dnsLookupFailed
     }
 }

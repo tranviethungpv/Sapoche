@@ -212,7 +212,7 @@ final class BridgeTests: XCTestCase {
         let media = MediaLibrary(files: files, streams: streams, fetcher: FakeFetcher(gate: gate))
         let music = MusicFeed(music: MusicClient { _, _ in JSON.parse("{}")! }, lyricsClient: LyricsClient { _ in nil }, lyricsStore: LyricsStore(dir: dir.appendingPathComponent("l")))
         let suggestions = SuggestionFeed(store: store, resolver: resolver, music: music)
-        let downloader = Downloader(store: store, fetch: { try await media.download($0) },
+        let downloader = Downloader(store: store, fetch: { try await media.download($0) }, pause: { _ in },
                                     onProgress: { [weak self] batch in Task { @MainActor in self?.bridge?.downloadsChanged(batch) } })
         let prefs = prefs!
         controller = GroupController(engine: engine, prefs: prefs, queueFile: QueueFile(url: dir.appendingPathComponent("queue.json")),

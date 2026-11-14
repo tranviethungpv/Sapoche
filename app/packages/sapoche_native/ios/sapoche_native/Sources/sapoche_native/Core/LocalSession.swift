@@ -529,29 +529,48 @@ final class LocalSession {
         }
         job = scope.launch { [weak self] in
             guard let self else { return }
-            do {
-                if again { await self.player.refresh(item.videoId) }
-                try await self.player.prepare(item, seekToMs: positionMs)
-                self.slowJob?.cancel()
-                self.stuckVideoIds.remove(item.videoId)
-                self.loadedId = item.id
-                self.pendingPositionMs = 0
-                self.skippedInARow = 0
-                self.snapshot.update { $0.loading = false }
-                if self.playOnLoad { self.player.play() }
-                self.preload()
-                self.save()
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                self.slowJob?.cancel()
-                self.stuckVideoIds.insert(item.videoId)
-                self.log("could not load '\(item.title)': \(error.localizedDescription)")
-                // Nothing goes on loading in the background, and nothing starts later by itself
-                self.player.stop()
-                self.pendingPositionMs = positionMs
-                self.snapshot.update { $0.loading = false }
-                self.loadFailed(item, error)
+            var retried = false
+            while true {
+                do {
+                    if again || retried { await self.player.refresh(item.videoId) }
+                    try await self.player.prepare(item, seekToMs: positionMs)
+                    self.slowJob?.cancel()
+                    self.stuckVideoIds.remove(item.videoId)
+                    self.loadedId = item.id
+                    self.pendingPositionMs = 0
+                    self.skippedInARow = 0
+                    self.snapshot.update { $0.loading = false }
+                    if self.playOnLoad { self.player.play() }
+                    self.preload()
+                    self.save()
+                    return
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    self.log("could not load '\(item.title)': \(error.localizedDescription)")
+                    // Nothing goes on loading in the background, and nothing starts later by itself
+                    self.player.stop()
+                    // A failure that is neither "YouTube will not give it out" nor "no network" is often a blip: the person
+                    // who wants to hear the song gets one more try from a new stream address before it counts as failed
+                    if !retried, (error as? LoadFailure) == nil, self.playOnLoad {
+                        retried = true
+                        self.log("trying '\(item.title)' once more in \(Self.retryAfterMs)ms")
+                        try await self.time.sleep(ms: Self.retryAfterMs)
+                        if self.playOnLoad { continue }
+                        // Paused meanwhile: there is nothing to tell, and play starts from a new address
+                        self.slowJob?.cancel()
+                        self.stuckVideoIds.insert(item.videoId)
+                        self.pendingPositionMs = positionMs
+                        self.snapshot.update { $0.loading = false }
+                        return
+                    }
+                    self.slowJob?.cancel()
+                    self.stuckVideoIds.insert(item.videoId)
+                    self.pendingPositionMs = positionMs
+                    self.snapshot.update { $0.loading = false }
+                    self.loadFailed(item, error)
+                    return
+                }
             }
         }
     }
@@ -573,8 +592,23 @@ final class LocalSession {
                 problem(Problem(kind: .unplayable, title: item.title, detail: detail))
             }
         case nil:
-            problem(Problem(kind: .failed, title: item.title, detail: detail))
+            skippedInARow += 1
+            if playOnLoad, hasNext(), skippedInARow < Self.maxSkippedInARow {
+                // Tried twice, and the person wants to hear music: on to the next song, which is not why it was to stop
+                problem(Problem(kind: .broken, title: item.title, detail: detail))
+                step(+1, auto: false)
+            } else {
+                skippedInARow = 0
+                problem(Problem(kind: .failed, title: item.title, detail: detail))
+            }
         }
+    }
+
+    /// Whether there is a song to go on to. With none (the last of the list, or the only one) a failure stops: going on
+    /// would end the queue, and that starts what follows it (autoplay) because of a network that is not there.
+    private func hasNext() -> Bool {
+        let s = snapshot.value
+        return s.index + 1 < s.queue.count || (s.repeatMode == "all" && s.queue.count > 1)
     }
 
     /// What went wrong, short enough for a message; the person can tell it to whoever fixes the app.
@@ -641,6 +675,9 @@ final class LocalSession {
     private static let prevRestartsAfterMs: Int64 = 3000
     /// A load that takes longer than this is said to be slow.
     private static let slowLoadMs: Int64 = 8000
+
+    /// A song that did not load gets one more try after this long, from a new stream address.
+    static let retryAfterMs: Int64 = 3000
     private static let stallTickMs: Int64 = 500
     private static let stallMinMs: Int64 = 1000
 }

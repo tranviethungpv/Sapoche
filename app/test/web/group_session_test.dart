@@ -19,14 +19,23 @@ class FakePlayer extends PlayerPort {
   var bufferedMs = 0x7fffffffffff;
   Object? failNext;
 
+  /// Decides, for each try to prepare, what it fails with (null: it loads).
+  Object? Function(QueueEntry item)? failWith;
+
+  /// Every try to prepare, the ones that failed too.
+  var prepareAttempts = 0;
+
   @override
   Future<void> prepare(QueueEntry item, int seekToMs) async {
+    prepareAttempts++;
     calls.add('prepare ${item.id} @$seekToMs');
     final fail = failNext;
     if (fail != null) {
       failNext = null;
       throw fail;
     }
+    final other = failWith?.call(item);
+    if (other != null) throw other;
     position = seekToMs;
   }
 
@@ -248,6 +257,69 @@ void main() {
       expect(types(), contains('resolveFailed'));
       expect(events.single, isA<LoadFailedEvent>());
       expect((events.single as LoadFailedEvent).reason, LoadReason.unplayable);
+    });
+  });
+
+  test('a room song that could not be loaded twice is tried again by itself, from a new address, and joins the room', () {
+    run(() {
+      var failures = 2; // the preparation, and the load at the start
+      player.failWith = (_) => failures-- > 0 ? Exception('blip') : null;
+      session.onMessage(stateOf(room(phase: 'preparing', epoch: 1)));
+      session.onMessage(PrepareMessage(epoch: 1, index: 0, item: item('1'), seekToMs: 0));
+      async.elapse(const Duration(milliseconds: 10));
+      session.onMessage(const StartMessage(epoch: 1, startAt: 11500, positionMs: 0));
+      async.elapse(const Duration(seconds: 1));
+      expect(player.playing, isFalse, reason: 'it could not load it');
+      async.elapse(GroupSession.retryAfter + const Duration(seconds: 10));
+      expect(player.playing, isTrue);
+      expect(player.calls.where((c) => c.startsWith('refresh')), ['refresh v1'], reason: 'the new try asks for a new address');
+    });
+  });
+
+  test('a room song YouTube will not give out is not tried again by itself', () {
+    run(() {
+      player.failWith = (_) => LoadFailure(LoadReason.unplayable, 'gone');
+      session.onMessage(stateOf(room(phase: 'preparing', epoch: 1)));
+      session.onMessage(PrepareMessage(epoch: 1, index: 0, item: item('1'), seekToMs: 0));
+      async.elapse(const Duration(milliseconds: 10));
+      session.onMessage(const StartMessage(epoch: 1, startAt: 11500, positionMs: 0));
+      async.elapse(const Duration(minutes: 1));
+      expect(player.prepareAttempts, 2, reason: 'the preparation and the load at the start, and no more');
+      expect(player.calls.where((c) => c.startsWith('refresh')), isEmpty);
+    });
+  });
+
+  test('alone, a song that did not load gets one more try from a new address', () {
+    run(() {
+      session.onMessage(stateOf(room(phase: 'playing', startedAt: 10000)));
+      async.elapse(const Duration(seconds: 1));
+      session.goSolo();
+      async.elapse(const Duration(milliseconds: 500));
+      var failures = 1;
+      player.failWith = (_) => failures-- > 0 ? Exception('blip') : null;
+      session.soloNext();
+      async.elapse(const Duration(milliseconds: 500));
+      expect(session.snapshot.loading, isTrue, reason: 'it shows that something is going on while it waits');
+      async.elapse(GroupSession.retryAfter);
+      expect(player.playing, isTrue);
+      expect(player.calls.where((c) => c.startsWith('refresh')), ['refresh v2']);
+      expect(session.snapshot.loading, isFalse);
+    });
+  });
+
+  test('alone, a song that fails twice is told once and nothing is skipped', () {
+    run(() {
+      final events = <RoomEvent>[];
+      session.events.listen(events.add);
+      session.onMessage(stateOf(room(phase: 'playing', startedAt: 10000)));
+      async.elapse(const Duration(seconds: 1));
+      session.goSolo();
+      async.elapse(const Duration(milliseconds: 500));
+      player.failWith = (_) => Exception('blip');
+      session.soloNext();
+      async.elapse(GroupSession.retryAfter + const Duration(milliseconds: 500));
+      expect(events.whereType<LoadFailedEvent>().map((e) => e.title), ['Song 2']);
+      expect(session.snapshot.loading, isFalse);
     });
   });
 

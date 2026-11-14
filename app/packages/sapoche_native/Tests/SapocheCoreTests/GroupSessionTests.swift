@@ -914,6 +914,73 @@ final class GroupSessionTests: XCTestCase {
         XCTAssertFalse(h.player.playing, "pause was pressed while it loaded")
     }
 
+    func testARoomSongThatCouldNotBeLoadedTwiceIsTriedAgainByItselfFromANewAddressAndJoinsTheRoom() async {
+        let h = harness()
+        var failures = 2 // the preparation, and the load at the start
+        h.player.failWith = { _ in
+            guard failures > 0 else { return nil }
+            failures -= 1
+            return NSError(domain: "blip", code: 1)
+        }
+        h.message(state("preparing", epoch: 1))
+        h.message(prepare(1, item))
+        await h.run()
+        h.message(start(1, h.serverNow() + 1500))
+        await h.step(1000)
+        XCTAssertNil(h.player.loaded, "it could not load it")
+        await h.step(3000 + 10_000)
+        XCTAssertEqual(h.player.loaded, item)
+        XCTAssertTrue(h.player.playing)
+        XCTAssertEqual(h.player.refreshed, [item.videoId], "the new try asks for a new address")
+    }
+
+    func testARoomSongYouTubeWillNotGiveOutIsNotTriedAgainByItself() async {
+        let h = harness()
+        h.player.failWith = { _ in LoadFailure(reason: .unplayable, message: "gone") }
+        h.message(state("preparing", epoch: 1))
+        h.message(prepare(1, item))
+        await h.run()
+        h.message(start(1, h.serverNow() + 1500))
+        await h.step(60_000)
+        XCTAssertEqual(h.player.prepareAttempts, 2, "the preparation and the load at the start, and no more")
+        XCTAssertTrue(h.player.refreshed.isEmpty)
+    }
+
+    func testAloneASongThatDidNotLoadGetsOneMoreTryFromANewAddress() async {
+        let h = await playingFirstOfTwo()
+        h.session.goSolo()
+        await h.step(500)
+        var failures = 1
+        h.player.failWith = { _ in
+            guard failures > 0 else { return nil }
+            failures -= 1
+            return NSError(domain: "blip", code: 1)
+        }
+        h.session.soloNext()
+        await h.step(500)
+        XCTAssertTrue(h.session.snapshot.value.loading, "it shows that something is going on while it waits")
+        await h.step(3000)
+        XCTAssertEqual(h.player.loaded, item2)
+        XCTAssertTrue(h.player.playing)
+        XCTAssertEqual(h.player.refreshed, [item2.videoId])
+        XCTAssertFalse(h.session.snapshot.value.loading)
+    }
+
+    func testAloneASongThatFailsTwiceIsToldOnceAndNothingIsSkipped() async {
+        let h = await playingFirstOfTwo()
+        var seen: [GroupSession.RoomEvent] = []
+        let subscription = h.session.events.observe { seen.append($0) }
+        defer { subscription.cancel() }
+        h.session.goSolo()
+        await h.step(500)
+        h.player.failWith = { _ in NSError(domain: "blip", code: 1) }
+        h.session.soloNext()
+        await h.step(3000 + 500)
+        let titles = seen.compactMap { event -> String? in if case let .loadFailed(title, _) = event { return title } else { return nil } }
+        XCTAssertEqual(titles, ["Song 2"])
+        XCTAssertFalse(h.session.snapshot.value.loading)
+    }
+
     func testAfterAReconnectTheRoomIsToldAgainThatThisDeviceIsAlone() async {
         let h = await playingFirstOfTwo()
         h.session.goSolo()

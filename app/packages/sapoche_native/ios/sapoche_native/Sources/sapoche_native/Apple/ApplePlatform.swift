@@ -425,6 +425,7 @@ final class ApplePlatform: NSObject, PlatformServices, UIDocumentPickerDelegate,
     private func pathChanged(metered newMetered: Bool, satisfied newSatisfied: Bool, interfaces newInterfaces: Set<NWInterface.InterfaceType>) {
         let changed = !interfaces.isEmpty && newSatisfied && newInterfaces != interfaces
         let cameBack = newSatisfied && !satisfied
+        NetworkState.shared.online = newSatisfied
         metered = newMetered
         satisfied = newSatisfied
         if newSatisfied { interfaces = newInterfaces }

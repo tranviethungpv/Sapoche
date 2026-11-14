@@ -224,6 +224,9 @@ class GroupSession {
   /// The item whose failed load the person was told about, so that retrying it does not tell them again and again.
   String? _reportedFailure;
 
+  /// The last song this device could not load is one YouTube will not give out: trying again is no use.
+  bool _lastFailureUnplayable = false;
+
   void onMessage(ServerMessage message) {
     switch (message) {
       case StateMessage():
@@ -419,19 +422,32 @@ class GroupSession {
     _soloPlayOnLoad = play;
     _update((s) => s.copyWith(loading: play));
     _soloJob = Job.launch((job) async {
-      try {
-        await job.guard(player.prepare(item, positionMs));
-        _loaded(item);
-        _update((s) => s.copyWith(soloItemId: item.id, loading: false));
-        if (_soloPlayOnLoad) player.play();
-        _soloPreload();
-      } on Cancelled {
-        rethrow;
-      } catch (e) {
-        log("could not load '${item.title}' while alone: $e");
-        _loadedItemId = null;
-        _update((s) => s.copyWith(loading: false));
-        _loadFailed(item, e);
+      var retried = false;
+      while (true) {
+        try {
+          if (retried) player.refresh(item.videoId);
+          await job.guard(player.prepare(item, positionMs));
+          _loaded(item);
+          _update((s) => s.copyWith(soloItemId: item.id, loading: false));
+          if (_soloPlayOnLoad) player.play();
+          _soloPreload();
+          return;
+        } on Cancelled {
+          rethrow;
+        } catch (e) {
+          log("could not load '${item.title}' while alone: $e");
+          _loadedItemId = null;
+          // As alone outside a room (see `LocalSession._load`): a blip gets one more try, from a new address
+          if (!retried && LoadFailure.of(e) == null && _soloPlayOnLoad) {
+            retried = true;
+            player.stop();
+            await job.delay(retryAfter);
+            if (_soloPlayOnLoad) continue;
+          }
+          _update((s) => s.copyWith(loading: false));
+          _loadFailed(item, e);
+          return;
+        }
       }
     });
   }
@@ -593,7 +609,17 @@ class GroupSession {
         if (item == null) return;
         await _loadPaused(job, item, msg.positionMs);
       }
-      if (_loadedItemId == null) return; // could not load; sit this one out
+      if (_loadedItemId == null) {
+        // Could not load, twice. The room plays on, and this device keeps trying, from a new address, as the play button
+        // would (see `catchUp`); a song nobody can play is left alone
+        if (item == null || _lastFailureUnplayable) return;
+        await job.delay(retryAfter);
+        if (_solo || _loadedItemId != null || _state?.current?.id != item.id || _state?.phase != 'playing') return;
+        player.refresh(item.videoId);
+        log("'${item.title}' did not load, catching up with the room");
+        await _catchUpPlaying(job, item, _state?.startedAt ?? (msg.startAt - msg.positionMs));
+        return;
+      }
       await _runStart(job, msg.startAt, msg.positionMs);
     });
   }
@@ -796,6 +822,7 @@ class GroupSession {
 
   /// Tells the person, once for each item, that this device could not load it: the room may play on without it.
   void _loadFailed(QueueEntry item, Object error) {
+    _lastFailureUnplayable = LoadFailure.of(error)?.reason == LoadReason.unplayable;
     if (_reportedFailure == item.id) return;
     _reportedFailure = item.id;
     _events.add(LoadFailedEvent(item.title, LoadFailure.of(error)?.reason));
@@ -836,7 +863,9 @@ class GroupSession {
       final guessed = clock.toServer(nowMs()) - startedAt + health.loadMs;
       await _loadPaused(job, item, guessed < 0 ? 0 : guessed);
       if (_loadedItemId != null) break;
-      if (++attempt >= _catchUpMaxAttempts) {
+      attempt++;
+      // A song YouTube will not give out will not be given out in five minutes either
+      if (_lastFailureUnplayable || attempt >= _catchUpMaxAttempts) {
         log("giving up loading '${item.title}' after $attempt attempts");
         return;
       }
@@ -1126,6 +1155,9 @@ class GroupSession {
   static const _tailCutLagMs = 1500;
   static const _catchUpLeadMs = 400;
   static const _catchUpRetry = Duration(seconds: 5);
+
+  /// A song that did not load gets another try after this long, from a new stream address.
+  static const retryAfter = Duration(seconds: 3);
   static const _catchUpMaxAttempts = 60; // about five minutes plus the time each attempt takes
 
   /// Continuous playing this long counts as healthy again: earlier recoveries are forgotten.

@@ -632,7 +632,7 @@ final class LocalSessionTests: XCTestCase {
         let h = harness()
         h.player.failPrepare = true
         h.session.add([track(1)], next: false)
-        await h.step()
+        await h.step(LocalSession.retryAfterMs + 500)
         XCTAssertTrue(h.problems.contains { $0.title == "Song 1" })
         XCTAssertFalse(h.player.playing)
         XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 1", "it stays in the queue to try again")
@@ -690,9 +690,10 @@ final class LocalSessionTests: XCTestCase {
         let h = harness()
         h.player.failPrepare = true
         h.session.add([track(1)], next: false)
-        await h.step()
+        await h.step(LocalSession.retryAfterMs + 500)
         XCTAssertEqual(h.problems.map(\.kind), [.failed])
         h.player.failPrepare = false
+        h.player.refreshed = []
         h.session.clear()
         h.session.add([track(1)], next: false) // the list was tapped: the same song with another queue id
         await h.step()
@@ -757,14 +758,214 @@ final class LocalSessionTests: XCTestCase {
         XCTAssertTrue(h.player.playing)
     }
 
-    func testAnyOtherFailureToLoadSaysSoWithWhatWentWrong() async {
+    func testAnyOtherFailureToLoadSaysSoWithWhatWentWrongAndKeepsTheSongWhenThereIsNothingToGoOnTo() async {
         let h = harness()
         h.player.failPrepare = true
-        h.session.add([track(1), track(2)], next: false)
-        await h.step()
+        h.session.add([track(1)], next: false)
+        await h.step(LocalSession.retryAfterMs + 500)
         XCTAssertEqual(h.problems.map(\.kind), [.failed])
         XCTAssertTrue(h.problems.first?.detail.contains("cannot load") == true, "was \(h.problems)")
         XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 1")
+        XCTAssertTrue(h.ended.isEmpty, "a failure to load is not the end of the queue, which would start autoplay")
+        XCTAssertFalse(h.session.snapshot.value.loading)
+    }
+
+    /// Fails the first [times] tries of a song, then loads it.
+    private func failFirst(_ h: Harness, _ times: Int, reason: LoadFailure.Reason? = nil) {
+        var left = times
+        h.player.failWith = { _ in
+            guard left > 0 else { return nil }
+            left -= 1
+            if let reason { return LoadFailure(reason: reason, message: "x") }
+            return NSError(domain: "blip", code: 1, userInfo: [NSLocalizedDescriptionKey: "blip"])
+        }
+    }
+
+    func testASongThatDidNotLoadGetsOneMoreTryFromANewAddressAndPlaysIfThatWorks() async {
+        let h = harness()
+        failFirst(h, 1)
+        h.session.add([track(1), track(2)], next: false)
+        await h.step(500)
+        XCTAssertNil(h.player.loaded)
+        XCTAssertTrue(h.session.snapshot.value.loading, "it shows that something is going on while it waits")
+        XCTAssertTrue(h.problems.isEmpty, "a blip is not said to the person")
+        await h.step(LocalSession.retryAfterMs)
+        XCTAssertEqual(h.player.loaded?.title, "Song 1")
+        XCTAssertTrue(h.player.playing)
+        XCTAssertEqual(h.player.refreshed, [track(1).videoId], "the second try starts from a new stream address")
+        XCTAssertTrue(h.problems.isEmpty)
+        XCTAssertEqual(h.player.prepareAttempts, 2)
+    }
+
+    func testASongThatFailsTwiceIsSkippedToTheNext() async {
+        let h = harness()
+        h.player.failWith = { $0.title == "Song 1" ? NSError(domain: "blip", code: 1) : nil }
+        h.session.add([track(1), track(2)], next: false)
+        await h.step(LocalSession.retryAfterMs + 500)
+        XCTAssertEqual(h.player.loaded?.title, "Song 2")
+        XCTAssertTrue(h.player.playing)
+        XCTAssertEqual(h.problems.map(\.kind), [.broken])
+        XCTAssertEqual(h.problems.map(\.title), ["Song 1"])
+    }
+
+    func testSkippingBecauseSongsFailToLoadStopsAfterAFewInARowWithTheFailureSaid() async {
+        let h = harness()
+        h.player.failWith = { _ in NSError(domain: "blip", code: 1) }
+        h.session.add((1...6).map(track), next: false)
+        await h.step((LocalSession.retryAfterMs + 500) * 4)
+        XCTAssertEqual(h.problems.map(\.kind), [.broken, .broken, .failed])
+        XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 3")
+        XCTAssertFalse(h.player.playing)
+        XCTAssertFalse(h.session.snapshot.value.loading)
+        XCTAssertEqual(h.player.prepareAttempts, 6, "two tries for each of three songs, and no more")
+    }
+
+    func testSongsThatWillNotPlayAndSongsThatDidNotLoadCountTogetherTowardsStopping() async {
+        let h = harness()
+        h.player.failWith = { item -> Error? in
+            if item.title == "Song 2" { return NSError(domain: "blip", code: 1) }
+            return LoadFailure(reason: .unplayable, message: "gone")
+        }
+        h.session.add((1...6).map(track), next: false)
+        await h.step((LocalSession.retryAfterMs + 500) * 2)
+        XCTAssertEqual(h.problems.map(\.kind), [.skipped, .broken, .unplayable])
+        XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 3")
+    }
+
+    func testTheLastSongOfTheListIsNotSkippedWhenItFailsSoNoQueueEndsBecauseOfANetwork() async {
+        let h = harness()
+        h.session.add([track(1), track(2)], next: false)
+        await h.step()
+        failFirst(h, 2)
+        h.session.next()
+        await h.step(LocalSession.retryAfterMs + 500)
+        XCTAssertEqual(h.problems.last?.kind, .failed)
+        XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 2")
+        XCTAssertFalse(h.session.snapshot.value.finished)
+        XCTAssertTrue(h.ended.isEmpty)
+    }
+
+    func testRepeatingAllWithASingleSongThatFailsDoesNotLoopThroughIt() async {
+        let h = harness()
+        h.session.add([track(1)], next: false)
+        await h.step()
+        h.session.setRepeat("all")
+        failFirst(h, 2)
+        h.session.jump(h.session.snapshot.value.queue[0].id)
+        await h.step(LocalSession.retryAfterMs + 500)
+        XCTAssertEqual(h.problems.last?.kind, .failed)
+        XCTAssertEqual(h.player.prepareAttempts - 1, 2, "two tries, and no looping round to the same song")
+    }
+
+    func testRepeatingAllGoesRoundToTheFirstSongWhenTheLastFails() async {
+        let h = harness()
+        h.session.add([track(1), track(2)], next: false)
+        await h.step()
+        h.session.setRepeat("all")
+        h.player.failWith = { $0.title == "Song 2" ? NSError(domain: "blip", code: 1) : nil }
+        h.session.next()
+        await h.step(LocalSession.retryAfterMs + 500)
+        XCTAssertEqual(h.player.loaded?.title, "Song 1")
+        XCTAssertEqual(h.problems.last?.kind, .broken)
+    }
+
+    func testPausingWhileTheRetryWaitsLeavesItPausedAndSaysNothing() async {
+        let h = harness()
+        failFirst(h, 1)
+        h.session.add([track(1), track(2)], next: false)
+        await h.step(500)
+        h.session.pause()
+        await h.step(LocalSession.retryAfterMs * 2)
+        XCTAssertTrue(h.problems.isEmpty, "was \(h.problems)")
+        XCTAssertNil(h.player.loaded, "nothing starts later by itself")
+        XCTAssertFalse(h.player.playing)
+        XCTAssertFalse(h.session.snapshot.value.loading)
+        XCTAssertEqual(h.session.snapshot.value.current?.title, "Song 1", "no skipping to the next either")
+
+        h.session.play()
+        await h.step()
+        XCTAssertTrue(h.player.playing, "play starts it again, from a new address")
+        XCTAssertEqual(h.player.refreshed, [track(1).videoId])
+    }
+
+    func testAnotherSongChosenWhileTheRetryWaitsDropsTheRetry() async {
+        let h = harness()
+        h.player.failWith = { $0.title == "Song 1" ? NSError(domain: "blip", code: 1) : nil }
+        h.session.add([track(1), track(2), track(3)], next: false)
+        await h.step(500)
+        h.session.jump(h.session.snapshot.value.queue[2].id)
+        await h.step(LocalSession.retryAfterMs * 3)
+        XCTAssertEqual(h.player.loaded?.title, "Song 3")
+        XCTAssertTrue(h.problems.isEmpty)
+        XCTAssertEqual(h.player.prepareAttempts, 2, "the dropped song was not tried a second time")
+    }
+
+    /// Random taps among random failures. With [transientOnly] every failure is a blip, which must never end the queue: the
+    /// queue ends only when the person goes past its last song. Whatever the failures, it settles, when left alone on a good
+    /// network, with nothing still loading.
+    private func randomTaps(transientOnly: Bool) async {
+        for seed in 1...12 {
+            let h = harness()
+            var rng = SplitMix(seed: UInt64(seed))
+            func roll(_ n: Int) -> Int { Int(rng.next() % UInt64(n)) }
+            var draw = SplitMix(seed: UInt64(seed) &+ 1000)
+            h.player.failWith = { _ in
+                guard Int(draw.next() % 10) < 4 else { return nil }
+                switch transientOnly ? 0 : Int(draw.next() % 3) {
+                case 0: return NSError(domain: "blip", code: 1)
+                case 1: return LoadFailure(reason: .unplayable, message: "gone")
+                default: return LoadFailure(reason: .offline, message: "no network")
+                }
+            }
+            h.session.add((1...8).map(track), next: false)
+            for _ in 0..<150 {
+                let snapshot = h.session.snapshot.value
+                let queue = snapshot.queue
+                let pastTheEnd = snapshot.index + 1 >= queue.count && snapshot.repeatMode != "all"
+                switch roll(14) {
+                case 0, 1: if !pastTheEnd { h.session.next() }
+                case 2: h.session.prev()
+                case 3: h.session.pause()
+                case 4, 5: h.session.play()
+                case 6, 7: if !queue.isEmpty { h.session.jump(queue[roll(queue.count)].id) }
+                case 8: h.session.setRepeat(["off", "all", "one"][roll(3)])
+                case 9: h.session.add([track(9 + roll(30))], next: roll(2) == 0)
+                case 10: if queue.count > 1, snapshot.index < queue.count - 1 { h.session.remove(queue[roll(queue.count)].id) }
+                case 11: h.player.onError?(NSError(domain: "t", code: 403))
+                case 12: h.player.prepareDelayMs = Int64(roll(9_000))
+                default: h.session.seek(Int64(roll(100_000)))
+                }
+                await h.step(Int64(roll(5_000)))
+                if transientOnly { XCTAssertTrue(h.ended.isEmpty, "seed \(seed): a blip ended the queue, which would start autoplay") }
+            }
+            // Nobody touches it any more, and the network is fine: it settles, with nothing still loading
+            h.player.failWith = nil
+            h.player.prepareDelayMs = 0
+            await h.step(120_000)
+            XCTAssertFalse(h.session.snapshot.value.loading, "seed \(seed): it is still loading")
+        }
+    }
+
+    func testRandomTapsAmongRandomBlipsNeverEndTheQueueOrLeaveItLoadingForEver() async {
+        await randomTaps(transientOnly: true)
+    }
+
+    func testRandomTapsAmongEveryKindOfFailureNeverLeaveItLoadingForEver() async {
+        await randomTaps(transientOnly: false)
+    }
+
+    func testASongThatWillNotPlayOrTheLackOfANetworkIsNotTriedAgainAtOnce() async {
+        let unplayable = harness()
+        unplayable.player.failWith = { _ in LoadFailure(reason: .unplayable, message: "gone") }
+        unplayable.session.add([track(1)], next: false)
+        await unplayable.step(LocalSession.retryAfterMs + 500)
+        XCTAssertEqual(unplayable.player.prepareAttempts, 1)
+
+        let offline = harness()
+        offline.player.failWith = { _ in LoadFailure(reason: .offline, message: "no network") }
+        offline.session.add([track(1)], next: false)
+        await offline.step(LocalSession.retryAfterMs + 500)
+        XCTAssertEqual(offline.player.prepareAttempts, 1)
     }
 
     func testAStreamThatKeepsBreakingIsSkippedEvenWhileRepeatingThatSong() async {

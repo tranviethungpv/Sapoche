@@ -818,6 +818,21 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         db.rawQuery("SELECT state FROM downloads WHERE video_id = ?", arrayOf(videoId)).use { it.moveToFirst() && it.getString(0) == FAILED }
     }
 
+    /** The phone has no room: the song is failed at once, as [MAX_TRIES] tries would meet the same and use up the time. */
+    suspend fun failNow(videoId: String) = withContext(io) {
+        writableDatabase.execSQL("UPDATE downloads SET state = ?, tries = ? WHERE video_id = ?", arrayOf<Any?>(FAILED, MAX_TRIES, videoId))
+    }
+
+    /** Puts the songs still on the list in [state] to failed, for the same reason as [failNow]; how many there were. */
+    suspend fun failAllWaiting(state: String): Int = withContext(io) {
+        writableDatabase.compileStatement("UPDATE downloads SET state = ?, tries = ? WHERE state = ?").use {
+            it.bindString(1, FAILED)
+            it.bindLong(2, MAX_TRIES.toLong())
+            it.bindString(3, state)
+            it.executeUpdateDelete()
+        }
+    }
+
     /** YouTube will not give the song out: it is not tried again by itself, only when the person asks (see [requestDownloads]). */
     suspend fun markUnavailable(videoId: String) = withContext(io) {
         writableDatabase.execSQL("UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ?", arrayOf<Any?>(UNAVAILABLE, videoId))

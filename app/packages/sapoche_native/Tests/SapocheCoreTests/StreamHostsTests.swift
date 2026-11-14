@@ -93,8 +93,8 @@ final class StreamHostsTests: XCTestCase {
 
     private func hosts() -> StreamHosts { StreamHosts(now: { [clock] in clock.now }) }
 
-    private func address(server: String = "sn-aaa", mn: String? = "sn-aaa,sn-bbb") -> URL {
-        URL(string: "https://rr1---\(server).googlevideo.com/videoplayback?expire=1" + (mn.map { "&mn=\($0)" } ?? "") + "&sig=x")!
+    private func address(server: String = "sn-aaa", mn: String? = "sn-aaa,sn-bbb", number: Int = 1) -> URL {
+        URL(string: "https://rr\(number)---\(server).googlevideo.com/videoplayback?expire=1" + (mn.map { "&mn=\($0)" } ?? "") + "&sig=x")!
     }
 
     private func hostsOf(_ url: URL, _ list: StreamHosts) -> [String] { list.candidates(for: url).map { $0.host ?? "" } }
@@ -110,6 +110,24 @@ final class StreamHostsTests: XCTestCase {
 
     func testAnAddressThatListsTheServerItNamesLastIsReadFromItFirst() {
         XCTAssertEqual(hostsOf(address(server: "sn-bbb", mn: "sn-bbb,sn-aaa"), hosts()), [second, first])
+    }
+
+    func testTheFirstServerKeepsItsNumberAndTheOthersAreReadAsRr1WhichEveryServerHas() {
+        // Seen 2026-11-14: the provider's servers go to rr12, the other servers only to rr5, and rr12---sn-oguelnsr is no host
+        XCTAssertEqual(hostsOf(address(mn: "sn-aaa,sn-bbb,sn-ccc", number: 12), hosts()),
+                       ["rr12---sn-aaa.googlevideo.com", second, "rr1---sn-ccc.googlevideo.com"])
+        let list = hosts()
+        list.markUnreachable(address(number: 12))
+        XCTAssertEqual(hostsOf(address(number: 12), list), [second, "rr12---sn-aaa.googlevideo.com"])
+        XCTAssertEqual(hostsOf(address(server: "sn-bbb", mn: "sn-bbb,sn-aaa", number: 2), hosts()), ["rr2---sn-bbb.googlevideo.com", first])
+    }
+
+    func testAServerIsToldOfOnceWhileItIsKnownToBeDown() {
+        let list = hosts()
+        XCTAssertTrue(list.markUnreachable(address()))
+        XCTAssertFalse(list.markUnreachable(address()))
+        clock.now = clock.now.addingTimeInterval(StreamHosts.rememberSeconds)
+        XCTAssertTrue(list.markUnreachable(address()))
     }
 
     func testAnAddressWithNoOtherServerIsReadFromTheOneItNames() {
@@ -165,8 +183,10 @@ final class StreamHostsTests: XCTestCase {
         // A timeout after the answer began is a stall, which another server does not mend
         XCTAssertFalse(StreamHosts.isConnectFailure(URLError(.timedOut), receivedNothing: false))
         XCTAssertFalse(StreamHosts.isConnectFailure(URLError(.networkConnectionLost), receivedNothing: true))
-        // No name for the server, or no network at all, says nothing of the server
-        XCTAssertFalse(StreamHosts.isConnectFailure(URLError(.cannotFindHost), receivedNothing: true))
+        // No address for the name of the server: another server, by another name, can be read
+        XCTAssertTrue(StreamHosts.isConnectFailure(URLError(.cannotFindHost), receivedNothing: true))
+        XCTAssertTrue(StreamHosts.isConnectFailure(URLError(.dnsLookupFailed), receivedNothing: true))
+        // No network at all says nothing of the server
         XCTAssertFalse(StreamHosts.isConnectFailure(URLError(.notConnectedToInternet), receivedNothing: true))
         XCTAssertFalse(StreamHosts.isConnectFailure(URLError(.cancelled), receivedNothing: true))
         XCTAssertFalse(StreamHosts.isConnectFailure(HTTPFailure(status: 403, service: "YouTube"), receivedNothing: true))
@@ -194,6 +214,48 @@ final class StreamHostsTests: XCTestCase {
         XCTAssertEqual(Servers.asked, [first, second, second])
         XCTAssertEqual(log.lines.count, 1)
         XCTAssertTrue(log.lines[0].contains("\(first) could not be connected to") && log.lines[0].contains("trying \(second)"), log.lines[0])
+    }
+
+    func testTheNameOfAServerThatIsDownIsNotTheOnlyOneTriedTheOtherIsReadAsRr1() async throws {
+        // The log of 2026-11-14: rr12---sn-aaa cannot be connected to, rr12---sn-bbb has no address, rr1---sn-bbb has
+        let list = hosts()
+        let log = Lines()
+        list.setLog { log.add($0) }
+        Servers.failing["rr12---sn-aaa.googlevideo.com"] = .cannotConnectToHost
+        Servers.failing["rr12---sn-bbb.googlevideo.com"] = .cannotFindHost
+
+        let one = try await fetcher(list).bytes(address(number: 12), range: 0...9, headers: [:])
+        let two = try await fetcher(list).bytes(address(number: 12), range: 10...19, headers: [:])
+
+        XCTAssertEqual(one, Servers.body.subdata(in: 0..<10))
+        XCTAssertEqual(two, Servers.body.subdata(in: 10..<20))
+        XCTAssertEqual(Servers.asked, ["rr12---sn-aaa.googlevideo.com", second, second])
+        XCTAssertEqual(log.lines.count, 1)
+    }
+
+    func testAServerWhoseNameHasNoAddressIsReadFromAnotherAndNotTriedFirstAgain() async throws {
+        let list = hosts()
+        Servers.failing[first] = .cannotFindHost
+        _ = try await fetcher(list).bytes(address(), range: 0...9, headers: [:])
+        _ = try await fetcher(list).bytes(address(), range: 0...9, headers: [:])
+        XCTAssertEqual(Servers.asked, [first, second, second])
+    }
+
+    func testWithNoDnsAtAllTheFailureIsTheOneOfTheFirstAndItIsToldOfOnce() async {
+        let list = hosts()
+        let log = Lines()
+        list.setLog { log.add($0) }
+        Servers.failing[first] = .cannotFindHost
+        Servers.failing[second] = .dnsLookupFailed
+        for _ in 0..<3 {
+            do {
+                _ = try await fetcher(list).bytes(address(), range: 0...9, headers: [:])
+                XCTFail("expected a failure")
+            } catch {
+                XCTAssertEqual((error as? URLError)?.code, .cannotFindHost)
+            }
+        }
+        XCTAssertEqual(log.lines.count, 2)
     }
 
     func testAServerThatDoesNotAnswerIsGivenUpOnToo() async throws {

@@ -192,6 +192,9 @@ final class GroupSession {
     /// The item whose failed load the person was told about, so that retrying it does not tell them again and again.
     private var reportedFailure: String?
 
+    /// The last song this device could not load is one YouTube will not give out: trying again is no use.
+    private var lastFailureUnplayable = false
+
     init(scope: Scope, player: PlayerPort, clock: ClockSync, time: TimeSource? = nil,
          send: @escaping (String) -> Void, log: @escaping (String) -> Void = { _ in }, drift: DriftController = DriftController(),
          health: NetworkHealth = NetworkHealth()) {
@@ -443,19 +446,32 @@ final class GroupSession {
         snapshot.update { $0.loading = play }
         soloJob = scope.launch { [weak self] in
             guard let self else { return }
-            do {
-                try await self.player.prepare(item, seekToMs: positionMs)
-                self.loaded(item)
-                self.snapshot.update { $0.soloItemId = item.id; $0.loading = false }
-                if self.soloPlayOnLoad { self.player.play() }
-                self.soloPreload()
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                self.log("could not load '\(item.title)' while alone: \(error.localizedDescription)")
-                self.loadedItemId = nil
-                self.snapshot.update { $0.loading = false }
-                self.loadFailed(item, error)
+            var retried = false
+            while true {
+                do {
+                    if retried { await self.player.refresh(item.videoId) }
+                    try await self.player.prepare(item, seekToMs: positionMs)
+                    self.loaded(item)
+                    self.snapshot.update { $0.soloItemId = item.id; $0.loading = false }
+                    if self.soloPlayOnLoad { self.player.play() }
+                    self.soloPreload()
+                    return
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    self.log("could not load '\(item.title)' while alone: \(error.localizedDescription)")
+                    self.loadedItemId = nil
+                    // As alone outside a room (see `LocalSession.load`): a blip gets one more try, from a new address
+                    if !retried, (error as? LoadFailure) == nil, self.soloPlayOnLoad {
+                        retried = true
+                        self.player.stop()
+                        try await self.time.sleep(ms: Self.retryAfterMs)
+                        if self.soloPlayOnLoad { continue }
+                    }
+                    self.snapshot.update { $0.loading = false }
+                    self.loadFailed(item, error)
+                    return
+                }
             }
         }
     }
@@ -599,7 +615,17 @@ final class GroupSession {
                 guard let item else { return }
                 await self.loadPaused(item, positionMs)
             }
-            if self.loadedItemId == nil { return } // could not load; sit this one out
+            if self.loadedItemId == nil {
+                // Could not load, twice. The room plays on, and this device keeps trying, from a new address, as the play
+                // button would (see `catchUp`); a song nobody can play is left alone
+                guard let item, !self.lastFailureUnplayable else { return }
+                try await self.time.sleep(ms: Self.retryAfterMs)
+                guard !self.solo, self.loadedItemId == nil, self.state?.current?.id == item.id, self.state?.phase == "playing" else { return }
+                await self.player.refresh(item.videoId)
+                self.log("'\(item.title)' did not load, catching up with the room")
+                try await self.catchUpPlaying(item, self.state?.startedAt ?? (startAt - positionMs))
+                return
+            }
             try await self.runStart(startAt, positionMs)
         }
     }
@@ -787,6 +813,7 @@ final class GroupSession {
 
     /// Tells the person, once for each item, that this device could not load it: the room may play on without it.
     private func loadFailed(_ item: QueueItem, _ error: Error) {
+        lastFailureUnplayable = (error as? LoadFailure)?.reason == .unplayable
         if reportedFailure == item.id { return }
         reportedFailure = item.id
         events.emit(.loadFailed(title: item.title, reason: (error as? LoadFailure)?.reason))
@@ -829,7 +856,8 @@ final class GroupSession {
             try Task.checkCancellation()
             if loadedItemId != nil { break }
             attempt += 1
-            if attempt >= Self.catchUpMaxAttempts {
+            // A song YouTube will not give out will not be given out in five minutes either
+            if lastFailureUnplayable || attempt >= Self.catchUpMaxAttempts {
                 log("giving up loading '\(item.title)' after \(attempt) attempts")
                 return
             }
@@ -1105,6 +1133,9 @@ final class GroupSession {
     private static let jumpMinSpareMs: Int64 = 100
     private static let catchUpLeadMs: Int64 = 400
     private static let catchUpRetryMs: Int64 = 5000
+
+    /// A song that did not load gets another try after this long, from a new stream address.
+    private static let retryAfterMs: Int64 = 3000
     private static let catchUpMaxAttempts = 60 // about five minutes plus the time each attempt takes
 
     /// Continuous playing this long counts as healthy again: earlier recoveries are forgotten.

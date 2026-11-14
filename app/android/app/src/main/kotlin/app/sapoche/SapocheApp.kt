@@ -47,7 +47,7 @@ class SapocheApp : Application() {
         caches = MediaCaches(this, limitMb * 1024L * 1024L)
         loudness = LoudnessBook(library, CoroutineScope(SupervisorJob() + Dispatchers.IO))
         mediaData = MediaData(caches, streams, { videoMaxHeight }, { VideoPicker.budgetKbps(recentBestKbps, weakNetwork) }, { AudioQuality.effective(audioQuality, weakNetwork, bandwidthKbps) }, deviceMusic, loudness) { EventLog.d("cache", it) }
-        downloader = Downloader(library, mediaData::download) { EventLog.d("download", it) }
+        downloader = Downloader(library, mediaData::download, { EventLog.d("download", it) }, ::hasInternet)
         val music = MusicClient(region = ::phoneRegion)
         musicFeed = MusicFeed(music, LyricsClient(), LyricsStore(File(cacheDir, "lyrics")))
         suggestions = SuggestionFeed(library, resolver, musicFeed) { EventLog.d("suggest", it) }
@@ -60,6 +60,16 @@ class SapocheApp : Application() {
 
     /** The country of the phone's settings, like "VN": what YouTube shows first follows it. */
     private fun phoneRegion(): String = java.util.Locale.getDefault().country.ifBlank { "US" }
+
+    /**
+     * The phone reaches the internet, as the system has checked, and not only a network (a Wi-Fi with no way out is a
+     * network). True when that cannot be told, so that a doubt never keeps a download from being tried.
+     */
+    private fun hasInternet(): Boolean {
+        val manager = getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
+        return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
 
     companion object {
         const val DEFAULT_VIDEO_HEIGHT = 720

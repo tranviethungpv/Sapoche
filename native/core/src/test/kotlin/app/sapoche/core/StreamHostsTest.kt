@@ -48,7 +48,21 @@ class StreamHostsTest {
 
     @Test
     fun `an address that lists the server it names last is read from it first`() {
-        assertEquals(listOf("rr2---sn-bbb.googlevideo.com", "rr2---sn-aaa.googlevideo.com"), hostsOf(address("sn-bbb", "sn-bbb,sn-aaa", "rr2---sn-bbb.googlevideo.com")))
+        assertEquals(listOf("rr2---sn-bbb.googlevideo.com", "rr1---sn-aaa.googlevideo.com"), hostsOf(address("sn-bbb", "sn-bbb,sn-aaa", "rr2---sn-bbb.googlevideo.com")))
+    }
+
+    @Test
+    fun `the first server keeps its number and the others are read as rr1, which every server has`() {
+        // Seen 2026-11-14: the provider's servers go to rr12, the other servers only to rr5, and rr12---sn-oguelnsr is no host
+        assertEquals(
+            listOf("rr12---sn-aaa.googlevideo.com", "rr1---sn-bbb.googlevideo.com", "rr1---sn-ccc.googlevideo.com"),
+            hostsOf(address("sn-aaa", "sn-aaa,sn-bbb,sn-ccc", "rr12---sn-aaa.googlevideo.com")),
+        )
+        assertEquals(
+            listOf("rr1---sn-bbb.googlevideo.com", "rr12---sn-aaa.googlevideo.com"),
+            hosts.also { it.markUnreachable(address("sn-aaa", host = "rr12---sn-aaa.googlevideo.com")) }
+                .candidates(address("sn-aaa", host = "rr12---sn-aaa.googlevideo.com")).map { it.host },
+        )
     }
 
     @Test
@@ -93,8 +107,17 @@ class StreamHostsTest {
         assertFalse(StreamHosts.isConnectFailure(SocketTimeoutException("timeout")))
         assertFalse(StreamHosts.isConnectFailure(SocketTimeoutException("Read timed out")))
         assertFalse(StreamHosts.isConnectFailure(IOException("unexpected end of stream")))
-        // No name for the server says nothing of the server
-        assertFalse(StreamHosts.isConnectFailure(UnknownHostException("rr1---sn-aaa.googlevideo.com")))
+        // No address for the name of the server: another server, by another name, can be read
+        assertTrue(StreamHosts.isConnectFailure(UnknownHostException("Unable to resolve host \"rr1---sn-aaa.googlevideo.com\": No address associated with hostname")))
+        assertTrue(StreamHosts.isConnectFailure(IOException(ExecutionException(UnknownHostException("no address")))))
+    }
+
+    @Test
+    fun `a server is told of once while it is known to be down`() {
+        assertTrue(hosts.markUnreachable(address()))
+        assertFalse(hosts.markUnreachable(address()))
+        clock += StreamHosts.REMEMBER_MS
+        assertTrue(hosts.markUnreachable(address()))
     }
 
     // ------------------------------------------------------------------ the interceptor, against real sockets
@@ -111,8 +134,8 @@ class StreamHostsTest {
         .addInterceptor(StreamHostFallback(hosts, shortConnectMs))
         .build()
 
-    private fun stream(mn: String? = "sn-aaa,sn-bbb"): Request =
-        Request.Builder().url("http://rr1---sn-aaa.test:${server.port}/videoplayback" + (mn?.let { "?mn=$it" } ?: "")).build()
+    private fun stream(mn: String? = "sn-aaa,sn-bbb", host: String = "rr1---sn-aaa.test"): Request =
+        Request.Builder().url("http://$host:${server.port}/videoplayback" + (mn?.let { "?mn=$it" } ?: "")).build()
 
     @BeforeTest
     fun start() {
@@ -138,6 +161,55 @@ class StreamHostsTest {
         assertEquals(2, server.requestCount)
         assertEquals(1, events.size)
         assertTrue("rr1---sn-aaa.test could not be connected to" in events.single() && "trying rr1---sn-bbb.test" in events.single(), events.single())
+    }
+
+    @Test
+    fun `the name of a server that is down is not the only one tried, the other is read as rr1`() {
+        // The log of 2026-11-14: rr12---sn-aaa times out, rr12---sn-bbb has no address, rr1---sn-bbb has
+        val hosts = local
+        val asked = mutableListOf<String>()
+        val client = client(hosts) { name ->
+            asked += name
+            when (name) {
+                "rr12---sn-aaa.test" -> "127.0.0.2"
+                "rr1---sn-bbb.test" -> "127.0.0.1"
+                else -> throw UnknownHostException(name)
+            }
+        }
+        server.enqueue(MockResponse.Builder().code(206).body("one").build())
+        server.enqueue(MockResponse.Builder().code(206).body("two").build())
+
+        client.newCall(stream(host = "rr12---sn-aaa.test")).execute().use { assertEquals("one", it.body.string()) }
+        client.newCall(stream(host = "rr12---sn-aaa.test")).execute().use { assertEquals("two", it.body.string()) }
+
+        assertTrue("rr12---sn-bbb.test" !in asked, asked.toString())
+        assertEquals(1, events.size)
+    }
+
+    @Test
+    fun `a server whose name has no address is read from another, then not tried first again`() {
+        val hosts = local
+        val client = client(hosts) { name -> if ("sn-aaa" in name) throw UnknownHostException(name) else "127.0.0.1" }
+        server.enqueue(MockResponse.Builder().code(206).body("one").build())
+        server.enqueue(MockResponse.Builder().code(206).body("two").build())
+
+        client.newCall(stream()).execute().use { assertEquals("one", it.body.string()) }
+        assertEquals("rr1---sn-bbb.test", hosts.candidates(stream().url).first().host)
+        client.newCall(stream()).execute().use { assertEquals("two", it.body.string()) }
+
+        assertTrue("UnknownHostException" in events.single(), events.single())
+    }
+
+    @Test
+    fun `with no network at all the failure is the one of the first and it is told of once`() {
+        val hosts = local
+        val client = client(hosts) { name -> throw UnknownHostException(name) }
+        repeat(3) {
+            val failure = assertFailsWith<IOException> { client.newCall(stream()).execute() }
+            assertTrue(failure is UnknownHostException && "rr1---sn-aaa.test" in failure.message.orEmpty(), failure.toString())
+        }
+        assertEquals(2, events.size)
+        assertEquals(0, server.requestCount)
     }
 
     @Test

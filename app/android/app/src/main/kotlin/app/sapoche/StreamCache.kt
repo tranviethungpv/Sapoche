@@ -29,6 +29,7 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.random.Random
 
 /**
  * Resolves video ids to playable stream URLs, validates them, and caches them.
@@ -193,6 +194,7 @@ class StreamCache(
         var lastProblem = "unknown"
         var lastError: Exception? = null
         for (attempt in 1..MAX_ATTEMPTS) {
+            var waited = false
             try {
                 val resolved = resolver.resolve(videoId)
                 val entry = Entry(resolved.best, resolved.all, resolved.videos, System.currentTimeMillis())
@@ -220,8 +222,14 @@ class StreamCache(
                     throw LoadFailure(LoadFailure.Reason.UNPLAYABLE, "$videoId cannot be played ($lastProblem)", e)
                 }
                 // Without a network every try fails at once: a network that is only changing gets a moment
-                if (isOffline(e) && attempt < MAX_ATTEMPTS) delay(OFFLINE_RETRY_MS)
+                if (isOffline(e) && attempt < MAX_ATTEMPTS) {
+                    delay(OFFLINE_RETRY_MS)
+                    waited = true
+                }
             }
+            // A hiccup of YouTube's (a limit on how often, a network that flickered) is over in a moment: three tries in the
+            // same second would all be lost to it. Each try waits a little longer than the one before
+            if (!waited && attempt < MAX_ATTEMPTS) delay(retryDelayMs(attempt))
         }
         if (isOffline(lastError)) throw LoadFailure(LoadFailure.Reason.OFFLINE, "No network to get $videoId ($lastProblem)", lastError)
         throw ResolveFailed("Could not get a working stream for $videoId after $MAX_ATTEMPTS attempts ($lastProblem)")
@@ -264,5 +272,10 @@ class StreamCache(
         const val MAX_ATTEMPTS = 3
         const val MAX_AGE_MS = 4 * 60 * 60 * 1000L
         const val OFFLINE_RETRY_MS = 500L
+
+        /** How long to wait after the [attempt]th try that failed, and a little more at random so that tries do not move in step. */
+        fun retryDelayMs(attempt: Int, random: Random = Random.Default): Long = RETRY_DELAYS_MS[(attempt - 1).coerceIn(0, RETRY_DELAYS_MS.lastIndex)] + random.nextLong(0, 300)
+
+        private val RETRY_DELAYS_MS = longArrayOf(800, 2_000)
     }
 }

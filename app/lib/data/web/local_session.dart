@@ -559,30 +559,54 @@ class LocalSession {
           problem(Problem(ProblemKind.slow, item.title));
         }
       });
-      try {
-        if (again) player.refresh(item.videoId);
-        await job.guard(player.prepare(item, positionMs));
-        slow.cancel();
-        _stuckVideoIds.remove(item.videoId);
-        _loadedId = item.id;
-        _pendingPositionMs = 0;
-        _skippedInARow = 0;
-        _update((s) => s.copyWith(loading: false));
-        if (_playOnLoad) player.play();
-        _preload();
-        save();
-      } on Cancelled {
-        slow.cancel();
-        rethrow;
-      } catch (e) {
-        slow.cancel();
-        _stuckVideoIds.add(item.videoId);
-        log("could not load '${item.title}': $e");
-        // Nothing goes on loading in the background, and nothing starts later by itself
-        player.stop();
-        _pendingPositionMs = positionMs;
-        _update((s) => s.copyWith(loading: false));
-        _loadFailed(item, e);
+      var retried = false;
+      while (true) {
+        try {
+          if (again || retried) player.refresh(item.videoId);
+          await job.guard(player.prepare(item, positionMs));
+          slow.cancel();
+          _stuckVideoIds.remove(item.videoId);
+          _loadedId = item.id;
+          _pendingPositionMs = 0;
+          _skippedInARow = 0;
+          _update((s) => s.copyWith(loading: false));
+          if (_playOnLoad) player.play();
+          _preload();
+          save();
+          return;
+        } on Cancelled {
+          slow.cancel();
+          rethrow;
+        } catch (e) {
+          log("could not load '${item.title}': $e");
+          // Nothing goes on loading in the background, and nothing starts later by itself
+          player.stop();
+          // A failure that is neither "YouTube will not give it out" nor "no network" is often a blip: the person who
+          // wants to hear the song gets one more try from a new stream address before it counts as failed
+          if (!retried && LoadFailure.of(e) == null && _playOnLoad) {
+            retried = true;
+            log("trying '${item.title}' once more in ${retryAfter.inMilliseconds}ms");
+            try {
+              await job.delay(retryAfter);
+            } on Cancelled {
+              slow.cancel();
+              rethrow;
+            }
+            if (_playOnLoad) continue;
+            // Paused meanwhile: there is nothing to tell, and play starts from a new address
+            slow.cancel();
+            _stuckVideoIds.add(item.videoId);
+            _pendingPositionMs = positionMs;
+            _update((s) => s.copyWith(loading: false));
+            return;
+          }
+          slow.cancel();
+          _stuckVideoIds.add(item.videoId);
+          _pendingPositionMs = positionMs;
+          _update((s) => s.copyWith(loading: false));
+          _loadFailed(item, e);
+          return;
+        }
       }
     });
   }
@@ -602,9 +626,20 @@ class LocalSession {
           problem(Problem(ProblemKind.unplayable, item.title));
         }
       case null:
-        problem(Problem(ProblemKind.failed, item.title));
+        if (_playOnLoad && _hasNext && ++_skippedInARow < _maxSkippedInARow) {
+          // Tried twice, and the person wants to hear music: on to the next song, which is not why it was to stop
+          problem(Problem(ProblemKind.broken, item.title));
+          _step(1, auto: false);
+        } else {
+          _skippedInARow = 0;
+          problem(Problem(ProblemKind.failed, item.title));
+        }
     }
   }
+
+  /// Whether there is a song to go on to. With none (the last of the list, or the only one) a failure stops: going on would
+  /// end the queue, and that starts what follows it (autoplay) because of a network that is not there.
+  bool get _hasNext => _snapshot.index + 1 < _snapshot.queue.length || (_snapshot.repeat == 'all' && _snapshot.queue.length > 1);
 
   /// Keeps the gapless successor equal to the song after the one loaded.
   void _preload() {
@@ -670,4 +705,7 @@ class LocalSession {
 
   /// A load that takes longer than this is said to be slow.
   static const _slowLoad = Duration(seconds: 8);
+
+  /// A song that did not load gets one more try after this long, from a new stream address.
+  static const retryAfter = Duration(seconds: 3);
 }

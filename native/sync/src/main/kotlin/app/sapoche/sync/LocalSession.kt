@@ -467,29 +467,48 @@ class LocalSession(
                     problem(Problem(Problem.Kind.SLOW, item.title))
                 }
             }
-            try {
-                if (again) player.refresh(item.videoId)
-                player.prepare(item, positionMs)
-                slow.cancel()
-                stuckVideoIds -= item.videoId
-                loadedId = item.id
-                pendingPositionMs = 0
-                skippedInARow = 0
-                _snapshot.update { it.copy(loading = false) }
-                if (playOnLoad) player.play()
-                preload()
-                save()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                slow.cancel()
-                stuckVideoIds += item.videoId
-                log("could not load '${item.title}': ${e.message}")
-                // Nothing goes on loading in the background, and nothing starts later by itself
-                player.stop()
-                pendingPositionMs = positionMs
-                _snapshot.update { it.copy(loading = false) }
-                loadFailed(item, e)
+            var retried = false
+            while (true) {
+                try {
+                    if (again || retried) player.refresh(item.videoId)
+                    player.prepare(item, positionMs)
+                    slow.cancel()
+                    stuckVideoIds -= item.videoId
+                    loadedId = item.id
+                    pendingPositionMs = 0
+                    skippedInARow = 0
+                    _snapshot.update { it.copy(loading = false) }
+                    if (playOnLoad) player.play()
+                    preload()
+                    save()
+                    return@launch
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log("could not load '${item.title}': ${e.message}")
+                    // Nothing goes on loading in the background, and nothing starts later by itself
+                    player.stop()
+                    // A failure that is neither "YouTube will not give it out" nor "no network" is often a blip: the person
+                    // who wants to hear the song gets one more try from a new stream address before it counts as failed
+                    if (!retried && LoadFailure.of(e) == null && playOnLoad) {
+                        retried = true
+                        log("trying '${item.title}' once more in ${RETRY_AFTER_MS}ms")
+                        delay(RETRY_AFTER_MS)
+                        if (playOnLoad) continue
+                        // Paused meanwhile: there is nothing to tell, and play starts from a new address
+                        slow.cancel()
+                        stuckVideoIds += item.videoId
+                        pendingPositionMs = positionMs
+                        _snapshot.update { it.copy(loading = false) }
+                        return@launch
+                    }
+                    slow.cancel()
+                    stuckVideoIds += item.videoId
+                    pendingPositionMs = positionMs
+                    _snapshot.update { it.copy(loading = false) }
+                    loadFailed(item, e)
+                    return@launch
+                }
             }
         }
     }
@@ -508,8 +527,24 @@ class LocalSession(
                 skippedInARow = 0
                 problem(Problem(Problem.Kind.UNPLAYABLE, item.title))
             }
-            null -> problem(Problem(Problem.Kind.FAILED, item.title))
+            null -> if (playOnLoad && hasNext() && ++skippedInARow < MAX_SKIPPED_IN_A_ROW) {
+                // Tried twice, and the person wants to hear music: on to the next song, which is not why it was to stop
+                problem(Problem(Problem.Kind.BROKEN, item.title))
+                step(+1, auto = false)
+            } else {
+                skippedInARow = 0
+                problem(Problem(Problem.Kind.FAILED, item.title))
+            }
         }
+    }
+
+    /**
+     * Whether there is a song to go on to. With none (the last of the list, or the only one) a failure stops: going on
+     * would end the queue, and that starts what follows it (autoplay) because of a network that is not there.
+     */
+    private fun hasNext(): Boolean {
+        val s = snapshot.value
+        return s.index + 1 < s.queue.size || (s.repeat == "all" && s.queue.size > 1)
     }
 
     /** Keeps the gapless successor equal to the song after the one loaded. */
@@ -566,6 +601,9 @@ class LocalSession(
         const val MAX_QUEUE = 1000
         private const val MAX_RECOVERIES = 3
         private const val MAX_SKIPPED_IN_A_ROW = 3
+
+        /** A song that did not load gets one more try after this long, from a new stream address. */
+        const val RETRY_AFTER_MS = 3_000L
         private const val PREV_RESTARTS_AFTER_MS = 3000L
 
         /** A load that takes longer than this is said to be slow. */

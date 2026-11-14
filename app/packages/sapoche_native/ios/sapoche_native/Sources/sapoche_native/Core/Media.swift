@@ -92,21 +92,33 @@ struct URLSessionFetcher: FileFetcher {
                 throw unreached.underlying
             }
         }
-        var first: Error?
+        var named: Error? // what the server the address names failed with
+        var other: Error? // what a substitute failed with
         for (index, address) in addresses.enumerated() {
+            let substitute = address.host?.lowercased() != request.url?.host?.lowercased()
             let last = index == addresses.count - 1
             var attempt = request
             attempt.url = address
+            let failure: Error
             do {
                 return try await loadOnce(attempt, beginWithin: last ? nil : shortWait)
             } catch let unreached as Unreached {
-                hosts.markUnreachable(address)
-                first = first ?? unreached.underlying
-                hosts.tell("\(address.host ?? "?") could not be connected to (\(unreached.underlying.localizedDescription)), "
+                failure = unreached.underlying
+            } catch {
+                // What the server the address names answers badly is the answer, as it always was. A substitute is a
+                // guess: whatever goes wrong with it (a refusal, a broken handshake, a reset) is only a reason to try
+                // the next server, never the answer, or a made-up name could keep the real server from being read.
+                if !substitute || Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled { throw error }
+                failure = error
+            }
+            if substitute { other = other ?? failure } else { named = failure }
+            if hosts.markUnreachable(address) {
+                let connect = (failure as? URLError).map { StreamHosts.isConnectFailure($0, receivedNothing: true) } ?? false
+                hosts.tell("\(address.host ?? "?") \(connect ? "could not be connected to" : "did not give the stream") (\(failure.localizedDescription)), "
                     + (last ? "no other server" : "trying \(addresses[index + 1].host ?? "?")"))
             }
         }
-        throw first ?? URLError(.badURL)
+        throw named ?? other ?? URLError(.badURL)
     }
 
     /// A server could not be connected to, as [StreamHosts.isConnectFailure] tells it.
@@ -482,6 +494,14 @@ actor MediaLibrary {
     static let streamAboveBytes: Int64 = 256 * 1024 * 1024
     private static let attempts = 3
 
+    /// How long to wait after the [attempt]th try of a song failed (milliseconds), and a little more at random so that tries do
+    /// not move in step. A hiccup of YouTube's (a limit on how often, a network that flickered) is over in a moment: three
+    /// tries in the same second would all be lost to it. Mirrors `StreamCache.retryDelayMs`.
+    static func retryDelayMs(afterAttempt attempt: Int) -> Int64 {
+        let steps: [Int64] = [800, 2_000]
+        return steps[min(max(attempt - 1, 0), steps.count - 1)] + Int64.random(in: 0..<300)
+    }
+
     /// The playlists of songs played in pieces, for the player to read.
     nonisolated let playlists = HlsPlaylists()
 
@@ -496,6 +516,9 @@ actor MediaLibrary {
     /// they are: they are never fetched, kept, or swapped for a stream of YouTube.
     private let localFile: @Sendable (String) async -> URL?
 
+    /// Waits this many milliseconds between two tries of a song; a test makes it instant.
+    private let retryPause: @Sendable (Int64) async throws -> Void
+
     /// A transfer that is going on, and how many are waiting for it.
     private struct Transfer {
         let task: Task<Int64, Error>
@@ -505,7 +528,9 @@ actor MediaLibrary {
     private var running: [String: Transfer] = [:]
 
     init(files: MediaFiles, streams: StreamCache, fetcher: FileFetcher, log: @escaping @Sendable (String) -> Void = { _ in },
-         hosts: StreamHosts = .shared, localFile: @escaping @Sendable (String) async -> URL? = { _ in nil }) {
+         hosts: StreamHosts = .shared, localFile: @escaping @Sendable (String) async -> URL? = { _ in nil },
+         retryPause: @escaping @Sendable (Int64) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64($0) * 1_000_000) }) {
+        self.retryPause = retryPause
         self.files = files
         self.streams = streams
         self.fetcher = fetcher
@@ -564,6 +589,7 @@ actor MediaLibrary {
                 log("\(videoId) attempt \(attempt) failed: \(error.localizedDescription)")
                 // Often a stream address that stopped working: resolve again
                 await streams.invalidate(videoId)
+                if attempt < Self.attempts { try await retryPause(Self.retryDelayMs(afterAttempt: attempt)) }
             }
         }
         // Nothing could be brought onto the disk: the player may still manage to read the stream itself

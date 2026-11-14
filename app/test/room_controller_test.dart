@@ -646,7 +646,7 @@ void main() {
       'Press play to hear “Blinding Lights” once you’re back online.',
       '“Blinding Lights” was removed, is private or is blocked where you are. Skipped to the next song. It is not a fault of your phone or the app.',
       '“Blinding Lights” is not available, and neither were the songs before it, so the app stopped skipping. Pick another song.',
-      '“Blinding Lights” kept stopping, so it was skipped. This usually means a weak or unstable connection.',
+      '“Blinding Lights” would not play, even after trying again, so it was skipped. This usually means a weak or unstable connection.',
       '“Blinding Lights” did not load, usually because the connection is weak or unstable. Press play to try again.',
       '“Blinding Lights” did not load, usually because the connection is weak or unstable. Press play to try again.\nThe file is damaged (AVFoundationErrorDomain -11829)',
     ]);

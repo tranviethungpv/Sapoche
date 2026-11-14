@@ -100,6 +100,7 @@ final class SapocheRuntime {
         localFiles.set { id in try? await store.localUri(id).map { MusicFolder.url(in: folder, key: $0) } }
         let suggestions = SuggestionFeed(store: store, resolver: resolver, music: feed, log: { EventLog.d("suggest", $0) })
         let downloader = Downloader(store: store, fetch: { try await media.download($0) }, log: { EventLog.d("download", $0) },
+                                    online: { NetworkState.shared.online },
                                     onProgress: { batch in Task { @MainActor in SapocheRuntime.shared.bridge.downloadsChanged(batch) } })
 
         let engine = AVPlayerEngine(library: media, maxVideoHeight: { Int(prefs.int64("video_height") ?? 720) }, log: { EventLog.d("player", $0) })

@@ -649,6 +649,18 @@ actor LibraryStore {
         return try db.rows("SELECT state FROM downloads WHERE video_id = ?", [.text(videoId)]).first?[0].text == Self.failed
     }
 
+    /// The phone has no room: the song is failed at once, as [maxTries] tries would meet the same and use up the time.
+    func failNow(_ videoId: String) throws {
+        try db.run("UPDATE downloads SET state = ?, tries = ? WHERE video_id = ?", [.text(Self.failed), .int(Int64(Self.maxTries)), .text(videoId)])
+    }
+
+    /// Puts the songs still on the list in [state] to failed, for the same reason as [failNow]; how many there were.
+    func failAllWaiting(_ state: String) throws -> Int {
+        let waiting = try db.rows("SELECT video_id FROM downloads WHERE state = ?", [.text(state)]).count
+        try db.run("UPDATE downloads SET state = ?, tries = ? WHERE state = ?", [.text(Self.failed), .int(Int64(Self.maxTries)), .text(state)])
+        return waiting
+    }
+
     /// YouTube will not give the song out: it is not tried again by itself, only when the person asks (see [requestDownloads]).
     func markUnavailable(_ videoId: String) throws {
         try db.run("UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ?", [.text(Self.unavailable), .text(videoId)])

@@ -702,7 +702,7 @@ class LocalSessionTest {
         val h = harness()
         h.player.failPrepare = true
         h.session.add(listOf(track(1)), next = false)
-        step()
+        step(LocalSession.RETRY_AFTER_MS + 500)
         assertTrue(h.problems.any { it.title == "Song 1" })
         assertFalse(h.player.playing)
         assertEquals("Song 1", h.session.snapshot.value.current?.title, "it stays in the queue to try again")
@@ -765,9 +765,10 @@ class LocalSessionTest {
         val h = harness()
         h.player.failPrepare = true
         h.session.add(listOf(track(1)), next = false)
-        step()
+        step(LocalSession.RETRY_AFTER_MS + 500)
         assertEquals(LocalSession.Problem.Kind.FAILED, h.problems.single().kind)
         h.player.failPrepare = false
+        h.player.refreshed.clear()
         h.session.clear()
         h.session.add(listOf(track(1)), next = false) // the list was tapped: the same song with another queue id
         step()
@@ -839,14 +840,228 @@ class LocalSessionTest {
     }
 
     @Test
-    fun `any other failure to load says so and keeps the song`() = runTest {
+    fun `any other failure to load says so and keeps the song when there is nothing to go on to`() = runTest {
         val h = harness()
         h.player.failPrepare = true
-        h.session.add(listOf(track(1), track(2)), next = false)
-        step()
+        h.session.add(listOf(track(1)), next = false)
+        step(LocalSession.RETRY_AFTER_MS + 500)
         assertEquals(listOf(LocalSession.Problem(LocalSession.Problem.Kind.FAILED, "Song 1")), h.problems)
         assertEquals("Song 1", h.session.snapshot.value.current?.title)
+        assertTrue(h.ended.isEmpty(), "a failure to load is not the end of the queue, which would start autoplay")
+        assertFalse(h.session.snapshot.value.loading)
     }
+
+    /** Fails the first [times] tries of a song, then loads it. */
+    private fun Harness.failFirst(times: Int, reason: LoadFailure.Reason? = null) {
+        var left = times
+        player.failWith = {
+            if (left > 0) {
+                left--
+                if (reason == null) java.io.IOException("blip") else LoadFailure(reason, "x")
+            } else {
+                null
+            }
+        }
+    }
+
+    @Test
+    fun `a song that did not load gets one more try from a new address, and plays if that works`() = runTest {
+        val h = harness()
+        h.failFirst(1)
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step(500)
+        assertNull(h.player.loaded)
+        assertTrue(h.session.snapshot.value.loading, "it shows that something is going on while it waits")
+        assertTrue(h.problems.isEmpty(), "a blip is not said to the person")
+        step(LocalSession.RETRY_AFTER_MS)
+        assertEquals("Song 1", h.player.loaded?.title)
+        assertTrue(h.player.playing)
+        assertEquals(listOf(track(1).videoId), h.player.refreshed, "the second try starts from a new stream address")
+        assertTrue(h.problems.isEmpty())
+        assertEquals(2, h.player.prepareAttempts)
+    }
+
+    @Test
+    fun `a song that fails twice is skipped to the next, which is not what the person wanted to be stopped by`() = runTest {
+        val h = harness()
+        h.player.failWith = { if (it.title == "Song 1") java.io.IOException("blip") else null }
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step(LocalSession.RETRY_AFTER_MS + 500)
+        assertEquals("Song 2", h.player.loaded?.title)
+        assertTrue(h.player.playing)
+        assertEquals(listOf(LocalSession.Problem(LocalSession.Problem.Kind.BROKEN, "Song 1")), h.problems)
+    }
+
+    @Test
+    fun `skipping because songs fail to load stops after a few in a row, with the failure said`() = runTest {
+        val h = harness()
+        h.player.failWith = { java.io.IOException("the network is a mess") }
+        h.session.add((1..6).map(::track), next = false)
+        step((LocalSession.RETRY_AFTER_MS + 500) * 4)
+        assertEquals(
+            listOf(LocalSession.Problem.Kind.BROKEN, LocalSession.Problem.Kind.BROKEN, LocalSession.Problem.Kind.FAILED),
+            h.problems.map { it.kind },
+        )
+        assertEquals("Song 3", h.session.snapshot.value.current?.title)
+        assertFalse(h.player.playing)
+        assertFalse(h.session.snapshot.value.loading)
+        assertEquals(6, h.player.prepareAttempts, "two tries for each of three songs, and no more")
+    }
+
+    @Test
+    fun `songs that will not play and songs that did not load count together towards stopping`() = runTest {
+        val h = harness()
+        h.player.failWith = {
+            if (it.title == "Song 2") java.io.IOException("blip") else LoadFailure(LoadFailure.Reason.UNPLAYABLE, "gone")
+        }
+        h.session.add((1..6).map(::track), next = false)
+        step((LocalSession.RETRY_AFTER_MS + 500) * 2)
+        assertEquals(
+            listOf(LocalSession.Problem.Kind.SKIPPED, LocalSession.Problem.Kind.BROKEN, LocalSession.Problem.Kind.UNPLAYABLE),
+            h.problems.map { it.kind },
+        )
+        assertEquals("Song 3", h.session.snapshot.value.current?.title)
+    }
+
+    @Test
+    fun `the last song of the list is not skipped when it fails, so that no queue ends because of a network`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        h.failFirst(2)
+        h.session.next()
+        step(LocalSession.RETRY_AFTER_MS + 500)
+        assertEquals(LocalSession.Problem.Kind.FAILED, h.problems.last().kind)
+        assertEquals("Song 2", h.session.snapshot.value.current?.title)
+        assertFalse(h.session.snapshot.value.finished)
+        assertTrue(h.ended.isEmpty())
+    }
+
+    @Test
+    fun `repeating all with a single song that fails does not loop through it`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1)), next = false)
+        step()
+        h.session.setRepeat("all")
+        h.failFirst(2)
+        h.session.jump(h.session.snapshot.value.queue[0].id)
+        step(LocalSession.RETRY_AFTER_MS + 500)
+        assertEquals(LocalSession.Problem.Kind.FAILED, h.problems.last().kind)
+        assertEquals(2, h.player.prepareAttempts - 1, "two tries, and no looping round to the same song")
+    }
+
+    @Test
+    fun `repeating all goes round to the first song when the last fails`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step()
+        h.session.setRepeat("all")
+        h.player.failWith = { if (it.title == "Song 2") java.io.IOException("blip") else null }
+        h.session.next()
+        step(LocalSession.RETRY_AFTER_MS + 500)
+        assertEquals("Song 1", h.player.loaded?.title)
+        assertEquals(LocalSession.Problem.Kind.BROKEN, h.problems.last().kind)
+    }
+
+    @Test
+    fun `pausing while the retry waits leaves it paused and says nothing`() = runTest {
+        val h = harness()
+        h.failFirst(1)
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step(500)
+        h.session.pause()
+        step(LocalSession.RETRY_AFTER_MS * 2)
+        assertTrue(h.problems.isEmpty(), "was ${h.problems}")
+        assertNull(h.player.loaded, "nothing starts later by itself")
+        assertFalse(h.player.playing)
+        assertFalse(h.session.snapshot.value.loading)
+        assertEquals("Song 1", h.session.snapshot.value.current?.title, "no skipping to the next either")
+
+        h.session.play()
+        step()
+        assertTrue(h.player.playing, "play starts it again, from a new address")
+        assertEquals(listOf(track(1).videoId), h.player.refreshed)
+    }
+
+    @Test
+    fun `another song chosen while the retry waits drops the retry`() = runTest {
+        val h = harness()
+        h.player.failWith = { if (it.title == "Song 1") java.io.IOException("blip") else null }
+        h.session.add(listOf(track(1), track(2), track(3)), next = false)
+        step(500)
+        h.session.jump(h.session.snapshot.value.queue[2].id)
+        step(LocalSession.RETRY_AFTER_MS * 3)
+        assertEquals("Song 3", h.player.loaded?.title)
+        assertTrue(h.problems.isEmpty())
+        assertEquals(2, h.player.prepareAttempts, "the dropped song was not tried a second time")
+    }
+
+    @Test
+    fun `a song that will not play, or the lack of a network, is not tried again at once`() = runTest {
+        val unplayable = harness()
+        unplayable.player.failWith = { LoadFailure(LoadFailure.Reason.UNPLAYABLE, "gone") }
+        unplayable.session.add(listOf(track(1)), next = false)
+        step(LocalSession.RETRY_AFTER_MS + 500)
+        assertEquals(1, unplayable.player.prepareAttempts)
+
+        val offline = harness()
+        offline.player.failWith = { LoadFailure(LoadFailure.Reason.OFFLINE, "no network") }
+        offline.session.add(listOf(track(1)), next = false)
+        step(LocalSession.RETRY_AFTER_MS + 500)
+        assertEquals(1, offline.player.prepareAttempts)
+    }
+
+
+    /**
+     * Random taps among random failures. With [transientOnly] every failure is a blip, which must never end the queue: the
+     * queue ends only when the person goes past its last song. Whatever the failures, it never throws and, when left alone
+     * on a good network, settles with nothing still loading.
+     */
+    private fun TestScope.randomTaps(transientOnly: Boolean) {
+        for (seed in 1..40) {
+            val h = harness()
+            val random = Random(seed)
+            val kinds = listOf(
+                { _: QueueItem -> java.io.IOException("blip") },
+                { _: QueueItem -> LoadFailure(LoadFailure.Reason.UNPLAYABLE, "gone") },
+                { _: QueueItem -> LoadFailure(LoadFailure.Reason.OFFLINE, "no network") },
+            )
+            h.player.failWith = { item -> if (random.nextInt(10) < 4) kinds[if (transientOnly) 0 else random.nextInt(kinds.size)](item) else null }
+            h.session.add((1..8).map(::track), next = false)
+            repeat(150) {
+                val snapshot = h.session.snapshot.value
+                val queue = snapshot.queue
+                val pastTheEnd = snapshot.index + 1 >= queue.size && snapshot.repeat != "all"
+                when (random.nextInt(14)) {
+                    0, 1 -> if (!pastTheEnd) h.session.next()
+                    2 -> h.session.prev()
+                    3 -> h.session.pause()
+                    4, 5 -> h.session.play()
+                    6, 7 -> if (queue.isNotEmpty()) h.session.jump(queue[random.nextInt(queue.size)].id)
+                    8 -> h.session.setRepeat(listOf("off", "all", "one")[random.nextInt(3)])
+                    9 -> h.session.add(listOf(track(random.nextInt(9, 40))), next = random.nextBoolean())
+                    10 -> if (queue.size > 1 && snapshot.index < queue.size - 1) h.session.remove(queue[random.nextInt(queue.size)].id)
+                    11 -> h.player.onError?.invoke(RuntimeException("403"))
+                    12 -> h.player.prepareDelayMs = random.nextLong(0, 9_000)
+                    13 -> h.session.seek(random.nextLong(0, 100_000))
+                }
+                step(random.nextLong(0, 5_000))
+                if (transientOnly) assertTrue(h.ended.isEmpty(), "seed $seed: a blip ended the queue, which would start autoplay")
+            }
+            // Nobody touches it any more, and the network is fine: it settles, with nothing still loading
+            h.player.failWith = null
+            h.player.prepareDelayMs = 0
+            step(120_000)
+            assertFalse(h.session.snapshot.value.loading, "seed $seed: it is still loading")
+            assertTrue(h.session.snapshot.value.queue.size <= LocalSession.MAX_QUEUE)
+        }
+    }
+
+    @Test
+    fun `random taps among random blips never end the queue or leave it loading for ever`() = runTest { randomTaps(transientOnly = true) }
+
+    @Test
+    fun `random taps among every kind of failure never throw or leave it loading for ever`() = runTest { randomTaps(transientOnly = false) }
 
     @Test
     fun `a stream that keeps breaking is skipped even while repeating that song`() = runTest {

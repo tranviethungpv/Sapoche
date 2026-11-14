@@ -1223,8 +1223,8 @@ abstract final class S {
       '“$title” không có, các bài trước đó cũng vậy nên app dừng lại, không bỏ qua nữa. Hãy chọn bài khác.',
     ),
     'load_broken' => _t(
-      '“$title” kept stopping, so it was skipped. This usually means a weak or unstable connection.',
-      '“$title” liên tục bị dừng nên đã bỏ qua. Thường do mạng yếu hoặc chập chờn.',
+      '“$title” would not play, even after trying again, so it was skipped. This usually means a weak or unstable connection.',
+      '“$title” không phát được, thử lại vẫn vậy nên đã bỏ qua. Thường do mạng yếu hoặc chập chờn.',
     ),
     _ => _t(
       '“$title” did not load, usually because the connection is weak or unstable. Press play to try again.',
