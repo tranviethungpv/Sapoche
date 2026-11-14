@@ -1,0 +1,6 @@
+Một menu bài hát ở mọi nơi, lượt xem, và phát ổn định hơn
+- Menu "..." của bài hát nay giống nhau ở Tìm kiếm, playlist, trang nghệ sĩ, Thư viện và player. Bạn chia sẻ bài, mở trang nghệ sĩ hay album, xem thông tin hoặc thêm vào playlist ngay từ kết quả tìm kiếm, không cần phát bài trước. Ở player menu có thêm Thích, còn các trang khác có thêm Chia sẻ và Thông tin bài hát.
+- Lượt xem hiện ở mọi chỗ YouTube có số: hàng bài, thẻ và playlist ở Trang chủ, trang nghệ sĩ, album, playlist, tâm trạng, hàng đợi và Thư viện, kể cả với bài bạn đã thấy trước đó.
+- Bài lỗi thoáng qua được thử lại một lần sau 3 giây bằng địa chỉ mới, rồi nhảy sang bài kế (tối đa ba bài liền, không nhảy ở bài cuối). Phòng tự bắt kịp sau đó.
+- Tải về nay phân biệt mất mạng (dừng cả mẻ, không tính lỗi cho bài), hết dung lượng (cả mẻ báo lỗi) và lỗi thoáng qua (thử lại ngay, hai lần).
+- Sửa bài không tải được trên vài mạng vì đoán sai địa chỉ máy chủ; app giờ hỏi máy chủ kế tiếp.

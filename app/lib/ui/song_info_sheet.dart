@@ -12,7 +12,7 @@ import 'widgets/artwork.dart';
 import 'widgets/motion.dart';
 
 /// What is known about a song: who sings it, which album and year, how long it is, how many watched it.
-void showSongInfo(BuildContext context, QueueEntry entry, {String? addedBy}) {
+void showSongInfo(BuildContext context, Track entry, {String? addedBy}) {
   final music = AppScope.of(context).music;
   showModalBottomSheet<void>(
     useRootNavigator: true,
@@ -36,7 +36,7 @@ class _SongInfo extends StatelessWidget {
     this.addedBy,
   });
 
-  final QueueEntry entry;
+  final Track entry;
   final String? addedBy;
   final Future<SongRadio> radio;
 

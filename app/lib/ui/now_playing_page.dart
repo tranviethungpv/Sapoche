@@ -11,29 +11,23 @@ import '../format.dart';
 import '../strings.dart';
 import '../theme/palette.dart';
 import '../theme/theme.dart';
-import 'artist_page.dart';
 import 'chat_sheet.dart';
-import 'collection_screen.dart' show openCollection;
 import 'members_sheet.dart';
 import 'player/lyrics_view.dart';
 import 'player/up_next_view.dart';
 import 'player/video_controls.dart';
 import 'player_sheet.dart';
-import 'song_info_sheet.dart';
 import 'scope.dart';
 import 'sleep_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/edge_fade.dart';
 import 'widgets/touch_box.dart';
-import 'widgets/not_interested.dart';
+import 'widgets/track_links.dart';
+import 'widgets/track_menu.dart';
 import 'widgets/like_button.dart';
 import 'widgets/marquee_text.dart';
-import 'widgets/menu_lines.dart';
 import 'widgets/motion.dart';
-import 'widgets/download_actions.dart';
-import 'widgets/playlist_picker.dart';
-import 'widgets/queue_actions.dart';
 import 'widgets/playback_bar.dart';
 import 'widgets/transport.dart';
 import 'widgets/video_frame.dart';
@@ -749,7 +743,12 @@ class _CoverStage extends StatelessWidget {
                     // taller than [_titleHeight] by about 32 dp
                     wrapLines:
                         side >= artSize &&
-                            box.maxHeight - side - _coverGap - _titleHeight - 16 >= 32
+                            box.maxHeight -
+                                    side -
+                                    _coverGap -
+                                    _titleHeight -
+                                    16 >=
+                                32
                         ? 2
                         : 1,
                   ),
@@ -1093,56 +1092,7 @@ class _ArtistLineState extends State<_ArtistLine> {
   }
 }
 
-/// Opens the page of the artist of [song], which YouTube Music is asked for; says so when it cannot be found.
-Future<void> openArtistOf(BuildContext context, QueueEntry song) async {
-  final messenger = ScaffoldMessenger.of(context);
-  final navigator = Navigator.of(context);
-  String? id;
-  try {
-    final radio = await AppScope.of(context).music.radio(song.videoId);
-    id = radio.songOf(song.videoId)?.artistId;
-  } on Object {
-    // Said below
-  }
-  if (id == null) {
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(S.musicFailed)));
-    return;
-  }
-  if (navigator.mounted) await openArtist(navigator.context, id);
-}
-
-/// Opens the page of the album [song] is on, which YouTube Music is asked for; says so when it is on none (a single
-/// video, a song it does not know the album of).
-Future<void> openAlbumOf(BuildContext context, QueueEntry song) async {
-  final messenger = ScaffoldMessenger.of(context);
-  final navigator = Navigator.of(context);
-  MusicTrack? found;
-  try {
-    found = (await AppScope.of(context).music.radio(song.videoId))
-        .songOf(song.videoId);
-  } on Object {
-    // Said below
-  }
-  final id = found?.albumId;
-  if (id == null) {
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(S.noAlbum)));
-    return;
-  }
-  if (navigator.mounted) {
-    await openCollection(
-      navigator.context,
-      id: id,
-      title: found?.album ?? song.title,
-      thumb: song.thumb,
-    );
-  }
-}
-
-/// The "…" of the song: its info, its artist, a playlist to put it in, keeping it on the phone.
+/// The "…" of the song: the menu every song row has, without putting the song that is playing on the queue.
 class _MoreButton extends StatelessWidget {
   const _MoreButton({required this.controller, required this.current});
 
@@ -1151,64 +1101,11 @@ class _MoreButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final library = AppScope.of(context).library;
     final snapshot = controller.snapshot;
     final who = current.addedBy == snapshot.you
         ? S.you
         : snapshot.nameOf(current.addedBy);
-    // A file on this phone has no YouTube artist or album, is not downloaded, has no link, and is not to be blocked
-    final online = !current.isLocal;
-    List<MenuLine> lines() => [
-      MenuLine('info', Icons.info_outline_rounded, S.songInfo),
-      if (online)
-        MenuLine('artist', Icons.person_outline_rounded, S.goToArtist),
-      if (online) MenuLine('album', Icons.album_outlined, S.goToAlbum),
-      MenuLine('playlist', Icons.playlist_add_rounded, S.addToPlaylist),
-      // Only where the room has a chat to send it to
-      if (canSendToChat(controller, current))
-        MenuLine('chat', Icons.chat_bubble_outline_rounded, S.songSendToChat),
-      if (online) MenuLine('share', Icons.ios_share_rounded, S.shareSong),
-      if (online && !kIsWeb)
-        ...switch (library.downloadState(current.videoId)) {
-          DownloadState.done => [
-            MenuLine(
-              'undownload',
-              Icons.download_done_rounded,
-              S.removeDownload,
-            ),
-          ],
-          DownloadState.queued || DownloadState.waiting => [
-            MenuLine(
-              'none',
-              Icons.downloading_rounded,
-              S.downloading,
-              enabled: false,
-            ),
-          ],
-          _ => [MenuLine('download', Icons.download_rounded, S.download)],
-        },
-      if (online)
-        MenuLine('blocked', Icons.block_rounded, S.notInterested, apart: true),
-    ];
-    return SongMenuButton(
-      track: current,
-      lines: lines,
-      onSelected: (value) => switch (value) {
-        'info' => showSongInfo(
-          context,
-          current,
-          addedBy: who.isEmpty ? null : who,
-        ),
-        'artist' => openArtistOf(context, current),
-        'album' => openAlbumOf(context, current),
-        'playlist' => showAddToPlaylist(context, [current]),
-        'chat' => sendTrackToChat(context, current),
-        'share' => controller.shareSong(current),
-        'download' => startDownload(context, [current]),
-        'blocked' => showNotInterested(context, current),
-        _ => library.removeDownload(current.videoId),
-      },
-    );
+    return TrackMenu(track: current, addedBy: who.isEmpty ? null : who);
   }
 }
 
@@ -1611,9 +1508,8 @@ class SyncChip extends StatelessWidget {
             Flexible(
               child: AnimatedDefaultTextStyle(
                 duration: Motion.of(context, Motion.medium),
-                style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                  color: color,
-                ),
+                style: Theme.of(context).textTheme.labelMedium!
+                    .copyWith(color: color),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 child: Text(label),

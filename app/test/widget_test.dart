@@ -2398,6 +2398,26 @@ void main() {
       expect(find.text('Already in Mix'), findsOneWidget);
     });
 
+    testWidgets('a song from search has the same menu as the one playing', (
+      tester,
+    ) async {
+      final (backend, _) = await pumpApp(tester);
+      backend.searchResults = [songA];
+      backend.emit(const StateEvent(RoomSnapshot()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'alpha');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TrackMenu).first);
+      await tester.pumpAndSettle();
+      for (final line in ['next', 'end', 'like', 'playlist', 'artist', 'album', 'share', 'info']) {
+        expect(find.byKey(ValueKey('menu-$line')), findsOneWidget, reason: line);
+      }
+    });
+
     testWidgets('the picker can start a new playlist for the song', (
       tester,
     ) async {

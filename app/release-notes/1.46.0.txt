@@ -1,0 +1,6 @@
+One song menu everywhere, view counts, and steadier playback
+- The "..." menu of a song is now the same in Search, playlists, artist pages, the Library and the player. You can share a song, open its artist or album, see its info or add it to a playlist straight from a search result, without playing it first. In the player the menu also has Like, and the other pages also have Share and Song info.
+- View counts now show wherever YouTube gave one: song rows, cards and playlists on Home, artist, album, playlist and mood pages, the queue and the Library, also for songs you saw earlier.
+- A song that fails for a moment is tried once more after 3 seconds with a fresh address, then the next song plays (up to three in a row, never past the last one). A room catches up by itself afterwards.
+- Downloads now tell apart no connection (the batch stops and nothing is counted against the songs), a full phone (the batch is marked failed) and a short hiccup (tried again at once, twice).
+- Fixed a song that would not load on some connections because its server address was guessed wrong; the app now asks the next server instead.
