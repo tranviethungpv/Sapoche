@@ -150,10 +150,14 @@ final class FetchGate: @unchecked Sendable {
     private let lock = NSLock()
     private var held = false
     private var waiting = 0
+    private var broken = false
 
     var isHeld: Bool { lock.lock(); defer { lock.unlock() }; return held }
     var waiters: Int { lock.lock(); defer { lock.unlock() }; return waiting }
     func hold() { lock.lock(); held = true; lock.unlock() }
+    /// While broken, a transfer fails as one to a server that cannot be reached does.
+    var isBroken: Bool { lock.lock(); defer { lock.unlock() }; return broken }
+    func breakTransfers(_ on: Bool) { lock.lock(); broken = on; lock.unlock() }
     func entered() { lock.lock(); waiting += 1; lock.unlock() }
 }
 
@@ -161,6 +165,7 @@ struct FakeFetcher: FileFetcher {
     var gate: FetchGate?
 
     func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
+        if let gate, gate.isBroken { throw URLError(.cannotConnectToHost) }
         if let gate, gate.isHeld {
             gate.entered()
             try await Task.sleep(nanoseconds: 60_000_000_000)
@@ -642,6 +647,33 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(gate.waiters, 1, "the run did not start again by itself")
         XCTAssertTrue(events.filter { $0["type"] as? String == "downloads" }.last?["active"] is NSNull)
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("d").appendingPathComponent("video000002.part").path))
+    }
+
+    func testASongAskedForAgainWhileAFailedRunWaitsToTryAgainIsFetchedAtOnce() async throws {
+        gate.breakTransfers(true)
+        _ = try await call("download", ["tracks": [song(1)], "allowMetered": false])
+        await settle()
+        var list = try await result("downloads", as: [[String: Any]].self)
+        XCTAssertEqual(list.first?["state"] as? String, "queued", "it failed once and has tries left: the run waits to try it again")
+
+        // The person taps Try again: no minute of waiting is left for the run to get over
+        gate.breakTransfers(false)
+        _ = try await call("download", ["tracks": [song(1)], "allowMetered": false])
+        await settle()
+        list = try await result("downloads", as: [[String: Any]].self)
+        XCTAssertEqual(list.first?["state"] as? String, "done")
+        XCTAssertEqual(time.now, 0, "no time went by")
+    }
+
+    func testTheDelayBeforeAFailedSongIsTriedAgainStillPassesWhenNobodyAsks() async throws {
+        gate.breakTransfers(true)
+        _ = try await call("download", ["tracks": [song(1)], "allowMetered": false])
+        await settle()
+        gate.breakTransfers(false)
+        await time.advance(60_000)
+        await settle()
+        let list = try await result("downloads", as: [[String: Any]].self)
+        XCTAssertEqual(list.first?["state"] as? String, "done")
     }
 
     func testMobileDataIsAskedAboutBeforeDownloading() async throws {

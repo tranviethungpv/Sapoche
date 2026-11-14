@@ -634,7 +634,7 @@ class SapocheBridge(
                 // Songs the person asked for go on any network, but mobile data is asked about first
                 if (isMetered() && call.argument<Boolean>("allowMetered") != true) return "metered"
                 SapocheApp.library.requestDownloads(call.argument<List<Map<String, Any?>>>("tracks").orEmpty().map(::trackRef))
-                DownloadWorker.enqueue(activity, waiting = false)
+                DownloadWorker.enqueueAsked(activity)
                 return "queued"
             }
             "downloadRemove" -> {

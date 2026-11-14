@@ -1,0 +1,3 @@
+Bấm Thử lại là tải ngay
+- Khi một bài tải không được, app đợi một hai phút rồi tự thử lại. Trước đây bấm Thử lại trong lúc đợi thì có thông báo "Đang tải" nhưng chẳng thấy gì chạy. Giờ bài tải ngay và thanh tiến độ hiện lên, trên cả Android lẫn iPhone.
+- Nếu YouTube từ chối địa chỉ của bài giữa chừng khi đang tải, app xin địa chỉ mới và tải tiếp, thay vì tính là một lần thử hỏng. Việc này mới có ở Android; iPhone đã làm sẵn.

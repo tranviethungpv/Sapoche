@@ -7,12 +7,15 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /**
@@ -81,8 +84,23 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         const val KEY_AUTO = "auto_download"
         private const val KEY_WAITING = "waiting"
 
+        private const val QUEUED_WORK = "download-queued"
+
+        /**
+         * Starts the job for songs the person asks for. A run that failed songs waits out a delay (a minute, then two, and
+         * so on) before it tries them again, and a job appended behind it would wait as long: the person would see "Download
+         * failed" for minutes after asking again. So when no run is going on, the waiting one is replaced by a new one that
+         * starts at once; while one is going on, the new job follows it as before.
+         */
+        suspend fun enqueueAsked(context: Context) {
+            val work = WorkManager.getInstance(context)
+            val going = withContext(Dispatchers.IO) { work.getWorkInfosForUniqueWork(QUEUED_WORK).get() }
+                .any { it.state == WorkInfo.State.RUNNING }
+            enqueue(context, waiting = false, replaceWaiting = !going)
+        }
+
         /** Starts the job for asked-for songs ([waiting] false) or for liked songs that wait for Wi-Fi and a charger. */
-        fun enqueue(context: Context, waiting: Boolean) {
+        fun enqueue(context: Context, waiting: Boolean, replaceWaiting: Boolean = false) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(if (waiting) NetworkType.UNMETERED else NetworkType.CONNECTED)
                 .setRequiresCharging(waiting)
@@ -93,17 +111,22 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
                 .build()
             // Asked-for songs: appended, so a job that is just finishing is followed by one that sees what was added
-            // meanwhile. Liked songs: one waiting job is enough, it looks at the likes when it runs.
+            // meanwhile, or, with no run going on, replacing the one that waits to try failed songs again. Liked songs:
+            // one waiting job is enough, it looks at the likes when it runs.
             WorkManager.getInstance(context).enqueueUniqueWork(
-                if (waiting) "download-waiting" else "download-queued",
-                if (waiting) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.APPEND_OR_REPLACE,
+                if (waiting) "download-waiting" else QUEUED_WORK,
+                when {
+                    waiting -> ExistingWorkPolicy.KEEP
+                    replaceWaiting -> ExistingWorkPolicy.REPLACE
+                    else -> ExistingWorkPolicy.APPEND_OR_REPLACE
+                },
                 request,
             )
         }
 
         /** Stops the job for asked-for songs, and the retries it has waiting. */
         fun cancelQueued(context: Context) {
-            WorkManager.getInstance(context).cancelUniqueWork("download-queued")
+            WorkManager.getInstance(context).cancelUniqueWork(QUEUED_WORK)
         }
 
         fun cancelWaiting(context: Context) {

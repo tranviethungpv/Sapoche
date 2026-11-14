@@ -102,20 +102,31 @@ class MediaData(
         // The two places must not hold bytes of two different streams of one song
         caches.play.removeResource(videoId)
         val spec = DataSpec.Builder().setUri("${SapocheMediaSourceFactory.AUDIO_SCHEME}:$videoId").setKey(videoId).build()
-        val writer = CacheWriter(downloadSource(httpFactory()), spec, null, null)
-        coroutineScope {
-            // The transfer blocks its thread, so something else has to notice that this coroutine was cancelled
-            val watcher = launch {
-                try {
-                    awaitCancellation()
-                } finally {
-                    writer.cancel()
-                }
-            }
+        for (attempt in 1..ADDRESS_TRIES) {
+            val writer = CacheWriter(downloadSource(httpFactory()), spec, null, null)
             try {
-                writer.cache()
-            } finally {
-                watcher.cancel()
+                coroutineScope {
+                    // The transfer blocks its thread, so something else has to notice that this coroutine was cancelled
+                    val watcher = launch {
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            writer.cancel()
+                        }
+                    }
+                    try {
+                        writer.cache()
+                    } finally {
+                        watcher.cancel()
+                    }
+                }
+                break
+            } catch (e: IOException) {
+                // As the player does: an address YouTube turned away is replaced by a fresh one, and what was written stays
+                val rejected = generateSequence<Throwable>(e) { it.cause }.take(8).any(PatientLoadErrorPolicy::isAddressRejected)
+                if (!rejected || attempt == ADDRESS_TRIES) throw e
+                log("$videoId: the address was turned away, trying a fresh one (${attempt + 1} of $ADDRESS_TRIES)")
+                streams.invalidate(videoId)
             }
         }
         val length = ContentMetadata.getContentLength(caches.downloads.getContentMetadata(videoId))
@@ -196,5 +207,8 @@ class MediaData(
     companion object {
         /** The key of a song in the caches is its video id, whatever it was opened as ("sapoche:ID" or "sapoche:ID#video"). */
         val KEY = CacheKeyFactory { spec -> spec.uri.schemeSpecificPart }
+
+        /** A download is tried with this many addresses of the song before it counts as a failed try. */
+        private const val ADDRESS_TRIES = 3
     }
 }

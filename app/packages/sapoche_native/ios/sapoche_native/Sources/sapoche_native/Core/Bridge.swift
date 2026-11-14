@@ -163,6 +163,8 @@ final class Bridge {
     private var lastRenew: Int64 = 0
     private var draining: [Bool: Job] = [:]
     private var drainAgain: Set<Bool> = []
+    /// The runs that are waiting out the delay before they try their failed songs again.
+    private var backingOff: Set<Bool> = []
     private var calmSubscription: Subscription?
     private var outputSubscription: Subscription?
     private var volumeSubscription: Subscription?
@@ -1021,11 +1023,17 @@ final class Bridge {
     // ------------------------------------------------------------------ downloads
 
     /// Works through the songs on the list, in the background of the app when it has to be. Asking while a run is going
-    /// on makes it look again at the end, so what was added meanwhile is not left behind.
+    /// on makes it look again at the end, so what was added meanwhile is not left behind. A run that only waits to try
+    /// its failed songs again is not one going on: for songs the person asks for it is ended and a new run starts at once,
+    /// instead of leaving the person to look at "Download failed" for the minutes the delay takes.
     private func kickDownloads(waiting: Bool) {
         if draining[waiting]?.isActive == true {
-            drainAgain.insert(waiting)
-            return
+            if waiting || !backingOff.contains(waiting) {
+                drainAgain.insert(waiting)
+                return
+            }
+            backingOff.remove(waiting)
+            draining[waiting]?.cancel()
         }
         let downloader = downloader
         let store = store
@@ -1050,7 +1058,9 @@ final class Bridge {
                 if Task.isCancelled { return }
                 if self.drainAgain.remove(waiting) != nil { continue }
                 if result.retryLater && tries < Self.downloadRetries {
+                    self.backingOff.insert(waiting)
                     guard await self.time.wait(ms: Self.downloadRetryMs << Int64(tries)) else { return }
+                    self.backingOff.remove(waiting)
                     tries += 1
                     continue
                 }

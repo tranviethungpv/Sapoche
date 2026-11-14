@@ -1,0 +1,3 @@
+Try again starts at once
+- After a song could not be downloaded, the app waits a minute or two before it tries it again by itself. Tapping Try again during that wait used to say "Downloading" while nothing seemed to happen. Now the download starts right away and the bar shows it, on Android and iPhone.
+- If YouTube turns away the address of a song halfway through its download, the app now asks for a fresh address and goes on, instead of counting it as a failed try. This is on Android; the iPhone already did it.

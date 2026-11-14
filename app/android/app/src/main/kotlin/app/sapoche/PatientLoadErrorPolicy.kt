@@ -21,18 +21,20 @@ class PatientLoadErrorPolicy : DefaultLoadErrorHandlingPolicy() {
 
     override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
         val error = loadErrorInfo.exception
-        if (error is HttpDataSource.InvalidResponseCodeException && error.responseCode in URL_REJECTED_CODES) {
-            return C.TIME_UNSET
-        }
+        if (isAddressRejected(error)) return C.TIME_UNSET
         if (generateSequence<Throwable>(error) { it.cause }.take(8).any { it is LoadFailure || it is StreamCache.ResolveFailed }) {
             return C.TIME_UNSET
         }
         return super.getRetryDelayMsFor(loadErrorInfo)
     }
 
-    private companion object {
+    companion object {
         /** About eight minutes at the default 5 second retry delay. */
-        const val MAX_RETRIES = 100
-        val URL_REJECTED_CODES = setOf(401, 403, 404, 410)
+        private const val MAX_RETRIES = 100
+        private val URL_REJECTED_CODES = setOf(401, 403, 404, 410)
+
+        /** YouTube turned the address away (expired, or broken in the middle of the file): only a fresh one can be read. */
+        fun isAddressRejected(error: Throwable): Boolean =
+            error is HttpDataSource.InvalidResponseCodeException && error.responseCode in URL_REJECTED_CODES
     }
 }
