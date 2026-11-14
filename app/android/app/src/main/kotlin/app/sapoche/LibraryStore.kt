@@ -773,8 +773,8 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
                 if (inserted != -1L) continue
                 // Already listed: asking again in the plain way beats waiting, and a failed one gets another go
                 execSQL(
-                    "UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ? AND (state = ? OR (state = ? AND ? = ?))",
-                    arrayOf<Any?>(wanted, track.videoId, FAILED, WAITING, wanted, QUEUED),
+                    "UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ? AND (state = ? OR (state IN (?, ?) AND ? = ?))",
+                    arrayOf<Any?>(wanted, track.videoId, FAILED, WAITING, UNAVAILABLE, wanted, QUEUED),
                 )
             }
         }
@@ -816,6 +816,11 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         db.execSQL("UPDATE downloads SET tries = tries + 1 WHERE video_id = ?", arrayOf<Any?>(videoId))
         db.execSQL("UPDATE downloads SET state = ? WHERE video_id = ? AND tries >= ?", arrayOf<Any?>(FAILED, videoId, MAX_TRIES))
         db.rawQuery("SELECT state FROM downloads WHERE video_id = ?", arrayOf(videoId)).use { it.moveToFirst() && it.getString(0) == FAILED }
+    }
+
+    /** YouTube will not give the song out: it is not tried again by itself, only when the person asks (see [requestDownloads]). */
+    suspend fun markUnavailable(videoId: String) = withContext(io) {
+        writableDatabase.execSQL("UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ?", arrayOf<Any?>(UNAVAILABLE, videoId))
     }
 
     /** Takes a song off the list (the caller removes its bytes). */
@@ -1062,6 +1067,7 @@ class LibraryStore(context: Context, name: String? = "library.db") : SQLiteOpenH
         const val WAITING = "waiting"
         const val DONE = "done"
         const val FAILED = "failed"
+        const val UNAVAILABLE = "unavailable"
         const val MAX_TRIES = 3
     }
 }

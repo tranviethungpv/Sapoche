@@ -1,6 +1,7 @@
 package app.sapoche
 
 import androidx.test.core.app.ApplicationProvider
+import app.sapoche.sync.LoadFailure
 import app.sapoche.sync.TrackRef
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -19,12 +20,16 @@ class DownloaderTest {
     private lateinit var store: LibraryStore
     private val fetched = mutableListOf<String>()
     private val broken = mutableSetOf<String>()
+    private val gone = mutableSetOf<String>()
+    private val offline = mutableSetOf<String>()
     private var stopAt: String? = null
 
     private val downloader by lazy {
         Downloader(store, fetch = { id ->
             if (id == stopAt) throw CancellationException("the job was stopped")
             if (id in broken) throw IOException("no network")
+            if (id in gone) throw LoadFailure(LoadFailure.Reason.UNPLAYABLE, "$id cannot be played")
+            if (id in offline) throw LoadFailure(LoadFailure.Reason.OFFLINE, "No network to get $id")
             fetched += id
             id.length * 100L
         })
@@ -50,6 +55,32 @@ class DownloaderTest {
         val list = store.downloads()
         assertTrue(list.all { it.state == LibraryStore.DONE })
         assertEquals(200L, list.first { it.track.videoId == "bb" }.bytes)
+    }
+
+    @Test
+    fun aSongYouTubeWillNotGiveOutIsSetAsideAtOnceAndNotTriedAgainLater() = runTest {
+        gone += "bb"
+        store.requestDownloads(listOf(song("a"), song("bb"), song("c")))
+        val result = downloader.drain(waiting = false)
+        assertEquals(listOf("a", "c"), fetched)
+        assertEquals(2, result.done)
+        assertFalse("nothing to try again later", result.retryLater)
+        assertEquals(LibraryStore.UNAVAILABLE, store.downloads().first { it.track.videoId == "bb" }.state)
+
+        // The liked songs saved by themselves do not wake it up; the person asking does
+        store.requestDownloads(listOf(song("bb")), waiting = true)
+        assertEquals(LibraryStore.UNAVAILABLE, store.downloads().first { it.track.videoId == "bb" }.state)
+        store.requestDownloads(listOf(song("bb")))
+        assertEquals(LibraryStore.QUEUED, store.downloads().first { it.track.videoId == "bb" }.state)
+    }
+
+    @Test
+    fun noNetworkIsNotTakenForAVideoYouTubeWillNotGiveOut() = runTest {
+        offline += "a"
+        store.requestDownloads(listOf(song("a")))
+        val result = downloader.drain(waiting = false)
+        assertTrue(result.retryLater)
+        assertEquals(LibraryStore.QUEUED, store.downloads().single().state)
     }
 
     @Test

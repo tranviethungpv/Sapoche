@@ -1,5 +1,6 @@
 package app.sapoche
 
+import app.sapoche.sync.LoadFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +52,9 @@ class Downloader(
                 } catch (e: Exception) {
                     log("could not download $videoId: ${e.javaClass.simpleName}: ${e.message}")
                     failedNow += videoId
-                    if (!store.failDownload(videoId)) retryLater = true
+                    // A video YouTube will not give out is the same on every try: it says so now instead of after three
+                    if (LoadFailure.of(e)?.reason == LoadFailure.Reason.UNPLAYABLE) store.markUnavailable(videoId)
+                    else if (!store.failDownload(videoId)) retryLater = true
                 }
             }
         } catch (e: CancellationException) {

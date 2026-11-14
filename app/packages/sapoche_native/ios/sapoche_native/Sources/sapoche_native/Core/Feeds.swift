@@ -280,7 +280,12 @@ actor Downloader {
                 } catch {
                     log("could not download \(videoId): \(error.localizedDescription)")
                     failedNow.insert(videoId)
-                    if try await !store.failDownload(videoId) { retryLater = true }
+                    // A video YouTube will not give out is the same on every try: it says so now instead of after three
+                    if (error as? LoadFailure)?.reason == .unplayable {
+                        try await store.markUnavailable(videoId)
+                    } else if try await !store.failDownload(videoId) {
+                        retryLater = true
+                    }
                 }
             }
         } catch {

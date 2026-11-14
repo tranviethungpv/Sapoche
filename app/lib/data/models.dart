@@ -57,7 +57,13 @@ enum DownloadState {
 
   /// On the phone: plays without the network.
   done,
-  failed;
+
+  /// Not fetched, after tries that did not work.
+  failed,
+
+  /// YouTube will not give this song out (removed, private, blocked here, age restricted): trying again at once does not
+  /// help, so it is not tried more than once until the person asks.
+  unavailable;
 
   static DownloadState parse(String? name) =>
       DownloadState.values.asNameMap()[name] ?? DownloadState.queued;

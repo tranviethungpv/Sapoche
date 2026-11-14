@@ -293,6 +293,8 @@ abstract final class S {
   static String get queuedToDownload =>
       _t('Waiting to download', 'Đang chờ tải');
   static String get downloadFailed => _t('Download failed', 'Tải không được');
+  static String get downloadUnavailable =>
+      _t('Not available on YouTube', 'Không có trên YouTube');
   static String get willTryAgain => _t('Will try again', 'Sẽ thử lại');
   static String downloadsTake(String size) =>
       _t('Takes $size on this phone', 'Chiếm $size trên điện thoại');
@@ -1187,25 +1189,48 @@ abstract final class S {
     'Không ai phát được “$title”. Đã bỏ qua.',
   );
 
-  // Why this device's own player has not started a song yet
-  static String loadSlow(String title) => _t(
-    'Slow connection, still loading “$title”…',
-    'Mạng chậm, vẫn đang tải “$title”…',
-  );
-  static String loadOffline(String title) => _t(
-    'No internet connection. Press play to hear “$title” once you’re back online.',
-    'Không có kết nối mạng. Khi có mạng, bấm phát để nghe “$title”.',
-  );
-  static String loadSkipped(String title) => _t(
-    '“$title” can’t be played. Skipped to the next song.',
-    'Không phát được “$title”. Đã chuyển sang bài tiếp.',
-  );
-  static String loadUnplayable(String title) =>
-      _t('YouTube won’t play “$title”.', 'YouTube không cho phát “$title”.');
-  static String loadFailed(String title) => _t(
-    'Couldn’t load “$title”. Press play to try again.',
-    'Không tải được “$title”. Bấm phát để thử lại.',
-  );
+  // Why this device's own player has not started a song yet. Two lines: what happened in a few words, and what it means
+  // for the person (whose fault it is, what the app does, what to do), so that waiting or skipping does not look like a
+  // broken app
+  static String loadHead(String code) => switch (code) {
+    'load_slow' => _t('Still loading…', 'Vẫn đang tải…'),
+    'load_offline' => _t('No internet', 'Không có mạng'),
+    'load_skipped' || 'load_unplayable' => _t(
+      'YouTube doesn’t provide this song',
+      'YouTube không cung cấp bài này',
+    ),
+    'load_broken' => _t(
+      'The connection keeps dropping',
+      'Kết nối liên tục bị ngắt',
+    ),
+    _ => _t('Couldn’t load the song', 'Không tải được bài'),
+  };
+  static String loadDetail(String code, String title) => switch (code) {
+    'load_slow' => _t(
+      '“$title” is taking longer than usual because your connection is slow. The app keeps trying.',
+      '“$title” tải lâu hơn bình thường vì mạng đang chậm. App vẫn đang thử.',
+    ),
+    'load_offline' => _t(
+      'Press play to hear “$title” once you’re back online.',
+      'Khi có mạng, bấm phát để nghe “$title”.',
+    ),
+    'load_skipped' => _t(
+      '“$title” was removed, is private or is blocked where you are. Skipped to the next song. It is not a fault of your phone or the app.',
+      '“$title” đã bị gỡ, để riêng tư hoặc bị chặn ở khu vực của bạn. Đã chuyển sang bài tiếp. Đây không phải lỗi của điện thoại hay app.',
+    ),
+    'load_unplayable' => _t(
+      '“$title” is not available, and neither were the songs before it, so the app stopped skipping. Pick another song.',
+      '“$title” không có, các bài trước đó cũng vậy nên app dừng lại, không bỏ qua nữa. Hãy chọn bài khác.',
+    ),
+    'load_broken' => _t(
+      '“$title” kept stopping, so it was skipped. This usually means a weak or unstable connection.',
+      '“$title” liên tục bị dừng nên đã bỏ qua. Thường do mạng yếu hoặc chập chờn.',
+    ),
+    _ => _t(
+      '“$title” did not load, usually because the connection is weak or unstable. Press play to try again.',
+      '“$title” không tải được, thường do mạng yếu hoặc chập chờn. Bấm phát để thử lại.',
+    ),
+  };
 
   // Settings
   static String get settingsTitle => _t('Settings', 'Cài đặt');

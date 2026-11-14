@@ -579,7 +579,8 @@ final class LocalSessionTests: XCTestCase {
         h.player.onError?(NSError(domain: "t", code: 403))
         await h.step()
         XCTAssertEqual(h.player.loaded?.title, "Song 2")
-        XCTAssertTrue(h.problems.contains { $0.title == "Song 1" })
+        XCTAssertEqual(h.problems.filter { $0.title == "Song 1" }.map(\.kind), [.broken],
+                       "a stream that keeps breaking is told as the connection's doing, not as a song YouTube will not give out")
     }
 
     func testANewSongInThePlaceOfOneThatBrokeGetsAllItsTries() async {

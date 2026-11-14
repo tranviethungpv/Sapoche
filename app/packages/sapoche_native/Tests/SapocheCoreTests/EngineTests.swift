@@ -1421,6 +1421,38 @@ final class FeedsTests: XCTestCase {
         XCTAssertEqual(states.last, "bad queued")
     }
 
+    func testASongYouTubeWillNotGiveOutIsSetAsideAtOnceAndOnlyAskingAgainRevivesIt() async throws {
+        let store = try LibraryStore(path: ":memory:")
+        func song(_ id: String) -> TrackRef { TrackRef(videoId: id, title: id, artist: "", thumb: nil, durMs: 1000) }
+        try await store.requestDownloads([song("a"), song("gone"), song("c")])
+        let downloader = Downloader(store: store, fetch: { id in
+            if id == "gone" { throw LoadFailure(reason: .unplayable, message: "gone cannot be played") }
+            return 5
+        })
+        let result = try await downloader.drain(waiting: false)
+        XCTAssertEqual(result, Downloader.Result(done: 2, retryLater: false), "there is nothing to try again later")
+        let states = try await store.downloads().map { "\($0.track.videoId) \($0.state)" }
+        XCTAssertEqual(states.last, "gone unavailable", "not after three tries")
+
+        // The liked songs saved by themselves do not wake it up; the person asking does
+        try await store.requestDownloads([song("gone")], waiting: true)
+        var after = try await store.downloads().map { "\($0.track.videoId) \($0.state)" }
+        XCTAssertEqual(after.last, "gone unavailable")
+        try await store.requestDownloads([song("gone")])
+        after = try await store.downloads().map { "\($0.track.videoId) \($0.state)" }
+        XCTAssertEqual(after.last, "gone queued")
+    }
+
+    func testAnOfflineFailureIsNotTakenForAVideoYouTubeWillNotGiveOut() async throws {
+        let store = try LibraryStore(path: ":memory:")
+        try await store.requestDownloads([TrackRef(videoId: "a", title: "a", artist: "", thumb: nil, durMs: 1000)])
+        let downloader = Downloader(store: store, fetch: { _ in throw LoadFailure(reason: .offline, message: "No network") })
+        let result = try await downloader.drain(waiting: false)
+        XCTAssertEqual(result, Downloader.Result(done: 0, retryLater: true))
+        let states = try await store.downloads().map { $0.state }
+        XCTAssertEqual(states, ["queued"])
+    }
+
     func testTheDownloaderSaysWhichSongIsOnAndHowFarTheRunHasGone() async throws {
         let store = try LibraryStore(path: ":memory:")
         func song(_ id: String) -> TrackRef { TrackRef(videoId: id, title: id, artist: "", thumb: nil, durMs: 1000) }

@@ -641,7 +641,11 @@ class LocalSessionTest {
         h.player.onError?.invoke(RuntimeException("403"))
         step()
         assertEquals("Song 2", h.player.loaded?.title)
-        assertTrue(h.problems.any { it.title == "Song 1" })
+        assertEquals(
+            listOf(LocalSession.Problem(LocalSession.Problem.Kind.BROKEN, "Song 1")),
+            h.problems.filter { it.title == "Song 1" },
+            "a stream that keeps breaking is told as the connection's doing, not as a song YouTube will not give out",
+        )
     }
 
     @Test

@@ -11,6 +11,7 @@ import 'package:sapoche/strings.dart';
 import 'package:sapoche/ui/home_shell.dart';
 import 'package:sapoche/ui/now_playing_page.dart';
 import 'package:sapoche/ui/setup_dialog.dart';
+import 'package:sapoche/ui/widgets/play_problem_note.dart';
 import 'package:sapoche/ui/widgets/avatars.dart';
 import 'package:sapoche/ui/widgets/qr_code_view.dart';
 import 'package:sapoche/ui/widgets/shimmer.dart';
@@ -208,6 +209,34 @@ void main() {
       expect(find.text('Play'), findsOneWidget);
     },
   );
+
+  testWidgets('a song that did not start says why, with a picture and two lines', (
+    tester,
+  ) async {
+    final (backend, _) = await pumpApp(tester);
+    backend.emit(StateEvent(sampleRoom()));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    backend.emit(const ErrorEvent(ServerError('load_slow', 'Blinding Lights')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Still loading…'), findsOneWidget);
+    expect(
+      find.textContaining('because your connection is slow'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.hourglass_top_rounded), findsOneWidget);
+
+    backend.emit(const ErrorEvent(ServerError('load_skipped', 'Blinding Lights')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1)); // the first one leaves, then the new one comes
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('YouTube doesn’t provide this song'), findsOneWidget);
+    expect(find.textContaining('not a fault of your phone'), findsOneWidget);
+    expect(find.byIcon(Icons.music_off_rounded), findsOneWidget);
+    expect(find.text('Still loading…'), findsNothing, reason: 'replaced');
+    await tester.pump(PlayProblemNote.duration + const Duration(seconds: 1));
+  });
 
   testWidgets('the repeat button on the full player asks for the next mode', (
     tester,
@@ -2631,6 +2660,26 @@ void main() {
       await tester.tap(find.text('Remove all').last);
       await tester.pumpAndSettle();
       expect(find.textContaining('not downloaded'), findsNothing);
+    });
+
+    testWidgets('a song YouTube will not give out says so, while a run goes on too', (
+      tester,
+    ) async {
+      final backend = await openLibrary(tester);
+      backend.downloadList.add(
+        const DownloadEntry(track: songC, state: DownloadState.unavailable),
+      );
+      // A run of other songs is going on: the failed and the unavailable are still told, the waiting ones are not
+      backend.emit(
+        DownloadsEvent(DownloadBatch(active: songB.videoId, done: 1, total: 3)),
+      );
+      await tester.tap(find.text('Downloaded'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 song not downloaded'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('stuck-header')));
+      await tester.pumpAndSettle();
+      expect(find.text('Not available on YouTube · Cy'), findsOneWidget);
+      expect(find.text('Download failed · Cy'), findsNothing);
     });
 
     testWidgets('stopping a run asks first, then drops what was not fetched', (

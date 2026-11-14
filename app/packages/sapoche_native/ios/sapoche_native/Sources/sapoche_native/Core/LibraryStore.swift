@@ -113,6 +113,7 @@ actor LibraryStore {
     static let waiting = "waiting"
     static let done = "done"
     static let failed = "failed"
+    static let unavailable = "unavailable"
     static let maxTries = 3
     private static let version = 9
 
@@ -617,8 +618,8 @@ actor LibraryStore {
                 try db.run("INSERT OR IGNORE INTO downloads(video_id, state, at) VALUES(?, ?, ?)", [.text(track.videoId), .text(wanted), .int(at)])
                 if db.changes > 0 { continue }
                 // Already listed: asking again in the plain way beats waiting, and a failed one gets another go
-                try db.run("UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ? AND (state = ? OR (state = ? AND ? = ?))",
-                           [.text(wanted), .text(track.videoId), .text(Self.failed), .text(Self.waiting), .text(wanted), .text(Self.queued)])
+                try db.run("UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ? AND (state = ? OR (state IN (?, ?) AND ? = ?))",
+                           [.text(wanted), .text(track.videoId), .text(Self.failed), .text(Self.waiting), .text(Self.unavailable), .text(wanted), .text(Self.queued)])
             }
         }
         onChange()
@@ -646,6 +647,11 @@ actor LibraryStore {
         try db.run("UPDATE downloads SET tries = tries + 1 WHERE video_id = ?", [.text(videoId)])
         try db.run("UPDATE downloads SET state = ? WHERE video_id = ? AND tries >= ?", [.text(Self.failed), .text(videoId), .int(Int64(Self.maxTries))])
         return try db.rows("SELECT state FROM downloads WHERE video_id = ?", [.text(videoId)]).first?[0].text == Self.failed
+    }
+
+    /// YouTube will not give the song out: it is not tried again by itself, only when the person asks (see [requestDownloads]).
+    func markUnavailable(_ videoId: String) throws {
+        try db.run("UPDATE downloads SET state = ?, tries = 0 WHERE video_id = ?", [.text(Self.unavailable), .text(videoId)])
     }
 
     /// Takes a song off the list (the caller removes its file).

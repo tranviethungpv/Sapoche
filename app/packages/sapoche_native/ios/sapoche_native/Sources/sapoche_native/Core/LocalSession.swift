@@ -100,8 +100,10 @@ final class LocalSession {
             case slow = "load_slow"
             /// Could not load it: the device has no network. Play tries again.
             case offline = "load_offline"
-            /// It cannot be played, or it kept breaking: the next song plays instead.
+            /// YouTube will not give the song out (removed, private, blocked where the person is): the next song plays instead.
             case skipped = "load_skipped"
+            /// The stream kept breaking while it played, which is the connection and not the song: the next song plays instead.
+            case broken = "load_broken"
             /// YouTube will not play it, and nothing was skipped to (too many such songs in a row).
             case unplayable = "load_unplayable"
             /// Could not load it, for some other reason (a very slow network, a broken stream). Play tries again.
@@ -611,7 +613,7 @@ final class LocalSession {
         recoveries += 1
         if recoveries > Self.maxRecoveries {
             log("player error, giving up on '\(item.title)' after \(Self.maxRecoveries) tries: \(error.localizedDescription)")
-            problem(Problem(kind: .skipped, title: item.title, detail: Self.cause(error)))
+            problem(Problem(kind: .broken, title: item.title, detail: Self.cause(error)))
             recoveries = 0
             // Not "auto": repeating this one song would load the broken stream again and again
             return step(+1, auto: false)

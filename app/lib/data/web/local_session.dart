@@ -123,8 +123,11 @@ enum ProblemKind {
   /// Could not load it: the device has no network. Play tries again.
   offline('load_offline'),
 
-  /// It cannot be played, or it kept breaking: the next song plays instead.
+  /// YouTube will not give the song out (removed, private, blocked where the person is): the next song plays instead.
   skipped('load_skipped'),
+
+  /// The stream kept breaking while it played, which is the connection and not the song: the next song plays instead.
+  broken('load_broken'),
 
   /// YouTube will not play it, and nothing was skipped to (too many such songs in a row).
   unplayable('load_unplayable'),
@@ -636,7 +639,7 @@ class LocalSession {
     if (current == null || current.id != _loadedId) return;
     if (++_recoveries > _maxRecoveries) {
       log("player error, giving up on '${current.title}' after $_maxRecoveries tries: $error");
-      problem(Problem(ProblemKind.skipped, current.title));
+      problem(Problem(ProblemKind.broken, current.title));
       _recoveries = 0;
       // Not "auto": repeating this one song would load the broken stream again and again
       _step(1, auto: false);

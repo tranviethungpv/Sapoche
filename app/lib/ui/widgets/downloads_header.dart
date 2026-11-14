@@ -194,6 +194,7 @@ class _DownloadsHeaderState extends State<DownloadsHeader> {
                                 Text(
                                   '${switch (d.state) {
                                     DownloadState.failed => S.downloadFailed,
+                                    DownloadState.unavailable => S.downloadUnavailable,
                                     DownloadState.waiting => S.waitingToDownload,
                                     _ => S.willTryAgain,
                                   }} · ${d.track.artist}',

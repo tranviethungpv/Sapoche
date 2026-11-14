@@ -311,7 +311,7 @@ class _DownloadMark extends StatelessWidget {
           size: 15,
           color: p.textTertiary,
         ),
-        DownloadState.failed => Icon(
+        DownloadState.failed || DownloadState.unavailable => Icon(
           Icons.error_outline_rounded,
           size: 15,
           color: p.error,

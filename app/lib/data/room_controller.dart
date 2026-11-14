@@ -49,6 +49,17 @@ class Notice {
   final bool opensChat;
 }
 
+/// Why this device's own player did not start or go on with a song, for a notice with a picture: [code] is what happened
+/// (`load_slow`, `load_offline`, `load_skipped`, `load_unplayable`, `load_broken`, `load_failed`), [headline] says it in a
+/// few words and [detail] what it means for the person and what to do.
+class PlayProblem {
+  const PlayProblem(this.code, this.headline, this.detail);
+
+  final String code;
+  final String headline;
+  final String detail;
+}
+
 /// A reaction to show: [name] reacted with [reaction], [count] taps of it. [mine] when it is this device's own.
 class RoomReaction {
   const RoomReaction({
@@ -158,6 +169,7 @@ class RoomController extends ChangeNotifier {
   bool get pipSupported => _pipSupported;
 
   final _messages = StreamController<String>.broadcast();
+  final _playProblems = StreamController<PlayProblem>.broadcast();
   final _notices = StreamController<Notice>.broadcast();
 
   /// What other members did to this device, see [Notice].
@@ -168,6 +180,9 @@ class RoomController extends ChangeNotifier {
 
   /// Short notices for a snackbar: server errors, failed actions.
   Stream<String> get messages => _messages.stream;
+
+  /// Why a song did not start here, for a notice with a picture (the others of [messages] are plain words).
+  Stream<PlayProblem> get playProblems => _playProblems.stream;
 
   RoomSnapshot get snapshot => _snapshot;
 
@@ -326,6 +341,11 @@ class RoomController extends ChangeNotifier {
       case PipEvent(:final on):
         pictureInPicture.value = on;
       case ErrorEvent(:final error):
+        final problem = _playProblem(error);
+        if (problem != null) {
+          _playProblems.add(problem);
+          break;
+        }
         final text = _describe(error);
         if (text != null) _messages.add(text);
     }
@@ -821,20 +841,34 @@ class RoomController extends ChangeNotifier {
   /// Lets the native side know which language is shown, for the texts it writes itself.
   Future<void> setLanguage(String code) => _backend.setLanguage(code);
 
-  String? _describe(ServerError error) {
-    // This device's own player: the message is the song's title, and from the iPhone a second line says what went wrong
+  static const _playProblemCodes = {
+    'load_slow',
+    'load_offline',
+    'load_skipped',
+    'load_unplayable',
+    'load_broken',
+    'load_failed',
+  };
+
+  /// This device's own player: the message is the song's title, and from the iPhone a second line says what went wrong.
+  PlayProblem? _playProblem(ServerError error) {
+    if (!_playProblemCodes.contains(error.code)) return null;
     final lines = error.message.split('\n');
-    final song = lines.first.isEmpty ? S.thisSong : lines.first;
+    final song = lines.first.isEmpty ? S.thisSong : _short(lines.first);
     final cause = lines.skip(1).join(' ').trim();
-    final own = switch (error.code) {
-      'load_slow' => S.loadSlow(song),
-      'load_offline' => S.loadOffline(song),
-      'load_skipped' => S.loadSkipped(song),
-      'load_unplayable' => S.loadUnplayable(song),
-      'load_failed' => S.loadFailed(song),
-      _ => null,
-    };
-    if (own != null) return cause.isEmpty ? own : '$own\n$cause';
+    final detail = S.loadDetail(error.code, song);
+    return PlayProblem(
+      error.code,
+      S.loadHead(error.code),
+      cause.isEmpty ? detail : '$detail\n$cause',
+    );
+  }
+
+  /// A title in the middle of a sentence: long ones would take the room of what is being said about them.
+  static String _short(String title) =>
+      title.length > 32 ? '${title.substring(0, 31).trimRight()}…' : title;
+
+  String? _describe(ServerError error) {
     if (error.code == 'unplayable') {
       // The message reads "Nobody could load: <title>", and from the iPhone a second line says what went wrong
       final lines = error.message.split('\n');
@@ -1511,6 +1545,7 @@ class RoomController extends ChangeNotifier {
     _subscription?.cancel();
     _seekTimer?.cancel();
     _messages.close();
+    _playProblems.close();
     _notices.close();
     _reactions.close();
     volume.dispose();

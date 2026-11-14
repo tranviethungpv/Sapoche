@@ -608,12 +608,15 @@ void main() {
 
   test('every reason a song did not start here has its own words', () async {
     final messages = <String>[];
+    final problems = <PlayProblem>[];
     controller.messages.listen(messages.add);
+    controller.playProblems.listen(problems.add);
     for (final code in [
       'load_slow',
       'load_offline',
       'load_skipped',
       'load_unplayable',
+      'load_broken',
       'load_failed',
     ]) {
       backend.emit(ErrorEvent(ServerError(code, 'Blinding Lights')));
@@ -628,14 +631,24 @@ void main() {
     );
     backend.emit(const ErrorEvent(ServerError('queue_full', '')));
     await settle();
-    expect(messages, [
-      'Slow connection, still loading “Blinding Lights”…',
-      'No internet connection. Press play to hear “Blinding Lights” once you’re back online.',
-      '“Blinding Lights” can’t be played. Skipped to the next song.',
-      'YouTube won’t play “Blinding Lights”.',
-      'Couldn’t load “Blinding Lights”. Press play to try again.',
-      'Couldn’t load “Blinding Lights”. Press play to try again.\nThe file is damaged (AVFoundationErrorDomain -11829)',
-      'The queue is full',
+    expect(messages, ['The queue is full'], reason: 'the rest has a picture');
+    expect(problems.map((p) => p.headline), [
+      'Still loading…',
+      'No internet',
+      'YouTube doesn’t provide this song',
+      'YouTube doesn’t provide this song',
+      'The connection keeps dropping',
+      'Couldn’t load the song',
+      'Couldn’t load the song',
+    ]);
+    expect(problems.map((p) => p.detail), [
+      '“Blinding Lights” is taking longer than usual because your connection is slow. The app keeps trying.',
+      'Press play to hear “Blinding Lights” once you’re back online.',
+      '“Blinding Lights” was removed, is private or is blocked where you are. Skipped to the next song. It is not a fault of your phone or the app.',
+      '“Blinding Lights” is not available, and neither were the songs before it, so the app stopped skipping. Pick another song.',
+      '“Blinding Lights” kept stopping, so it was skipped. This usually means a weak or unstable connection.',
+      '“Blinding Lights” did not load, usually because the connection is weak or unstable. Press play to try again.',
+      '“Blinding Lights” did not load, usually because the connection is weak or unstable. Press play to try again.\nThe file is damaged (AVFoundationErrorDomain -11829)',
     ]);
   });
 

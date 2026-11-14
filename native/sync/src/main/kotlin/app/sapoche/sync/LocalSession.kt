@@ -104,8 +104,11 @@ class LocalSession(
             /** Could not load it: the device has no network. Play tries again. */
             OFFLINE("load_offline"),
 
-            /** It cannot be played, or it kept breaking: the next song plays instead. */
+            /** YouTube will not give the song out (removed, private, blocked where the person is): the next song plays instead. */
             SKIPPED("load_skipped"),
+
+            /** The stream kept breaking while it played, which is the connection and not the song: the next song plays instead. */
+            BROKEN("load_broken"),
 
             /** YouTube will not play it, and nothing was skipped to (too many such songs in a row). */
             UNPLAYABLE("load_unplayable"),
@@ -537,7 +540,7 @@ class LocalSession(
         val item = snapshot.value.current?.takeIf { it.id == loadedId } ?: return
         if (++recoveries > MAX_RECOVERIES) {
             log("player error, giving up on '${item.title}' after $MAX_RECOVERIES tries: ${error.message}")
-            problem(Problem(Problem.Kind.SKIPPED, item.title))
+            problem(Problem(Problem.Kind.BROKEN, item.title))
             recoveries = 0
             // Not "auto": repeating this one song would load the broken stream again and again
             return step(+1, auto = false)

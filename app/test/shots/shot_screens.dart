@@ -77,8 +77,25 @@ void _someDownloads(FakeBackend b) {
   ]);
 }
 
+/// A song that did not start, told by the notice at the bottom of the playing room.
+ShotScreen _notice(String name, String code) => ShotScreen('notice-$name', prepare: (b) {
+  b.homeResult = homeData;
+  fillLibrary(b);
+}, (t, b) async {
+  await _playing(t, b);
+  b.emit(ErrorEvent(ServerError(code, tracks.first.title)));
+  await t.pump();
+  await _settle(t); // the notice slides in
+});
+
 /// Every screen of the picture set. Add a screen here, and it is drawn at every size, in both themes and languages.
 final shotScreens = <ShotScreen>[
+  _notice('slow', 'load_slow'),
+  _notice('offline', 'load_offline'),
+  _notice('skipped', 'load_skipped'),
+  _notice('unplayable', 'load_unplayable'),
+  _notice('broken', 'load_broken'),
+  _notice('failed', 'load_failed'),
   ShotScreen('home', prepare: (b) {
     b.homeResult = homeData;
     fillLibrary(b);

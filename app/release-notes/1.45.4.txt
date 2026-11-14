@@ -1,0 +1,4 @@
+Clearer notices when a song will not play
+- When a song is slow to start or cannot be played, the notice now has a picture and two lines: what happened, and what it means for you. For example, a song YouTube does not provide says so, and that it is not a fault of your phone or the app. A slow connection says the app is still trying.
+- A song that keeps stopping while it plays is now told apart from a song YouTube does not provide.
+- On the Downloaded page, a song YouTube does not give out is marked "Not available on YouTube" at once, instead of "Download failed" after three tries.

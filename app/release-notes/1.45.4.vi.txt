@@ -1,0 +1,4 @@
+Thông báo rõ hơn khi bài không phát được
+- Khi bài khởi động chậm hoặc không phát được, thông báo giờ có hình và hai dòng: chuyện gì đã xảy ra và điều đó nghĩa là gì với bạn. Ví dụ bài YouTube không cung cấp sẽ ghi rõ, và đó không phải lỗi của điện thoại hay app. Mạng chậm thì báo app vẫn đang thử.
+- Bài cứ bị dừng giữa chừng khi phát nay được báo khác với bài YouTube không cung cấp.
+- Ở trang Đã tải, bài YouTube không cho lấy được ghi ngay "Không có trên YouTube", thay vì "Tải không được" sau ba lần thử.

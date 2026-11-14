@@ -177,6 +177,19 @@ void main() {
     });
   });
 
+  test('a stream that keeps breaking is given up on, and told as the connection', () {
+    run(() {
+      session.add([song('1'), song('2')], next: false);
+      async.elapse(const Duration(seconds: 1));
+      for (var i = 0; i < 4; i++) {
+        player.onError?.call(Exception('403'));
+        async.elapse(const Duration(milliseconds: 10));
+      }
+      expect(session.snapshot.current!.title, 'Song 2');
+      expect(problems.map((p) => p.kind), [ProblemKind.broken]);
+    });
+  });
+
   test('three songs in a row that cannot be played stop the skipping', () {
     run(() {
       session = LocalSession(

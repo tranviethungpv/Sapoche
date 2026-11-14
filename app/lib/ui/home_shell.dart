@@ -32,6 +32,7 @@ import 'widgets/artwork.dart';
 import 'widgets/cached_cover.dart';
 import 'widgets/glass.dart';
 import 'widgets/mini_player.dart';
+import 'widgets/play_problem_note.dart';
 import 'widgets/motion.dart';
 import 'widgets/page_width.dart';
 import 'widgets/playlist_cover.dart';
@@ -222,6 +223,7 @@ class _HomeShellState extends State<HomeShell>
 
   NavigatorState? get _current => _navigators[_tab].currentState;
   StreamSubscription<String>? _messages;
+  StreamSubscription<PlayProblem>? _playProblems;
   StreamSubscription<String>? _libraryMessages;
   StreamSubscription<Notice>? _notices;
   RoomController? _watched;
@@ -241,6 +243,17 @@ class _HomeShellState extends State<HomeShell>
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(text)));
+    });
+    _playProblems = room.playProblems.listen((problem) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: PlayProblemNote(problem),
+            duration: PlayProblemNote.duration,
+          ),
+        );
     });
     _libraryMessages = AppScope.of(context).library.messages.listen((text) {
       if (!mounted) return;
@@ -403,6 +416,7 @@ class _HomeShellState extends State<HomeShell>
     _watched?.removeListener(_watchRoom);
     _watched?.removeListener(_askForKey);
     _messages?.cancel();
+    _playProblems?.cancel();
     _libraryMessages?.cancel();
     _notices?.cancel();
     _sheet.dispose();

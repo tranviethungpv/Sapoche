@@ -125,6 +125,7 @@ class LibraryController extends ChangeNotifier {
     return [
       for (final d in downloads)
         if (d.state == DownloadState.failed ||
+            d.state == DownloadState.unavailable ||
             (!running && d.state != DownloadState.done))
           d,
     ];
