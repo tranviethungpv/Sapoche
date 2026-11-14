@@ -25,11 +25,21 @@ struct URLSessionFetcher: FileFetcher {
     /// real-time speed: a song is fetched in ranges of this size, one after the other.
     static let chunkBytes: Int64 = 8 * 1024 * 1024
 
-    private let session: URLSession
+    /// How long a server that is not the last to try has to begin its answer. A request has no connect time of its own here,
+    /// so this is the time to the headers: what the short connect time is on Android, with the answer's wait in it. Once the
+    /// answer has begun the usual [timeout] of the session holds, so a network that stalls halfway is no worse off.
+    static let shortWaitSeconds: TimeInterval = 8
 
-    init(timeout: TimeInterval = 20, configuration: URLSessionConfiguration = .ephemeral) {
+    private let session: URLSession
+    private let hosts: StreamHosts
+    private let shortWait: TimeInterval
+
+    init(timeout: TimeInterval = 20, configuration: URLSessionConfiguration = .ephemeral, hosts: StreamHosts = .shared,
+         shortWait: TimeInterval = URLSessionFetcher.shortWaitSeconds) {
         configuration.timeoutIntervalForRequest = timeout
         session = URLSession(configuration: configuration)
+        self.hosts = hosts
+        self.shortWait = shortWait
     }
 
     func fetch(_ url: URL, headers: [String: String], to file: URL) async throws -> Int64 {
@@ -69,14 +79,56 @@ struct URLSessionFetcher: FileFetcher {
         return data
     }
 
-    /// One answer; throws when it is not a success. Stops when the calling task is cancelled.
+    /// One answer, from the first server of the address that can be connected to; throws when it is not a success. A
+    /// server that cannot be connected to is left for the next one the address lists, every one but the last being given
+    /// [shortWaitSeconds] to begin its answer, so a dead one costs seconds and a slow network is no worse off than with one server.
+    /// Stops when the calling task is cancelled.
     private func load(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let addresses = request.url.map(hosts.candidates(for:)) ?? []
+        guard addresses.count > 1 else {
+            do {
+                return try await loadOnce(request)
+            } catch let unreached as Unreached {
+                throw unreached.underlying
+            }
+        }
+        var first: Error?
+        for (index, address) in addresses.enumerated() {
+            let last = index == addresses.count - 1
+            var attempt = request
+            attempt.url = address
+            do {
+                return try await loadOnce(attempt, beginWithin: last ? nil : shortWait)
+            } catch let unreached as Unreached {
+                hosts.markUnreachable(address)
+                first = first ?? unreached.underlying
+                hosts.tell("\(address.host ?? "?") could not be connected to (\(unreached.underlying.localizedDescription)), "
+                    + (last ? "no other server" : "trying \(addresses[index + 1].host ?? "?")"))
+            }
+        }
+        throw first ?? URLError(.badURL)
+    }
+
+    /// A server could not be connected to, as [StreamHosts.isConnectFailure] tells it.
+    private struct Unreached: Error {
+        let underlying: Error
+    }
+
+    /// One answer from one address; throws when it is not a success, [Unreached] when the server could not be connected to,
+    /// or, with [beginWithin], did not begin its answer in that many seconds.
+    private func loadOnce(_ request: URLRequest, beginWithin: TimeInterval? = nil) async throws -> (Data, HTTPURLResponse) {
         let box = TaskBox()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>) in
                 let task = session.dataTask(with: request) { data, response, error in
+                    box.stopWatching()
                     if let error {
-                        continuation.resume(throwing: error)
+                        if box.gaveUpOnSilence {
+                            continuation.resume(throwing: Unreached(underlying: URLError(.timedOut)))
+                            return
+                        }
+                        let unreached = StreamHosts.isConnectFailure(error, receivedNothing: box.bytesReceived == 0)
+                        continuation.resume(throwing: unreached ? Unreached(underlying: error) : error)
                         return
                     }
                     guard let data, let response = response as? HTTPURLResponse else {
@@ -90,6 +142,13 @@ struct URLSessionFetcher: FileFetcher {
                     continuation.resume(returning: (data, response))
                 }
                 box.set(task)
+                if let wait = beginWithin {
+                    // The task has not begun its answer when the time is up: it is stopped, as it was not going to
+                    box.watch(Task {
+                        try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                        box.giveUpIfSilent()
+                    })
+                }
                 task.resume()
             }
         } onCancel: {
@@ -122,6 +181,49 @@ final class TaskBox: @unchecked Sendable {
         defer { lock.unlock() }
         cancelled = true
         task?.cancel()
+    }
+
+    /// How much of the answer has come, which says whether a failure was one of the connection or one halfway.
+    var bytesReceived: Int64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return task?.countOfBytesReceived ?? 0
+    }
+
+    private var silent = false
+
+    /// Whether the task was stopped by [giveUpIfSilent].
+    var gaveUpOnSilence: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return silent
+    }
+
+    private var watcher: Task<Void, Never>?
+    private var finished = false
+
+    /// The timer that stops the task if it stays silent; it is cancelled when the task is over.
+    func watch(_ timer: Task<Void, Never>) {
+        lock.lock()
+        defer { lock.unlock() }
+        if finished { timer.cancel() } else { watcher = timer }
+    }
+
+    func stopWatching() {
+        lock.lock()
+        defer { lock.unlock() }
+        finished = true
+        watcher?.cancel()
+        watcher = nil
+    }
+
+    /// Stops the task when it has no headers yet: the server did not answer in time.
+    func giveUpIfSilent() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let task, task.response == nil, task.state == .running else { return }
+        silent = true
+        task.cancel()
     }
 }
 
@@ -387,6 +489,8 @@ actor MediaLibrary {
     private let streams: StreamCache
     private let fetcher: FileFetcher
     private let log: @Sendable (String) -> Void
+    /// Which stream servers could not be reached lately: a stream played from its address is read from one that can.
+    private let hosts: StreamHosts
 
     /// Where the file of a song from this phone is, by its id; nil when it has none. Songs from files are played from where
     /// they are: they are never fetched, kept, or swapped for a stream of YouTube.
@@ -401,11 +505,12 @@ actor MediaLibrary {
     private var running: [String: Transfer] = [:]
 
     init(files: MediaFiles, streams: StreamCache, fetcher: FileFetcher, log: @escaping @Sendable (String) -> Void = { _ in },
-         localFile: @escaping @Sendable (String) async -> URL? = { _ in nil }) {
+         hosts: StreamHosts = .shared, localFile: @escaping @Sendable (String) async -> URL? = { _ in nil }) {
         self.files = files
         self.streams = streams
         self.fetcher = fetcher
         self.log = log
+        self.hosts = hosts
         self.localFile = localFile
     }
 
@@ -440,7 +545,7 @@ actor MediaLibrary {
         for attempt in 1...Self.attempts {
             do {
                 let pick = try await streams.audio(videoId, within: Self.wholeLimitBytes)
-                guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
+                guard let url = URL(string: hosts.preferred(pick.url)) else { throw URLError(.badURL) }
                 if pick.contentLength > Self.streamAboveBytes {
                     log("\(videoId) is \(pick.contentLength / 1_048_576) MB, played from the stream")
                     return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
@@ -474,7 +579,7 @@ actor MediaLibrary {
         // A file the player would not open has no stream to fall back on
         if LocalMusic.isLocal(videoId) { throw LoadFailure(reason: .unplayable, message: "\(videoId) has no stream") }
         let pick = try await streams.audio(videoId)
-        guard let url = URL(string: pick.url) else { throw URLError(.badURL) }
+        guard let url = URL(string: hosts.preferred(pick.url)) else { throw URLError(.badURL) }
         return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
     }
 
@@ -503,7 +608,7 @@ actor MediaLibrary {
     /// it has none that plays.
     func video(_ videoId: String, maxHeight: Int, budgetKbps: Int64 = 0) async throws -> Playable? {
         if LocalMusic.isLocal(videoId) { return nil }
-        guard let pick = try await streams.video(videoId, maxHeight: maxHeight, budgetKbps: budgetKbps), let url = URL(string: pick.source.url) else { return nil }
+        guard let pick = try await streams.video(videoId, maxHeight: maxHeight, budgetKbps: budgetKbps), let url = URL(string: hosts.preferred(pick.source.url)) else { return nil }
         return Playable(url: url, isFile: false, headers: ["User-Agent": pick.userAgent])
     }
 
@@ -516,7 +621,7 @@ actor MediaLibrary {
               let pictureURL = URL(string: picture.source.url) else { return nil }
         let sound = try await soundInPieces(videoId)
         let segments = try await pieces(pictureURL, index, contentLength: picture.source.contentLength, userAgent: picture.userAgent)
-        let pictureList = playlists.add(HlsPlaylist.media(url: picture.source.url, initEnd: index.initEnd, segments: segments), name: videoId + "-picture")
+        let pictureList = playlists.add(HlsPlaylist.media(url: hosts.preferred(picture.source.url), initEnd: index.initEnd, segments: segments), name: videoId + "-picture")
         let master = HlsPlaylist.master(
             video: pictureList, videoCodec: picture.source.codec, audio: sound.url,
             audioCodec: HlsPlaylist.codec(ofType: sound.pick.mimeType), bandwidth: (picture.source.bitrateKbps + sound.pick.bitrateKbps) * 1000
@@ -565,7 +670,7 @@ actor MediaLibrary {
         let pick = try await streams.audio(videoId)
         guard let index = pick.index, let url = URL(string: pick.url) else { throw NoIndex() }
         let segments = try await pieces(url, index, contentLength: pick.contentLength, userAgent: pick.userAgent)
-        let list = playlists.add(HlsPlaylist.media(url: pick.url, initEnd: index.initEnd, segments: segments), name: videoId + "-sound")
+        let list = playlists.add(HlsPlaylist.media(url: hosts.preferred(pick.url), initEnd: index.initEnd, segments: segments), name: videoId + "-sound")
         return (list, pick)
     }
 

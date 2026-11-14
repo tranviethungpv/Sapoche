@@ -50,6 +50,8 @@ class OkHttpDownloader(
             .readTimeout(30, TimeUnit.SECONDS)
             .connectTimeout(15, TimeUnit.SECONDS)
             .dns(OneFamilyDns())
+            // A stream server that cannot be connected to is left for the other one the address lists
+            .addInterceptor(StreamHostFallback())
             .build()
     }
 }

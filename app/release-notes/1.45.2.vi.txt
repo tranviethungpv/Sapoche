@@ -1,0 +1,3 @@
+Bài tải nhanh hơn khi một máy chủ không đáp
+- Địa chỉ của mỗi bài trỏ tới một máy chủ của nhà mạng, và ở vài đường truyền có máy chủ không trả lời. App từng chờ 15 giây, nên hiện "Mạng chậm, vẫn đang tải" hoặc bỏ sót bài khi bấm Tải tất cả. Giờ app bỏ máy chủ đó sau 5 giây và đọc đúng bài ấy từ máy chủ kế tiếp, rồi nhớ máy chủ vừa lỗi trong vài phút.
+- Phát nhạc, tải về và video đều dùng cách này, trên cả Android lẫn iPhone.

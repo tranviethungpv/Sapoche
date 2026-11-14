@@ -68,6 +68,7 @@ final class SapocheRuntime {
 
         // Where the music files of this phone are, read from the library once it is open (a song from a file is found by its id)
         let localFiles = LocalFileBox()
+        StreamHosts.shared.setLog { EventLog.d("stream", $0) }
         let media = MediaLibrary(files: files, streams: streams, fetcher: URLSessionFetcher(), log: { EventLog.d("media", $0) },
                                  localFile: { await localFiles.url(for: $0) })
         let lyrics = LyricsStore(dir: caches.appendingPathComponent("lyrics", isDirectory: true))

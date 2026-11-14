@@ -154,6 +154,9 @@ final class IndexedResolver: StreamResolver, @unchecked Sendable {
     var audio: [Stream]
     var video: Stream?
     private(set) var resolves = 0
+    /// The server the addresses of the audio name, and what follows the path (a list of other servers, say).
+    var host = "example.invalid"
+    var query = ""
 
     init(audio: [Stream], video: Stream? = nil) {
         self.audio = audio
@@ -170,7 +173,7 @@ final class IndexedResolver: StreamResolver, @unchecked Sendable {
     func resolve(_ videoId: String) async throws -> Resolved {
         resolves += 1
         let sources = audio.enumerated().map { number, stream in
-            AudioSource(url: "https://example.invalid/a\(number)", mimeType: "audio/mp4; codecs=\"mp4a.40.2\"", bitrateKbps: 128 - number,
+            AudioSource(url: "https://\(host)/a\(number)\(query)", mimeType: "audio/mp4; codecs=\"mp4a.40.2\"", bitrateKbps: 128 - number,
                         contentLength: stream.size, itag: 140 - number, index: Self.ranges(stream))
         }
         let videos = video.map {
@@ -238,10 +241,36 @@ final class PiecesTests: XCTestCase {
         return IndexedResolver.Stream(size: IndexedResolver.indexStart + Int64(box.count) + Int64(pieces) * Int64(size), index: box)
     }
 
-    private func library(_ resolver: IndexedResolver) -> (MediaLibrary, RangedFetcher, MediaFiles) {
+    private func library(_ resolver: IndexedResolver, hosts: StreamHosts = StreamHosts()) -> (MediaLibrary, RangedFetcher, MediaFiles) {
         let files = MediaFiles(downloadsDir: dir.appendingPathComponent("d"), playDir: dir.appendingPathComponent("p"), playLimitBytes: 1 << 30)
         let fetcher = RangedFetcher(resolver)
-        return (MediaLibrary(files: files, streams: StreamCache(resolver: resolver), fetcher: fetcher), fetcher, files)
+        return (MediaLibrary(files: files, streams: StreamCache(resolver: resolver), fetcher: fetcher, hosts: hosts), fetcher, files)
+    }
+
+    /// A song whose address names `sn-aaa` and lists `sn-bbb` as another server, with `sn-aaa` not reachable.
+    private func twoServers() -> (IndexedResolver, StreamHosts) {
+        let resolver = IndexedResolver(audio: [stream(pieces: 3, of: 1000)])
+        resolver.host = "rr1---sn-aaa.googlevideo.com"
+        resolver.query = "?mn=sn-aaa,sn-bbb"
+        let hosts = StreamHosts()
+        hosts.markUnreachable(URL(string: "https://rr1---sn-aaa.googlevideo.com/a0")!)
+        return (resolver, hosts)
+    }
+
+    func testThePiecesAreReadFromTheServerThatCanBeReached() async throws {
+        let (resolver, hosts) = twoServers()
+        let (media, _, _) = library(resolver, hosts: hosts)
+        let playable = try await media.playableAtOnce("vid00000001")
+        let text = try XCTUnwrap(media.playlists.text(for: playable.url))
+        XCTAssertTrue(text.contains("#EXT-X-MAP:URI=\"https://rr1---sn-bbb.googlevideo.com/a0?mn=sn-aaa,sn-bbb\","))
+        XCTAssertFalse(text.contains("sn-aaa.googlevideo"), "no piece is read from the server that could not be reached")
+    }
+
+    func testAStreamPlayedFromItsAddressIsReadFromTheServerThatCanBeReached() async throws {
+        let (resolver, hosts) = twoServers()
+        let (media, _, _) = library(resolver, hosts: hosts)
+        let playable = try await media.streamed("vid00000001")
+        XCTAssertEqual(playable.url.absoluteString, "https://rr1---sn-bbb.googlevideo.com/a0?mn=sn-aaa,sn-bbb")
     }
 
     func testASongThatIsNotOnTheDiskStartsFromItsPiecesWithoutBeingFetchedWhole() async throws {
