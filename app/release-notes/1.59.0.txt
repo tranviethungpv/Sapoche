@@ -1,0 +1,7 @@
+Sapoche on your TV
+- On an Android TV or TV box, Sapoche now has a layout of its own, made for the couch: big text, a slim bar of tabs on the left that opens with names when you press left, and a full-screen Now playing page for the cover, lyrics, queue and comments, in all three player styles. It is picked automatically; Settings > TV layout lets you turn it on or off yourself (also in a browser on a TV).
+- A remote works everywhere: the arrow keys move between the tabs, the page and the player, a clear ring shows where you are, OK presses, Back goes step by step, and the Play, Pause, Next and Previous keys work. Hold OK (or press Menu) on a song to open its menu; in the queue it also moves a song up or down, plays it next or removes it.
+- The same keys now work with a keyboard on a computer, a tablet or the web: Tab and the arrows reach every button, and the search box no longer pops up a keyboard while you are only passing by.
+- Videos fill the TV screen, and the buttons go away after a few seconds, then come back with any key.
+- The small bar with the page name that slid in under the top of the screen when you scrolled is gone.
+- The row of icons under the full-cover player lights the one you pick evenly inside its frame.

@@ -1,0 +1,7 @@
+Sapoche trên TV của bạn
+- Trên Android TV hoặc TV box, Sapoche có giao diện riêng cho màn hình lớn: chữ to, thanh tab mảnh bên trái mở ra có tên khi bấm sang trái, và trang Đang phát toàn màn cho bìa, lời bài, hàng chờ và bình luận, ở cả ba kiểu trình phát. App tự nhận ra TV; Cài đặt > Giao diện TV cho bạn tự bật hoặc tắt (cả trên trình duyệt của TV).
+- Điều khiển từ xa dùng được khắp nơi: phím mũi tên đi giữa thanh tab, trang và trình phát, có vòng sáng chỉ chỗ bạn đang đứng, OK để bấm, Back lùi từng bước, và các phím Phát, Dừng, Bài sau, Bài trước đều chạy. Giữ OK (hoặc bấm Menu) trên một bài để mở menu của nó; ở hàng chờ còn đưa bài lên, xuống, phát tiếp theo hoặc xoá.
+- Các phím đó cũng dùng được với bàn phím trên máy tính, máy tính bảng hay web: Tab và các mũi tên tới được mọi nút, và ô tìm kiếm không còn bật bàn phím khi bạn chỉ đi ngang qua.
+- Video phủ kín màn hình TV, các nút tự ẩn sau vài giây rồi hiện lại khi bấm phím bất kỳ.
+- Thanh nhỏ ghi tên trang trượt vào dưới mép trên màn hình khi cuộn đã bỏ.
+- Hàng biểu tượng dưới trình phát tràn bìa sáng đều đặn bên trong khung khi bạn chọn một mục.
