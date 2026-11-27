@@ -8,6 +8,7 @@ import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../home_shell.dart';
 import 'artwork.dart';
+import 'focus_nav.dart';
 import 'motion.dart';
 import 'sheet_tile.dart';
 
@@ -182,6 +183,7 @@ Future<String?> showPopup(
   final p = button.palette;
   final navigator = Navigator.of(button, rootNavigator: true);
   final watch = _ClosesOnResize(navigator, View.of(button))..start();
+  focusFirstOfNewRoute();
   return showMenu<String>(
     context: button,
     useRootNavigator: true,
@@ -225,6 +227,7 @@ Future<String?> showLinesMenu(BuildContext context, List<MenuLine> lines) {
   if (HomeShell.layoutOf(context) != ShellLayout.bars) {
     return showPopup(context, lines: lines);
   }
+  focusFirstOfNewRoute();
   return showModalBottomSheet<String>(
     context: context,
     useRootNavigator: true,

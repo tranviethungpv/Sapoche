@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/app_settings.dart' show PlayerStyle;
 import '../../data/models.dart';
@@ -8,8 +10,10 @@ import '../../data/room_controller.dart';
 import '../player/classic_player.dart' show PlayerPanelStage;
 import '../player/look.dart';
 import '../player/parts.dart';
+import '../player/spotify_player.dart' show PlayingFromLine;
 import '../widgets/artwork.dart';
 import '../widgets/focus_nav.dart';
+import '../widgets/motion.dart';
 import '../widgets/playback_bar.dart';
 
 /// The full player on a TV: the whole screen, with the cover at the left and the song, its bar and its buttons at the
@@ -57,16 +61,65 @@ class _TvPlayerState extends State<TvPlayer> {
 
   RoomController get _c => widget.controller;
 
+  /// How long a picture of a video is left alone before the bar and the buttons go away from over it.
+  static const _idleAfter = Duration(seconds: 5);
+
+  /// Catches the keys while the controls are away: the first of them brings the controls back and does nothing else.
+  final _catcher = FocusNode(debugLabel: 'tv video idle', skipTraversal: true);
+  Timer? _idleTimer;
+  bool _idle = false;
+
+  bool get _watching =>
+      widget.panel == NowPlayingPanel.cover && _c.snapshot.video;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusPlay());
+    _arm();
+  }
+
+  @override
+  void didUpdateWidget(TvPlayer old) {
+    super.didUpdateWidget(old);
+    if (!_watching) {
+      _idleTimer?.cancel();
+      _idle = false;
+    } else if (_idleTimer == null || !_idleTimer!.isActive) {
+      if (!_idle) _arm();
+    }
   }
 
   @override
   void dispose() {
+    _idleTimer?.cancel();
+    _catcher.dispose();
     _buttons.dispose();
     super.dispose();
+  }
+
+  void _arm() {
+    _idleTimer?.cancel();
+    if (!_watching) return;
+    _idleTimer = Timer(_idleAfter, () {
+      if (!mounted || !_watching || !_c.isPlaying) return _arm();
+      setState(() => _idle = true);
+      _catcher.requestFocus();
+    });
+  }
+
+  /// A key: with the controls away it brings them back (and is no more than that), otherwise it only keeps them.
+  KeyEventResult _wake(FocusNode node, KeyEvent event) {
+    if (!_idle) {
+      if (event is KeyDownEvent) _arm();
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) {
+      setState(() => _idle = false);
+      _arm();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusPlay());
+    }
+    return KeyEventResult.handled;
   }
 
   /// With keys in use the focus is on Play from the start: what a remote presses first is OK.
@@ -96,10 +149,11 @@ class _TvPlayerState extends State<TvPlayer> {
     return LayoutBuilder(
       builder: (context, box) {
         final height = box.maxHeight;
-        final full = look.style == PlayerStyle.appleMusic && cover && !video;
+        // The full-bleed cover stays as it is while a panel is open: the panel takes the right column only
+        final full = look.style == PlayerStyle.appleMusic && !video;
         // The cover: as tall as the height leaves it, and no wider than a third of the screen
         final side = math.min(
-          cover ? 340.0 : 200.0,
+          340.0,
           math.min(height - 2 * TvPlayer.vertical - 8, box.maxWidth * 0.36),
         );
         return Stack(
@@ -183,7 +237,21 @@ class _TvPlayerState extends State<TvPlayer> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
-      Align(alignment: Alignment.centerRight, child: _mode(look)),
+      // The card style says what the song is playing from, as its head does on a phone
+      look.style == PlayerStyle.spotify
+          ? Row(
+              children: [
+                Expanded(
+                  child: PlayingFromLine(
+                    controller: _c,
+                    current: widget.current,
+                    textAlign: TextAlign.left,
+                  ),
+                ),
+                _mode(look),
+              ],
+            )
+          : Align(alignment: Alignment.centerRight, child: _mode(look)),
       const Spacer(),
       PlayerTitleRow(controller: _c, current: widget.current, wrapLines: 2),
       const SizedBox(height: 16),
@@ -236,32 +304,86 @@ class _TvPlayerState extends State<TvPlayer> {
     ],
   );
 
-  /// The picture of a song shown as a video, as large as the height lets it be, with the bar and the buttons under it.
-  Widget _videoLayout(BuildContext context) => Column(
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [_mode(PlayerLookScope.of(context))],
-      ),
-      Expanded(
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: 16 / 9,
-            child: PlayerCoverArt(
-              controller: _c,
-              current: widget.current,
-              size: 400,
+  /// The picture of a song shown as a video: the whole screen, with the bar and the buttons over its foot, which go away
+  /// after a few seconds and come back with any key.
+  Widget _videoLayout(BuildContext context) {
+    final look = PlayerLookScope.of(context);
+    return Focus(
+      focusNode: _catcher,
+      skipTraversal: true,
+      includeSemantics: false,
+      onKeyEvent: _wake,
+      child: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        includeSemantics: false,
+        onKeyEvent: _wake,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: PlayerCoverArt(
+                  controller: _c,
+                  current: widget.current,
+                  size: 400,
+                ),
+              ),
             ),
-          ),
+            AnimatedOpacity(
+              opacity: _idle ? 0 : 1,
+              duration: Motion.of(context, 250),
+              child: ExcludeFocus(
+                excluding: _idle,
+                child: IgnorePointer(
+                  ignoring: _idle,
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [_mode(look)],
+                      ),
+                      const Spacer(),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0),
+                              Colors.black.withValues(alpha: 0.55),
+                            ],
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            PlaybackBar(
+                              key: _barKey,
+                              controller: _c,
+                              compact: true,
+                            ),
+                            Focus(
+                              focusNode: _buttons,
+                              includeSemantics: false,
+                              child: TransportRow(
+                                key: _transportKey,
+                                controller: _c,
+                                playSize: 56,
+                              ),
+                            ),
+                            _toolbar(look),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      PlaybackBar(key: _barKey, controller: _c, compact: true),
-      Focus(
-        focusNode: _buttons,
-        includeSemantics: false,
-        child: TransportRow(key: _transportKey, controller: _c, playSize: 56),
-      ),
-      _toolbar(PlayerLookScope.of(context)),
-    ],
-  );
+    );
+  }
 }

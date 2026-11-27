@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/theme.dart';
+import 'motion.dart';
 import '../tv/tv.dart' show TvScope;
 
 /// Whether the person is moving about with keys (a TV remote, a game pad, a keyboard) rather than a finger or a mouse:
@@ -70,6 +71,39 @@ class FocusTap extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// A card that grows a little while it has the focus, as the cards of the TV apps do. Only on a TV, and only while keys
+/// are in use; elsewhere it is [child] as it is.
+class FocusScale extends StatefulWidget {
+  const FocusScale({super.key, required this.child, this.scale = 1.06});
+
+  final Widget child;
+  final double scale;
+
+  @override
+  State<FocusScale> createState() => _FocusScaleState();
+}
+
+class _FocusScaleState extends State<FocusScale> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!TvScope.of(context)) return widget.child;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      includeSemantics: false,
+      onFocusChange: (focused) => setState(() => _focused = focused),
+      child: AnimatedScale(
+        scale: _focused && keysAreInUse ? widget.scale : 1,
+        duration: Motion.of(context, 120),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
 }
 
 /// What a long press is for a finger, the keys of a remote say in three ways: holding OK, the Menu key, and the X button of a
@@ -257,6 +291,18 @@ class _TvFieldGateState extends State<TvFieldGate> {
   }
 }
 
+/// A menu or sheet that has just opened has the focus on its own scope and no control: with keys in use the focus is put on
+/// its first control once it is drawn, so that OK and the arrows work from where the person is looking.
+void focusFirstOfNewRoute() {
+  if (!keysAreInUse) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final node = FocusManager.instance.primaryFocus;
+      if (node is FocusScopeNode) node.nextFocus();
+    });
+  });
+}
+
 /// A bar that is dragged along (the seek bar, the volume): a finger drags it, and the left and right keys move it by
 /// [step] while it has the focus. Up and down are left alone, to leave it.
 class KeySlider extends StatelessWidget {
@@ -321,11 +367,25 @@ class _FocusRingLayerState extends State<FocusRingLayer>
   void initState() {
     super.initState();
     FocusManager.instance.addListener(_changed);
+    _watch = Timer.periodic(
+      const Duration(milliseconds: 200),
+      (_) => _recheck(),
+    );
+  }
+
+  Timer? _watch;
+
+  /// What moved under a ring that was not told (a panel opened and the buttons were laid out again).
+  void _recheck() {
+    if (!mounted || (_ring == null && !keysAreInUse)) return;
+    final ring = _find();
+    if (ring != _ring) setState(() => _ring = ring);
   }
 
   @override
   void dispose() {
     FocusManager.instance.removeListener(_changed);
+    _watch?.cancel();
     _ticker.dispose();
     super.dispose();
   }

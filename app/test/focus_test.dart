@@ -188,6 +188,8 @@ void main() {
       await tester.pump(MenuKeys.hold + const Duration(milliseconds: 50));
       await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
+      // The focus is on a line of the menu already
+      expect(FocusManager.instance.primaryFocus, isNot(isA<FocusScopeNode>()));
       expect(find.text(S.moveUp), findsOneWidget);
       expect(find.text(S.moveDown), findsOneWidget);
       expect(find.text(S.removeFromQueue), findsOneWidget);

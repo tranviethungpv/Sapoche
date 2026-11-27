@@ -16,6 +16,7 @@ import 'widgets/motion.dart';
 import 'widgets/sheet_tile.dart';
 import 'widgets/qr_code_view.dart';
 import 'widgets/text_dialog.dart';
+import 'widgets/focus_nav.dart';
 
 /// The way into and out of a room: start one, join one, or share and manage the one this device is in.
 /// [invitedCode] is a code that arrived with an invitation link.
@@ -614,7 +615,7 @@ class EncryptionCard extends StatelessWidget {
         icon: Icons.lock_outline_rounded,
         title: S.encryptionTitle,
         help: noKey ? S.encryptionNoKey : S.encryptionShort,
-        below: GestureDetector(
+        below: FocusTap(
           onTap: () => _learnMore(context, on),
           child: Padding(
             padding: const EdgeInsets.only(top: 4),

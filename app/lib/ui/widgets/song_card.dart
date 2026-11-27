@@ -93,65 +93,67 @@ class SongCard extends StatelessWidget {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     // An InkWell, so that a remote's arrows and a keyboard's Tab can reach it, and a mouse lights it up
-    return MenuKeys(
-      onMenu: onLongPress,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(14),
-        child: SizedBox(
-          width: video ? videoWidth(size) : size,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              video
-                  ? Artwork(
-                      url: thumb,
-                      width: videoWidth(size),
-                      size: videoWidth(size) * 9 / 16,
-                      radius: 12,
-                    )
-                  : Artwork(url: thumb, size: size, radius: 12),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.titleSmall,
-              ),
-              if (explicit)
-                Row(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(right: 3),
-                      child: ExplicitBadge(size: 13, color: p.textSecondary),
-                    ),
-                    Expanded(
-                      child: Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.bodySmall?.copyWith(
-                          color: p.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              else
+    return FocusScale(
+      child: MenuKeys(
+        onMenu: onLongPress,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(
+            width: video ? videoWidth(size) : size,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                video
+                    ? Artwork(
+                        url: thumb,
+                        width: videoWidth(size),
+                        size: videoWidth(size) * 9 / 16,
+                        radius: 12,
+                      )
+                    : Artwork(url: thumb, size: size, radius: 12),
+                const SizedBox(height: 8),
                 Text(
-                  subtitle,
+                  title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  style: theme.titleSmall,
                 ),
-              if (meta != null)
-                MetaLine(
-                  text: '',
-                  meta: meta,
-                  style: theme.bodySmall?.copyWith(color: p.textSecondary),
-                ),
-            ],
+                if (explicit)
+                  Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 3),
+                        child: ExplicitBadge(size: 13, color: p.textSecondary),
+                      ),
+                      Expanded(
+                        child: Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.bodySmall?.copyWith(
+                            color: p.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  ),
+                if (meta != null)
+                  MetaLine(
+                    text: '',
+                    meta: meta,
+                    style: theme.bodySmall?.copyWith(color: p.textSecondary),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

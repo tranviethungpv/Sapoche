@@ -13,6 +13,7 @@ import 'chat_look.dart';
 import 'chat_wallpaper_editor.dart';
 import 'scope.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// The looks the chat of the room can have. One touch on a look is the choice: the room has it at once, for everyone.
 Future<void> showChatThemeSheet(BuildContext context, RoomController room) =>
@@ -160,7 +161,7 @@ class _Tile extends StatelessWidget {
       button: true,
       selected: selected,
       label: label,
-      child: GestureDetector(
+      child: FocusTap(
         key: id == null ? null : ValueKey('chat-theme-$id'),
         behavior: HitTestBehavior.opaque,
         onTap: onTap,

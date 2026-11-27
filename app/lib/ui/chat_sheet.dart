@@ -2115,7 +2115,7 @@ class _Bubble extends StatelessWidget {
               ),
             ),
           if (failed)
-            GestureDetector(
+            FocusTap(
               onTap: () => controller.resendChat(message),
               child: Padding(
                 padding: const EdgeInsets.only(top: 2, right: 4),
@@ -2167,7 +2167,7 @@ class _Quote extends StatelessWidget {
     final p = context.palette;
     final theme = Theme.of(context).textTheme;
     final ink = onBubbleOfMine ? p.onPrimary : p.text;
-    return GestureDetector(
+    return FocusTap(
       key: const ValueKey('chat-quote'),
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -2298,7 +2298,7 @@ class _ReactionPill extends StatelessWidget {
     final kinds = counts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final mineGiven = reactions.containsKey(you);
-    return GestureDetector(
+    return FocusTap(
       key: const ValueKey('chat-reactions'),
       onTap: onTap,
       child: Container(

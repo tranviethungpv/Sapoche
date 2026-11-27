@@ -65,7 +65,6 @@ class _RoomPageState extends State<RoomPage> {
         );
         // The list starts below the status bar and scrolls up under it, to its glass edge
         return ScrollEdge(
-          title: snapshot.inRoom ? snapshot.name ?? S.tabRoom : S.tabListen,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),

@@ -2097,7 +2097,6 @@ class _SettingsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ScrollEdge(
-    title: title,
     child: ListView(
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),

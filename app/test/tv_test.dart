@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -8,7 +9,9 @@ import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/tv_mode.dart';
 import 'package:sapoche/strings.dart';
+import 'package:sapoche/ui/chat_sheet.dart';
 import 'package:sapoche/ui/home_shell.dart';
+import 'package:sapoche/ui/rooms_sheet.dart';
 import 'package:sapoche/ui/player/parts.dart';
 import 'package:sapoche/ui/player_sheet.dart';
 import 'package:sapoche/ui/tv/tv_player.dart';
@@ -174,6 +177,40 @@ void main() {
         },
       );
 
+      testWidgets(
+        '$style: a video leaves its picture alone, and a key brings the buttons back',
+        (tester) async {
+          await pumpTv(tester, style: style, video: true);
+          PlayerSheetScope.of(tester.element(find.byType(PlayerSheetScope)))
+              .open();
+          await tester.pump(const Duration(milliseconds: 600));
+          await tester.pump(const Duration(milliseconds: 600));
+          double shown() => tester
+              .widget<AnimatedOpacity>(
+                find
+                    .ancestor(
+                      of: find.byType(TransportRow),
+                      matching: find.byType(AnimatedOpacity),
+                    )
+                    .last,
+              )
+              .opacity;
+          expect(shown(), 1);
+          await tester.pump(const Duration(seconds: 6));
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(shown(), 0, reason: 'five seconds with no key');
+          await press(tester, LogicalKeyboardKey.arrowRight);
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(shown(), 1, reason: 'a key');
+          expect(
+            FocusManager.instance.primaryFocus?.context
+                ?.findAncestorWidgetOfExactType<TransportRow>(),
+            isNotNull,
+            reason: 'the focus is on the buttons again',
+          );
+        },
+      );
+
       for (final panel in [
         NowPlayingPanel.lyrics,
         NowPlayingPanel.upNext,
@@ -287,6 +324,26 @@ void focusReach() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('in the sheet of the room', (tester) async {
+      await pumpTv(tester);
+      showRoomSheet(tester.element(find.byType(HomeShell)));
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(await unreachable(tester), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('in the chat', (tester) async {
+      await pumpTv(tester);
+      unawaited(showChatSheet(tester.element(find.byType(HomeShell))));
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byKey(const ValueKey('chat-field')), findsOneWidget);
+      expect(await unreachable(tester), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('on the full player of each style', (tester) async {
       for (final style in PlayerStyle.values) {

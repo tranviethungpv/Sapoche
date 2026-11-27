@@ -11,6 +11,7 @@ import 'widgets/artwork.dart';
 import 'widgets/avatar_zoom.dart';
 import 'widgets/avatars.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// Who someone in the room is: their picture, big and to be zoomed, and what they are doing.
 Future<void> showMemberProfile(BuildContext context, String memberId) {
@@ -99,7 +100,7 @@ class _Body extends StatelessWidget {
     final queued = snapshot.queue.where((e) => e.addedBy == member.id).length;
     return Column(
       children: [
-        GestureDetector(
+        FocusTap(
           key: const ValueKey('profile-view-photo'),
           // Only a picture can be looked at closer
           onTap: image == null

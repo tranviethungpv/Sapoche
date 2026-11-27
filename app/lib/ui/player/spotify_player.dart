@@ -35,6 +35,49 @@ String? _playingFrom(RoomController c, QueueEntry current, String? album) {
   return artist.isEmpty ? null : artist;
 }
 
+/// "NOW PLAYING · album" for the head of a player: the card's, and the TV's. The album comes when YouTube Music has said
+/// which it is (the queue knows only the song).
+class PlayingFromLine extends StatelessWidget {
+  const PlayingFromLine({
+    super.key,
+    required this.controller,
+    required this.current,
+    this.textAlign = TextAlign.center,
+  });
+
+  final RoomController controller;
+  final QueueEntry current;
+  final TextAlign textAlign;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final theme = Theme.of(context).textTheme;
+    return FutureBuilder<SongRadio>(
+      future: current.isLocal
+          ? null
+          : AppScope.of(context).music.radio(current.videoId),
+      builder: (context, async) {
+        final album = async.data?.songOf(current.videoId)?.album;
+        final line = _playingFrom(controller, current, album);
+        return Text(
+          line == null
+              ? S.nowPlaying.toUpperCase()
+              : '${S.nowPlaying.toUpperCase()} · $line',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: textAlign,
+          style: theme.labelSmall?.copyWith(
+            color: p.textSecondary,
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// The player of the style of cards: the face of the song (the cover, the seek bar, the buttons with shuffle and repeat
 /// beside the play button) fills the screen, and below it, as the page is scrolled, are cards: the lyrics, the artist,
 /// the queue, the comments. A card opens its page whole, which Back closes first. On a screen on its side the face is
@@ -364,8 +407,6 @@ class _Compact extends StatelessWidget {
   RoomController get _c => controller;
 
   Widget _header(BuildContext context) {
-    final p = context.palette;
-    final theme = Theme.of(context).textTheme;
     return SizedBox(
       height: 32,
       child: Row(
@@ -373,28 +414,7 @@ class _Compact extends StatelessWidget {
           const SizedBox(width: 40),
           Expanded(
             // The album, when YouTube Music has said which it is (the queue knows only the song)
-            child: FutureBuilder<SongRadio>(
-              future: current.isLocal
-                  ? null
-                  : AppScope.of(context).music.radio(current.videoId),
-              builder: (context, async) {
-                final album = async.data?.songOf(current.videoId)?.album;
-                final line = _playingFrom(_c, current, album);
-                return Text(
-                  line == null
-                      ? S.nowPlaying.toUpperCase()
-                      : '${S.nowPlaying.toUpperCase()} · $line',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: theme.labelSmall?.copyWith(
-                    color: p.textSecondary,
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w700,
-                  ),
-                );
-              },
-            ),
+            child: PlayingFromLine(controller: _c, current: current),
           ),
           SizedBox(
             width: 40,

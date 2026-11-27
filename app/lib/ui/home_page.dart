@@ -133,7 +133,6 @@ class _HomePageState extends State<HomePage> {
     // The page scrolls up under the status bar, where its glass edge blurs it away
     final top = ScrollEdge.topOf(context);
     return ScrollEdge(
-      title: _Header.greeting(DateTime.now().hour),
       child: ListenableBuilder(
         listenable: library,
         builder: (context, _) {

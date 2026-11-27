@@ -18,6 +18,7 @@ import '../song_info_sheet.dart';
 import 'artwork.dart';
 import 'cached_cover.dart';
 import 'equalizer.dart';
+import 'focus_nav.dart';
 
 /// A song shared in the chat, drawn as a card that is always square: a record sleeve with the cover, and the record itself half out of it
 /// (it turns while the song plays), then the song, and small round buttons to play it, queue it or like it. Behind it the
@@ -55,7 +56,7 @@ class ChatSongCard extends StatelessWidget {
               child: _Backdrop(url: song.art, tint: look?.from ?? p.primary),
             ),
             // The buttons are inside, and win the touch where they are
-            GestureDetector(
+            FocusTap(
               key: const ValueKey('song-card-body'),
               behavior: HitTestBehavior.opaque,
               onTap: () => showSongInfo(context, _entry),

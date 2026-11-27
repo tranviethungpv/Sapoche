@@ -9,6 +9,7 @@ import '../../strings.dart';
 import '../../theme/theme.dart';
 import 'album_image.dart';
 import 'on_screen.dart';
+import 'focus_nav.dart';
 
 /// The place on screen of what [context] draws, for a page to grow out of.
 Rect? screenRectOf(BuildContext context) {
@@ -56,7 +57,7 @@ class SinglePhoto extends StatelessWidget {
       height = maxHeight;
       width = height * slot.aspect;
     }
-    return GestureDetector(
+    return FocusTap(
       key: const ValueKey('photo-single'),
       onTap: () => onTap(screenRectOf(context)),
       child: ClipRRect(
@@ -290,7 +291,7 @@ class _PhotoStackState extends State<PhotoStack> with TickerProviderStateMixin {
         onPointerMove: still ? null : _moved,
         onPointerUp: still ? null : (_) => _release(),
         onPointerCancel: still ? null : (_) => _release(),
-        child: GestureDetector(
+        child: FocusTap(
           key: const ValueKey('photo-stack'),
           behavior: HitTestBehavior.opaque,
           onTap: () => widget.onTap(_topRect(context, width, height)),

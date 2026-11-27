@@ -5,6 +5,7 @@ import '../theme/theme.dart';
 import 'scope.dart';
 import 'widgets/avatars.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// Lets the person change the name others see and the picture of themselves, in a room or not.
 Future<void> showProfileSheet(BuildContext context) {
@@ -84,7 +85,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                 listenable: model.settings,
                 builder: (context, _) => Column(
                   children: [
-                    GestureDetector(
+                    FocusTap(
                       key: const ValueKey('profile-photo'),
                       onTap: _choose,
                       child: Avatar(

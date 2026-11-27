@@ -330,7 +330,6 @@ class _Overview extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     final p = context.palette;
     return ScrollEdge(
-      title: S.tabLibrary,
       child: ListView(
         padding: EdgeInsets.only(
           top: ScrollEdge.topOf(context),
