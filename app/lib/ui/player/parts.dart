@@ -310,7 +310,8 @@ class _PlayerTitleRowState extends State<PlayerTitleRow> {
     final dense = widget.dense;
     final explicit = current.explicit || (_song?.explicit ?? false);
     final rawYear = current.year ?? _song?.year;
-    final year = look.style == PlayerStyle.appleMusic &&
+    final year =
+        look.style == PlayerStyle.appleMusic &&
             rawYear != null &&
             rawYear.isNotEmpty
         ? rawYear
@@ -339,7 +340,10 @@ class _PlayerTitleRowState extends State<PlayerTitleRow> {
                   children: [
                     Flexible(child: title),
                     const SizedBox(width: 6),
-                    ExplicitBadge(size: dense ? 16 : 18, color: p.textSecondary),
+                    ExplicitBadge(
+                      size: dense ? 16 : 18,
+                      color: p.textSecondary,
+                    ),
                   ],
                 )
               else
@@ -538,8 +542,7 @@ class PlayerMoreButton extends StatelessWidget {
         MenuLine('comments', Icons.comment_outlined, S.youtubeComments),
       if (compact && !kIsWeb)
         MenuLine('output', Icons.speaker_rounded, S.playOn),
-      if (compact)
-        MenuLine('sleep', Icons.bedtime_outlined, S.sleepTimer),
+      if (compact) MenuLine('sleep', Icons.bedtime_outlined, S.sleepTimer),
     ];
     return TrackMenu(
       track: current,
@@ -606,8 +609,10 @@ class PlayerToolbar extends StatelessWidget {
               count,
         );
         // In the pill (kind `plain`) a lit button is a thumb inside the frame, not a slab as high as the frame
-        final height =
-            (kind == ToolbarKind.plain ? 44 - 2 * _frameInset : 44) * scale;
+        // (as high as the pill was before the frame: a button is laid out 48 high at least, and the pill is 48)
+        final height = kind == ToolbarKind.plain
+            ? max(48.0, 44 * scale) - 2 * _frameInset
+            : 44 * scale;
         Widget button(IconData icon, String label, NowPlayingPanel target) {
           final on = panel == target;
           return IconButton(
@@ -619,6 +624,9 @@ class PlayerToolbar extends StatelessWidget {
               foregroundColor: on ? p.onPrimary : _toolTint(p),
               backgroundColor: on ? p.primary : Colors.transparent,
               fixedSize: Size(slot, height),
+              tapTargetSize: kind == ToolbarKind.plain
+                  ? MaterialTapTargetSize.shrinkWrap
+                  : null,
             ),
           );
         }
@@ -944,6 +952,10 @@ class OutputButton extends StatelessWidget {
         foregroundColor: away ? p.onPrimary : _toolTint(p),
         backgroundColor: away ? p.primary : Colors.transparent,
         fixedSize: Size(width, height),
+        // In the pill the button is laid out as high as it is drawn: the pill has the 48
+        tapTargetSize: height < kMinInteractiveDimension
+            ? MaterialTapTargetSize.shrinkWrap
+            : null,
       ),
     );
   }
@@ -996,6 +1008,10 @@ class SleepButton extends StatelessWidget {
         foregroundColor: sleep.on ? p.onPrimary : _toolTint(p),
         backgroundColor: sleep.on ? p.primary : Colors.transparent,
         fixedSize: Size(width, height),
+        // In the pill the button is laid out as high as it is drawn: the pill has the 48
+        tapTargetSize: height < kMinInteractiveDimension
+            ? MaterialTapTargetSize.shrinkWrap
+            : null,
       ),
     );
   }

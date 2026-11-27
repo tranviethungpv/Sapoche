@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sapoche/data/app_settings.dart';
 import 'package:sapoche/data/music_models.dart';
+import 'package:sapoche/ui/player_sheet.dart';
 import 'package:sapoche/ui/artist_page.dart';
 import 'package:sapoche/ui/collection_screen.dart';
 import 'package:sapoche/ui/home_shell.dart';
@@ -227,6 +229,38 @@ void main() {
       expect(await openEverything(tester), isEmpty);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('the search is reached by the arrows', (tester) async {
+      await pumpTv(tester);
+      await tester.tap(find.byIcon(Icons.search_rounded).first);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(await openEverything(tester), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the listen page is reached by the arrows', (tester) async {
+      await pumpTv(tester);
+      await tester.tap(find.byIcon(Icons.graphic_eq_rounded).first);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(await openEverything(tester), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final style in PlayerStyle.values) {
+      testWidgets('the player of the $style is reached by the arrows', (
+        tester,
+      ) async {
+        await pumpTv(tester, style: style);
+        PlayerSheetScope.of(tester.element(find.byType(PlayerSheetScope)))
+            .open();
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(await openEverything(tester), isEmpty);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('the home is reached by the arrows', (tester) async {
       await pumpTv(tester);

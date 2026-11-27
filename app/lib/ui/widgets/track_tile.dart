@@ -195,27 +195,22 @@ class _TrackTileState extends State<TrackTile> {
               final album = columns && TrackColumns.albumOf(context);
               final row = Row(
                 children: [
-                  // The cover and the words are what a remote takes hold of; the buttons beside them are not inside it
+                  cover(),
+                  const SizedBox(width: 14),
                   Expanded(
                     flex: columns ? TrackColumns.titleFlex : 1,
+                    // The words are what a remote takes hold of; the buttons beside them are not inside it. (The
+                    // cover stays out of it so that the words keep the room the columns give them)
                     child: FocusTap(
                       onTap: onTap,
                       touch: false,
-                      child: Row(
-                        children: [
-                          cover(),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            // The album column starts a little way from where a long title ends
-                            child: album
-                                ? Padding(
-                                    padding: const EdgeInsets.only(right: 16),
-                                    child: names,
-                                  )
-                                : names,
-                          ),
-                        ],
-                      ),
+                      // The album column starts a little way from where a long title ends
+                      child: album
+                          ? Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: names,
+                            )
+                          : names,
                     ),
                   ),
                   if (album)

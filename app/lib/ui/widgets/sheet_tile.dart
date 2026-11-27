@@ -97,6 +97,10 @@ class SheetTile extends StatelessWidget {
     return MergeSemantics(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
+        // A row with a control of its own in it (a switch, a button, a link) leaves the keys to that control: the row
+        // would be nearer to every arrow than it is, and it could never be reached
+        canRequestFocus:
+            !(onChanged != null || trailing != null || below != null),
         onTap: !enabled
             ? null
             : onChanged != null
@@ -107,4 +111,3 @@ class SheetTile extends StatelessWidget {
     );
   }
 }
-

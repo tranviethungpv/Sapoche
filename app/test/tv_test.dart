@@ -267,6 +267,21 @@ Future<List<String>> unreachable(
           window.overlaps(node.rect))
         node,
   ];
+  // A control that holds another one whole is one the arrows cannot take them out of: the inner is nearer to no arrow
+  final nested = <String>[];
+  for (final outer in everything) {
+    for (final inner in everything) {
+      // Inside it in the tree as well as on the screen (the player at the foot lies over a page's cards, and is no part of them)
+      if (identical(outer, inner) || !inner.ancestors.contains(outer)) continue;
+      final a = outer.rect;
+      final b = inner.rect;
+      if (a.contains(b.topLeft) && a.contains(b.bottomRight) && a != b) {
+        nested.add(
+          '${_chain(outer)} HOLDS ${_words(inner)} ${_chain(inner)} at $b',
+        );
+      }
+    }
+  }
   final seen = <FocusNode>{};
   final random = Random(7);
   const keys = [
@@ -325,6 +340,7 @@ Future<List<String>> unreachable(
   // A seek that the walk made has its timer to run out
   await tester.pump(const Duration(seconds: 2));
   return [
+    for (final line in nested) 'nested: $line',
     for (final node in everything)
       // A control that went away during the walk (a page that closed) is not one that could not be reached
       if (!seen.contains(node) && (node.context?.mounted ?? false))
@@ -386,6 +402,16 @@ void focusReach() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('in the settings of the room', (tester) async {
+      await pumpTv(tester);
+      showRoomSheet(tester.element(find.byType(HomeShell)), settings: true);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(await unreachable(tester), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('in the chat', (tester) async {
       await pumpTv(tester);
