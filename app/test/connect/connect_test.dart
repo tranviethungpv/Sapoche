@@ -108,6 +108,32 @@ void main() {
     }
   });
 
+  group('what a device is', () {
+    DeviceKind detect(TargetPlatform platform, double dp, {bool web = false, bool tv = false}) =>
+        DeviceKind.detect(web: web, platform: platform, tv: tv, shortSideDp: dp);
+
+    test('a tablet is told from a phone by the short side of its screen, on both systems', () {
+      expect(detect(TargetPlatform.android, 412), DeviceKind.phone);
+      expect(detect(TargetPlatform.android, 800), DeviceKind.tablet);
+      expect(detect(TargetPlatform.iOS, 390), DeviceKind.iphone);
+      expect(detect(TargetPlatform.iOS, 744), DeviceKind.ipad);
+    });
+
+    test('a TV is a TV whatever its size, and a browser is a computer only on a computer', () {
+      expect(detect(TargetPlatform.android, 1080, tv: true), DeviceKind.tv);
+      expect(detect(TargetPlatform.windows, 900, web: true), DeviceKind.computer);
+      expect(detect(TargetPlatform.macOS, 900, web: true), DeviceKind.computer);
+      expect(detect(TargetPlatform.android, 412, web: true), DeviceKind.web);
+    });
+
+    test('a kind an older app does not know reads as a phone, and every kind survives the seal', () {
+      expect(DeviceKind.parse('hologram'), DeviceKind.phone);
+      for (final kind in DeviceKind.values) {
+        expect(DeviceInfo.fromJson(DeviceInfo(name: 'x', kind: kind).toJson())?.kind, kind);
+      }
+    });
+  });
+
   group('sealing', () {
     test('what is sealed opens with the same key only, and a long text is packed', () async {
       final a = await ConnectSecrets.of(key);

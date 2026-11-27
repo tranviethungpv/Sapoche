@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show TargetPlatform;
+
 import '../backend.dart';
 import '../models.dart';
 
@@ -7,9 +9,26 @@ enum DeviceKind {
   tablet,
   tv,
   computer,
-  web;
+  web,
+  iphone,
+  ipad;
 
+  /// An older app that does not know a kind reads it as a phone.
   static DeviceKind parse(String? name) => values.firstWhere((k) => k.name == name, orElse: () => phone);
+
+  /// A tablet is a screen whose short side is 600 dp or more (the line Android itself draws).
+  static const tabletDp = 600;
+
+  /// What this device is, from what it says about itself. A browser on a computer is a computer; on a phone it stays "web".
+  static DeviceKind detect({required bool web, required TargetPlatform platform, required bool tv, required double shortSideDp}) {
+    final big = shortSideDp >= tabletDp;
+    if (web) {
+      return platform == TargetPlatform.android || platform == TargetPlatform.iOS ? DeviceKind.web : DeviceKind.computer;
+    }
+    if (tv) return DeviceKind.tv;
+    if (platform == TargetPlatform.iOS) return big ? DeviceKind.ipad : DeviceKind.iphone;
+    return big ? DeviceKind.tablet : DeviceKind.phone;
+  }
 }
 
 /// What a device says about itself, sealed: only the other devices of the person read it.

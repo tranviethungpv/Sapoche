@@ -73,7 +73,7 @@ Future<void> main() async {
     server: () async => Uri.tryParse((await backend.profile()).server),
     serverKey: backend.serverKey,
     store: const PrefsConnectStore(),
-    kind: () => kIsWeb ? DeviceKind.web : (Tv.on.value ? DeviceKind.tv : DeviceKind.phone),
+    kind: _deviceKind,
     defaultName: () => kIsWeb || Tv.on.value || model.isEmpty ? _deviceLabel() : model,
     appVersion: (await PackageInfo.fromPlatform()).version,
   );
@@ -114,6 +114,17 @@ Future<void> main() async {
         clipboardPhotos: backend.clipboardPhotos,
       ),
     ),
+  );
+}
+
+/// Asked when needed: a TV is known only once the app has asked the device, and the screen has its size by then.
+DeviceKind _deviceKind() {
+  final view = WidgetsBinding.instance.platformDispatcher.implicitView;
+  return DeviceKind.detect(
+    web: kIsWeb,
+    platform: defaultTargetPlatform,
+    tv: Tv.on.value,
+    shortSideDp: view == null ? 0 : view.physicalSize.shortestSide / view.devicePixelRatio,
   );
 }
 

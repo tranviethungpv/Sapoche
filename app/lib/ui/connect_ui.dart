@@ -38,6 +38,8 @@ IconData deviceIcon(DeviceKind kind) => switch (kind) {
   DeviceKind.tv => Icons.tv_rounded,
   DeviceKind.computer => Icons.laptop_rounded,
   DeviceKind.web => Icons.language_rounded,
+  DeviceKind.iphone => Icons.phone_iphone_rounded,
+  DeviceKind.ipad => Icons.tablet_mac_rounded,
 };
 
 IconData _outputIcon(String kind) => switch (kind) {
@@ -174,13 +176,15 @@ class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
     if (_bar != null) return;
     final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
     // One bar for as long as the buttons are pressed: it is moved, not shown again each time
+    // The ground of the theme (the other toasts are its opposite): a bar of the volume reads as part of the screen
+    final p = context.palette;
     final shown = messenger.showSnackBar(
       SnackBar(
         duration: const Duration(minutes: 1),
+        backgroundColor: p.menu,
         content: ValueListenableBuilder<double>(
           valueListenable: _level,
           builder: (context, level, _) {
-            final p = context.palette;
             return Semantics(
               liveRegion: true,
               label: S.volumeOf(_device?.info?.name ?? ''),
@@ -191,6 +195,7 @@ class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
                     Icon(
                       deviceIcon(_device?.info?.kind ?? DeviceKind.phone),
                       size: 20,
+                      color: p.text,
                     ),
                     const SizedBox(width: 10),
                     Flexible(
@@ -198,6 +203,7 @@ class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
                         _device?.info?.name ?? '',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: p.text),
                       ),
                     ),
                     const SizedBox(width: 14),

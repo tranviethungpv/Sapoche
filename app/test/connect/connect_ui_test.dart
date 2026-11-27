@@ -9,6 +9,7 @@ import 'package:sapoche/data/connect/connect_wire.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/sync/sync_crypto.dart';
 import 'package:sapoche/strings.dart';
+import 'package:sapoche/theme/theme.dart';
 import 'package:sapoche/ui/connect_ui.dart';
 import 'package:sapoche/ui/now_playing_page.dart';
 import 'package:sapoche/ui/scope.dart';
@@ -281,6 +282,9 @@ void main() {
     await waitReal(tester, () => remote.backend.calls.contains('setVolume 0.5625'), why: 'the playing device is asked');
     expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Living room')), findsOneWidget);
     expect(find.descendant(of: find.byType(SnackBar), matching: find.byType(LinearProgressIndicator)), findsOneWidget);
+    // On the ground of the theme, not the opposite one the other toasts have (it was white in the dark theme)
+    final bar = tester.widget<SnackBar>(find.byType(SnackBar));
+    expect(bar.backgroundColor, tester.element(find.byType(SnackBar)).palette.menu);
     await press(-1);
     await tester.pump();
     expect(find.byType(SnackBar), findsOneWidget, reason: 'one bar that moves, not a new one for each press');
