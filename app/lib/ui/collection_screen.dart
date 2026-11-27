@@ -25,6 +25,7 @@ import 'widgets/queue_actions.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// Opens an album or a playlist in the tab that is showing, with a way back. [title] and [thumb] are what the
 /// person was looking at, shown until the page itself arrives.
@@ -396,7 +397,7 @@ class _ContentState extends State<_Content> {
                 padding: wide
                     ? const EdgeInsets.only(top: 4)
                     : const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                child: GestureDetector(
+                child: FocusTap(
                   onTap: _page.ownerId == null
                       ? null
                       : () => openArtist(context, _page.ownerId!),
@@ -602,7 +603,7 @@ class _ContentState extends State<_Content> {
       padding: wide
           ? const EdgeInsets.only(top: 14)
           : const EdgeInsets.fromLTRB(20, 14, 20, 0),
-      child: GestureDetector(
+      child: FocusTap(
         onTap: () => setState(() => _open = !_open),
         child: MotionSize(
           milliseconds: 220,

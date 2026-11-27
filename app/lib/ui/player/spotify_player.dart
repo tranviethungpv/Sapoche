@@ -57,7 +57,7 @@ class SpotifyPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) => box.maxHeight < playerCompactHeight
+    builder: (context, box) => playerIsCompact(context, box.maxHeight)
         ? _Compact(
             controller: controller,
             current: current,

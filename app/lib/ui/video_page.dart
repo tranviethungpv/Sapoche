@@ -11,6 +11,7 @@ import '../theme/theme.dart';
 import 'scope.dart';
 import 'widgets/album_image.dart';
 import 'widgets/grow_route.dart';
+import 'widgets/focus_nav.dart';
 
 /// Plays the video of an album message full screen, growing out of [from] when that is known.
 Future<void> showVideoPage(
@@ -167,7 +168,7 @@ class _VideoPageState extends State<VideoPage> {
                           ],
                         ),
                       )
-                    : GestureDetector(
+                    : FocusTap(
                         key: const ValueKey('video-surface'),
                         behavior: HitTestBehavior.opaque,
                         onTap: _toggle,

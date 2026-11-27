@@ -219,6 +219,24 @@ class _ClosesOnResize with WidgetsBindingObserver {
   }
 }
 
+/// Lines in a menu of their own, for a row whose "…" is not drawn: a sheet from the bottom on a phone, the small menu where
+/// there is room. What was chosen comes back, or null.
+Future<String?> showLinesMenu(BuildContext context, List<MenuLine> lines) {
+  if (HomeShell.layoutOf(context) != ShellLayout.bars) {
+    return showPopup(context, lines: lines);
+  }
+  return showModalBottomSheet<String>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    sheetAnimationStyle: Motion.sheet(context),
+    builder: (sheet) => ActionSheet(
+      lines: lines,
+      onSelected: (value) => Navigator.of(sheet).pop(value),
+    ),
+  );
+}
+
 /// The "…" of a song. On a phone it opens a sheet from the bottom, with the cover, the title and the artist of the song
 /// at its head and a line for each thing to do, as the music apps do; where there is room (a tablet on its side, a
 /// computer) it is the small menu at the touch, with the same icons. [menuKey] lets a row open the small one from a

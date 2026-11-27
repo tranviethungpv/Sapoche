@@ -52,6 +52,8 @@ object UiJson {
             // Always this phone's own, from the first state: a limit that is there only after the player says is a line that comes and goes
             .put("videoHeightMax", PictureDecoders.maxHeight)
             .put("videoLimit", picture.limit ?: JSONObject.NULL)
+            // A TV or a TV box: the UI draws for a screen across a room (false where this is not said, as on iPhone and web)
+            .put("television", SapocheApp.television)
             .put("playbackSpeed", playbackSpeed.toDouble())
             .put("solo", snap.solo)
             .put("soloItemId", snap.soloItemId ?: JSONObject.NULL)

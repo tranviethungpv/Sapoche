@@ -10,6 +10,8 @@ import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../scope.dart';
 import '../widgets/touch_box.dart';
+import '../widgets/focus_nav.dart';
+import '../widgets/menu_lines.dart';
 import '../widgets/delete_background.dart';
 import '../widgets/edge_fade.dart';
 import '../widgets/queued_autoplay.dart';
@@ -85,6 +87,48 @@ class UpNextView extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// What dragging and swiping do to a row of the queue, as lines of a menu: up, down, to the top, out.
+  Future<void> _rowMenu(
+    BuildContext row,
+    QueueEntry entry,
+    int i,
+    int count,
+    void Function(int from, int to) onReorder,
+  ) async {
+    final value = await showLinesMenu(row, [
+      MenuLine(
+        'next',
+        Icons.vertical_align_top_rounded,
+        S.playNext,
+        enabled: i > 0,
+      ),
+      MenuLine('up', Icons.arrow_upward_rounded, S.moveUp, enabled: i > 0),
+      MenuLine(
+        'down',
+        Icons.arrow_downward_rounded,
+        S.moveDown,
+        enabled: i < count - 1,
+      ),
+      MenuLine(
+        'remove',
+        Icons.delete_outline_rounded,
+        S.removeFromQueue,
+        apart: true,
+      ),
+    ]);
+    switch (value) {
+      case 'next':
+        onReorder(i, 0);
+      case 'up':
+        onReorder(i, i - 1);
+      case 'down':
+        onReorder(i, i + 1);
+      case 'remove':
+        HapticFeedback.lightImpact();
+        controller.remove(entry);
+    }
   }
 
   void _clearQueued(BuildContext context, List<QueueEntry> queued) {
@@ -217,11 +261,17 @@ class UpNextView extends StatelessWidget {
                 HapticFeedback.lightImpact();
                 controller.remove(entry);
               },
-              child: ReorderableDelayedDragStartListener(
-                index: i,
-                child: TrackTile(
-                  track: entry,
-                  onTap: () => controller.jump(entry),
+              // Dragging and swiping are for a finger: a remote holds OK (or presses Menu) for the same four things
+              child: Builder(
+                builder: (row) => MenuKeys(
+                  onMenu: () => _rowMenu(row, entry, i, itemCount, onReorder),
+                  child: ReorderableDelayedDragStartListener(
+                    index: i,
+                    child: TrackTile(
+                      track: entry,
+                      onTap: () => controller.jump(entry),
+                    ),
+                  ),
                 ),
               ),
             );

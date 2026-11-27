@@ -22,6 +22,7 @@ import '../sleep_sheet.dart';
 import '../widgets/artwork.dart';
 import '../widgets/avatars.dart';
 import '../widgets/explicit_badge.dart';
+import '../widgets/focus_nav.dart';
 import '../widgets/touch_box.dart';
 import '../widgets/track_links.dart';
 import '../widgets/track_menu.dart';
@@ -463,11 +464,7 @@ class _ArtistLineState extends State<_ArtistLine> {
         rounds: MarqueeText.playerRounds,
       );
       if (track.isLocal) return line;
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => openArtistOf(context, track),
-        child: line,
-      );
+      return FocusTap(onTap: () => openArtistOf(context, track), child: line);
     }
 
     // When the line is tight, drop the year first, then the count, and never cut the artist to keep either.
@@ -580,6 +577,9 @@ class PlayerToolbar extends StatelessWidget {
   /// Room the lit sleep timer needs to say the hour it stops at, beside the other buttons; narrower, it is a lit icon.
   static const _pillWidth = 112.0;
 
+  /// Between the pill and the thumb of a lit button in it: the thumb is round like the pill, 3 smaller all round.
+  static const _frameInset = 3.0;
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
@@ -597,8 +597,13 @@ class PlayerToolbar extends StatelessWidget {
         // The thin lines between the buttons of the pill (kind `plain`) take a little room of their own
         final slot = min(
           52.0 * scale,
-          (box.maxWidth - (kind == ToolbarKind.plain ? 4 : 0)) / count,
+          (box.maxWidth -
+                  (kind == ToolbarKind.plain ? 4 + 2 * _frameInset : 0)) /
+              count,
         );
+        // In the pill (kind `plain`) a lit button is a thumb inside the frame, not a slab as high as the frame
+        final height =
+            (kind == ToolbarKind.plain ? 44 - 2 * _frameInset : 44) * scale;
         Widget button(IconData icon, String label, NowPlayingPanel target) {
           final on = panel == target;
           return IconButton(
@@ -609,7 +614,7 @@ class PlayerToolbar extends StatelessWidget {
             style: IconButton.styleFrom(
               foregroundColor: on ? p.onPrimary : _toolTint(p),
               backgroundColor: on ? p.primary : Colors.transparent,
-              fixedSize: Size(slot, 44 * scale),
+              fixedSize: Size(slot, height),
             ),
           );
         }
@@ -645,18 +650,25 @@ class PlayerToolbar extends StatelessWidget {
           );
         }
         if (kind == ToolbarKind.plain) {
-          Widget divider() => SizedBox(
+          // The line between two buttons goes while either is lit: the thumb has its own edge there
+          Widget divider(bool hidden) => SizedBox(
             height: 28,
             child: VerticalDivider(
               width: 1,
-              color: p.text.withValues(alpha: 0.18),
+              color: p.text.withValues(alpha: hidden ? 0 : 0.18),
             ),
           );
           // One pill for all of them: lyrics, where the sound goes, the sleep timer, the comments and the queue
           final items = [
             button(Icons.lyrics_outlined, S.lyrics, NowPlayingPanel.lyrics),
-            if (!kIsWeb) OutputButton(controller: controller, width: slot),
-            SleepButton(controller: controller, width: slot, pill: false),
+            if (!kIsWeb)
+              OutputButton(controller: controller, width: slot, height: height),
+            SleepButton(
+              controller: controller,
+              width: slot,
+              height: height,
+              pill: false,
+            ),
             button(
               Icons.comment_outlined,
               S.youtubeComments,
@@ -664,20 +676,30 @@ class PlayerToolbar extends StatelessWidget {
             ),
             button(Icons.queue_music_rounded, S.upNext, NowPlayingPanel.upNext),
           ];
+          final lit = [
+            panel == NowPlayingPanel.lyrics,
+            if (!kIsWeb) controller.output.kind != 'speaker',
+            controller.sleep.on,
+            panel == NowPlayingPanel.comments,
+            panel == NowPlayingPanel.upNext,
+          ];
           return Center(
             child: DecoratedBox(
               decoration: ShapeDecoration(
                 color: p.veilStrong,
                 shape: const StadiumBorder(),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var i = 0; i < items.length; i++) ...[
-                    if (i > 0) divider(),
-                    items[i],
+              child: Padding(
+                padding: const EdgeInsets.all(_frameInset),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < items.length; i++) ...[
+                      if (i > 0) divider(lit[i - 1] || lit[i]),
+                      items[i],
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           );
@@ -885,10 +907,16 @@ class DeviceLine extends StatelessWidget {
 /// Opens the system's list to play somewhere else than on the phone: headphones, a speaker. Its icon says where the
 /// sound goes, and it is lit up while that is not the phone itself.
 class OutputButton extends StatelessWidget {
-  const OutputButton({super.key, required this.controller, this.width = 52});
+  const OutputButton({
+    super.key,
+    required this.controller,
+    this.width = 52,
+    this.height = 44,
+  });
 
   final RoomController controller;
   final double width;
+  final double height;
 
   static IconData _icon(String kind) => switch (kind) {
     'headphones' => Icons.headphones_rounded,
@@ -911,7 +939,7 @@ class OutputButton extends StatelessWidget {
       style: IconButton.styleFrom(
         foregroundColor: away ? p.onPrimary : _toolTint(p),
         backgroundColor: away ? p.primary : Colors.transparent,
-        fixedSize: Size(width, 44),
+        fixedSize: Size(width, height),
       ),
     );
   }
@@ -924,10 +952,12 @@ class SleepButton extends StatelessWidget {
     required this.controller,
     required this.width,
     required this.pill,
+    this.height = 44,
   });
 
   final RoomController controller;
   final double width;
+  final double height;
 
   /// Whether there is room to say the hour; without it a timer that is set is only lit.
   final bool pill;
@@ -961,7 +991,7 @@ class SleepButton extends StatelessWidget {
       style: IconButton.styleFrom(
         foregroundColor: sleep.on ? p.onPrimary : _toolTint(p),
         backgroundColor: sleep.on ? p.primary : Colors.transparent,
-        fixedSize: Size(width, 44),
+        fixedSize: Size(width, height),
       ),
     );
   }
@@ -1036,8 +1066,7 @@ class ModePill extends StatelessWidget {
       selected: selected,
       child: Tooltip(
         message: label,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: FocusTap(
           onTap: onTap,
           // The lit pill is 32 high; the place that answers a touch is the full 48
           child: SizedBox(

@@ -14,6 +14,8 @@ import 'player/parts.dart';
 import 'player/spotify_player.dart';
 import 'player_sheet.dart';
 import 'scope.dart';
+import 'tv/tv.dart';
+import 'tv/tv_player.dart';
 import 'widgets/flat_backdrop.dart';
 import 'widgets/player_backdrop.dart';
 import 'widgets/reactions.dart';
@@ -227,7 +229,16 @@ class _BodyState extends State<_Body> {
         widget.style == PlayerStyle.appleMusic &&
         !docked &&
         MediaQuery.orientationOf(context) == Orientation.portrait;
-    Widget player(NowPlayingPanel panel) => switch (widget.style) {
+    final tv = TvScope.of(context);
+    Widget player(NowPlayingPanel panel) => tv
+        ? TvPlayer(
+            controller: _c,
+            current: widget.current,
+            panel: panel,
+            onPanel: _show,
+            onChoose: _choose,
+          )
+        : switch (widget.style) {
       PlayerStyle.classic => ClassicPlayer(
         controller: _c,
         current: widget.current,

@@ -1177,6 +1177,9 @@ class RoomController extends ChangeNotifier {
     );
   }
 
+  /// Writes a line into the log of the app, as a line of the app's own and not one the person marked.
+  void note(String line) => _backend.note(line).ignore();
+
   // ------------------------------------------------------------------ transport
 
   Future<void> togglePlay() {

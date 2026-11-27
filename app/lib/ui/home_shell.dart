@@ -18,6 +18,7 @@ import '../data/version_check.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'chat_sheet.dart';
+import 'focus_zones.dart';
 import 'home_page.dart';
 import 'library_page.dart';
 import 'now_playing_page.dart';
@@ -31,9 +32,12 @@ import 'ios_update_sheet.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
 import 'sync_dialogs.dart';
+import 'tv/tv.dart';
+import 'tv/tv_rail.dart';
 import 'update_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/cached_cover.dart';
+import 'widgets/focus_nav.dart' show keysAreInUse;
 import 'widgets/glass.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/play_problem_note.dart';
@@ -123,9 +127,15 @@ class HomeShell extends StatefulWidget {
   static const _sidebarSpan = 12 + 256 + 12;
 
   static ShellLayout layoutOf(BuildContext context) =>
-      layoutFor(windowOf(context), dockOf(context));
+      layoutFor(windowOf(context), dockOf(context), tv: TvScope.of(context));
 
-  static ShellLayout layoutFor(Size size, double dock) {
+  /// Whether the app is drawn for a TV: the rail is the TV's, the player is the whole screen and not a card, and what is
+  /// reached is reached with a remote.
+  static bool isTv(BuildContext context) => TvScope.of(context);
+
+  static ShellLayout layoutFor(Size size, double dock, {bool tv = false}) {
+    // A TV has a rail of its own that opens, and no card beside the pages
+    if (tv) return ShellLayout.rail;
     // A phone on its side is wide but short: two bars stacked along its foot would take a quarter of what height it
     // has, so the tabs go up the side, as a rail of icons, and the mini player floats alone
     if (size.height < 480) {
@@ -289,6 +299,9 @@ class _HomeShellState extends State<HomeShell>
 
   /// What the sidebar of a wide screen asks the library to show.
   final _libraryRequests = LibraryRequests();
+
+  /// Where the arrow keys of a remote go from the tabs to the page to the player.
+  final _zones = FocusZones();
 
   NavigatorState? get _current => _navigators[_tab].currentState;
   StreamSubscription<String>? _messages;
@@ -523,6 +536,7 @@ class _HomeShellState extends State<HomeShell>
     _libraryMessages?.cancel();
     _notices?.cancel();
     _sheet.dispose();
+    _zones.dispose();
     _searchFocus.dispose();
     _searchBack.dispose();
     _libraryRequests.dispose();
@@ -654,13 +668,24 @@ class _HomeShellState extends State<HomeShell>
     }
   }
 
-  void _select(int tab) {
+  /// With keys in use, a tab that is chosen has the focus put into its page, where the person goes next.
+  void _focusPage() {
+    if (!keysAreInUse) return;
+    _zones.forgetPage();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _zones.enter(FocusZone.page);
+    });
+  }
+
+  void _select(int tab, {bool focusPage = true}) {
     _fold(false);
     if (tab == _tab) {
       // The tab that is open is touched again: back to its first page
       _current?.popUntil((route) => route.isFirst);
+      if (focusPage) _focusPage();
       return;
     }
+    if (focusPage) _focusPage();
     HapticFeedback.selectionClick();
     if (!Motion.reduced(context)) _pageFade.forward(from: 0.35);
     setState(() {
@@ -671,7 +696,8 @@ class _HomeShellState extends State<HomeShell>
 
   /// Opens Search with the cursor in its field.
   void _search() {
-    _select(1);
+    // The cursor goes into the field of Search, not to the first control of the page
+    _select(1, focusPage: false);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _searchFocus.requestFocus(),
     );
@@ -687,6 +713,34 @@ class _HomeShellState extends State<HomeShell>
   /// Keys of a keyboard, for DeX and a computer: Space plays or pauses, Shift with an arrow goes back or on ten
   /// seconds, Ctrl with an arrow skips, `/` or Ctrl+F searches, Escape closes the player. Plain arrows are left to move
   /// between the buttons, as a TV remote does.
+  /// Page Up and Page Down, and a remote's channel keys: the page that has the focus scrolls by most of a screen. False
+  /// where nothing scrolls, so that the key is left to whoever else wants it.
+  bool _scrollPage(int way) {
+    final focus = FocusManager.instance.primaryFocus?.context;
+    final position = focus == null
+        ? null
+        : Scrollable.maybeOf(focus, axis: Axis.vertical)?.position;
+    if (position == null) return false;
+    unawaited(
+      position.animateTo(
+        (position.pixels + way * position.viewportDimension * 0.85).clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        ),
+        duration: Motion.of(context, 200),
+        curve: Curves.easeOut,
+      ),
+    );
+    return true;
+  }
+
+  static final _arrows = {
+    LogicalKeyboardKey.arrowUp,
+    LogicalKeyboardKey.arrowDown,
+    LogicalKeyboardKey.arrowLeft,
+    LogicalKeyboardKey.arrowRight,
+  };
+
   bool _onKey(KeyEvent event) {
     if (event is KeyUpEvent || !mounted) return false;
     // What is typed into a field is the field's, and a dialog or a sheet over the screen has its own keys
@@ -701,7 +755,49 @@ class _HomeShellState extends State<HomeShell>
     final ctrl = keys.isControlPressed || keys.isMetaPressed;
     final playing = room.snapshot.current != null;
     final once = event is KeyDownEvent;
-    switch (event.logicalKey) {
+    final key = event.logicalKey;
+    // The first press of an arrow, with nothing yet that has the focus: it lands on the page (a TV remote has no touch
+    // to start from). Not under the full player, which keeps the focus in itself
+    if (once &&
+        _arrows.contains(key) &&
+        !(_sheet.isOpen && !_sheet.docked.value) &&
+        _zones.start()) {
+      return true;
+    }
+    switch (key) {
+      // The keys of a remote or a game pad, which a phone's headset sends to the player's session by itself: here they
+      // are the app's own while it is in front, and nobody else's
+      case LogicalKeyboardKey.mediaPlayPause when once && playing:
+        room.togglePlay();
+      case LogicalKeyboardKey.mediaPlay when once && playing:
+        if (!room.isPlaying) room.togglePlay();
+      case LogicalKeyboardKey.mediaPause when once && playing:
+        if (room.isPlaying) room.togglePlay();
+      case LogicalKeyboardKey.mediaTrackNext when once && playing:
+      case LogicalKeyboardKey.gameButtonRight1 when once && playing:
+        room.next();
+      case LogicalKeyboardKey.mediaTrackPrevious when once && playing:
+      case LogicalKeyboardKey.gameButtonLeft1 when once && playing:
+        room.prev();
+      case LogicalKeyboardKey.mediaFastForward when playing:
+        room.seek(
+          (room.positionMs() + 10000).clamp(0, room.durationMs()).toInt(),
+        );
+      case LogicalKeyboardKey.mediaRewind when playing:
+        room.seek(
+          (room.positionMs() - 10000).clamp(0, room.durationMs()).toInt(),
+        );
+      case LogicalKeyboardKey.browserSearch when once:
+      case LogicalKeyboardKey.find when once:
+        _search();
+      case LogicalKeyboardKey.pageDown when once:
+      case LogicalKeyboardKey.channelDown when once:
+        return _scrollPage(1);
+      case LogicalKeyboardKey.pageUp when once:
+      case LogicalKeyboardKey.channelUp when once:
+        return _scrollPage(-1);
+      case LogicalKeyboardKey.gameButtonB when once:
+        unawaited(Navigator.of(context).maybePop());
       case LogicalKeyboardKey.space when once && playing:
         room.togglePlay();
       case LogicalKeyboardKey.arrowRight when ctrl && once && playing:
@@ -829,9 +925,10 @@ class _HomeShellState extends State<HomeShell>
     final controller = AppScope.roomOf(context);
     final window = MediaQuery.sizeOf(context);
     // The player stands beside the pages in a window that is wider than it is tall, while a song is on
-    final dock = _hasSong ? HomeShell.dockWidthFor(window) : 0.0;
+    final tv = TvScope.of(context);
+    final dock = _hasSong && !tv ? HomeShell.dockWidthFor(window) : 0.0;
     final docked = dock > 0;
-    final layout = HomeShell.layoutFor(window, dock);
+    final layout = HomeShell.layoutFor(window, dock, tv: tv);
     _watchTurn(window, controller);
     _statusWanted = window.height < 480 && window.width > window.height;
     WidgetsBinding.instance.addPostFrameCallback((_) => _applyStatus());
@@ -841,31 +938,58 @@ class _HomeShellState extends State<HomeShell>
         if (mounted) _sheet.setDocked(_dockWanted);
       });
     }
-    final pages = NotificationListener<ScrollNotification>(
-      onNotification: _onScroll,
-      child: FadeTransition(
-        opacity: _pageFadeIn,
-        child: IndexedStack(
-          index: _tab,
-          // A tab that is not showing keeps its state but not its animations
-          children: [
-            for (final (i, page) in [
-              const HomePage(),
-              SearchPage(focusNode: _searchFocus, back: _searchBack),
-              LibraryPage(requests: _libraryRequests),
-              RoomPage(onAddSongs: _search),
-            ].indexed)
-              TickerMode(
-                enabled: i == _tab,
-                child: Navigator(
-                  key: _navigators[i],
-                  observers: [_watchers[i]],
-                  onGenerateRoute: (_) => MaterialPageRoute<void>(
-                    builder: (_) => PageWidth(child: page),
+    // Which part lies next to which, for the arrows of a remote
+    _zones.neighbours = layout == ShellLayout.bars
+        ? const {
+            FocusZone.page: {TraversalDirection.down: FocusZone.nav},
+            FocusZone.nav: {TraversalDirection.up: FocusZone.page},
+          }
+        : {
+            FocusZone.nav: const {TraversalDirection.right: FocusZone.page},
+            FocusZone.page: {
+              TraversalDirection.left: FocusZone.nav,
+              if (docked)
+                TraversalDirection.right: FocusZone.player
+              else
+                TraversalDirection.down: FocusZone.player,
+            },
+            FocusZone.player: {
+              if (docked)
+                TraversalDirection.left: FocusZone.page
+              else ...{
+                TraversalDirection.up: FocusZone.page,
+                TraversalDirection.left: FocusZone.nav,
+              },
+            },
+          };
+    final pages = _zones.zone(
+      FocusZone.page,
+      NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: FadeTransition(
+          opacity: _pageFadeIn,
+          child: IndexedStack(
+            index: _tab,
+            // A tab that is not showing keeps its state but not its animations
+            children: [
+              for (final (i, page) in [
+                const HomePage(),
+                SearchPage(focusNode: _searchFocus, back: _searchBack),
+                LibraryPage(requests: _libraryRequests),
+                RoomPage(onAddSongs: _search),
+              ].indexed)
+                TickerMode(
+                  enabled: i == _tab,
+                  child: Navigator(
+                    key: _navigators[i],
+                    observers: [_watchers[i]],
+                    onGenerateRoute: (_) => MaterialPageRoute<void>(
+                      builder: (_) => PageWidth(child: page),
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -904,6 +1028,8 @@ class _HomeShellState extends State<HomeShell>
                         onSelect: _select,
                         onSearch: _search,
                         onLibrary: _openLibrary,
+                        zones: _zones,
+                        tv: tv,
                         child: pages,
                       ),
                     ),
@@ -912,15 +1038,18 @@ class _HomeShellState extends State<HomeShell>
         ),
       ),
       bottomNavigationBar: layout == ShellLayout.bars
-          ? _Bars(
-              controller: controller,
-              shrink: _shrink,
-              drop: _drop,
-              hideMini: _sheet.miniHidden,
-              index: _tab,
-              browsing: _browsing,
-              onSelect: _select,
-              onUnfold: () => _fold(false),
+          ? _zones.zone(
+              FocusZone.nav,
+              _Bars(
+                controller: controller,
+                shrink: _shrink,
+                drop: _drop,
+                hideMini: _sheet.miniHidden,
+                index: _tab,
+                browsing: _browsing,
+                onSelect: _select,
+                onUnfold: () => _fold(false),
+              ),
             )
           : null,
     );
@@ -945,56 +1074,70 @@ class _HomeShellState extends State<HomeShell>
     return ShellWindow(
       size: window,
       dock: dock,
-      child: PlayerSheetScope(
-        controller: _sheet,
-        // Back steps out one layer at a time: a panel of the player, the player, a page of the tab, the words and results
-        // of Search, then any other tab back to Home; only from Home does it leave the screen
-        child: ListenableBuilder(
-          listenable: Listenable.merge([_sheet, _stack, _searchBack]),
-          builder: (context, stack) => PopScope(
-            // Beside the pages the player is not a layer to go back out of: Back is the pages'
-            canPop:
-                !(_sheet.isOpen && !docked) &&
-                !(_current?.canPop() ?? false) &&
-                _tab == 0,
-            onPopInvokedWithResult: (didPop, _) {
-              if (didPop) return;
-              if (_sheet.isOpen && !docked) {
-                _sheet.back();
-              } else if (_current?.canPop() ?? false) {
-                _current?.maybePop();
-              } else if (_tab == 1 && _searchBack.value) {
-                _searchBack.clear?.call();
-              } else {
-                _select(0);
-              }
+      child: ZoneArrows(
+        zones: _zones,
+        child: PlayerSheetScope(
+          controller: _sheet,
+          // Back steps out one layer at a time: a panel of the player, the player, a page of the tab, the words and results
+          // of Search, then any other tab back to Home; only from Home does it leave the screen
+          child: ListenableBuilder(
+            listenable: Listenable.merge([_sheet, _stack, _searchBack, _zones]),
+            builder: (context, stack) {
+              // With keys, the bottom of a page's pages is the tabs: Back goes to them before it goes anywhere else
+              final inPage = keysAreInUse && _zones.current == FocusZone.page;
+              return PopScope(
+                // Beside the pages the player is not a layer to go back out of: Back is the pages'
+                canPop:
+                    !(_sheet.isOpen && !docked) &&
+                    !(_current?.canPop() ?? false) &&
+                    _tab == 0 &&
+                    !inPage,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (didPop) return;
+                  if (_sheet.isOpen && !docked) {
+                    _sheet.back();
+                  } else if (_current?.canPop() ?? false) {
+                    _current?.maybePop();
+                  } else if (_tab == 1 && _searchBack.value) {
+                    _searchBack.clear?.call();
+                  } else if (inPage && _zones.enter(FocusZone.nav)) {
+                    // On the tabs now
+                  } else {
+                    _select(0);
+                  }
+                },
+                child: stack!,
+              );
             },
-            child: stack!,
-          ),
-          // Around the sheet as well, for the picture of the mini player it draws while it opens
-          child: BackdropGroup(
-            backdropKey: _backdrop,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Nothing to draw behind a fully open player
-                AnimatedBuilder(
-                  animation: _sheet.position,
-                  child: shown,
-                  // Hidden behind the full player: not drawn, and its small animations stand still too. Not when the
-                  // player stands beside the pages: they show
-                  builder: (context, home) {
-                    final covered = _sheet.position.value == 1 && !docked;
-                    return TickerMode(
-                      enabled: !covered,
-                      child: Offstage(offstage: covered, child: home),
-                    );
-                  },
-                ),
-                if (!docked)
-                  PlayerSheetLayer(controller: _sheet, folded: _drop),
-                if (kIsWeb) VideoFrameHost(sheet: _sheet),
-              ],
+            // Around the sheet as well, for the picture of the mini player it draws while it opens
+            child: BackdropGroup(
+              backdropKey: _backdrop,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Nothing to draw behind a fully open player
+                  AnimatedBuilder(
+                    animation: _sheet.position,
+                    child: shown,
+                    // Hidden behind the full player: not drawn, and its small animations stand still too. Not when the
+                    // player stands beside the pages: they show
+                    builder: (context, home) {
+                      final covered = _sheet.position.value == 1 && !docked;
+                      // A page that is hidden must not keep the arrow keys either
+                      return TickerMode(
+                        enabled: !covered,
+                        child: ExcludeFocus(
+                          excluding: covered,
+                          child: Offstage(offstage: covered, child: home),
+                        ),
+                      );
+                    },
+                  ),
+                  if (!docked)
+                    PlayerSheetLayer(controller: _sheet, folded: _drop),
+                  if (kIsWeb) VideoFrameHost(sheet: _sheet),
+                ],
+              ),
             ),
           ),
         ),
@@ -1015,6 +1158,8 @@ class _Side extends StatelessWidget {
     required this.onSelect,
     required this.onSearch,
     required this.onLibrary,
+    required this.zones,
+    required this.tv,
     required this.child,
   });
 
@@ -1030,6 +1175,12 @@ class _Side extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final VoidCallback onSearch;
   final ValueChanged<int> onLibrary;
+
+  /// The parts the arrow keys of a remote go between.
+  final FocusZones zones;
+
+  /// Drawn for a TV: the rail is the one that opens.
+  final bool tv;
   final Widget child;
 
   static const _gap = 12.0;
@@ -1042,7 +1193,7 @@ class _Side extends StatelessWidget {
     final padding = MediaQuery.viewPaddingOf(context);
     final rail = layout == ShellLayout.rail;
     final compact = HomeShell.compactOf(context);
-    final railWidth = _Rail.widthOf(compact);
+    final railWidth = tv ? TvRail.width : _Rail.widthOf(compact);
     final edge = compact ? 12.0 : 16.0;
     // Where the pages start: right of the rail or the sidebar, with a gap on either side of it
     // The notch, or the system's bar, at either side
@@ -1096,10 +1247,15 @@ class _Side extends StatelessWidget {
                 top: padding.top + edge,
                 bottom: bottom,
                 width: railWidth,
-                child: _Rail(
-                  index: index,
-                  onSelect: onSelect,
-                  compact: compact,
+                child: zones.zone(
+                  FocusZone.nav,
+                  tv
+                      ? TvRail(index: index, onSelect: onSelect, zones: zones)
+                      : _Rail(
+                          index: index,
+                          onSelect: onSelect,
+                          compact: compact,
+                        ),
                 ),
               )
             else
@@ -1108,12 +1264,15 @@ class _Side extends StatelessWidget {
                 top: padding.top + _gap,
                 bottom: bottom,
                 width: _Sidebar.width,
-                child: _Sidebar(
-                  index: index,
-                  where: where,
-                  onSelect: onSelect,
-                  onSearch: onSearch,
-                  onLibrary: onLibrary,
+                child: zones.zone(
+                  FocusZone.nav,
+                  _Sidebar(
+                    index: index,
+                    where: where,
+                    onSelect: onSelect,
+                    onSearch: onSearch,
+                    onLibrary: onLibrary,
+                  ),
                 ),
               ),
             // The player beside the pages: a card with its own colours, as tall as the rail
@@ -1123,9 +1282,12 @@ class _Side extends StatelessWidget {
                 top: padding.top + edgeSide,
                 bottom: frame,
                 width: dock,
-                child: NowPlayingPage(
-                  docked: true,
-                  bottomInset: math.max(0.0, padding.bottom - frame),
+                child: zones.zone(
+                  FocusZone.player,
+                  NowPlayingPage(
+                    docked: true,
+                    bottomInset: math.max(0.0, padding.bottom - frame),
+                  ),
                 ),
               ),
             // The mini player floats in the middle of the pages, the player bar runs along them. Not with the player
@@ -1136,17 +1298,20 @@ class _Side extends StatelessWidget {
                 right: rail ? null : right + _gap,
                 width: rail ? mini : null,
                 bottom: bottom,
-                child: rail
-                    ? MiniPlayer(controller: controller)
-                    // A wide window can be wider than the song and its buttons need: the bar stays a capsule in the
-                    // middle of the pages instead of running across all of them
-                    : Align(
-                        heightFactor: 1,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 740),
-                          child: PlayerBar(controller: controller),
+                child: zones.zone(
+                  FocusZone.player,
+                  rail
+                      ? MiniPlayer(controller: controller)
+                      // A wide window can be wider than the song and its buttons need: the bar stays a capsule in the
+                      // middle of the pages instead of running across all of them
+                      : Align(
+                          heightFactor: 1,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 740),
+                            child: PlayerBar(controller: controller),
+                          ),
                         ),
-                      ),
+                ),
               ),
           ],
         );

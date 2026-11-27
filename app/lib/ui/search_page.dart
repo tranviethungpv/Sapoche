@@ -25,6 +25,7 @@ import 'widgets/track_columns.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// Search YouTube Music (or paste a link) for anything: songs, videos, albums, artists, playlists, profiles and
 /// podcasts. While the person types, a few completions and what is found so far are listed under one another; once
@@ -525,54 +526,58 @@ class _SearchPageState extends State<SearchPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ListenableBuilder(
               listenable: _field,
-              builder: (context, _) => TextField(
-                controller: _field,
+              builder: (context, _) => TvFieldGate(
                 focusNode: widget.focusNode,
-                onChanged: _onChanged,
-                onSubmitted: _submit,
-                textInputAction: TextInputAction.search,
-                style: theme.bodyLarge,
-                // A see-through capsule on the page's backdrop, like the other things that sit on it
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: context.palette.veil,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 13,
-                  ),
-                  border: _capsule,
-                  enabledBorder: _capsule,
-                  focusedBorder: _capsule.copyWith(
-                    borderSide: BorderSide(
-                      color: context.palette.primary,
-                      width: 1.5,
+                builder: (fieldNode, readOnly) => TextField(
+                  focusNode: fieldNode,
+                  readOnly: readOnly,
+                  controller: _field,
+                  onChanged: _onChanged,
+                  onSubmitted: _submit,
+                  textInputAction: TextInputAction.search,
+                  style: theme.bodyLarge,
+                  // A see-through capsule on the page's backdrop, like the other things that sit on it
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: context.palette.veil,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 13,
                     ),
-                  ),
-                  hintText: S.searchHint,
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: context.palette.textTertiary,
-                  ),
-                  suffixIcon: _field.text.isEmpty
-                      ? IconButton(
-                          tooltip: S.pasteLink,
-                          icon: Icon(
-                            Icons.content_paste_rounded,
-                            color: context.palette.textTertiary,
+                    border: _capsule,
+                    enabledBorder: _capsule,
+                    focusedBorder: _capsule.copyWith(
+                      borderSide: BorderSide(
+                        color: context.palette.primary,
+                        width: 1.5,
+                      ),
+                    ),
+                    hintText: S.searchHint,
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: context.palette.textTertiary,
+                    ),
+                    suffixIcon: _field.text.isEmpty
+                        ? IconButton(
+                            tooltip: S.pasteLink,
+                            icon: Icon(
+                              Icons.content_paste_rounded,
+                              color: context.palette.textTertiary,
+                            ),
+                            onPressed: _paste,
+                          )
+                        : IconButton(
+                            tooltip: S.clearSearch,
+                            icon: Icon(
+                              Icons.cancel_rounded,
+                              color: context.palette.textTertiary,
+                            ),
+                            onPressed: () {
+                              _field.clear();
+                              _onChanged('');
+                            },
                           ),
-                          onPressed: _paste,
-                        )
-                      : IconButton(
-                          tooltip: S.clearSearch,
-                          icon: Icon(
-                            Icons.cancel_rounded,
-                            color: context.palette.textTertiary,
-                          ),
-                          onPressed: () {
-                            _field.clear();
-                            _onChanged('');
-                          },
-                        ),
+                  ),
                 ),
               ),
             ),

@@ -6,6 +6,7 @@ import '../../strings.dart';
 import '../../theme/palette.dart';
 import '../../theme/theme.dart';
 import '../player/look.dart';
+import 'focus_nav.dart';
 import 'low_rate_timer.dart';
 import 'touch_box.dart';
 import 'motion.dart';
@@ -94,53 +95,63 @@ class _PlaybackBarState extends State<PlaybackBar> {
         decreasedValue: formatDuration(step(-10000)),
         onIncrease: duration > 0 ? () => _c.seek(step(10000)) : null,
         onDecrease: duration > 0 ? () => _c.seek(step(-10000)) : null,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: (d) => setState(
-            () => _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
-          ),
-          onHorizontalDragUpdate: (d) => setState(
-            () => _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
-          ),
-          onHorizontalDragEnd: (_) => _finish(duration),
-          onHorizontalDragCancel: () => setState(() => _dragFraction = null),
-          onTapUp: (d) {
-            _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth);
-            _finish(duration);
+        // The left and right keys of a remote move it too
+        child: KeySlider(
+          onStep: (way) {
+            if (duration > 0) _c.seek(step(way * 10000));
           },
-          child: SizedBox(
-            // The line is 4 to 10 high; the place that answers a touch and a drag is the full 48. Not in the bar of a
-            // wide window (`compact`), which is a fixed height with the buttons above it: 20, as it was, nor on a
-            // phone on its side
-            height: inline ? 26 : (compact ? 20 : barTouchHeight(context, 28)),
-            child: Center(
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(
-                  end: (compact && !inline) || thin
-                      ? (dragging ? 6 : 4)
-                      : (dragging ? 10 : 5),
-                ),
-                duration: Motion.of(context, 160),
-                curve: Curves.easeOut,
-                builder: (context, height, _) => thin
-                    ? _thinLine(p, height, fraction, box.maxWidth, dragging)
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(height),
-                        child: Stack(
-                          children: [
-                            Container(height: height, color: p.track),
-                            FractionallySizedBox(
-                              widthFactor: fraction,
-                              child: Container(
-                                height: height,
-                                color: dragging
-                                    ? p.primary
-                                    : p.primary.withValues(alpha: 0.9),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragStart: (d) => setState(
+              () =>
+                  _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
+            ),
+            onHorizontalDragUpdate: (d) => setState(
+              () =>
+                  _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth),
+            ),
+            onHorizontalDragEnd: (_) => _finish(duration),
+            onHorizontalDragCancel: () => setState(() => _dragFraction = null),
+            onTapUp: (d) {
+              _dragFraction = _fractionAt(d.localPosition.dx, box.maxWidth);
+              _finish(duration);
+            },
+            child: SizedBox(
+              // The line is 4 to 10 high; the place that answers a touch and a drag is the full 48. Not in the bar of a
+              // wide window (`compact`), which is a fixed height with the buttons above it: 20, as it was, nor on a
+              // phone on its side
+              height: inline
+                  ? 26
+                  : (compact ? 20 : barTouchHeight(context, 28)),
+              child: Center(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(
+                    end: (compact && !inline) || thin
+                        ? (dragging ? 6 : 4)
+                        : (dragging ? 10 : 5),
+                  ),
+                  duration: Motion.of(context, 160),
+                  curve: Curves.easeOut,
+                  builder: (context, height, _) => thin
+                      ? _thinLine(p, height, fraction, box.maxWidth, dragging)
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(height),
+                          child: Stack(
+                            children: [
+                              Container(height: height, color: p.track),
+                              FractionallySizedBox(
+                                widthFactor: fraction,
+                                child: Container(
+                                  height: height,
+                                  color: dragging
+                                      ? p.primary
+                                      : p.primary.withValues(alpha: 0.9),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
+                ),
               ),
             ),
           ),

@@ -513,6 +513,7 @@ class RoomSnapshot {
     this.videoHeights = const [],
     this.videoHeightNow = 0,
     this.videoHeightMax = 1080,
+    this.television = false,
     this.videoLimit,
     this.playbackSpeed = 1.0,
     this.name,
@@ -565,6 +566,10 @@ class RoomSnapshot {
 
   /// The tallest picture this device plays at all, whatever the song.
   final int videoHeightMax;
+
+  /// This device is a TV or a TV box (Android says so; elsewhere it is false): the screen is looked at from across a
+  /// room and held with a remote.
+  final bool television;
 
   /// Why the picture is shorter than [videoHeight] asks: `metered` (mobile data keeps it to 1080p), `network` (the link was
   /// too slow for more), `video` (the song has no taller one), `reload` (it is being loaded again); null for none.
@@ -743,6 +748,7 @@ class RoomSnapshot {
     ],
     videoHeightNow: (json['videoHeightNow'] as num?)?.toInt() ?? 0,
     videoHeightMax: (json['videoHeightMax'] as num?)?.toInt() ?? 1080,
+    television: json['television'] as bool? ?? false,
     videoLimit: json['videoLimit'] as String?,
     playbackSpeed: (json['playbackSpeed'] as num?)?.toDouble() ?? 1.0,
     name: json['name'] as String?,

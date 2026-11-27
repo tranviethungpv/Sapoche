@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'focus_nav.dart';
+
 /// The least a finger needs (Android's guideline, and a little over Apple's 44).
 const double touchSize = 48;
 
@@ -31,9 +33,10 @@ class TouchBox extends StatelessWidget {
       minWidth: touchSize,
       minHeight: touchSize,
     ),
-    child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      excludeFromSemantics: !semantic,
+    child: FocusTap(
+      semantic: semantic,
+      // A child that has its own semantics is a button, which has its own focus
+      focusable: semantic,
       onTap: onTap,
       // As big as the child, and no bigger than that unless the minimum asks it: it must not take the width it is offered
       child: Center(widthFactor: 1, heightFactor: 1, child: child),

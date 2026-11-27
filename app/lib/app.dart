@@ -5,11 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/calm.dart';
+import 'data/tv_mode.dart';
 import 'strings.dart';
 import 'theme/palette.dart';
 import 'theme/theme.dart';
 import 'ui/home_shell.dart';
 import 'ui/scope.dart';
+import 'ui/tv/tv.dart';
+import 'ui/widgets/focus_nav.dart';
 import 'ui/widgets/ambient_backdrop.dart';
 import 'ui/widgets/motion.dart';
 import 'ui/widgets/pip_host.dart';
@@ -36,10 +39,33 @@ class _SapocheAppState extends State<SapocheApp> with WidgetsBindingObserver {
       ui.PlatformDispatcher.instance.locale,
     );
     widget.model.room.setLanguage(S.current);
+    widget.model.room.addListener(_syncTv);
+    _syncTv();
+  }
+
+  bool _screenLogged = false;
+
+  /// The device says whether it is a TV (once the first state is there), and the log learns how big its screen is: what a
+  /// person with a box that draws wrong can send, and what the layout is chosen from.
+  void _syncTv() {
+    final room = widget.model.room;
+    Tv.device = room.snapshot.television;
+    if (_screenLogged || !room.ready) return;
+    _screenLogged = true;
+    final view = ui.PlatformDispatcher.instance.implicitView;
+    if (view == null) return;
+    final px = view.physicalSize;
+    final dpr = view.devicePixelRatio;
+    room.note(
+      '[screen] ${px.width.round()}x${px.height.round()} px, dpr '
+      '${dpr.toStringAsFixed(2)}, ${(px.width / dpr).round()}x${(px.height / dpr).round()} dp, '
+      'tv=${room.snapshot.television}, tvLayout=${Tv.on.value}',
+    );
   }
 
   @override
   void dispose() {
+    widget.model.room.removeListener(_syncTv);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -118,7 +144,11 @@ class _SapocheAppState extends State<SapocheApp> with WidgetsBindingObserver {
             home: const _Root(),
             builder: (context, child) => PipHost(
               controller: model.room,
-              child: ToastLayout(child: child!),
+              // Over everything, dialogs and sheets too: the ring round what a remote has the focus on
+              // The canvas of a TV is round the ring, so that the ring is as thick there as everywhere
+              child: TvCanvas(
+                child: FocusRingLayer(child: ToastLayout(child: child!)),
+              ),
             ),
           );
         },

@@ -6,6 +6,7 @@ import '../../format.dart';
 import '../../theme/theme.dart';
 import 'artwork.dart';
 import 'explicit_badge.dart';
+import 'focus_nav.dart';
 import '../scope.dart';
 import 'like_button.dart';
 import 'menu_lines.dart' show SongMenuHandle;
@@ -178,84 +179,92 @@ class _TrackTileState extends State<TrackTile> {
     );
     return RowMenuKey(
       menuKey: _menu,
-      child: InkWell(
-        onTap: onTap,
-        onSecondaryTap: () => _menu.open?.call(),
-        child: LayoutBuilder(
-          builder: (context, box) {
-            // In a wide window the row stands in columns: the song, its album if the list has one, its length
-            final columns = TrackColumns.fits(context, box.maxWidth);
-            final album = columns && TrackColumns.albumOf(context);
-            final row = Row(
-              children: [
-                cover(),
-                const SizedBox(width: 14),
-                Expanded(
-                  flex: columns ? TrackColumns.titleFlex : 1,
-                  // The album column starts a little way from where a long title ends
-                  child: album
-                      ? Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: names,
-                        )
-                      : names,
-                ),
-                if (album)
+      // Holding OK, the Menu key or X on a remote opens the same "…" that a right click does
+      child: MenuKeys(
+        onMenu: () => _menu.open?.call(),
+        ready: () => _menu.open != null,
+        child: InkWell(
+          onTap: onTap,
+          onSecondaryTap: () => _menu.open?.call(),
+          child: LayoutBuilder(
+            builder: (context, box) {
+              // In a wide window the row stands in columns: the song, its album if the list has one, its length
+              final columns = TrackColumns.fits(context, box.maxWidth);
+              final album = columns && TrackColumns.albumOf(context);
+              final row = Row(
+                children: [
+                  cover(),
+                  const SizedBox(width: 14),
                   Expanded(
-                    flex: TrackColumns.albumFlex,
-                    child: _AlbumCell(track: track),
+                    flex: columns ? TrackColumns.titleFlex : 1,
+                    // The album column starts a little way from where a long title ends
+                    child: album
+                        ? Padding(
+                            padding: const EdgeInsets.only(right: 16),
+                            child: names,
+                          )
+                        : names,
                   ),
-                if (columns) ...[
-                  if (TrackColumns.lengthOf(context))
-                    SizedBox(
-                      width: TrackColumns.lengthWidth,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: length,
-                      ),
+                  if (album)
+                    Expanded(
+                      flex: TrackColumns.albumFlex,
+                      child: _AlbumCell(track: track),
                     ),
-                  if (trailing != null) ...[
+                  if (columns) ...[
+                    if (TrackColumns.lengthOf(context))
+                      SizedBox(
+                        width: TrackColumns.lengthWidth,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: length,
+                        ),
+                      ),
+                    if (trailing != null) ...[
+                      const SizedBox(width: 8),
+                      trailing,
+                    ] else
+                      LikeButton(track: track, size: 20),
+                  ] else if (trailing != null) ...[
                     const SizedBox(width: 8),
                     trailing,
-                  ] else
+                  ] else ...[
                     LikeButton(track: track, size: 20),
-                ] else if (trailing != null) ...[
-                  const SizedBox(width: 8),
-                  trailing,
-                ] else ...[
-                  LikeButton(track: track, size: 20),
-                  // A row with no length keeps the room for one, so its heart stands where the other rows' do
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(minWidth: 36),
-                    child: length,
-                  ),
+                    // A row with no length keeps the room for one, so its heart stands where the other rows' do
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 36),
+                      child: length,
+                    ),
+                  ],
                 ],
-              ],
-            );
-            return Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: dense ? 0 : 7,
-              ),
-              child: columns
-                  // The Align loosens the width a list gives (a ListView's is tight), or the cap would hold for nothing
-                  ? Align(
-                      alignment: Alignment.centerLeft,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: dense ? 52 : 0,
-                          maxWidth: TrackColumns.maxContentOf(context, album: album),
+              );
+              return Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: dense ? 0 : 7,
+                ),
+                child: columns
+                    // The Align loosens the width a list gives (a ListView's is tight), or the cap would hold for nothing
+                    ? Align(
+                        alignment: Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: dense ? 52 : 0,
+                            maxWidth: TrackColumns.maxContentOf(
+                              context,
+                              album: album,
+                            ),
+                          ),
+                          child: row,
                         ),
+                      )
+                    // A row of an album is never lower than a thing to touch, whatever its text
+                    : ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: dense ? 52 : 0),
                         child: row,
                       ),
-                    )
-                  // A row of an album is never lower than a thing to touch, whatever its text
-                  : ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: dense ? 52 : 0),
-                      child: row,
-                    ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -289,8 +298,7 @@ class _AlbumCell extends StatelessWidget {
       padding: const EdgeInsets.only(right: 12),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: FocusTap(
           onTap: () =>
               openCollection(context, id: id, title: name, thumb: track.thumb),
           child: text,

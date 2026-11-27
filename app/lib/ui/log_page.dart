@@ -17,6 +17,7 @@ import 'widgets/ambient_backdrop.dart';
 import 'widgets/motion.dart';
 import 'widgets/page_width.dart' show SideInset;
 import 'widgets/play_row.dart';
+import 'widgets/focus_nav.dart';
 
 /// Reads the lines the log page was given: off the main isolate when there are many.
 LogModel _parseLog(List<String> raw) => LogModel.parse(raw);
@@ -1071,20 +1072,24 @@ class _FilterBar extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: TextField(
-                        key: const ValueKey('log-search'),
-                        controller: query,
-                        autofocus: true,
-                        textInputAction: TextInputAction.search,
-                        decoration: InputDecoration(
-                          hintText: S.logSearch,
-                          isDense: true,
-                          suffixText: query.text.trim().isEmpty
-                              ? null
-                              : '${match < 0 ? 0 : match + 1}/$matches',
+                      child: TvFieldGate(
+                        builder: (fieldNode, readOnly) => TextField(
+                          focusNode: fieldNode,
+                          readOnly: readOnly,
+                          key: const ValueKey('log-search'),
+                          controller: query,
+                          autofocus: true,
+                          textInputAction: TextInputAction.search,
+                          decoration: InputDecoration(
+                            hintText: S.logSearch,
+                            isDense: true,
+                            suffixText: query.text.trim().isEmpty
+                                ? null
+                                : '${match < 0 ? 0 : match + 1}/$matches',
+                          ),
+                          onChanged: (_) => onQuery(),
+                          onSubmitted: (_) => onNextMatch(),
                         ),
-                        onChanged: (_) => onQuery(),
-                        onSubmitted: (_) => onNextMatch(),
                       ),
                     ),
                     IconButton(

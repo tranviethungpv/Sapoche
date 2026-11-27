@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
+import 'focus_nav.dart';
 import 'touch_box.dart';
 import 'motion.dart';
 
@@ -38,45 +39,51 @@ class _VolumeBarState extends State<VolumeBar> {
           const SizedBox(width: 12),
           Expanded(
             child: LayoutBuilder(
-              builder: (context, box) => GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragStart: (d) {
-                  setState(() => _dragging = true);
-                  _set(d.localPosition.dx, box.maxWidth);
-                },
-                onHorizontalDragUpdate: (d) =>
-                    _set(d.localPosition.dx, box.maxWidth),
-                onHorizontalDragEnd: (_) => setState(() => _dragging = false),
-                onHorizontalDragCancel: () => setState(() => _dragging = false),
-                onTapUp: (d) => _set(d.localPosition.dx, box.maxWidth),
-                child: SizedBox(
-                  height: barTouchHeight(context, 32),
-                  child: Center(
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: widget.controller.volume,
-                      builder: (context, level, _) =>
-                          TweenAnimationBuilder<double>(
-                            tween: Tween(end: _dragging ? 10 : 5),
-                            duration: Motion.of(context, 160),
-                            curve: Curves.easeOut,
-                            builder: (context, height, _) => ClipRRect(
-                              borderRadius: BorderRadius.circular(height),
-                              child: Stack(
-                                children: [
-                                  Container(height: height, color: p.track),
-                                  FractionallySizedBox(
-                                    widthFactor: level,
-                                    child: Container(
-                                      height: height,
-                                      color: _dragging
-                                          ? p.primary
-                                          : p.primary.withValues(alpha: 0.9),
+              builder: (context, box) => KeySlider(
+                onStep: (way) => widget.controller.setVolume(
+                  widget.controller.volume.value + way * 0.0625,
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragStart: (d) {
+                    setState(() => _dragging = true);
+                    _set(d.localPosition.dx, box.maxWidth);
+                  },
+                  onHorizontalDragUpdate: (d) =>
+                      _set(d.localPosition.dx, box.maxWidth),
+                  onHorizontalDragEnd: (_) => setState(() => _dragging = false),
+                  onHorizontalDragCancel: () =>
+                      setState(() => _dragging = false),
+                  onTapUp: (d) => _set(d.localPosition.dx, box.maxWidth),
+                  child: SizedBox(
+                    height: barTouchHeight(context, 32),
+                    child: Center(
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: widget.controller.volume,
+                        builder: (context, level, _) =>
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(end: _dragging ? 10 : 5),
+                              duration: Motion.of(context, 160),
+                              curve: Curves.easeOut,
+                              builder: (context, height, _) => ClipRRect(
+                                borderRadius: BorderRadius.circular(height),
+                                child: Stack(
+                                  children: [
+                                    Container(height: height, color: p.track),
+                                    FractionallySizedBox(
+                                      widthFactor: level,
+                                      child: Container(
+                                        height: height,
+                                        color: _dragging
+                                            ? p.primary
+                                            : p.primary.withValues(alpha: 0.9),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
+                      ),
                     ),
                   ),
                 ),

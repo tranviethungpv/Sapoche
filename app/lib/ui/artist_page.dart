@@ -18,6 +18,7 @@ import 'widgets/play_row.dart';
 import 'widgets/title_on_scroll.dart';
 import 'widgets/player_backdrop.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// Opens the page of an artist in the tab that is showing, with a way back.
 Future<void> openArtist(BuildContext context, String artistId) {
@@ -277,7 +278,7 @@ class _ContentState extends State<_Content> {
       ),
       Padding(
         padding: EdgeInsets.symmetric(horizontal: inset),
-        child: GestureDetector(
+        child: FocusTap(
           onTap: () => setState(() => _open = !_open),
           child: MotionSize(
             milliseconds: 220,

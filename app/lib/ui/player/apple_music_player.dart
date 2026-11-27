@@ -42,7 +42,7 @@ class AppleMusicPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) => box.maxHeight < playerCompactHeight
+    builder: (context, box) => playerIsCompact(context, box.maxHeight)
         ? _compact(context)
         : _tall(context),
   );

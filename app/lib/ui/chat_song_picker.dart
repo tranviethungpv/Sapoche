@@ -13,6 +13,7 @@ import '../theme/theme.dart';
 import 'scope.dart';
 import 'widgets/track_tile.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// "Send a song": a sheet to pick the song to put in the chat. It opens on the song playing, the liked ones and the ones
 /// heard lately, and searches YouTube Music as words are typed. Gives the song picked, or null if it was closed.
@@ -170,21 +171,35 @@ class _SongPickerState extends State<_SongPicker> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: TextField(
-                  key: const ValueKey('song-picker-field'),
-                  controller: _field,
-                  autofocus: false,
-                  textInputAction: TextInputAction.search,
-                  onChanged: _onChanged,
-                  onSubmitted: (text) => text.trim().isEmpty ? null : _pick(text.trim()),
-                  decoration: InputDecoration(
-                    hintText: S.chatSongSearchHint,
-                    prefixIcon: Icon(Icons.search_rounded, color: p.textTertiary),
-                    isDense: true,
-                    filled: true,
-                    fillColor: p.primary.withValues(alpha: 0.10),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+                child: TvFieldGate(
+                  builder: (fieldNode, readOnly) => TextField(
+                    focusNode: fieldNode,
+                    readOnly: readOnly,
+                    key: const ValueKey('song-picker-field'),
+                    controller: _field,
+                    autofocus: false,
+                    textInputAction: TextInputAction.search,
+                    onChanged: _onChanged,
+                    onSubmitted: (text) =>
+                        text.trim().isEmpty ? null : _pick(text.trim()),
+                    decoration: InputDecoration(
+                      hintText: S.chatSongSearchHint,
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        color: p.textTertiary,
+                      ),
+                      isDense: true,
+                      filled: true,
+                      fillColor: p.primary.withValues(alpha: 0.10),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
                   ),
                 ),
               ),

@@ -41,6 +41,7 @@ class SapocheApp : Application() {
         super.onCreate()
         Config.init(this)
         instance = this
+        television = DeviceKind.isTelevision(this)
         EventLog.init(filesDir, BuildConfig.VERSION_NAME + "+" + BuildConfig.VERSION_CODE)
         CrashLog.install()
         CrashLog.readExits(this)
@@ -258,6 +259,10 @@ class SapocheApp : Application() {
         }
 
         private var instance: SapocheApp? = null
+
+        /** This device is a TV or a TV box: the UI draws for a screen across a room and a remote in the hand. */
+        var television = false
+            private set
 
         private val groupFlow = MutableStateFlow<GroupController?>(null)
 

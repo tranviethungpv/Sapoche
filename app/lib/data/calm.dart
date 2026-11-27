@@ -26,6 +26,7 @@ abstract final class Calm {
   static bool _warm = false;
   static bool _weak = false;
   static bool _veryWeak = false;
+  static bool _tv = false;
   static EffectsLevel? _chosen;
 
   /// The native side: the phone is warm or in battery saver.
@@ -48,6 +49,13 @@ abstract final class Calm {
     _update();
   }
 
+  /// The app is drawn for a TV or a TV box, whose chips are weak and whose screen is far: the bare minimum, unless
+  /// [chosen] says otherwise.
+  static set television(bool value) {
+    _tv = value;
+    _update();
+  }
+
   /// The person's choice in Settings; null while they have made none.
   static set chosen(EffectsLevel? value) {
     _chosen = value;
@@ -57,7 +65,7 @@ abstract final class Calm {
   static void _update() {
     final effective =
         _chosen ??
-        (_veryWeak
+        (_veryWeak || _tv
             ? EffectsLevel.minimal
             : _weak
             ? EffectsLevel.light

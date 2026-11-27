@@ -569,6 +569,7 @@ final shotScreens = <ShotScreen>[
     await _settle(t);
   }),
   ..._dockScreens(),
+  ..._tvScreens(),
   ..._playerStyleScreens(PlayerStyle.spotify, 'spotify'),
   ..._playerStyleScreens(PlayerStyle.appleMusic, 'apple'),
   // The three on a phone on its side, each with a small layout of its own (beside the pages, or a sheet when too narrow)
@@ -613,6 +614,43 @@ Future<void> _openPanel(WidgetTester t, String title) async {
   await t.tap(finder);
   await _settle(t);
 }
+
+/// The app on a TV: the pages, and the player of each style (the cover, the lyrics, the queue, the picture), as a TV
+/// draws them, whatever its density.
+List<ShotScreen> _tvScreens() => [
+  ShotScreen('tv-home', tv: true, windows: shotTv, (t, b) async {
+    await _state(t, b, busyRoom());
+    await _settle(t);
+  }),
+  ShotScreen('tv-library', tv: true, windows: shotTv, (t, b) async {
+    await _state(t, b, busyRoom());
+    await t.tap(find.byIcon(Icons.library_music_rounded).first);
+    await _settle(t);
+  }),
+  for (final (style, suffix) in [
+    (PlayerStyle.classic, ''),
+    (PlayerStyle.spotify, '-spotify'),
+    (PlayerStyle.appleMusic, '-apple'),
+  ]) ...[
+    ShotScreen('tv-player$suffix', tv: true, style: style, windows: shotTv, prepare: (b) => b.lyricsResult = lyricsData, (t, b) async {
+      await _playing(t, b);
+      await tapMiniPlayer(t);
+      await _settle(t);
+    }),
+    ShotScreen('tv-player-lyrics$suffix', tv: true, style: style, windows: shotTv, prepare: (b) => b.lyricsResult = lyricsData, (t, b) async {
+      await _playing(t, b);
+      await tapMiniPlayer(t);
+      await _settle(t);
+      await _openPanel(t, S.lyrics);
+    }),
+    ShotScreen('tv-player-queue$suffix', tv: true, style: style, windows: shotTv, (t, b) async {
+      await _playing(t, b);
+      await tapMiniPlayer(t);
+      await _settle(t);
+      await _openPanel(t, S.upNext);
+    }),
+  ],
+];
 
 /// The player beside the pages on a tablet and a computer: the upright player of each style, with the cover, the lyrics
 /// and the queue.

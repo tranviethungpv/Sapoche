@@ -1239,6 +1239,9 @@ RoomSnapshot sampleRoom({
   int videoHeightMax = 1080,
   String? videoLimit,
 
+  /// The device says it is a TV.
+  bool television = false,
+
   /// Outside a room: the personal queue.
   bool local = false,
   bool loading = false,
@@ -1270,6 +1273,7 @@ RoomSnapshot sampleRoom({
   videoHeightNow: videoHeightNow,
   videoHeightMax: videoHeightMax,
   videoLimit: videoLimit,
+  television: television,
   members:
       members ??
       const [

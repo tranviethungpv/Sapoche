@@ -51,6 +51,18 @@ const playerBottomGap = 28.0;
 /// A player shorter than this (a phone on its side) has no height for the upright column and draws the small one.
 const playerCompactHeight = 480.0;
 
+/// The card beside the pages is short in a window that is wide and not tall (a laptop, a TV at 960x540 dp): under this
+/// the upright column would leave the cover a few dp, so it draws the small player too, which has the volume and the icons
+/// in the "…" of the song.
+const playerDockCompactHeight = 620.0;
+
+/// Whether a player [height] dp tall, drawn here, is the small one.
+bool playerIsCompact(BuildContext context, double height) =>
+    height <
+    (PlayerLookScope.dockedOf(context)
+        ? playerDockCompactHeight
+        : playerCompactHeight);
+
 /// The most the small player grows across: beside a wide window it stays a column.
 const playerCompactWidthMax = 560.0;
 
@@ -82,7 +94,7 @@ class ClassicPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) => box.maxHeight < playerCompactHeight
+    builder: (context, box) => playerIsCompact(context, box.maxHeight)
         ? _compact(context)
         : _tall(context),
   );

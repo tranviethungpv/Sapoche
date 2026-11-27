@@ -26,6 +26,7 @@ import 'widgets/artwork.dart';
 import 'widgets/avatars.dart';
 import 'widgets/cached_cover.dart';
 import 'widgets/explicit_badge.dart';
+import 'widgets/focus_nav.dart';
 import 'widgets/kept_alive.dart';
 import 'widgets/meta_line.dart';
 import 'widgets/play_actions.dart';
@@ -822,42 +823,49 @@ class _RoomChipState extends State<_RoomChip> {
               child: Material(
                 color: inRoom ? p.primary : p.text.withValues(alpha: 0.14),
                 shape: const StadiumBorder(),
-                child: InkWell(
-                  customBorder: const StadiumBorder(),
-                  onTap: _busy ? null : _touch,
-                  onLongPress: () => showRoomSheet(context),
-                  child: SizedBox(
-                    height: 40,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_busy)
-                            SizedBox.square(
-                              dimension: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
+                child: MenuKeys(
+                  onMenu: () => showRoomSheet(context),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: _busy ? null : _touch,
+                    onLongPress: () => showRoomSheet(context),
+                    child: SizedBox(
+                      height: 40,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_busy)
+                              SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: color,
+                                ),
+                              )
+                            else if (inRoom)
+                              // Who is there, not the code: the code is on the invitation
+                              AvatarStack(
+                                members: snapshot.members,
+                                size: 24,
+                                max: 3,
+                              )
+                            else
+                              Icon(
+                                Icons.groups_rounded,
+                                size: 18,
                                 color: color,
                               ),
-                            )
-                          else if (inRoom)
-                            // Who is there, not the code: the code is on the invitation
-                            AvatarStack(
-                              members: snapshot.members,
-                              size: 24,
-                              max: 3,
-                            )
-                          else
-                            Icon(Icons.groups_rounded, size: 18, color: color),
-                          const SizedBox(width: 6),
-                          Text(
-                            label,
-                            maxLines: 1,
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(color: color),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              label,
+                              maxLines: 1,
+                              style: Theme.of(context).textTheme.labelLarge
+                                  ?.copyWith(color: color),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

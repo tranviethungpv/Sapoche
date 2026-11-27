@@ -7,8 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'calm.dart';
 import 'shelf_stats.dart';
+import 'tv_mode.dart';
 
 export 'calm.dart' show EffectsLevel;
+export 'tv_mode.dart' show TvMode;
 
 /// How the full player is drawn: the one Sapoche began with, or one laid out like the players of two other music apps.
 /// The app names them without a brand (`S.playerStyleCards`, `S.playerStyleFullCover`).
@@ -29,6 +31,7 @@ class AppSettings extends ChangeNotifier {
       _avatar = _readAvatar(_prefs),
       shelves = ShelfStats(_prefs, random: shelfRandom) {
     Calm.chosen = _readEffects(_prefs);
+    Tv.mode = tvMode;
   }
 
   final SharedPreferences _prefs;
@@ -109,6 +112,17 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether the app draws for a TV: the device's own word, or the person's.
+  TvMode get tvMode =>
+      TvMode.values.asNameMap()[_prefs.getString(_tvModeKey)] ?? TvMode.auto;
+
+  set tvMode(TvMode value) {
+    if (value == tvMode) return;
+    _prefs.setString(_tvModeKey, value.name);
+    Tv.mode = value;
+    notifyListeners();
+  }
+
   /// The language the person picked, one of `S.languages`; null follows the phone's language.
   String? get language => _language;
 
@@ -168,6 +182,7 @@ class AppSettings extends ChangeNotifier {
   static const _lightEffectsKey = 'light_effects';
   static const _accentKey = 'accent';
   static const _playerStyleKey = 'player_style';
+  static const _tvModeKey = 'tv_mode';
   static const _updateSheetKey = 'update_sheet_';
 
   static ThemeMode _read(SharedPreferences prefs) =>

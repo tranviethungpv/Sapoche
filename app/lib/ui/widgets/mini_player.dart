@@ -109,85 +109,93 @@ class MiniPlayerCapsule extends StatelessWidget {
       borderRadius: BorderRadius.circular(height / 2),
       child: Stack(
         children: [
-          InkWell(
-            onTap: onTap,
-            child: SizedBox(
-              height: height,
-              child: Row(
-                children: [
-                  // The cover is round and as far from the edge on the left as from the top and bottom, so its curve
-                  // follows the capsule's end
-                  SizedBox(width: (height - cover) / 2),
-                  if (ghost)
-                    SizedBox.square(dimension: cover)
-                  else
-                    Artwork(
-                      key: sheet.miniCover,
-                      url: current.thumb,
-                      size: cover,
-                      radius: cover / 2,
-                    ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    // A bar of a fixed height: two lines of very large text would not fit, so the words stop at 1.3
-                    child: MediaQuery.withClampedTextScaling(
-                      maxScaleFactor: 1.3,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          MarqueeText(
-                            current.title,
-                            style: theme.titleSmall,
-                            rounds: MarqueeText.barRounds,
+          SizedBox(
+            height: height,
+            child: Row(
+              children: [
+                // The part that opens the player is the cover and the words: the buttons are beside it and not in it, so
+                // that a remote's arrows can go to each of them
+                Expanded(
+                  child: InkWell(
+                    onTap: onTap,
+                    child: Row(
+                      children: [
+                        // The cover is round and as far from the edge on the left as from the top and bottom, so its curve
+                        // follows the capsule's end
+                        SizedBox(width: (height - cover) / 2),
+                        if (ghost)
+                          SizedBox.square(dimension: cover)
+                        else
+                          Artwork(
+                            key: sheet.miniCover,
+                            url: current.thumb,
+                            size: cover,
+                            radius: cover / 2,
                           ),
-                          if (fading > 0)
-                            Align(
-                              alignment: Alignment.topLeft,
-                              heightFactor: 1 - folded,
-                              child: Opacity(
-                                opacity: fading,
-                                child: MarqueeText(
-                                  controller.snapshot.solo
-                                      ? '${current.artist} · ${S.onYourOwn}'
-                                      : current.artist,
-                                  style: theme.bodySmall?.copyWith(
-                                    color: p.textSecondary,
-                                  ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          // A bar of a fixed height: two lines of very large text would not fit, so the words stop at 1.3
+                          child: MediaQuery.withClampedTextScaling(
+                            maxScaleFactor: 1.3,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                MarqueeText(
+                                  current.title,
+                                  style: theme.titleSmall,
                                   rounds: MarqueeText.barRounds,
                                 ),
-                              ),
+                                if (fading > 0)
+                                  Align(
+                                    alignment: Alignment.topLeft,
+                                    heightFactor: 1 - folded,
+                                    child: Opacity(
+                                      opacity: fading,
+                                      child: MarqueeText(
+                                        controller.snapshot.solo
+                                            ? '${current.artist} · ${S.onYourOwn}'
+                                            : current.artist,
+                                        style: theme.bodySmall?.copyWith(
+                                          color: p.textSecondary,
+                                        ),
+                                        rounds: MarqueeText.barRounds,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  ListenableBuilder(
-                    listenable: controller.playState,
-                    builder: (context, _) => PlayPauseButton(
-                      playing: controller.isPlaying,
-                      starting: controller.isStarting,
-                      onPressed: controller.togglePlay,
-                      size: button,
-                      filled: false,
-                    ),
-                  ),
-                  if (fading > 0)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: 1 - folded,
-                      child: Opacity(
-                        opacity: fading,
-                        child: SkipButton(
-                          forward: true,
-                          onPressed: controller.next,
-                          box: button,
+                          ),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+                ListenableBuilder(
+                  listenable: controller.playState,
+                  builder: (context, _) => PlayPauseButton(
+                    playing: controller.isPlaying,
+                    starting: controller.isStarting,
+                    onPressed: controller.togglePlay,
+                    size: button,
+                    filled: false,
+                  ),
+                ),
+                if (fading > 0)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: 1 - folded,
+                    child: Opacity(
+                      opacity: fading,
+                      child: SkipButton(
+                        forward: true,
+                        onPressed: controller.next,
+                        box: button,
                       ),
                     ),
-                  const SizedBox(width: 4),
-                ],
-              ),
+                  ),
+                const SizedBox(width: 4),
+              ],
             ),
           ),
           // How far the song has gone, along the lower edge of the capsule, as Spotify's and YouTube Music's have it

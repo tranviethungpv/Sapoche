@@ -28,6 +28,7 @@ import 'video_page.dart';
 import 'widgets/album_bubble.dart';
 import 'widgets/album_image.dart';
 import 'widgets/artwork.dart';
+import 'widgets/focus_nav.dart';
 import 'widgets/avatars.dart';
 import 'widgets/chat_song_card.dart';
 import 'widgets/linked_text.dart';
@@ -855,86 +856,94 @@ class _ChatSheetState extends State<ChatSheet> with WidgetsBindingObserver {
                       actions: {
                         PasteTextIntent: _PastePhotosAction(_pastePhotos),
                       },
-                      child: TextField(
-                        key: const ValueKey('chat-field'),
-                        controller: _field,
+                      child: TvFieldGate(
                         focusNode: _focus,
-                        minLines: 1,
-                        maxLines: 4,
-                        maxLength: RoomController.maxChatChars,
-                        // Menu of the field: Paste image, where the clipboard holds one
-                        contextMenuBuilder: (context, editable) {
-                          final items = [...editable.contextMenuButtonItems];
-                          if (_clipboardPhotos) {
-                            items.insert(
-                              0,
-                              ContextMenuButtonItem(
-                                label: S.chatPasteImage,
-                                onPressed: () {
-                                  editable.hideToolbar();
-                                  _pastePhotos();
-                                },
-                              ),
+                        builder: (fieldNode, readOnly) => TextField(
+                          focusNode: fieldNode,
+                          readOnly: readOnly,
+                          key: const ValueKey('chat-field'),
+                          controller: _field,
+                          minLines: 1,
+                          maxLines: 4,
+                          maxLength: RoomController.maxChatChars,
+                          // Menu of the field: Paste image, where the clipboard holds one
+                          contextMenuBuilder: (context, editable) {
+                            final items = [...editable.contextMenuButtonItems];
+                            if (_clipboardPhotos) {
+                              items.insert(
+                                0,
+                                ContextMenuButtonItem(
+                                  label: S.chatPasteImage,
+                                  onPressed: () {
+                                    editable.hideToolbar();
+                                    _pastePhotos();
+                                  },
+                                ),
+                              );
+                            }
+                            return AdaptiveTextSelectionToolbar.buttonItems(
+                              anchors: editable.contextMenuAnchors,
+                              buttonItems: items,
                             );
-                          }
-                          return AdaptiveTextSelectionToolbar.buttonItems(
-                            anchors: editable.contextMenuAnchors,
-                            buttonItems: items,
-                          );
-                        },
-                        textCapitalization: TextCapitalization.sentences,
-                        textInputAction: TextInputAction.send,
-                        // The keyboard takes the place of the stickers
-                        onTap: () {
-                          if (_trayOpen) setState(() => _trayOpen = false);
-                        },
-                        // Gboard offers GIFs and stickers to put in the field; only Android has it
-                        contentInsertionConfiguration:
-                            !kIsWeb &&
-                                defaultTargetPlatform == TargetPlatform.android
-                            ? ContentInsertionConfiguration(
-                                onContentInserted: _pasted,
-                                allowedMimeTypes: const [
-                                  'image/jpeg',
-                                  'image/png',
-                                  'image/gif',
-                                  'image/webp',
-                                ],
-                              )
-                            : null,
-                        // Handled here, so that the keyboard's Send key does not put the keyboard away as well
-                        onEditingComplete: _send,
-                        // A touch anywhere else puts the keyboard away: its return key makes a new line
-                        onTapOutside: (_) =>
-                            FocusManager.instance.primaryFocus?.unfocus(),
-                        // The count shows only near the end, where it matters
-                        buildCounter:
-                            (
-                              context, {
-                              required currentLength,
-                              required isFocused,
-                              maxLength,
-                            }) =>
-                                currentLength > RoomController.maxChatChars - 50
-                                ? Text('$currentLength/$maxLength')
-                                : null,
-                        decoration: InputDecoration(
-                          hintText: S.chatHint,
-                          hintStyle: TextStyle(color: p.textSecondary),
-                          isDense: true,
-                          // As high as a finger: the field's own 45 was short of it
-                          constraints: const BoxConstraints(minHeight: touchSize),
-                          filled: true,
-                          fillColor: (look?.accent ?? p.primary).withValues(
-                            alpha: 0.10,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide.none,
+                          },
+                          textCapitalization: TextCapitalization.sentences,
+                          textInputAction: TextInputAction.send,
+                          // The keyboard takes the place of the stickers
+                          onTap: () {
+                            if (_trayOpen) setState(() => _trayOpen = false);
+                          },
+                          // Gboard offers GIFs and stickers to put in the field; only Android has it
+                          contentInsertionConfiguration:
+                              !kIsWeb &&
+                                  defaultTargetPlatform ==
+                                      TargetPlatform.android
+                              ? ContentInsertionConfiguration(
+                                  onContentInserted: _pasted,
+                                  allowedMimeTypes: const [
+                                    'image/jpeg',
+                                    'image/png',
+                                    'image/gif',
+                                    'image/webp',
+                                  ],
+                                )
+                              : null,
+                          // Handled here, so that the keyboard's Send key does not put the keyboard away as well
+                          onEditingComplete: _send,
+                          // A touch anywhere else puts the keyboard away: its return key makes a new line
+                          onTapOutside: (_) =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          // The count shows only near the end, where it matters
+                          buildCounter:
+                              (
+                                context, {
+                                required currentLength,
+                                required isFocused,
+                                maxLength,
+                              }) =>
+                                  currentLength >
+                                      RoomController.maxChatChars - 50
+                                  ? Text('$currentLength/$maxLength')
+                                  : null,
+                          decoration: InputDecoration(
+                            hintText: S.chatHint,
+                            hintStyle: TextStyle(color: p.textSecondary),
+                            isDense: true,
+                            // As high as a finger: the field's own 45 was short of it
+                            constraints: const BoxConstraints(
+                              minHeight: touchSize,
+                            ),
+                            filled: true,
+                            fillColor: (look?.accent ?? p.primary).withValues(
+                              alpha: 0.10,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(22),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
                       ),
@@ -2056,7 +2065,7 @@ class _Bubble extends StatelessWidget {
                   const SizedBox(width: 8),
                 ],
                 Flexible(
-                  child: GestureDetector(
+                  child: FocusTap(
                     key: ValueKey('chat-message-${message.cid ?? message.id}'),
                     onTap: failed
                         ? () => controller.resendChat(message)

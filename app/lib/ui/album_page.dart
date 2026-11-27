@@ -7,6 +7,7 @@ import 'photo_actions.dart';
 import 'photo_viewer.dart';
 import 'widgets/album_image.dart';
 import 'widgets/grow_route.dart';
+import 'widgets/focus_nav.dart';
 import 'widgets/photo_stack.dart' show screenRectOf;
 
 /// The pictures of one message of the chat, all together: opens out of the stack ([from] is where it was on screen).
@@ -108,7 +109,7 @@ class _Cell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return FocusTap(
       key: ValueKey('album-cell-${slot.id}'),
       onTap: () => onTap(screenRectOf(context)),
       child: AlbumImage(slot: slot, media: controller.media, room: room, cacheWidth: 360),

@@ -44,6 +44,7 @@ import 'widgets/release_notes_text.dart';
 import 'widgets/scroll_edge.dart';
 import 'widgets/text_dialog.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// Opens the settings in the tab that is showing (beside the sidebar of a wide screen), with a way back.
 Future<void> openSettings(BuildContext context) => TabNavigation.push(
@@ -414,6 +415,37 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     ),
+    // An iPhone is never a TV: there is no Apple TV build, so nothing to choose
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.android)
+      _Group(
+        title: S.tvLayout,
+        footer: S.tvLayoutHelp,
+        children: [
+          ListenableBuilder(
+            listenable: model.settings,
+            builder: (context, _) => Column(
+              children: [
+                for (final (mode, label) in [
+                  (TvMode.auto, S.tvAuto),
+                  (TvMode.on, S.tvOn),
+                  (TvMode.off, S.tvOff),
+                ])
+                  _Row(
+                    key: ValueKey('tv-${mode.name}'),
+                    label: label,
+                    trailing: model.settings.tvMode == mode
+                        ? Icon(
+                            Icons.check_rounded,
+                            color: context.palette.primary,
+                          )
+                        : null,
+                    onTap: () => model.settings.tvMode = mode,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
   ];
 
   static List<Widget> _language(BuildContext context, AppModel model) => [
@@ -2825,7 +2857,7 @@ class _Swatch extends StatelessWidget {
       label: label,
       excludeSemantics: true,
       onTap: onTap,
-      child: GestureDetector(
+      child: FocusTap(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(

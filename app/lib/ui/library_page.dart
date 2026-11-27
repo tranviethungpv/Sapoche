@@ -31,6 +31,7 @@ import 'widgets/text_dialog.dart';
 import 'widgets/track_menu.dart';
 import 'widgets/track_tile.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// What a person keeps: liked songs, what they heard lately, and their playlists. Opening one puts its page
 /// over the tab, as the page of an album is, with a way back.
@@ -1189,14 +1190,18 @@ class _LocalFilter extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
       child: Column(
         children: [
-          TextField(
-            controller: controller,
-            onChanged: (_) => onChanged(),
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: S.localFilter,
-              prefixIcon: const Icon(Icons.search_rounded),
-              isDense: true,
+          TvFieldGate(
+            builder: (fieldNode, readOnly) => TextField(
+              focusNode: fieldNode,
+              readOnly: readOnly,
+              controller: controller,
+              onChanged: (_) => onChanged(),
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: S.localFilter,
+                prefixIcon: const Icon(Icons.search_rounded),
+                isDense: true,
+              ),
             ),
           ),
           if (unsupported > 0)

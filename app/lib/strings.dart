@@ -110,6 +110,10 @@ abstract final class S {
   static String get codeCopied =>
       _t('Room code copied', 'Đã sao chép mã phòng');
   static String get removed => _t('Removed from queue', 'Đã xoá khỏi hàng đợi');
+  static String get removeFromQueue =>
+      _t('Remove from queue', 'Xoá khỏi hàng đợi');
+  static String get moveUp => _t('Move up', 'Đưa lên');
+  static String get moveDown => _t('Move down', 'Đưa xuống');
   static String get invite => _t('Invite friends', 'Mời bạn bè');
   static String get inviteShort => _t('Invite', 'Mời');
   static String get listeningAlone => _t('Listening alone', 'Đang nghe một mình');
@@ -1551,6 +1555,14 @@ abstract final class S {
   static String get themeSystem => _t('System', 'Theo hệ thống');
   static String get themeLight => _t('Light', 'Sáng');
   static String get themeDark => _t('Dark', 'Tối');
+  static String get tvLayout => _t('TV layout', 'Giao diện TV');
+  static String get tvLayoutHelp => _t(
+    'Bigger text and a menu for a remote, for a TV or a TV box. Automatic is on only where the device says it is a TV.',
+    'Chữ to và menu cho điều khiển từ xa, dành cho TV hoặc TV box. Tự động chỉ bật khi thiết bị khai là TV.',
+  );
+  static String get tvAuto => _t('Automatic', 'Tự động');
+  static String get tvOn => _t('On', 'Bật');
+  static String get tvOff => _t('Off', 'Tắt');
   static String get playerStyle => _t('Player style', 'Kiểu trình phát');
   static String get playerStyleHelp => _t(
     'How the full player looks on this phone. The song bar and the small player stay as they are.',

@@ -28,6 +28,7 @@ import 'widgets/qr_code_view.dart';
 import 'widgets/track_columns.dart' show ListWidth;
 import 'widgets/track_tile.dart';
 import 'widgets/transport.dart';
+import 'widgets/focus_nav.dart';
 
 /// What is playing and what is queued: the room's shared queue while in a room, and otherwise
 /// this device's own, with the way into a room at the top.
@@ -556,6 +557,9 @@ class _NowCard extends StatelessWidget {
         child: InkWell(
           key: const ValueKey('room-now-card'),
           borderRadius: BorderRadius.circular(SapocheTheme.cardRadius),
+          // The play button and the sync chip are inside the card: with a focus of its own the card would be nearer to
+          // every arrow than they are. The remote's place for opening the player is the song, below
+          canRequestFocus: false,
           onTap: PlayerSheetScope.of(context).open,
           child: Container(
             padding: const EdgeInsets.all(12),
@@ -567,44 +571,53 @@ class _NowCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    // A video's picture cropped square and without its black bars
-                    Artwork(
-                      url: entry.thumb == null
-                          ? null
-                          : barlessThumbnail(entry.thumb!),
-                      size: 64,
-                      radius: 12,
-                      wide: true,
-                      crossfade: true,
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
-                      // The words of the next song fade in over the last one's
-                      child: AnimatedSwitcher(
-                        duration: Motion.of(context, Motion.medium),
-                        layoutBuilder: (shown, leaving) => Stack(
-                          alignment: Alignment.topLeft,
-                          children: [...leaving, ?shown],
-                        ),
-                        child: Column(
-                          key: ValueKey(entry.id),
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      child: FocusTap(
+                        onTap: PlayerSheetScope.of(context).open,
+                        child: Row(
                           children: [
-                            Text(
-                              entry.title,
-                              style: theme.titleMedium,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            // Who added it gives way before the artist is cut
-                            MetaLine(
-                              text: entry.artist,
-                              meta: addedBy == null
+                            // A video's picture cropped square and without its black bars
+                            Artwork(
+                              url: entry.thumb == null
                                   ? null
-                                  : S.addedBy(addedBy!),
-                              style: theme.bodySmall?.copyWith(
-                                color: p.textSecondary,
+                                  : barlessThumbnail(entry.thumb!),
+                              size: 64,
+                              radius: 12,
+                              wide: true,
+                              crossfade: true,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              // The words of the next song fade in over the last one's
+                              child: AnimatedSwitcher(
+                                duration: Motion.of(context, Motion.medium),
+                                layoutBuilder: (shown, leaving) => Stack(
+                                  alignment: Alignment.topLeft,
+                                  children: [...leaving, ?shown],
+                                ),
+                                child: Column(
+                                  key: ValueKey(entry.id),
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      entry.title,
+                                      style: theme.titleMedium,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    // Who added it gives way before the artist is cut
+                                    MetaLine(
+                                      text: entry.artist,
+                                      meta: addedBy == null
+                                          ? null
+                                          : S.addedBy(addedBy!),
+                                      style: theme.bodySmall?.copyWith(
+                                        color: p.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],

@@ -10,6 +10,7 @@ import '../theme/theme.dart';
 import 'scope.dart';
 import 'widgets/artwork.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// "Pick a few artists you like": for a new person, whose taste is not known yet. Each artist picked puts their best
 /// known song among the starter songs of the taste, and the suggestions are made again from them.
@@ -176,19 +177,32 @@ class _StarterArtistsState extends State<_StarterArtists> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: TextField(
-                  key: const ValueKey('starter-field'),
-                  controller: _field,
-                  textInputAction: TextInputAction.search,
-                  onChanged: _onChanged,
-                  decoration: InputDecoration(
-                    hintText: S.pickArtistsSearch,
-                    prefixIcon: Icon(Icons.search_rounded, color: p.textTertiary),
-                    isDense: true,
-                    filled: true,
-                    fillColor: p.primary.withValues(alpha: 0.10),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+                child: TvFieldGate(
+                  builder: (fieldNode, readOnly) => TextField(
+                    focusNode: fieldNode,
+                    readOnly: readOnly,
+                    key: const ValueKey('starter-field'),
+                    controller: _field,
+                    textInputAction: TextInputAction.search,
+                    onChanged: _onChanged,
+                    decoration: InputDecoration(
+                      hintText: S.pickArtistsSearch,
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        color: p.textTertiary,
+                      ),
+                      isDense: true,
+                      filled: true,
+                      fillColor: p.primary.withValues(alpha: 0.10),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
                   ),
                 ),
               ),

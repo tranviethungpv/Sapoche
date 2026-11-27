@@ -18,6 +18,7 @@ import 'widgets/music_shelf.dart';
 import 'widgets/play_actions.dart';
 import 'widgets/song_card.dart';
 import 'widgets/touch_box.dart';
+import 'widgets/focus_nav.dart';
 
 /// Wraps what a row of the home page shows once it has something to show: the page uses it to count the rows that were
 /// seen and touched (see `ShelfStats`). A row that is not made of this does not count.
@@ -122,9 +123,9 @@ class _HomeChipsState extends State<HomeChips> {
           bool own = false,
         }) =>
         // The chip is drawn 36 high; a touch answers in the 48 round it
-        GestureDetector(
+        FocusTap(
           behavior: HitTestBehavior.opaque,
-          excludeFromSemantics: true,
+          semantic: false,
           onTap: onTap,
           child: SizedBox(
             height: touchSize,

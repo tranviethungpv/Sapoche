@@ -40,6 +40,14 @@ const shotDockPages = [
   ShotSize('t1600', 1600, 900, dpr: 1),
 ];
 
+/// A TV, drawn as the app draws it: a canvas 540 dp high, scaled to the screen. A 1080p TV at the densities Android TV
+/// reports: 320 dpi (960x540 dp), 240 (1280x720) and 160 (1920x1080).
+const shotTv = [
+  ShotSize('tv960', 960, 540, dpr: 2),
+  ShotSize('tv1280', 1280, 720, dpr: 1.5),
+  ShotSize('tv1920', 1920, 1080),
+];
+
 const shotSizes = [
   ShotSize('w360', 360, 800),
   ShotSize('w411', 411, 914),
@@ -77,6 +85,7 @@ class ShotScreen {
     this.windows,
     this.sync,
     this.bigText = false,
+    this.tv = false,
   });
 
   final String id;
@@ -102,6 +111,9 @@ class ShotScreen {
   /// One of the main screens, drawn in the full set with text at 2.0 too: the size people with poor sight set
   /// (`docs/ops/ui-standard.md`).
   final bool bigText;
+
+  /// Drawn for a TV (`tv_mode` on), with the windows of [shotTv] unless [windows] says others.
+  final bool tv;
 }
 
 /// The combos to draw: `SHOTS_MATRIX=base` (the default: five sizes, light and dark, English), `full` (all of the plan:
@@ -159,6 +171,7 @@ Future<FakeBackend> pumpShot(WidgetTester tester, ShotScreen screen, ShotCombo c
     prefs: {
       if (combo.vi) 'language': 'vi',
       'player_style': screen.style.name,
+      if (screen.tv) 'tv_mode': 'on',
     },
     listen: screen.listen,
     prepare: screen.prepare,
