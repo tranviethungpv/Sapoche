@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -248,4 +250,38 @@ void main() {
       expect(readOnly(), isFalse);
     });
   });
+
+  testWidgets(
+    'on a computer a mouse click draws no ring, a key does, and the next click takes it away',
+    (tester) async {
+      // A computer starts in Flutter's key mode and a mouse never leaves it: the app still waits for a key
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      var taps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: FocusTap(
+              onTap: () => taps++,
+              child: const SizedBox.square(dimension: 80),
+            ),
+          ),
+        ),
+      );
+      expect(keysAreInUse, isFalse);
+      final mouse = await tester.startGesture(
+        tester.getCenter(find.byType(FocusTap)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.up();
+      await tester.pump();
+      expect(taps, 1);
+      expect(keysAreInUse, isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(keysAreInUse, isTrue);
+      await tester.tap(find.byType(FocusTap));
+      expect(keysAreInUse, isFalse);
+      // Before the end of the test: the binding checks that nothing is left set
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
 }

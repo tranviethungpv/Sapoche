@@ -61,9 +61,6 @@ class YoutubePlayer extends PlayerPort {
   /// Playing does not start without a tap of the person: set when a load found out.
   void Function()? onNeedsGesture;
 
-  /// Where lines for the diary go.
-  void Function(String line)? log;
-
   Future<void> _start() => _ready ??= _create();
 
   Future<void> _create() async {
@@ -198,7 +195,17 @@ class YoutubePlayer extends PlayerPort {
     );
   }
 
+  static String _stateName(int state) => switch (state) {
+    _ended => 'ended',
+    _playing => 'playing',
+    2 => 'paused',
+    _buffering => 'buffering',
+    5 => 'cued',
+    _ => 'unstarted',
+  };
+
   void _onState(int state) {
+    if (state != _state) log?.call('state=${_stateName(state)} item=${_loadedVideoId ?? _loadingVideoId}');
     _state = state;
     if (state == _playing) {
       final waiting = _waitPlaying;
@@ -237,6 +244,7 @@ class YoutubePlayer extends PlayerPort {
     _loadedVideoId = null;
     _loadingVideoId = item.videoId;
     final waiting = _waitPlaying = Completer<void>();
+    log?.call('loading ${item.videoId} at ${seekToMs ~/ 1000}s');
     // Loaded muted, so that it buffers at once without waiting for a tap, then paused where it should start
     player.mute();
     player.loadVideoById({'videoId': item.videoId, 'startSeconds': seekToMs / 1000}.jsify()! as JSObject);
@@ -244,6 +252,7 @@ class YoutubePlayer extends PlayerPort {
       await waiting.future.timeout(const Duration(seconds: 8));
     } on TimeoutException {
       // A frame that never got to playing is waiting for a tap, or for the network
+      log?.call('${item.videoId} did not start in 8s: waiting for a tap or the network');
       if (generation == _generation) onNeedsGesture?.call();
     } finally {
       if (identical(_waitPlaying, waiting)) _waitPlaying = null;

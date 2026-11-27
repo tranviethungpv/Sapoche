@@ -67,6 +67,9 @@ abstract class PlayerPort {
   /// Length of the loaded song, 0 until the player knows it.
   int durationMs() => 0;
 
+  /// Where lines for the diary go: what the player did, in the words a person can read. A player may say nothing.
+  void Function(String line)? log;
+
   /// The loaded item played to its end and nothing was queued after it.
   void Function()? onEnded;
 

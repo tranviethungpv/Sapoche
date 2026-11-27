@@ -506,7 +506,7 @@ void main() {
         openArtist(context, 'UCzen');
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        final play = tester.getRect(find.text('Play'));
+        final play = tester.getRect(find.byTooltip('Play'));
         final hit = tester.getRect(find.text('Hit'));
         // Beside each other, not one under the other: the buttons end where the songs have not begun
         expect(play.right, lessThan(hit.left));
@@ -544,7 +544,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       final hit = tester.getRect(find.text('Hit'));
-      expect(tester.getRect(find.text('Play')).right, lessThan(hit.left));
+      expect(tester.getRect(find.byTooltip('Play')).right, lessThan(hit.left));
       // The picture is small enough to leave room for what is under it
       expect(tester.getSize(find.byType(ClipRRect).first).height, lessThan(200));
     });

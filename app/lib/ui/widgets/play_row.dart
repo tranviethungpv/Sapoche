@@ -114,7 +114,10 @@ class PlayRow extends StatelessWidget {
         // side) it is a round button as well, with the triangle only, rather than a pill that shrinks its word
         final others = 1 + (download == null ? 0 : 1) + (more == null ? 0 : 1);
         final room = box.maxWidth - others * (_round + _gap);
-        final round = room < (HomeShell.isWide(context) ? _playRoomy : _playLeast);
+        final wide = HomeShell.isWide(context);
+        // Beside a cover in a window on its side the column is the cover's width: Play is round there whatever the count of
+        // the buttons (an artist has only Shuffle, so a playlist's 200 dp of room would leave it a pill among round ones)
+        final round = room < (wide ? _playRoomy : _playLeast) || (inline && wide);
         return Row(
           mainAxisAlignment: round && !inline
               ? MainAxisAlignment.center

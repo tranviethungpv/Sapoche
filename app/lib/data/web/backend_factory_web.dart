@@ -50,7 +50,7 @@ Future<Backend> createBackend() async {
   final appVersion = await PackageInfo.fromPlatform().then<String?>((info) => info.version, onError: (_) => null);
   final backend = WebBackend(
   library: LibraryStore(disk: keeping ? disk : null, stored: stored),
-  player: YoutubePlayer()..log = (line) => web.console.log('player: $line'.toJS),
+  player: YoutubePlayer(),
   prefs: prefs,
   // The room server serves this app, so its address is where the page came from
   defaultServer: web.window.location.origin,

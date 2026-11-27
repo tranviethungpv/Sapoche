@@ -98,6 +98,7 @@ class WebBackend extends BackendDefaults {
       })
       ..unnamed = () => _language == 'vi' ? 'Chưa đặt tên' : 'Untitled';
     _note('log: ---- process started ---- ${appVersion ?? ''}'.trimRight());
+    player.log = (m) => _note('player: $m');
     final watch = Stopwatch()..start();
     _now = nowMs ?? () => watch.elapsedMilliseconds;
     _events = StreamController<BackendEvent>.broadcast(

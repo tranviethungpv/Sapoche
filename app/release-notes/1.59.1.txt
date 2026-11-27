@@ -1,0 +1,4 @@
+Small fixes
+- On the web and on a computer, the focus ring no longer shows up when you click with the mouse; it appears only when you move around with the keyboard or a TV remote.
+- On the artist page, with the player beside the page, Play is now a round button like on playlists, albums and folders.
+- The web log in Settings now shows what the player did (loading a song, buffering, playing, errors), as the Android log does.

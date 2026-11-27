@@ -1,0 +1,4 @@
+Sửa vài lỗi nhỏ
+- Trên web và máy tính, vòng focus không còn hiện khi bấm chuột; chỉ hiện khi bạn di chuyển bằng bàn phím hoặc điều khiển TV.
+- Ở trang nghệ sĩ, khi trình phát nằm bên cạnh trang, nút Play nay là nút tròn như ở playlist, album và thư mục.
+- Nhật ký trên web (Cài đặt) nay ghi cả những gì trình phát làm (nạp bài, đệm, phát, lỗi) như nhật ký Android.

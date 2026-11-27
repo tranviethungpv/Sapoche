@@ -5,7 +5,7 @@ import 'package:sapoche/theme/palette.dart';
 import 'package:sapoche/theme/theme.dart';
 import 'package:sapoche/ui/widgets/play_row.dart';
 
-Widget _row(double width, {bool inline = false, bool withDownload = true}) => MaterialApp(
+Widget _row(double width, {bool inline = false, bool withDownload = true, bool withMore = true}) => MaterialApp(
   theme: buildTheme(Palette.dark),
   home: Scaffold(
     body: Align(
@@ -17,7 +17,7 @@ Widget _row(double width, {bool inline = false, bool withDownload = true}) => Ma
           onPlay: () {},
           onShuffle: () {},
           download: withDownload ? const IconButton(onPressed: null, icon: Icon(Icons.download)) : null,
-          more: const IconButton(onPressed: null, icon: Icon(Icons.more_horiz)),
+          more: withMore ? const IconButton(onPressed: null, icon: Icon(Icons.more_horiz)) : null,
         ),
       ),
     ),
@@ -77,6 +77,20 @@ void main() {
     // Upright the same column keeps Play as the wide button above them
     tester.view.physicalSize = const Size(900, 1600);
     await tester.pumpWidget(_row(320, inline: true, withDownload: false));
+    expect(find.text(S.play), findsOneWidget);
+  });
+
+  testWidgets('an artist page, which has only Shuffle beside Play, has a round Play beside its cover too', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(_row(320, inline: true, withDownload: false, withMore: false));
+    expect(find.text(S.play), findsNothing);
+    final play = tester.getSize(find.byTooltip(S.play));
+    expect(play.width, play.height);
+    // Upright it is the wide button
+    tester.view.physicalSize = const Size(900, 1600);
+    await tester.pumpWidget(_row(320, inline: true, withDownload: false, withMore: false));
     expect(find.text(S.play), findsOneWidget);
   });
 }

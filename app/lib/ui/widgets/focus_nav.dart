@@ -1,18 +1,46 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import '../../data/tv_mode.dart' show Tv;
 import '../../theme/theme.dart';
 import 'motion.dart';
 import '../tv/tv.dart' show TvScope;
 
 /// Whether the person is moving about with keys (a TV remote, a game pad, a keyboard) rather than a finger or a mouse:
-/// only then is a ring drawn round what has the focus.
-bool get keysAreInUse =>
-    FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+/// only then is a ring drawn round what has the focus. Flutter alone is not enough: on a computer (and so in a browser) it
+/// starts in key mode and a mouse never leaves it, so a click would ring whatever it focused. A TV is always in key mode;
+/// elsewhere the ring waits for a key and goes at the next click or touch.
+bool get keysAreInUse {
+  _LastInput.watch();
+  return FocusManager.instance.highlightMode == FocusHighlightMode.traditional && (Tv.on.value || _LastInput.key);
+}
+
+/// Whether the last thing the person did was press a key (true) or point (false).
+abstract final class _LastInput {
+  static bool key = false;
+  static FocusManager? _watched;
+
+  /// Listens once per focus manager (a test makes a new one for each test, and the handlers go with the old one).
+  static void watch() {
+    final manager = FocusManager.instance;
+    if (identical(manager, _watched)) return;
+    _watched = manager;
+    key = false;
+    // Early: before the key reaches the focus tree, so what a key does there already sees that a key was pressed
+    manager.addEarlyKeyEventHandler((event) {
+      if (event is! KeyUpEvent) key = true;
+      return KeyEventResult.ignored;
+    });
+    GestureBinding.instance.pointerRouter.addGlobalRoute((event) {
+      if (identical(manager, _watched) && event is PointerDownEvent) key = false;
+    });
+  }
+}
 
 /// A control that is touched with a finger and also reached with the arrow keys and pressed with OK (Enter, a game pad's
 /// A): in place of a bare [GestureDetector], which a remote cannot reach. It draws nothing of its own; the ring round what
