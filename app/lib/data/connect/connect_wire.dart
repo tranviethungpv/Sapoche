@@ -176,7 +176,7 @@ class RemoteState {
 
   /// This state with what a command of the person is sure to change, so that a screen can show it before the playing device
   /// answers: the answer (a state with a higher [rev]) takes its place.
-  RemoteState guessed({bool? playing, int? positionMs, int? at, String? repeat, bool? shuffle}) => RemoteState(
+  RemoteState guessed({bool? playing, int? positionMs, int? at, String? repeat, bool? shuffle, bool? video}) => RemoteState(
     rev: rev,
     itemId: itemId,
     current: current,
@@ -193,7 +193,7 @@ class RemoteState {
     speed: speed,
     at: at ?? this.at,
     volume: volume,
-    video: video,
+    video: video ?? this.video,
     sleep: sleep,
   );
 

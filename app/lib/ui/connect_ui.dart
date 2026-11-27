@@ -28,6 +28,10 @@ bool showsConnectButton(BuildContext context) => !kIsWeb || connectOf(context) !
 /// Another device plays and this one steers it, as far as the screens are concerned (they are not in a room then).
 bool controllingAnother(BuildContext context) => connectOf(context)?.controlling ?? false;
 
+/// Whether the picture of the song is on: the playing device's when another one plays (the switch of Audio and Video is a remote
+/// for it, and follows it), else this device's own.
+bool videoShown(BuildContext context, RoomController room) => connectOf(context)?.remoteVideo ?? room.snapshot.video;
+
 IconData deviceIcon(DeviceKind kind) => switch (kind) {
   DeviceKind.phone => Icons.smartphone_rounded,
   DeviceKind.tablet => Icons.tablet_android_rounded,
@@ -101,9 +105,11 @@ class PlayingOnLine extends StatelessWidget {
 }
 
 /// While this device steers another, the buttons of the phone's volume are for that one's volume (as in Spotify), not for the
-/// phone's own: a press moves the volume of the playing device by a step, and a small bar says where it is. An iPhone has no keys to
-/// catch (its buttons move the phone's volume, which the controller takes as a press: `buttonsAreLevels`), and a TV leaves them to
-/// the TV, whose volume they are.
+/// phone's own: a press moves the volume of the playing device by a step, and a small bar says where it is. On Android the
+/// activity takes the keys itself, before any view and before the system (`MainActivity.dispatchKeyEvent`, which is told by
+/// `steer` when to do it), so that they never depend on which view has the focus. An iPhone has no keys to catch (its buttons
+/// move the phone's volume, which the controller takes as a press: `buttonsAreLevels`), and a TV leaves them to the TV, whose
+/// volume they are.
 class RemoteVolumeKeys extends StatefulWidget {
   const RemoteVolumeKeys({super.key});
 
@@ -113,38 +119,51 @@ class RemoteVolumeKeys extends StatefulWidget {
 
 class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
   static const _shownFor = Duration(milliseconds: 1500);
+  static const _keys = MethodChannel('app.sapoche/volume_keys');
 
   final _level = ValueNotifier<double>(0);
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _bar;
   Timer? _hide;
   ConnectDevice? _device;
+  ConnectController? _connect;
+  var _steering = false;
 
   @override
   void initState() {
     super.initState();
-    HardwareKeyboard.instance.addHandler(_onKey);
+    _connect = connectOf(context)?..addListener(_update);
+    Tv.on.addListener(_update);
+    _keys.setMethodCallHandler(_onCall);
+    _update();
   }
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_onKey);
+    _connect?.removeListener(_update);
+    Tv.on.removeListener(_update);
+    _keys.setMethodCallHandler(null);
+    if (_steering) _tell(false);
     _hide?.cancel();
     _level.dispose();
     super.dispose();
   }
 
-  bool _onKey(KeyEvent event) {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android || Tv.on.value) return false;
-    final up = event.logicalKey == LogicalKeyboardKey.audioVolumeUp;
-    if (!up && event.logicalKey != LogicalKeyboardKey.audioVolumeDown) return false;
-    final connect = connectOf(context);
-    if (connect == null || !connect.controlling) return false;
-    // Pressed and held both move it; the release is taken too, so that the system does nothing of it either
-    if (event is! KeyUpEvent) {
-      final level = connect.nudgeVolume(up ? 1 : -1);
-      if (level != null) _show(connect.activeDevice, level);
-    }
-    return true;
+  /// Tells the activity whether the keys are this one's to take: while another device plays, and this one is not a TV.
+  void _update() {
+    final want = !kIsWeb && defaultTargetPlatform == TargetPlatform.android && !Tv.on.value && (_connect?.controlling ?? false);
+    if (want == _steering) return;
+    _steering = want;
+    _tell(want);
+  }
+
+  void _tell(bool on) => unawaited(_keys.invokeMethod<void>('steer', on).catchError((Object _) {}));
+
+  /// A press of a volume key, taken by the activity: [call] says which way (1 up, -1 down); held, it comes again and again.
+  Future<void> _onCall(MethodCall call) async {
+    if (call.method != 'press') return;
+    final connect = _connect;
+    final level = connect?.nudgeVolume((call.arguments as num).toInt());
+    if (level != null) _show(connect!.activeDevice, level);
   }
 
   void _show(ConnectDevice? device, double level) {

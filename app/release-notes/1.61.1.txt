@@ -1,0 +1,3 @@
+The volume buttons now steer the other device
+- While the music plays on another device, the volume buttons of your phone reliably change that device's volume, whichever screen is open.
+- The Audio / Video button now follows the playing device: tap it on your phone and the picture switches on the other device, and the button on your phone changes with it.

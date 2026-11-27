@@ -1,0 +1,3 @@
+Nút âm lượng điều khiển đúng máy đang phát
+- Khi nhạc đang phát trên máy khác, nút âm lượng của điện thoại luôn chỉnh âm lượng của máy đó, dù đang mở màn hình nào.
+- Nút Âm thanh / Video nay đi theo máy đang phát: bấm trên điện thoại thì hình trên máy kia đổi, và nút trên điện thoại cũng đổi theo.

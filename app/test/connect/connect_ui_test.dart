@@ -136,6 +136,21 @@ void main() {
         expect(tester.takeException(), isNull);
       });
 
+      uiTest('the switch of Audio and Video steers the picture of the playing device, and follows it', (tester) async {
+        final (backend, remote) = await openApp(tester, style, remotePlays: true);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(mine!.remoteVideo, isFalse);
+        await tester.tap(tip(S.modeVideo).first);
+        await tester.pump();
+        expect(mine!.remoteVideo, isTrue, reason: 'at once, before the other device has answered');
+        expect(tip(S.modeAudio), findsWidgets, reason: 'the switch follows: it now offers the way back');
+        await waitReal(tester, () => remote!.backend.calls.contains('video true'), why: 'the playing device is asked for the picture');
+        expect(backend.calls, isNot(contains('video true')), reason: 'this device has no picture to show');
+        // The cover stays: the picture is on the other device
+        expect(find.byKey(const ValueKey('video')), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
       uiTest('on its side the menu has the line of the devices', (tester) async {
         await openApp(tester, style, remotePlays: true);
         await resize(tester, 844, 390);
@@ -234,34 +249,52 @@ void main() {
   });
 
   uiTest('while another device plays, the volume buttons of the phone are for it, and a small bar says where it is', (tester) async {
+    const channel = MethodChannel('app.sapoche/volume_keys');
+    final steered = <bool>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'steer') steered.add(call.arguments as bool);
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+    Future<void> press(int way) => tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      channel.name,
+      channel.codec.encodeMethodCall(MethodCall('press', way)),
+      (_) {},
+    );
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
     final remote = RemoteDevice(cluster, key);
     remotes.add(remote);
     await pumpApp(tester, connect: (backend) => mine = connectFor(backend, cluster, key, 'mmmmmmmm-mine', name: 'My phone'));
-    // Nobody is steered yet: a button is the system's
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    expect(await simulateKeyDownEvent(LogicalKeyboardKey.audioVolumeUp), isFalse);
-    await simulateKeyUpEvent(LogicalKeyboardKey.audioVolumeUp);
+    // Nobody is steered yet: the keys are the system's, and the activity is not told to take them
+    expect(steered.where((on) => on), isEmpty);
 
     await remote.startPlaying(tester);
     remote.backend.emit(const VolumeEvent(0.5));
     await tester.pump();
     await waitReal(tester, () => mine!.controlling && mine!.remote?.volume == 0.5, why: 'the app steers the remote');
-    expect(await simulateKeyDownEvent(LogicalKeyboardKey.audioVolumeUp), isTrue, reason: 'the press is taken: the phone does not change its own');
-    await simulateKeyUpEvent(LogicalKeyboardKey.audioVolumeUp);
+    await tester.pump();
+    expect(steered, contains(true), reason: 'the activity is told to take the volume keys');
+    await press(1);
     await tester.pump(const Duration(milliseconds: 200)); // the volume goes out in a moment (the clock of the test is a fake one)
     await waitReal(tester, () => remote.backend.calls.contains('setVolume 0.5625'), why: 'the playing device is asked');
     expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Living room')), findsOneWidget);
     expect(find.descendant(of: find.byType(SnackBar), matching: find.byType(LinearProgressIndicator)), findsOneWidget);
-    await simulateKeyDownEvent(LogicalKeyboardKey.audioVolumeDown);
-    await simulateKeyUpEvent(LogicalKeyboardKey.audioVolumeDown);
+    await press(-1);
     await tester.pump();
     expect(find.byType(SnackBar), findsOneWidget, reason: 'one bar that moves, not a new one for each press');
     // It goes away by itself
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
     expect(find.byType(SnackBar), findsNothing);
-    expect(mine!.devices.length, 2);
+
+    // The other device goes: the keys are the system's again
+    remote.connect.dispose();
+    cluster.drop('rrrrrrrr-remote');
+    await waitReal(tester, () => !mine!.controlling);
+    await tester.pump();
+    expect(steered.last, isFalse, reason: 'the activity is told to leave the keys');
     debugDefaultTargetPlatformOverride = null;
   });
 

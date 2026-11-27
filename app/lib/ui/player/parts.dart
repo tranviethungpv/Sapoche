@@ -1034,7 +1034,7 @@ Future<void> _chooseMode(BuildContext context, bool video) async {
   final messenger = ScaffoldMessenger.of(context);
   final snapshot = controller.snapshot;
   final current = snapshot.current;
-  if (video == snapshot.video) return;
+  if (video == videoShown(context, controller)) return;
   await controller.setVideoMode(video);
   if (current == null ||
       (snapshot.inRoom && (!video || !snapshot.canControl))) {
@@ -1081,7 +1081,7 @@ class ModePill extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final p = context.palette;
-    final video = controller.snapshot.video;
+    final video = videoShown(context, controller);
     Widget segment(
       IconData icon,
       String label,
@@ -1176,7 +1176,7 @@ class ModeToggle extends StatelessWidget {
     if (controller.snapshot.current?.isLocal ?? false) {
       return const SizedBox.shrink();
     }
-    final video = controller.snapshot.video;
+    final video = videoShown(context, controller);
     final p = context.palette;
     return IconButton(
       onPressed: () => _chooseMode(context, !video),

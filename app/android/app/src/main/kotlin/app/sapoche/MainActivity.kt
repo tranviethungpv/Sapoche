@@ -2,13 +2,19 @@ package app.sapoche
 
 import android.content.Intent
 import android.content.res.Configuration
+import android.view.KeyEvent
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterShellArgs
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
     private var bridge: SapocheBridge? = null
+
+    /** The screen says (`steer`) when the volume keys are for another device of the person, and is told (`press`) of each press. */
+    private var volumeKeys: MethodChannel? = null
+    private var steerVolumeKeys = false
 
     /**
      * Impeller needs Vulkan 1.1; without it it draws with OpenGL ES, and there the first frame compiles its pipelines for
@@ -24,6 +30,31 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         bridge = SapocheBridge(this, flutterEngine.dartExecutor.binaryMessenger, flutterEngine.renderer).also { it.onLink(intent?.data); it.onOpenChat(intent) }
+        steerVolumeKeys = false
+        volumeKeys = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.sapoche/volume_keys").also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                if (call.method == "steer") {
+                    steerVolumeKeys = call.arguments as? Boolean == true
+                    result.success(null)
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
+    }
+
+    /**
+     * While another device plays, the volume keys are its volume's: taken here, before any view and before the system, so that
+     * they do not depend on which view has the focus or on how the engine answers a key (a key that came back from it was
+     * given to the system now and then). The press goes to the screen, which asks the other device; held, it repeats.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val up = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP
+        if (steerVolumeKeys && (up || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            if (event.action == KeyEvent.ACTION_DOWN) volumeKeys?.invokeMethod("press", if (up) 1 else -1)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -84,6 +115,9 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        steerVolumeKeys = false
+        volumeKeys?.setMethodCallHandler(null)
+        volumeKeys = null
         bridge?.dispose()
         bridge = null
         super.cleanUpFlutterEngine(flutterEngine)

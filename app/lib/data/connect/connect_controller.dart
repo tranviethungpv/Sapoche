@@ -119,6 +119,10 @@ class ConnectController extends ChangeNotifier {
   /// What the playing device last said, brought up to now; null when this device does not control.
   RemoteState? get remote => controlling ? _remote?.advanced(_serverNow) : null;
 
+  /// Whether the playing device shows the picture of the song; null when this device does not steer one. The picture itself
+  /// stays on that device, so this one goes on showing the cover.
+  bool? get remoteVideo => remote?.video;
+
   /// The queue of the playing device.
   RemoteQueue? get remoteQueue => controlling ? _remoteQueue : null;
 
@@ -402,6 +406,7 @@ class ConnectController extends ChangeNotifier {
     final base = held ?? _remote?.volume ?? 0.5;
     final level = (base + way * volumeStep).clamp(0.0, 1.0).toDouble();
     _out.add(VolumeEvent(level));
+    _log('volume key ${way > 0 ? 'up' : 'down'} ${level.toStringAsFixed(2)}');
     sendVolume(level);
     return level;
   }
@@ -420,6 +425,7 @@ class ConnectController extends ChangeNotifier {
       'seek' => state.guessed(positionMs: (command.args['ms'] as num).toInt(), at: now),
       'repeat' => state.guessed(repeat: command.args['mode'] as String?),
       'setShuffle' => state.guessed(shuffle: command.args['on'] == true),
+      'video' => state.guessed(video: command.args['on'] == true),
       _ => null,
     };
     if (next == null) return;
@@ -874,7 +880,10 @@ class ConnectController extends ChangeNotifier {
     if (secrets == null || blob is! String || !playingHere) return;
     final text = await ConnectSeal.open(blob, secrets);
     final command = text == null ? null : RemoteCommand.fromJson(_tryJson(text));
-    if (command != null) await command.run(inner);
+    if (command != null) {
+      _log('cmd ${command.name}');
+      await command.run(inner);
+    }
   }
 
   /// Another device plays: this one's player stops where it is, and the sound it still makes does not take the playing back.
