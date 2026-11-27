@@ -305,6 +305,41 @@ void main() {
       expect(b.backend.calls.where((c) => c.startsWith('seek') || c.startsWith('jump')), isEmpty);
     });
 
+    test('the volume that a finger drags is sent now and then, the last of it, and what the player says back waits for the finger', () async {
+      final a = await device('aaaaaaaa-phone');
+      final b = await device('bbbbbbbb-tv');
+      await startPlaying(a);
+      await until(() => b.connect.controlling);
+      for (var i = 1; i <= 30; i++) {
+        await b.view.setVolume(i / 30);
+      }
+      await until(() => a.backend.calls.contains('setVolume 1.0'), why: 'the last volume arrives');
+      final sent = a.backend.calls.where((c) => c.startsWith('setVolume')).length;
+      expect(sent, lessThan(5), reason: 'not one message for every move of the finger');
+      expect(b.backend.calls.where((c) => c.startsWith('setVolume')), isEmpty);
+      // The volume of the player, said while the finger is still on the bar, is not put under it
+      final before = b.seen.whereType<VolumeEvent>().length;
+      a.backend.emit(const VolumeEvent(0.2));
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(b.seen.whereType<VolumeEvent>().length, before);
+    });
+
+    test('a pause, a play, a seek and the modes show at once on the device that presses them', () async {
+      final a = await device('aaaaaaaa-phone');
+      final b = await device('bbbbbbbb-tv');
+      await startPlaying(a);
+      await until(() => b.connect.controlling && b.connect.remote != null);
+      await until(() => b.seen.whereType<PositionEvent>().any((e) => e.position.playing));
+      await b.view.pause();
+      expect(b.seen.whereType<PositionEvent>().last.position.playing, isFalse, reason: 'before the other device has answered');
+      await b.view.seek(42000);
+      expect(b.seen.whereType<PositionEvent>().last.position.positionMs, 42000);
+      await b.view.setShuffle(true);
+      expect(b.states.last.snapshot.shuffle, isTrue);
+      await b.view.play();
+      expect(b.seen.whereType<PositionEvent>().last.position.playing, isTrue);
+    });
+
     test('a device that is not controlling does what is pressed on its own player', () async {
       final a = await device('aaaaaaaa-phone');
       await a.view.pause();
@@ -344,6 +379,43 @@ void main() {
       await until(() => a.connect.controlling);
       expect(a.connect.activeDevice?.info?.name, 'Phone');
       expect(b.backend.calls, isNot(contains('pause')));
+    });
+
+    test('the device that let go drops its queue, so that it loads nothing, and its screens do not flash empty', () async {
+      final a = await device('aaaaaaaa-phone');
+      final b = await device('bbbbbbbb-tv');
+      await startPlaying(a);
+      await until(() => b.connect.controlling);
+      b.connect.playHere();
+      await until(() => b.connect.playingHere);
+      await until(() => a.backend.calls.contains('clear'), why: 'a drops its queue');
+      expect(a.backend.calls, containsAllInOrder(['pause', 'queueExport', 'clear']), reason: 'after its queue was handed over');
+      // The player says that it is empty: the screens are not told while the other one is yet to speak
+      final seen = a.states.length;
+      a.backend.emit(const StateEvent(RoomSnapshot()));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(a.states.length, seen);
+      // The device that plays now speaks: that is shown
+      b.backend.emit(StateEvent(room()));
+      b.backend.emit(const PositionEvent(PlayerPosition(playing: true, positionMs: 5000, durationMs: 200000)));
+      await until(() => a.connect.remote != null && a.states.last.snapshot.queue.isNotEmpty, why: 'the new state is shown');
+    });
+
+    test('a device that was only waiting with a queue when it handed over drops it too, and one that had never played keeps its own', () async {
+      final a = await device('aaaaaaaa-phone');
+      final b = await device('bbbbbbbb-tv');
+      final c = await device('cccccccc-tablet');
+      await until(() => c.connect.devices.length == 3);
+      c.backend.emit(StateEvent(room(phase: 'paused')));
+      await startPlaying(a);
+      a.backend.emit(const PositionEvent(PlayerPosition(playing: false, positionMs: 8000, durationMs: 200000)));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await until(() => b.connect.controlling);
+      b.connect.playHere();
+      await until(() => b.connect.playingHere);
+      await until(() => a.backend.calls.contains('clear'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(c.backend.calls, isNot(contains('clear')), reason: 'its songs are its own: nobody took them over');
     });
 
     test('a device that was paused when it handed over hands over paused', () async {

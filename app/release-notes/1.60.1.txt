@@ -1,0 +1,5 @@
+Listening on another device, smoother
+- You can now change the volume of the other device from every player look, and from the "Play on" sheet.
+- When the music moves to another device, the old one stops for good: it no longer keeps loading the song, and its notification goes away.
+- Pause, play, seeking, repeat and shuffle show at once on the device you press them on, without waiting for the other one.
+- A short message tells you the music is on its way when you pick a device.

@@ -55,6 +55,7 @@ class ConnectController extends ChangeNotifier {
     this.handoverGrace = const Duration(seconds: 3),
     this.pingEvery = const Duration(seconds: 45),
     this.probeAfter = const Duration(seconds: 6),
+    this.volumeEvery = const Duration(milliseconds: 100),
   }) : _now = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);
 
   /// The backend of this device, whose player is the one that plays here.
@@ -71,6 +72,7 @@ class ConnectController extends ChangeNotifier {
   final Duration handoverGrace;
   final Duration pingEvery;
   final Duration probeAfter;
+  final Duration volumeEvery;
   final Listenable _syncChanges;
   final SyncKey? Function() _syncKey;
   final Future<Uri?> Function() _server;
@@ -161,6 +163,15 @@ class ConnectController extends ChangeNotifier {
   /// This device asked to play and the queue it is to play has not come yet: what it holds now is not what to tell the others.
   var _expectHandoff = false;
   var _handedOverAt = -1000000;
+
+  /// This device let go of its queue for another one's and the other's state has not come yet: the screens keep what they
+  /// showed, and not the empty player that is left.
+  var _quiet = false;
+
+  // The volume a finger sets goes out now and then, latest only; the player's own word on it waits until the finger rests
+  double? _volumeToSend;
+  Timer? _volumeTimer;
+  var _volumeSetAt = -1000000;
   var _wasPlaying = false;
 
   // The messages are handled one after the other: opening a sealed one takes time and the order must stay
@@ -199,6 +210,7 @@ class ConnectController extends ChangeNotifier {
     _stateTimer?.cancel();
     _queueTimer?.cancel();
     _beat?.cancel();
+    _volumeTimer?.cancel();
     _out.close();
     dropped.dispose();
     super.dispose();
@@ -264,6 +276,7 @@ class ConnectController extends ChangeNotifier {
     _stateSig = '';
     _queueSig = '';
     _setRemoteView(false);
+    _endQuiet();
   }
 
   void _setLink(ConnectLink link) {
@@ -278,6 +291,7 @@ class ConnectController extends ChangeNotifier {
       _remote = null;
       _claiming = false;
       _setRemoteView(false);
+      _endQuiet();
     }
     notifyListeners();
   }
@@ -325,11 +339,46 @@ class ConnectController extends ChangeNotifier {
   bool send(RemoteCommand command) {
     final to = _activeId;
     if (!controlling || to == null) return false;
+    _guess(command);
     unawaited(() async {
       final blob = await ConnectSeal.seal(jsonEncode(command.toJson()), _secrets!);
       _client?.send({'t': 'cmd', 'to': to, 'blob': blob});
     }());
     return true;
+  }
+
+  /// Sets the volume of the device that plays. Many come while a finger drags (the server takes 20 messages a second), so
+  /// only the latest is sent, now and then; and what the player says back is not shown until the finger has been still a while,
+  /// or the bar would jump back under it. False when this device does not control one.
+  bool sendVolume(double level) {
+    if (!controlling) return false;
+    _volumeSetAt = _now();
+    _volumeToSend = level;
+    _volumeTimer ??= Timer(volumeEvery, () {
+      _volumeTimer = null;
+      final value = _volumeToSend;
+      _volumeToSend = null;
+      if (value != null) send(RemoteCommand('volume', {'level': value}));
+    });
+    return true;
+  }
+
+  /// What a command is sure to do on the player, shown at once: the pause or the play, the place that was sought, the mode.
+  void _guess(RemoteCommand command) {
+    final state = _remote?.advanced(_serverNow);
+    if (state == null) return;
+    final now = _serverNow;
+    final next = switch (command.name) {
+      'play' => state.guessed(playing: true, at: now),
+      'pause' => state.guessed(playing: false, at: now),
+      'seek' => state.guessed(positionMs: (command.args['ms'] as num).toInt(), at: now),
+      'repeat' => state.guessed(repeat: command.args['mode'] as String?),
+      'setShuffle' => state.guessed(shuffle: command.args['on'] == true),
+      _ => null,
+    };
+    if (next == null) return;
+    _remote = next;
+    _emitView();
   }
 
   // ------------------------------------------------------------------ what the server says
@@ -354,7 +403,7 @@ class ConnectController extends ChangeNotifier {
         if (playingHere) _publish(force: true, withQueue: true);
         // Another device took the playing while the line was down: this one, still playing, stops (the cluster has moved on)
         if (_activeId != null && _activeId != _youId) {
-          _stopForOther();
+          _stopForOther(dropQueue: false);
         } else {
           // It played by itself while the line was down
           _maybeClaim();
@@ -398,6 +447,7 @@ class ConnectController extends ChangeNotifier {
         // Somebody else began to play: this one stops where it is
         _handedOverAt = _now();
         await inner.pause();
+        await _letGo();
       case 'error':
         unawaited(inner.note('[connect] error ${m['code']}').catchError((Object _) {}));
     }
@@ -452,8 +502,23 @@ class ConnectController extends ChangeNotifier {
   void _afterChange() {
     final view = controlling && _remote != null;
     _setRemoteView(view);
-    if (view) _emitView();
+    if (view) {
+      _quiet = false;
+      _emitView();
+    } else if (_quiet && (playingHere || _activeId == null)) {
+      _endQuiet();
+    }
     notifyListeners();
+  }
+
+  /// The screens hear this device's own player again.
+  void _endQuiet() {
+    if (!_quiet) return;
+    _quiet = false;
+    if (_remoteView) return;
+    for (final e in [_lastSnapshotEvent, _lastPositionEvent, _lastSleepEvent, _lastVolumeEvent]) {
+      if (e != null) _out.add(e);
+    }
   }
 
   // ------------------------------------------------------------------ controlling: what the screens see
@@ -518,7 +583,7 @@ class ConnectController extends ChangeNotifier {
         ),
       ),
     );
-    if (remote.volume != null) _out.add(VolumeEvent(remote.volume!));
+    if (remote.volume != null && _now() - _volumeSetAt > 1500) _out.add(VolumeEvent(remote.volume!));
   }
 
   // ------------------------------------------------------------------ what this device's own backend says
@@ -548,7 +613,7 @@ class ConnectController extends ChangeNotifier {
     // A device that went into a room is no more a remote control: its own state is what the room's screens need
     if (own && _remoteView && !controlling) _setRemoteView(false, except: event);
     // While another device plays, what this one's player says is not what the screens are to show
-    if (!(own && _remoteView)) _out.add(event);
+    if (!(own && (_remoteView || _quiet))) _out.add(event);
     if (event is PositionEvent) _maybeClaim();
     if (own) _publish();
   }
@@ -722,13 +787,30 @@ class ConnectController extends ChangeNotifier {
     if (command != null) await command.run(inner);
   }
 
-  /// Another device is to play: stop, and give it the queue where it stood.
   /// Another device plays: this one's player stops where it is, and the sound it still makes does not take the playing back.
-  void _stopForOther() {
-    if (!_position.playing && !_position.buffering) return;
-    _handedOverAt = _now();
-    _log('stop for other');
-    unawaited(inner.pause().catchError((Object _) {}));
+  ///
+  /// [dropQueue] false leaves a queue that is only waiting: a device that has just started and has not played in this cluster
+  /// has songs of its own that nobody took over.
+  void _stopForOther({bool dropQueue = true}) {
+    final sounding = _position.playing || _position.buffering || (_snapshot?.loading ?? false);
+    if (sounding) {
+      _handedOverAt = _now();
+      _log('stop for other');
+      unawaited(inner.pause().catchError((Object _) {}));
+    }
+    if (sounding || dropQueue) unawaited(_letGo());
+  }
+
+  /// Another device holds the queue now: this one drops its own, so that its player neither loads songs nor keeps a
+  /// notification for them. The queue is back with the next hand-over to this device. A room's queue is not the person's.
+  Future<void> _letGo() async {
+    if (_inRoom || (_snapshot?.queue.isEmpty ?? true)) return;
+    _quiet = true;
+    try {
+      await inner.clear();
+    } on Object {
+      // The player cannot be told: it stays paused, as it was
+    }
   }
 
   Future<void> _handOver() async {
@@ -745,6 +827,7 @@ class ConnectController extends ChangeNotifier {
       'saved': handover == null ? null : jsonDecode(handover.json),
     });
     client.send({'t': 'handoff', 'blob': await ConnectSeal.seal(payload, secrets)});
+    if (handover != null) await _letGo();
   }
 
   /// This device is to play, with the queue another one handed over (or the last that was kept).

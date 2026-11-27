@@ -19,6 +19,7 @@ import '../widgets/low_rate_timer.dart';
 import '../widgets/marquee_text.dart';
 import '../widgets/playback_bar.dart';
 import '../widgets/transport.dart';
+import '../widgets/volume_bar.dart';
 import '../widgets/whole_pixel_clip.dart';
 import 'classic_player.dart';
 import 'look.dart';
@@ -306,7 +307,11 @@ class _TallState extends State<_Tall> {
                     onPanel: widget.onPanel,
                     kind: ToolbarKind.face,
                   ),
-                  if (controllingAnother(context)) DeviceLine(controller: _c),
+                  if (controllingAnother(context)) ...[
+                    DeviceLine(controller: _c),
+                    const SizedBox(height: 4),
+                    VolumeBar(controller: _c),
+                  ],
                   if (_c.snapshot.inRoom) ...[
                     const SizedBox(height: 6),
                     RoomStrip(controller: _c),

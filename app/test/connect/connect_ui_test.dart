@@ -108,8 +108,7 @@ void main() {
         expect(tip(S.playOn), findsNothing);
         expect(find.text(S.playingOn('Living room')), findsWidgets);
         // The volume is the other device's, also in a browser
-        // (the look of Spotify has no volume bar)
-        if (style != PlayerStyle.spotify) expect(find.byType(VolumeBar), findsOneWidget);
+        expect(find.byType(VolumeBar), findsOneWidget);
         // The song and the queue are the playing device's
         expect(find.text('Song 0'), findsWidgets);
         // The play button steers it: the player of this device is left alone
@@ -120,8 +119,16 @@ void main() {
         await tester.tap(tip(S.playOnDevice('Living room')));
         await tester.pumpAndSettle();
         expect(find.text(S.devicePlaying), findsNWidgets(1));
+        // The sheet has the volume of the other device too, to reach from the bar and from every look of the player
+        final inSheet = find.descendant(of: find.byType(ConnectSheet), matching: find.byType(VolumeBar));
+        expect(inSheet, findsOneWidget);
+        await tester.drag(inSheet, const Offset(60, 0));
+        await tester.pump(const Duration(milliseconds: 150)); // the volume goes out now and then
+        await waitReal(tester, () => remote!.backend.calls.any((c) => c.startsWith('setVolume')), why: 'the volume reaches the other device');
+        expect(backend.calls.where((c) => c.startsWith('setVolume')), isEmpty, reason: 'this device\'s own volume is left alone');
         await tester.tap(find.byKey(const ValueKey('connect-here')));
         await tester.pumpAndSettle();
+        expect(find.text(S.movingHere), findsOneWidget, reason: 'the person is told the hand-over has begun');
         await waitReal(tester, () => cluster.sent.any((s) => s.$2['t'] == 'transfer'), why: 'the transfer is asked');
         expect(cluster.sent.where((s) => s.$1 == 'mmmmmmmm-mine' && s.$2['t'] == 'transfer'), hasLength(1));
         expect(tester.takeException(), isNull);

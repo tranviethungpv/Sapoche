@@ -1,0 +1,5 @@
+Nghe trên máy khác, mượt hơn
+- Nay bạn chỉnh được âm lượng của máy kia ở mọi kiểu trình phát, và ngay trong bảng "Phát trên".
+- Khi nhạc chuyển sang máy khác, máy cũ dừng hẳn: không còn nạp bài nữa và thông báo của nó biến mất.
+- Tạm dừng, phát, tua, lặp và xáo hiện ngay trên máy bạn bấm, không phải chờ máy kia.
+- Chọn máy thì có một dòng báo nhạc đang chuyển sang.

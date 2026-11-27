@@ -852,6 +852,8 @@ abstract final class S {
   static String get yourDevices => _t('Your devices', 'Máy của bạn');
   static String playingOn(String device) => _t('Playing on $device', 'Đang phát trên $device');
   static String playOnDevice(String device) => _t('Play on · $device', 'Phát trên · $device');
+  static String movingTo(String device) => _t('Moving to $device…', 'Đang chuyển sang $device…');
+  static String get movingHere => _t('Moving here…', 'Đang chuyển về máy này…');
   static String get deviceInRoom => _t('In a room', 'Đang ở phòng');
   static String get devicePlaying => _t('Playing', 'Đang phát');
   static String get connectNeedSync =>

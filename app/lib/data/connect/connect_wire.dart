@@ -165,6 +165,29 @@ class RemoteState {
     if (e.year != null) 'year': e.year,
   };
 
+  /// This state with what a command of the person is sure to change, so that a screen can show it before the playing device
+  /// answers: the answer (a state with a higher [rev]) takes its place.
+  RemoteState guessed({bool? playing, int? positionMs, int? at, String? repeat, bool? shuffle}) => RemoteState(
+    rev: rev,
+    itemId: itemId,
+    current: current,
+    phase: phase,
+    index: index,
+    repeat: repeat ?? this.repeat,
+    shuffle: shuffle ?? this.shuffle,
+    label: label,
+    loading: loading,
+    playing: playing ?? this.playing,
+    buffering: playing == false ? false : buffering,
+    positionMs: positionMs ?? this.positionMs,
+    durationMs: durationMs,
+    speed: speed,
+    at: at ?? this.at,
+    volume: volume,
+    video: video,
+    sleep: sleep,
+  );
+
   /// This state, with the song [elapsedMs] later on the clock of whoever reads it.
   RemoteState advanced(int nowServerMs) {
     if (!playing) return this;

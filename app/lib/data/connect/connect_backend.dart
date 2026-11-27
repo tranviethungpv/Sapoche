@@ -37,7 +37,7 @@ class ConnectBackend extends ForwardingBackend {
   Future<void> jump(String itemId) => _steer(RemoteCommand('jump', {'id': itemId}), () => inner.jump(itemId));
 
   @override
-  Future<void> setVolume(double level) => _steer(RemoteCommand('volume', {'level': level}), () => inner.setVolume(level));
+  Future<void> setVolume(double level) => connect.sendVolume(level) ? Future.value() : inner.setVolume(level);
 
   @override
   Future<void> add(Track track, {bool playNext = false, String source = ListenSource.chosen}) => _steer(

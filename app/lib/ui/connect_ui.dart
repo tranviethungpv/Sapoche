@@ -12,6 +12,7 @@ import 'sync_dialogs.dart';
 import 'widgets/motion.dart';
 import 'widgets/sheet_tile.dart';
 import 'widgets/text_dialog.dart';
+import 'widgets/volume_bar.dart';
 
 /// The devices of the person, or null where there are none to show (the tests, a build with nothing to sync with).
 ConnectController? connectOf(BuildContext context) => context.getInheritedWidgetOfExactType<AppScope>()?.model.connect;
@@ -131,6 +132,12 @@ class ConnectSheet extends StatelessWidget {
               children: [
                 Text(S.playOn, style: theme.headlineSmall),
                 const SizedBox(height: 8),
+                // The sound is another device's: its volume is set from here too
+                if (connect.controlling)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: VolumeBar(controller: room),
+                  ),
                 // This device: it plays here unless another one does
                 SheetTile(
                   key: const ValueKey('connect-here'),
@@ -140,7 +147,10 @@ class ConnectSheet extends StatelessWidget {
                   detail: connect.playingHere ? S.devicePlaying : null,
                   onTap: () {
                     // Also when nobody plays: the last queue the cluster kept is taken up from where it stopped
-                    if (!connect.playingHere) connect.playHere();
+                    if (!connect.playingHere) {
+                      connect.playHere();
+                      _tellMoving(context, S.movingHere);
+                    }
                     Navigator.pop(context);
                   },
                 ),
@@ -205,6 +215,7 @@ class ConnectSheet extends StatelessWidget {
                         enabled: d.info?.inRoom != true,
                         onTap: () {
                           connect.transferTo(d.id);
+                          if (d.id != connect.activeId) _tellMoving(context, S.movingTo(d.info?.name ?? ''));
                           Navigator.pop(context);
                         },
                       ),
@@ -241,4 +252,11 @@ class ConnectSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The hand-over takes a moment (the queue goes through the server): the person is told it has begun.
+void _tellMoving(BuildContext context, String text) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 3)));
 }
