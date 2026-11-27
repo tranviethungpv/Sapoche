@@ -11,6 +11,13 @@ import 'package:sapoche/data/tv_mode.dart';
 import 'package:sapoche/strings.dart';
 import 'package:sapoche/ui/chat_sheet.dart';
 import 'package:sapoche/ui/home_shell.dart';
+import 'package:sapoche/ui/members_sheet.dart';
+import 'package:sapoche/ui/starter_artists_sheet.dart';
+import 'package:sapoche/ui/chat_theme_sheet.dart';
+import 'package:sapoche/ui/sleep_sheet.dart';
+import 'package:sapoche/ui/profile_sheet.dart';
+import 'package:sapoche/ui/scope.dart';
+import 'package:sapoche/data/room_controller.dart';
 import 'package:sapoche/ui/rooms_sheet.dart';
 import 'package:sapoche/ui/player/parts.dart';
 import 'package:sapoche/ui/player_sheet.dart';
@@ -334,6 +341,28 @@ void focusReach() {
       expect(await unreachable(tester), isEmpty);
       expect(tester.takeException(), isNull);
     });
+
+    // The other sheets that a person is taken to: each is opened and walked
+    final sheets =
+        <(String, Future<void> Function(BuildContext, RoomController))>[
+          ('the profile', (c, r) => showProfileSheet(c)),
+          ('the sleep timer', (c, r) => showSleepSheet(c, r)),
+          ('the look of the chat', (c, r) => showChatThemeSheet(c, r)),
+          ('the first artists', (c, r) => showStarterArtists(c)),
+          ('the members', (c, r) async => showMembersSheet(c)),
+        ];
+    for (final (name, open) in sheets) {
+      testWidgets('in the sheet of $name', (tester) async {
+        await pumpTv(tester);
+        final context = tester.element(find.byType(HomeShell));
+        unawaited(open(context, AppScope.roomOf(context)));
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(Navigator.of(context, rootNavigator: true).canPop(), isTrue);
+        expect(await unreachable(tester), isEmpty);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('in the chat', (tester) async {
       await pumpTv(tester);

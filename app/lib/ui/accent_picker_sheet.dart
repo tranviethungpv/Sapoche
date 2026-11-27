@@ -4,6 +4,7 @@ import '../strings.dart';
 import '../theme/palette.dart';
 import '../theme/theme.dart';
 import 'widgets/motion.dart';
+import 'widgets/focus_nav.dart';
 
 /// Lets the person mix a colour of their own for the app; resolves to it, or null when they close the sheet.
 Future<Color?> showAccentPicker(BuildContext context, Color initial) =>
@@ -181,44 +182,50 @@ class _GradientSlider extends StatelessWidget {
               builder: (context, box) {
                 void set(Offset at) =>
                     onChanged((at.dx / box.maxWidth).clamp(0.0, 1.0));
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapDown: (d) => set(d.localPosition),
-                  onHorizontalDragStart: (d) => set(d.localPosition),
-                  onHorizontalDragUpdate: (d) => set(d.localPosition),
-                  child: SizedBox(
-                    height: _height,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.centerLeft,
-                      children: [
-                        Container(
-                          height: 12,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: colors),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: p.outline),
-                          ),
-                        ),
-                        Positioned(
-                          left: value * box.maxWidth - _height / 2,
-                          child: Container(
-                            width: _height,
-                            height: _height,
+                // A remote moves it with left and right, five percent at a step, as a screen reader's swipe does
+                return KeySlider(
+                  label: label,
+                  onStep: (step) =>
+                      onChanged((value + step * 0.05).clamp(0.0, 1.0)),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (d) => set(d.localPosition),
+                    onHorizontalDragStart: (d) => set(d.localPosition),
+                    onHorizontalDragUpdate: (d) => set(d.localPosition),
+                    child: SizedBox(
+                      height: _height,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.centerLeft,
+                        children: [
+                          Container(
+                            height: 12,
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: p.outline, width: 2),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x33000000),
-                                  blurRadius: 4,
-                                ),
-                              ],
+                              gradient: LinearGradient(colors: colors),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: p.outline),
                             ),
                           ),
-                        ),
-                      ],
+                          Positioned(
+                            left: value * box.maxWidth - _height / 2,
+                            child: Container(
+                              width: _height,
+                              height: _height,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: p.outline, width: 2),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 4,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );

@@ -10,6 +10,8 @@ import '../../data/room_controller.dart';
 import '../player/classic_player.dart' show PlayerPanelStage;
 import '../player/look.dart';
 import '../player/parts.dart';
+import '../player/video_controls.dart' show showVideoSettings;
+import '../../strings.dart';
 import '../player/spotify_player.dart' show PlayingFromLine;
 import '../widgets/artwork.dart';
 import '../widgets/focus_nav.dart';
@@ -342,7 +344,24 @@ class _TvPlayerState extends State<TvPlayer> {
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
-                        children: [_mode(look)],
+                        children: [
+                          // Quality and speed: the touch controls that had them are not drawn on a TV
+                          IconButton(
+                            tooltip: S.videoSettings,
+                            icon: const Icon(Icons.settings_rounded),
+                            style: IconButton.styleFrom(
+                              // On the picture, as the pill of Audio and Video is
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.black.withValues(
+                                alpha: 0.45,
+                              ),
+                              fixedSize: const Size(44, 44),
+                            ),
+                            onPressed: () => showVideoSettings(context, _c),
+                          ),
+                          const SizedBox(width: 8),
+                          _mode(look),
+                        ],
                       ),
                       const Spacer(),
                       DecoratedBox(

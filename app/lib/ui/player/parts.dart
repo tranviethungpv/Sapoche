@@ -22,6 +22,7 @@ import '../sleep_sheet.dart';
 import '../widgets/artwork.dart';
 import '../widgets/avatars.dart';
 import '../widgets/explicit_badge.dart';
+import '../tv/tv.dart' show TvScope;
 import '../widgets/focus_nav.dart';
 import '../widgets/touch_box.dart';
 import '../widgets/track_links.dart';
@@ -161,7 +162,10 @@ class PlayerCoverArt extends StatelessWidget {
         key: const ValueKey('video'),
         controller: controller,
         cover: current,
-        overlay: VideoControls(controller: controller),
+        // A TV has its own bar and buttons over the picture, which a remote reaches: the touch controls would be a second set
+        overlay: TvScope.of(context)
+            ? null
+            : VideoControls(controller: controller),
       );
     }
     final radius = look.coverRadius;
