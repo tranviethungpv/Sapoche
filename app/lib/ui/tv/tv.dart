@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../data/tv_mode.dart';
+import '../home_shell.dart';
 
 /// The height of the canvas the app is drawn on a TV, in dp. Every TV is drawn as this and scaled up to its screen, so
 /// that one layout and one size of text serve a 720p box and a 4K set alike (Android TV's own canvas is 960x540).
@@ -46,7 +49,11 @@ void tvRequestFocus(
     final end = horizontal ? box.right : box.bottom;
     final extent = horizontal ? viewport.size.width : viewport.size.height;
     var delta = 0.0;
-    if (end > extent - tvScrollMargin) delta = end - (extent - tvScrollMargin);
+    // A page that runs under the player at the foot keeps its controls above it
+    final foot = !horizontal && extent > 300
+        ? math.max(tvScrollMargin, HomeShell.bottomInsetOf(context))
+        : tvScrollMargin;
+    if (end > extent - foot) delta = end - (extent - foot);
     // Never push the start out of view to make room for the end
     if (start - delta < tvScrollMargin) delta = start - tvScrollMargin;
     if (delta != 0) {

@@ -37,7 +37,7 @@ import 'tv/tv_rail.dart';
 import 'update_sheet.dart';
 import 'widgets/artwork.dart';
 import 'widgets/cached_cover.dart';
-import 'widgets/focus_nav.dart' show keysAreInUse;
+import 'widgets/focus_nav.dart' show focusFirstOfNewRoute, keysAreInUse;
 import 'widgets/glass.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/play_problem_note.dart';
@@ -716,21 +716,39 @@ class _HomeShellState extends State<HomeShell>
   /// Page Up and Page Down, and a remote's channel keys: the page that has the focus scrolls by most of a screen. False
   /// where nothing scrolls, so that the key is left to whoever else wants it.
   bool _scrollPage(int way) {
-    final focus = FocusManager.instance.primaryFocus?.context;
-    final position = focus == null
-        ? null
-        : Scrollable.maybeOf(focus, axis: Axis.vertical)?.position;
+    final node = FocusManager.instance.primaryFocus;
+    // The nearest list around the control that has anything to scroll (a small one round a header has not)
+    ScrollPosition? scrollable(BuildContext? from) {
+      var at = from;
+      while (at != null && at.mounted) {
+        final state = Scrollable.maybeOf(at, axis: Axis.vertical);
+        if (state == null) return null;
+        if (state.position.maxScrollExtent > 0) return state.position;
+        // Past this one: the list around it
+        at = state.context;
+      }
+      return null;
+    }
+
+    var position = scrollable(node?.context);
+    // A control outside the list (the Back button, a header above it) still pages the page it is on
+    if (position == null && node != null) {
+      for (final other
+          in node.nearestScope?.descendants ?? const <FocusNode>[]) {
+        position = scrollable(other.context);
+        if (position != null) break;
+      }
+    }
     if (position == null) return false;
-    unawaited(
-      position.animateTo(
-        (position.pixels + way * position.viewportDimension * 0.85).clamp(
-          position.minScrollExtent,
-          position.maxScrollExtent,
-        ),
-        duration: Motion.of(context, 200),
-        curve: Curves.easeOut,
-      ),
-    );
+    final to = (position.pixels + way * position.viewportDimension * 0.85)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    final time = Motion.of(context, 200);
+    // With the motion turned off (a TV starts so) the page goes at once: an animation cannot last no time at all
+    if (time == Duration.zero) {
+      position.jumpTo(to);
+    } else {
+      unawaited(position.animateTo(to, duration: time, curve: Curves.easeOut));
+    }
     return true;
   }
 
@@ -2085,6 +2103,7 @@ class _StackWatcher extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     _routes.add(route);
+    focusFirstOfNewRoute();
     changed();
   }
 

@@ -141,6 +141,8 @@ class _SapocheAppState extends State<SapocheApp> with WidgetsBindingObserver {
               _languageChanged(code);
               return ui.Locale(code);
             },
+            // A dialog, a sheet or a page over the shell has the focus put on its first control while keys are in use
+            navigatorObservers: [LandOnPush()],
             home: const _Root(),
             builder: (context, child) => PipHost(
               controller: model.room,

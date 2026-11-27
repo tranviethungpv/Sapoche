@@ -26,6 +26,7 @@ class FocusTap extends StatelessWidget {
     this.behavior = HitTestBehavior.opaque,
     this.semantic = true,
     this.focusable = true,
+    this.touch = true,
   });
 
   final VoidCallback? onTap;
@@ -41,6 +42,9 @@ class FocusTap extends StatelessWidget {
   /// False when [child] has a focus of its own (a button, an ink well): the place round it is then not a second stop for
   /// the arrows on the same spot.
   final bool focusable;
+
+  /// False when something around already takes the touch (an ink well that ripples): only the keys come here.
+  final bool touch;
 
   @override
   Widget build(BuildContext context) => MenuKeys(
@@ -58,16 +62,20 @@ class FocusTap extends StatelessWidget {
       child: Focus(
         canRequestFocus: onTap != null && focusable,
         includeSemantics: false,
-        child: MouseRegion(
-          cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
-          child: GestureDetector(
-            behavior: behavior,
-            excludeFromSemantics: !semantic,
-            onTap: onTap,
-            onLongPress: onLongPress,
-            child: child,
-          ),
-        ),
+        child: touch
+            ? MouseRegion(
+                cursor: onTap == null
+                    ? MouseCursor.defer
+                    : SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: behavior,
+                  excludeFromSemantics: !semantic,
+                  onTap: onTap,
+                  onLongPress: onLongPress,
+                  child: child,
+                ),
+              )
+            : child,
       ),
     ),
   );
@@ -291,16 +299,53 @@ class _TvFieldGateState extends State<TvFieldGate> {
   }
 }
 
-/// A menu or sheet that has just opened has the focus on its own scope and no control: with keys in use the focus is put on
-/// its first control once it is drawn, so that OK and the arrows work from where the person is looking.
+/// The control of [scope] that a page begins with: nearest its top left corner, the top counting double (a button high up
+/// at the far right, like Room, is not where a page begins, and neither is a bar at the foot of the window).
+FocusNode? firstControlIn(FocusScopeNode scope) {
+  FocusNode? best;
+  final corner = (scope.context?.mounted ?? false)
+      ? scope.rect.topLeft
+      : Offset.zero;
+  double score(FocusNode node) =>
+      (node.rect.top - corner.dy) + (node.rect.left - corner.dx) * 0.5;
+  for (final node in scope.descendants) {
+    if (node is FocusScopeNode ||
+        !node.canRequestFocus ||
+        node.skipTraversal ||
+        !(node.context?.mounted ?? false)) {
+      continue;
+    }
+    if (best == null || score(node) < score(best)) best = node;
+  }
+  return best;
+}
+
+/// A page, menu or sheet that has just opened has the focus on its own scope and no control, and the first arrow would go
+/// back to what the person had been on (under the new page, out of sight). With keys in use the focus is put on its first
+/// control once it is drawn.
 void focusFirstOfNewRoute() {
   if (!keysAreInUse) return;
   WidgetsBinding.instance.addPostFrameCallback((_) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final node = FocusManager.instance.primaryFocus;
-      if (node is FocusScopeNode) node.nextFocus();
+      if (node is! FocusScopeNode) return;
+      final first = firstControlIn(node);
+      if (first != null) {
+        first.requestFocus();
+      } else {
+        node.nextFocus();
+      }
     });
   });
+}
+
+/// Calls [focusFirstOfNewRoute] as a page is pushed, in whichever navigator it is put (the first page of all is the
+/// shell's, which puts the focus on its own page).
+class LandOnPush extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) focusFirstOfNewRoute();
+  }
 }
 
 /// A bar that is dragged along (the seek bar, the volume): a finger drags it, and the left and right keys move it by

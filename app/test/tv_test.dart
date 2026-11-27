@@ -243,7 +243,10 @@ void main() {
 /// Every control that can have the focus and is on the screen, and which of them the four arrows reach in a long walk
 /// (the same one every time): what is not reached is a control a remote cannot use. The walk is by keys only: a control
 /// the focus is put on from outside would not tell what the arrows do from where they are.
-Future<List<String>> unreachable(WidgetTester tester) async {
+Future<List<String>> unreachable(
+  WidgetTester tester, {
+  bool Function(FocusNode node)? only,
+}) async {
   final window =
       Offset.zero & tester.view.physicalSize / tester.view.devicePixelRatio;
   final everything = [
@@ -260,6 +263,7 @@ Future<List<String>> unreachable(WidgetTester tester) async {
                 (a.debugLabel?.contains('_ModalScopeState') ?? false),
           ) &&
           node.rect.width > 0 &&
+          (only?.call(node) ?? true) &&
           window.overlaps(node.rect))
         node,
   ];
@@ -271,6 +275,9 @@ Future<List<String>> unreachable(WidgetTester tester) async {
     LogicalKeyboardKey.arrowDown,
     LogicalKeyboardKey.arrowUp,
   ];
+  // Where the focus is as the walk begins (a page that has just opened puts it on its first control) is seen too
+  final first = FocusManager.instance.primaryFocus;
+  if (first != null) seen.add(first);
   await press(tester, LogicalKeyboardKey.arrowDown);
   for (var i = 0; i < 2000 && !everything.every(seen.contains); i++) {
     final node = FocusManager.instance.primaryFocus;
@@ -281,7 +288,7 @@ Future<List<String>> unreachable(WidgetTester tester) async {
   // What the walk did not happen to come to, tried on purpose: the arrow that points at it from where the focus is
   for (final target in everything) {
     if (seen.contains(target) || !(target.context?.mounted ?? false)) continue;
-    for (var i = 0; i < 80 && !seen.contains(target); i++) {
+    for (var i = 0; i < 160 && !seen.contains(target); i++) {
       final node = FocusManager.instance.primaryFocus;
       if (node == null || node is FocusScopeNode) break;
       seen.add(node);
@@ -299,13 +306,29 @@ Future<List<String>> unreachable(WidgetTester tester) async {
       if (now != null) seen.add(now);
     }
   }
+  // A long list takes the down arrow row by row, and what is below it (the player at the foot) is reached only at its end
+  for (final target in everything) {
+    if (seen.contains(target) || !(target.context?.mounted ?? false)) continue;
+    for (var i = 0; i < 150 && !seen.contains(target); i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump(const Duration(milliseconds: 30));
+      final now = FocusManager.instance.primaryFocus;
+      if (now != null) seen.add(now);
+    }
+    for (var i = 0; i < 4 && !seen.contains(target); i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump(const Duration(milliseconds: 30));
+      final now = FocusManager.instance.primaryFocus;
+      if (now != null) seen.add(now);
+    }
+  }
   // A seek that the walk made has its timer to run out
   await tester.pump(const Duration(seconds: 2));
   return [
     for (final node in everything)
       // A control that went away during the walk (a page that closed) is not one that could not be reached
       if (!seen.contains(node) && (node.context?.mounted ?? false))
-        '${node.debugLabel ?? node.context?.widget.runtimeType} ${node.rect} ${_words(node)}',
+        '${node.debugLabel ?? node.context?.widget.runtimeType} ${node.rect} ${_words(node)} < ${_chain(node)}',
   ];
 }
 
@@ -406,4 +429,18 @@ String _words(FocusNode node) {
 
   (node.context as Element?)?.visitChildren(visit);
   return found ?? '';
+}
+
+/// The widgets around a control, nearest first, to tell where it is in the code.
+String _chain(FocusNode node) {
+  final names = <String>[];
+  node.context?.visitAncestorElements((element) {
+    final name = element.widget.runtimeType.toString();
+    if (!name.startsWith('_') &&
+        !const {'Focus', 'Actions', 'Builder'}.contains(name)) {
+      names.add(name);
+    }
+    return names.length < 8;
+  });
+  return names.join(' < ');
 }

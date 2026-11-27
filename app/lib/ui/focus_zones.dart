@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'widgets/focus_nav.dart' show firstControlIn;
+
 /// The parts of the home screen that a remote's arrows go between: the bar of tabs, the page, and the player (the
 /// card beside the pages, or the small player under them).
 enum FocusZone { nav, page, player }
@@ -91,22 +93,9 @@ class FocusZones extends ChangeNotifier {
       (node.context?.mounted ?? false);
 
   /// The control of [zone] that is nearest its top left corner: where the focus goes into a zone it has not been in.
-  FocusNode? _first(FocusZone zone) {
-    FocusNode? best;
-    final own = _nodes[zone]!;
-    final corner = (own.context?.mounted ?? false)
-        ? own.rect.topLeft
-        : Offset.zero;
-    // Read from the top left, the way a page begins, with the left counting for half: a button high up at the far right
-    // (Room) is not where a page begins, and neither is a bar at the foot of the window
-    double score(FocusNode node) =>
-        (node.rect.top - corner.dy) + (node.rect.left - corner.dx) * 0.5;
-    for (final node in _nodes[zone]!.descendants) {
-      if (node is FocusScopeNode || !_usable(node)) continue;
-      if (best == null || score(node) < score(best)) best = node;
-    }
-    return best;
-  }
+  FocusNode? _first(FocusZone zone) => _firstIn(_nodes[zone]!);
+
+  FocusNode? _firstIn(FocusScopeNode own) => firstControlIn(own);
 
   /// Puts the focus into [zone]: on what had it there, or else on its first control. False when it has nothing to give it
   /// to.
@@ -143,6 +132,16 @@ class FocusZones extends ChangeNotifier {
   bool start() {
     final node = FocusManager.instance.primaryFocus;
     // A page's own scope has the focus when no control has it yet: that is nothing, as far as the arrows are concerned
+    // A page opened over the first one has the focus on its own scope: its first control, not what is under it
+    if (node is FocusScopeNode && zoneOf(node) != null) {
+      final first = _firstIn(node);
+      if (first != null) {
+        first.requestFocus();
+        _justStarted = true;
+        scheduleMicrotask(() => _justStarted = false);
+        return true;
+      }
+    }
     final nothing =
         node == null || node is FocusScopeNode || zoneOf(node) == null;
     if (!(nothing && enter(FocusZone.page))) return false;

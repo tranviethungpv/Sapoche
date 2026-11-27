@@ -184,6 +184,8 @@ class _TrackTileState extends State<TrackTile> {
         onMenu: () => _menu.open?.call(),
         ready: () => _menu.open != null,
         child: InkWell(
+          // The buttons in the row would be nearer to every arrow than the row itself: for a finger only
+          canRequestFocus: false,
           onTap: onTap,
           onSecondaryTap: () => _menu.open?.call(),
           child: LayoutBuilder(
@@ -193,17 +195,28 @@ class _TrackTileState extends State<TrackTile> {
               final album = columns && TrackColumns.albumOf(context);
               final row = Row(
                 children: [
-                  cover(),
-                  const SizedBox(width: 14),
+                  // The cover and the words are what a remote takes hold of; the buttons beside them are not inside it
                   Expanded(
                     flex: columns ? TrackColumns.titleFlex : 1,
-                    // The album column starts a little way from where a long title ends
-                    child: album
-                        ? Padding(
-                            padding: const EdgeInsets.only(right: 16),
-                            child: names,
-                          )
-                        : names,
+                    child: FocusTap(
+                      onTap: onTap,
+                      touch: false,
+                      child: Row(
+                        children: [
+                          cover(),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            // The album column starts a little way from where a long title ends
+                            child: album
+                                ? Padding(
+                                    padding: const EdgeInsets.only(right: 16),
+                                    child: names,
+                                  )
+                                : names,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   if (album)
                     Expanded(
