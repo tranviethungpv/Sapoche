@@ -1,10 +1,14 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/connect/connect_client.dart';
 import '../data/connect/connect_controller.dart';
 import '../data/connect/connect_wire.dart';
 import '../data/room_controller.dart';
+import '../data/tv_mode.dart';
 import '../strings.dart';
 import '../theme/theme.dart';
 import 'scope.dart';
@@ -94,6 +98,120 @@ class PlayingOnLine extends StatelessWidget {
       ],
     );
   }
+}
+
+/// While this device steers another, the buttons of the phone's volume are for that one's volume (as in Spotify), not for the
+/// phone's own: a press moves the volume of the playing device by a step, and a small bar says where it is. An iPhone has no keys to
+/// catch (its buttons move the phone's volume, which the controller takes as a press: `buttonsAreLevels`), and a TV leaves them to
+/// the TV, whose volume they are.
+class RemoteVolumeKeys extends StatefulWidget {
+  const RemoteVolumeKeys({super.key});
+
+  @override
+  State<RemoteVolumeKeys> createState() => _RemoteVolumeKeysState();
+}
+
+class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
+  static const _shownFor = Duration(milliseconds: 1500);
+
+  final _level = ValueNotifier<double>(0);
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _bar;
+  Timer? _hide;
+  ConnectDevice? _device;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_onKey);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    _hide?.cancel();
+    _level.dispose();
+    super.dispose();
+  }
+
+  bool _onKey(KeyEvent event) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android || Tv.on.value) return false;
+    final up = event.logicalKey == LogicalKeyboardKey.audioVolumeUp;
+    if (!up && event.logicalKey != LogicalKeyboardKey.audioVolumeDown) return false;
+    final connect = connectOf(context);
+    if (connect == null || !connect.controlling) return false;
+    // Pressed and held both move it; the release is taken too, so that the system does nothing of it either
+    if (event is! KeyUpEvent) {
+      final level = connect.nudgeVolume(up ? 1 : -1);
+      if (level != null) _show(connect.activeDevice, level);
+    }
+    return true;
+  }
+
+  void _show(ConnectDevice? device, double level) {
+    _device = device;
+    _level.value = level;
+    _hide?.cancel();
+    _hide = Timer(_shownFor, () => _bar?.close());
+    if (_bar != null) return;
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    // One bar for as long as the buttons are pressed: it is moved, not shown again each time
+    final shown = messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(minutes: 1),
+        content: ValueListenableBuilder<double>(
+          valueListenable: _level,
+          builder: (context, level, _) {
+            final p = context.palette;
+            return Semantics(
+              liveRegion: true,
+              label: S.volumeOf(_device?.info?.name ?? ''),
+              value: '${(level * 100).round()}%',
+              child: ExcludeSemantics(
+                child: Row(
+                  children: [
+                    Icon(
+                      deviceIcon(_device?.info?.kind ?? DeviceKind.phone),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        _device?.info?.name ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    SizedBox(
+                      width: 112,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: level,
+                          minHeight: 6,
+                          color: p.primary,
+                          backgroundColor: p.track,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    _bar = shown;
+    unawaited(
+      shown.closed.then((_) {
+        if (identical(_bar, shown)) _bar = null;
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 /// The sheet of devices to play on (docs/plans/2026-11-27-listen-on-another-device.md G5).
@@ -218,6 +336,28 @@ class ConnectSheet extends StatelessWidget {
                           if (d.id != connect.activeId) _tellMoving(context, S.movingTo(d.info?.name ?? ''));
                           Navigator.pop(context);
                         },
+                      ),
+                  ],
+                  // The devices of the person that are not here now: dimmed, and a way to drop one that is gone for good
+                  if (here && connect.recent.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 14, 0, 4),
+                      child: Text(S.devicesRecent, style: theme.titleSmall?.copyWith(color: p.textSecondary)),
+                    ),
+                    for (final d in connect.recent)
+                      SheetTile(
+                        key: ValueKey('connect-recent-${d.id}'),
+                        icon: deviceIcon(d.info?.kind ?? DeviceKind.phone),
+                        title: d.info?.name ?? '…',
+                        help: '${S.deviceOffline} · ${S.ago(connect.seenAgo(d))}',
+                        enabled: false,
+                        trailing: IconButton(
+                          key: ValueKey('connect-forget-${d.id}'),
+                          tooltip: S.forgetDevice,
+                          icon: const Icon(Icons.close_rounded),
+                          color: p.textSecondary,
+                          onPressed: () => connect.forget(d.id),
+                        ),
                       ),
                   ],
                   // What this device is called in the lists of the others (its model, until it is given a name)

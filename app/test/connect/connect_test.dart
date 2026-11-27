@@ -59,7 +59,7 @@ void main() {
   late FakeCluster cluster;
   final made = <_Device>[];
 
-  Future<_Device> device(String clientId, {SyncKey? withKey, DeviceKind kind = DeviceKind.phone, String name = 'Phone', Duration grace = const Duration(milliseconds: 150)}) async {
+  Future<_Device> device(String clientId, {SyncKey? withKey, DeviceKind kind = DeviceKind.phone, String name = 'Phone', Duration grace = const Duration(milliseconds: 150), bool buttonsAreLevels = false}) async {
     final backend = FakeBackend();
     final sync = ChangeNotifier();
     final connect = ConnectController(
@@ -76,6 +76,7 @@ void main() {
       queueBeat: const Duration(milliseconds: 400),
       queueSettle: const Duration(milliseconds: 20),
       handoverGrace: grace,
+      buttonsAreLevels: buttonsAreLevels,
     );
     await connect.start();
     final d = _Device(clientId, backend, connect, sync);
@@ -161,6 +162,53 @@ void main() {
       expect(connect.enabled, isFalse);
       expect(connect.link, ConnectLink.off);
       connect.dispose();
+    });
+
+    test('a device that goes stays in the list of the ones seen, until it is forgotten', () async {
+      final a = await device('aaaaaaaa-phone', name: 'Phone');
+      final b = await device('bbbbbbbb-tv', kind: DeviceKind.tv, name: 'Living room');
+      await until(() => a.connect.devices.length == 2);
+      expect(a.connect.recent, isEmpty, reason: 'a device that is here is not one that was seen');
+      b.connect.dispose();
+      await until(() => a.connect.recent.length == 1 && a.connect.devices.length == 1, why: 'the TV is seen as gone');
+      final gone = a.connect.recent.single;
+      expect(gone.info?.name, 'Living room');
+      expect(gone.info?.kind, DeviceKind.tv);
+      expect(a.connect.seenAgo(gone), lessThan(const Duration(seconds: 5)));
+
+      // The ones that come later are told of it too
+      final c = await device('cccccccc-pad', kind: DeviceKind.tablet, name: 'Pad');
+      await until(() => c.connect.recent.length == 1, why: 'the pad is told of the TV');
+
+      a.connect.forget(gone.id);
+      expect(a.connect.recent, isEmpty, reason: 'at once');
+      await until(() => c.connect.recent.isEmpty, why: 'the others are told too');
+      expect(cluster.known.containsKey(gone.id), isFalse);
+    });
+
+    test('a device that comes back is no more one that was seen, and a device that is here cannot be forgotten', () async {
+      final a = await device('aaaaaaaa-phone');
+      final b = await device('bbbbbbbb-tv', name: 'Living room');
+      await until(() => a.connect.devices.length == 2);
+      b.connect.dispose();
+      await until(() => a.connect.recent.isNotEmpty);
+      await device('bbbbbbbb-tv', name: 'Living room');
+      await until(() => a.connect.recent.isEmpty && a.connect.devices.length == 2, why: 'the TV is back');
+      final other = a.connect.devices.firstWhere((d) => !d.you);
+      a.connect.forget(other.id);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(a.connect.devices.length, 2);
+    });
+
+    test('a line that is down tells nothing of the devices that were seen', () async {
+      final a = await device('aaaaaaaa-phone');
+      final b = await device('bbbbbbbb-tv');
+      await until(() => a.connect.devices.length == 2);
+      b.connect.dispose();
+      await until(() => a.connect.recent.isNotEmpty);
+      cluster.drop('aaaaaaaa-phone');
+      await until(() => a.connect.recent.isEmpty || a.connect.link != ConnectLink.online);
+      await until(() => a.connect.link == ConnectLink.online && a.connect.recent.length == 1, why: 'it is told again when the line is back');
     });
 
     test('a name given is what the others see', () async {
@@ -322,6 +370,47 @@ void main() {
       a.backend.emit(const VolumeEvent(0.2));
       await Future<void>.delayed(const Duration(milliseconds: 400));
       expect(b.seen.whereType<VolumeEvent>().length, before);
+    });
+
+    test('a press of a volume button moves the volume of the device that plays by a step, and the bar follows at once', () async {
+      final a = await device('aaaaaaaa-phone');
+      final b = await device('bbbbbbbb-tv');
+      a.backend.emit(const VolumeEvent(0.5));
+      await startPlaying(a);
+      await until(() => b.connect.controlling && b.connect.remote?.volume == 0.5, why: 'the volume of the playing device is known');
+      expect(a.connect.nudgeVolume(1), isNull, reason: 'the device that plays has its own buttons');
+      expect(b.connect.nudgeVolume(1), 0.5625);
+      expect(b.seen.whereType<VolumeEvent>().last.level, 0.5625, reason: 'before the other device has answered');
+      expect(b.connect.nudgeVolume(1), 0.625, reason: 'a second press goes on from the first, not from the old level');
+      expect(b.connect.nudgeVolume(-1), 0.5625);
+      await until(() => a.backend.calls.contains('setVolume 0.5625'), why: 'the playing device is asked');
+      expect(b.backend.calls.where((c) => c.startsWith('setVolume')), isEmpty, reason: 'the phone\'s own volume is not touched');
+      for (var i = 0; i < 40; i++) {
+        b.connect.nudgeVolume(1);
+      }
+      expect(b.seen.whereType<VolumeEvent>().last.level, 1.0, reason: 'the volume stops at the top');
+    });
+
+    test('an iPhone that steers another holds its own volume still, and takes a move of it for a press', () async {
+      final a = await device('aaaaaaaa-phone');
+      final b = await device('bbbbbbbb-phone', buttonsAreLevels: true);
+      b.backend.emit(const VolumeEvent(0.9)); // at the top, where a button would show nothing
+      a.backend.emit(const VolumeEvent(0.5));
+      await startPlaying(a);
+      await until(() => b.connect.controlling && b.connect.remote?.volume == 0.5);
+      await until(() => b.backend.calls.contains('setVolume 0.5'), why: 'the phone is put in the middle');
+      b.backend.calls.clear();
+      b.backend.emit(const VolumeEvent(0.5625)); // a press of the up button
+      await until(() => a.backend.calls.contains('setVolume 0.5625'), why: 'the press is the other device\'s');
+      expect(b.backend.calls, ['setVolume 0.5'], reason: 'and the phone is put back');
+      b.backend.emit(const VolumeEvent(0.5)); // what the putting back says
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(a.backend.calls.where((c) => c.startsWith('setVolume')).toSet(), {'setVolume 0.5625'}, reason: 'that is no press');
+      // No more steering: the phone has its volume back
+      a.connect.dispose();
+      cluster.drop('aaaaaaaa-phone');
+      await until(() => !b.connect.controlling);
+      await until(() => b.backend.calls.contains('setVolume 0.9'), why: 'the volume of the phone is given back');
     });
 
     test('a pause, a play, a seek and the modes show at once on the device that presses them', () async {

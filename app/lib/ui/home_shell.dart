@@ -26,6 +26,7 @@ import 'player/video_controls.dart' show VideoFullScreen, openVideoFullScreen;
 import 'player_sheet.dart';
 import 'room_page.dart';
 import 'rooms_sheet.dart';
+import 'connect_ui.dart' show RemoteVolumeKeys;
 import 'scope.dart';
 import 'setup_dialog.dart';
 import 'ios_update_sheet.dart';
@@ -1168,6 +1169,8 @@ class _HomeShellState extends State<HomeShell>
                   if (!docked)
                     PlayerSheetLayer(controller: _sheet, folded: _drop),
                   if (kIsWeb) VideoFrameHost(sheet: _sheet),
+                  // While another device plays, the buttons of the phone's volume are for it
+                  const RemoteVolumeKeys(),
                 ],
               ),
             ),

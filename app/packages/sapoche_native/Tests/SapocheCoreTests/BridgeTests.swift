@@ -584,12 +584,19 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(events.filter { $0["type"] as? String == "position" }.count, paused)
     }
 
-    func testNothingIsSentWhileTheScreenIsOff() async throws {
+    func testTheStateAndTheVolumeGoOutWhileTheScreenIsOffButTheTicksDoNot() async throws {
         bridge.setVisible(false)
-        let before = events.count
         _ = try await call("add", song(1))
-        await time.advance(3000)
-        XCTAssertEqual(events.count, before)
+        await time.advance(1500)
+        XCTAssertEqual(states().last?["queue"].flatMap { ($0 as? [Any])?.count }, 1, "the other devices of the person show it")
+        let positions = { self.events.filter { $0["type"] as? String == "position" }.count }
+        let told = positions()
+        await time.advance(5000)
+        XCTAssertEqual(positions(), told, "the ticks wait for the screen")
+        let levels = { self.events.filter { $0["type"] as? String == "volume" } }
+        let before = levels().count
+        platform.volume.set(0.25) // the buttons of the phone
+        XCTAssertEqual(levels().count, before + 1)
         bridge.setVisible(true)
         XCTAssertEqual(states().last?["queue"].flatMap { ($0 as? [Any])?.count }, 1, "the screen catches up when it returns")
     }

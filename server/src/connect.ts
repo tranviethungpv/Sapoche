@@ -6,7 +6,9 @@
  * with a token that comes from the same key; the first device to come fixes the hash of the token, as `/sync` does. Every
  * word of content (the name of a device, the song, the queue, a command) is sealed by the apps with a key the server never
  * has: here it is a string to carry. What this object knows is who is connected, under a public id (a hash, as rooms do), which
- * of them plays, and the last state it was told, so that a device that finds nobody playing can go on from it.
+ * of them plays, and the last state it was told, so that a device that finds nobody playing can go on from it. It also keeps, for
+ * a month, the devices that were here and when each was last seen (its sealed `info` and a time), so that the list can show the
+ * ones that are not here now; a person can drop one from it (`forget`).
  *
  * Exactly one device plays at a time (`active`). It is the one who is told where the others ask for something (`cmd`), and the
  * only one who may say what is playing (`state`, `queue`). A change of device goes through `transfer`: the playing device is
@@ -28,6 +30,11 @@ const MAX_BIG_CHARS = 1_500_000;
 const MAX_CMD_CHARS = 262_144;
 const MAX_SMALL_CHARS = 16_384;
 const MAX_MESSAGES_PER_SECOND = 20;
+/** The devices that are not here now are kept in the list this long, and no more than this many (the oldest go first). */
+const KNOWN_MS = 30 * 24 * 3600 * 1000;
+const MAX_KNOWN = 24;
+/** What a device says about itself is a name and a kind: one that is far bigger is shown while it is here and not kept. */
+const MAX_KNOWN_INFO = 2048;
 /** How long the playing device has to hand its queue over before the last one kept is used (the tests shorten it). */
 const HANDOFF_MS = 6000;
 
@@ -39,6 +46,12 @@ interface Attachment {
   id: string;
   /** What the device says about itself, sealed. */
   info: string;
+}
+
+/** A device seen in this cluster: what it said about itself (sealed) and when it was last seen (the server's clock, ms). */
+interface Known {
+  info: string;
+  seen: number;
 }
 
 interface Stored {
@@ -62,6 +75,7 @@ type ClientMessage =
   | { t: "queue"; blob: string }
   | { t: "cmd"; to: string; blob: string }
   | { t: "transfer"; to: string }
+  | { t: "forget"; id: string }
   | { t: "claim" }
   | { t: "stop" }
   | { t: "handoff"; blob: string }
@@ -84,6 +98,8 @@ const isText = (value: unknown, max: number): value is string => typeof value ==
 
 export class Connect extends DurableObject<Env> {
   private s: Stored = { active: null, state: null, queue: null, pending: null };
+  /** Kept apart from `s`: that one holds a queue of up to 1.5 MB and a row of the storage holds 2 MB. */
+  private known: Record<string, Known> = {};
   private buckets = new WeakMap<WebSocket, { tokens: number; last: number }>();
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -91,6 +107,7 @@ export class Connect extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => {
       const saved = await ctx.storage.get<Stored>("s");
       if (saved) this.s = { ...this.s, ...saved };
+      this.known = (await ctx.storage.get<Record<string, Known>>("known")) ?? {};
     });
   }
 
@@ -127,6 +144,7 @@ export class Connect extends DurableObject<Env> {
       case "info":
         if (!isText(msg.info, MAX_SMALL_CHARS)) return this.fail(ws, "bad_message", "info needs text");
         this.setInfo(me.id, msg.info);
+        await this.remember(me.id, msg.info);
         return this.broadcastDevices();
       case "state":
         if (this.s.active !== me.id) return this.fail(ws, "not_active", "Only the device that plays says what plays");
@@ -148,6 +166,8 @@ export class Connect extends DurableObject<Env> {
       }
       case "transfer":
         return this.onTransfer(ws, me, msg.to);
+      case "forget":
+        return this.onForget(ws, msg.id);
       case "claim":
         return this.onClaim(me);
       case "stop":
@@ -214,18 +234,29 @@ export class Connect extends DurableObject<Env> {
 
     ws.serializeAttachment({ id, info } satisfies Attachment);
     await this.save();
+    await this.remember(id, info);
     logEvent("connect.hello", { devices: here.size + 1 });
     this.send(ws, {
       t: "welcome",
       v: CONNECT_VERSION,
       you: id,
       devices: this.devices(),
+      recent: this.recent(),
       active: this.s.active,
       state: this.s.state,
       queue: this.s.queue,
       now: Date.now(),
     });
     this.broadcastDevices(ws);
+  }
+
+  /** A device that is not here is dropped from the list of the ones seen. One that is here is not: it would come straight back. */
+  private async onForget(ws: WebSocket, id: unknown): Promise<void> {
+    if (typeof id !== "string") return this.fail(ws, "bad_message", "forget needs id");
+    if (this.isHere(id) || !(id in this.known)) return;
+    delete this.known[id];
+    await this.saveKnown();
+    this.broadcastDevices();
   }
 
   private async onTransfer(ws: WebSocket, me: Attachment, to: unknown): Promise<void> {
@@ -291,6 +322,7 @@ export class Connect extends DurableObject<Env> {
     }
     // Nobody plays when the one that did is gone; the last state stays for whoever comes to go on from it
     if (this.s.active === me.id) await this.setActive(null);
+    await this.remember(me.id, me.info);
     this.broadcastDevices(undefined, ws);
   }
 
@@ -324,9 +356,35 @@ export class Connect extends DurableObject<Env> {
     for (const { ws, att } of this.live()) if (att.id === id) ws.serializeAttachment({ ...att, info } satisfies Attachment);
   }
 
+  /** The devices that were here before and are not now, the latest seen first; [gone] is a closing connection, not here any more. */
+  private recent(gone?: WebSocket): { id: string; info: string; seen: number }[] {
+    const here = new Set(this.devices(gone).map((d) => d.id));
+    return Object.entries(this.known)
+      .filter(([id]) => !here.has(id))
+      .map(([id, k]) => ({ id, info: k.info, seen: k.seen }))
+      .sort((a, b) => b.seen - a.seen);
+  }
+
+  /** Notes that [id] is here now (or just left) with what it says of itself, and lets go of what is too old or too many. */
+  private async remember(id: string, info: string): Promise<void> {
+    const now = Date.now();
+    const before = this.known[id];
+    this.known[id] = { info: info.length <= MAX_KNOWN_INFO && info ? info : (before?.info ?? ""), seen: now };
+    const here = new Set(this.devices().map((d) => d.id));
+    const others = Object.entries(this.known).filter(([other]) => other !== id && !here.has(other));
+    for (const [other, k] of others) if (now - k.seen > KNOWN_MS) delete this.known[other];
+    const kept = others.filter(([other]) => other in this.known).sort((a, b) => a[1].seen - b[1].seen);
+    for (let i = 0; Object.keys(this.known).length > MAX_KNOWN && i < kept.length; i++) delete this.known[kept[i][0]];
+    await this.saveKnown();
+  }
+
+  private async saveKnown(): Promise<void> {
+    await this.ctx.storage.put("known", this.known);
+  }
+
   /** The list of devices to everyone but [skip]; [gone] is a connection that is closing and is not in it. */
   private broadcastDevices(skip?: WebSocket, gone?: WebSocket): void {
-    this.broadcast({ t: "devices", devices: this.devices(gone), active: this.s.active }, skip ?? gone);
+    this.broadcast({ t: "devices", devices: this.devices(gone), recent: this.recent(gone), active: this.s.active }, skip ?? gone);
   }
 
   private broadcast(msg: object, except?: WebSocket): void {

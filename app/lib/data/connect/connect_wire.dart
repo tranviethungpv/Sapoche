@@ -48,6 +48,15 @@ class ConnectDevice {
   final bool you;
 }
 
+/// A device of the person that is not here now: seen before, [seenAt] on the server's clock (milliseconds).
+class RecentDevice {
+  const RecentDevice({required this.id, required this.info, required this.seenAt});
+
+  final String id;
+  final DeviceInfo? info;
+  final int seenAt;
+}
+
 /// What the playing device says is happening, often and small (the queue goes apart, see [RemoteQueue]).
 class RemoteState {
   const RemoteState({

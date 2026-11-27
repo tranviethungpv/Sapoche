@@ -200,9 +200,9 @@ final class Bridge {
             guard let self, self.visible else { return }
             self.emit(UiJson.output(output))
         }
+        // The volume goes out with the screen off too: the buttons of this phone are what the other devices of the person show
         volumeSubscription = platform.volume.observe { [weak self] level in
-            guard let self, self.visible else { return }
-            self.emit(UiJson.volume(level))
+            self?.emit(UiJson.volume(level))
         }
         // How loud a song is comes with its stream; it is kept for hearing the song without a network
         controller.loudnessLookup = { [store] id in try? await store.loudness(id) }
@@ -417,9 +417,10 @@ final class Bridge {
         observing.collect(controller.playerChanged) { [weak self] _ in self?.emitPosition() }
         observing.launch { [weak self] in
             // No ticking at all while the screen is off, and none while the song stands still: a pause, a seek or a
-            // song that ends is pushed at once by `playerChanged`, and a screen that comes back is told where things are
+            // song that ends is pushed at once by `playerChanged` (with the screen off too, as the state is), and a
+            // screen that comes back is told where things are
             while let self {
-                if self.controller.playerInfo().playing { self.emitPosition() }
+                if self.visible, self.controller.playerInfo().playing { self.emitPosition() }
                 guard await self.time.wait(ms: Self.positionTickMs) else { return }
             }
         }
@@ -438,7 +439,7 @@ final class Bridge {
     }
 
     private func emitPosition() {
-        guard visible, sink != nil else { return }
+        guard sink != nil else { return }
         let info = controller.playerInfo()
         emit(UiJson.position(controller.view.value, info))
         // The heights are part of the state, which is sent again when they change
@@ -457,10 +458,10 @@ final class Bridge {
         )
     }
 
-    /// Drift and speed change every half second and are not part of the state; and nothing is built or sent while the
-    /// screen is off, the UI catches up when it returns.
+    /// Drift and speed change every half second and are not part of the state. It goes out with the screen off too (the
+    /// other devices of the person show it); a screen that comes back is told again by `setVisible`.
     private func emitStateIfChanged() {
-        guard visible, sink != nil else { return }
+        guard sink != nil else { return }
         var structure = controller.view.value
         structure.snapshot.driftMs = nil
         structure.snapshot.speed = 1

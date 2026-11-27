@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sapoche/data/app_settings.dart';
 import 'package:sapoche/data/backend.dart';
@@ -204,6 +206,63 @@ void main() {
     await waitReal(tester, () => remote.connect.devices.any((d) => d.info?.name == 'Kitchen'), why: 'the remote sees the new name');
     await tester.pumpAndSettle();
     expect(find.text('Kitchen'), findsOneWidget);
+  });
+
+  uiTest('a device that is not here is listed dimmed with when it was seen, and can be forgotten', (tester) async {
+    final remote = RemoteDevice(cluster, key);
+    remotes.add(remote);
+    await pumpApp(tester, connect: (backend) => mine = connectFor(backend, cluster, key, 'mmmmmmmm-mine', name: 'My phone'));
+    await tester.runAsync(remote.connect.start);
+    await waitReal(tester, () => mine!.devices.length == 2, why: 'the app sees the remote');
+    remote.connect.dispose();
+    await waitReal(tester, () => mine!.recent.length == 1, why: 'the remote is seen as gone');
+    final id = mine!.recent.single.id;
+    showConnectSheet(tester.element(find.byType(Scaffold).first), AppScope.roomOf(tester.element(find.byType(Scaffold).first)));
+    await tester.pumpAndSettle();
+    expect(find.text(S.devicesRecent), findsOneWidget);
+    expect(find.text('Living room'), findsOneWidget);
+    expect(find.text('${S.deviceOffline} · ${S.ago(Duration.zero)}'), findsOneWidget);
+    // It is not one to play on: a touch on the row does nothing
+    await tester.tap(find.byKey(ValueKey('connect-recent-$id')));
+    await tester.pumpAndSettle();
+    expect(cluster.sent.where((s) => s.$2['t'] == 'transfer'), isEmpty);
+    expect(find.byType(ConnectSheet), findsOneWidget);
+    await tester.tap(find.byKey(ValueKey('connect-forget-$id')));
+    await tester.pumpAndSettle();
+    expect(find.text(S.devicesRecent), findsNothing);
+    await waitReal(tester, () => cluster.sent.any((s) => s.$1 == 'mmmmmmmm-mine' && s.$2['t'] == 'forget' && s.$2['id'] == id), why: 'the server is asked to forget');
+  });
+
+  uiTest('while another device plays, the volume buttons of the phone are for it, and a small bar says where it is', (tester) async {
+    final remote = RemoteDevice(cluster, key);
+    remotes.add(remote);
+    await pumpApp(tester, connect: (backend) => mine = connectFor(backend, cluster, key, 'mmmmmmmm-mine', name: 'My phone'));
+    // Nobody is steered yet: a button is the system's
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    expect(await simulateKeyDownEvent(LogicalKeyboardKey.audioVolumeUp), isFalse);
+    await simulateKeyUpEvent(LogicalKeyboardKey.audioVolumeUp);
+
+    await remote.startPlaying(tester);
+    remote.backend.emit(const VolumeEvent(0.5));
+    await tester.pump();
+    await waitReal(tester, () => mine!.controlling && mine!.remote?.volume == 0.5, why: 'the app steers the remote');
+    expect(await simulateKeyDownEvent(LogicalKeyboardKey.audioVolumeUp), isTrue, reason: 'the press is taken: the phone does not change its own');
+    await simulateKeyUpEvent(LogicalKeyboardKey.audioVolumeUp);
+    await tester.pump(const Duration(milliseconds: 200)); // the volume goes out in a moment (the clock of the test is a fake one)
+    await waitReal(tester, () => remote.backend.calls.contains('setVolume 0.5625'), why: 'the playing device is asked');
+    expect(find.descendant(of: find.byType(SnackBar), matching: find.text('Living room')), findsOneWidget);
+    expect(find.descendant(of: find.byType(SnackBar), matching: find.byType(LinearProgressIndicator)), findsOneWidget);
+    await simulateKeyDownEvent(LogicalKeyboardKey.audioVolumeDown);
+    await simulateKeyUpEvent(LogicalKeyboardKey.audioVolumeDown);
+    await tester.pump();
+    expect(find.byType(SnackBar), findsOneWidget, reason: 'one bar that moves, not a new one for each press');
+    // It goes away by itself
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+    expect(mine!.devices.length, 2);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   uiTest('without a sync key the sheet says what to do', (tester) async {

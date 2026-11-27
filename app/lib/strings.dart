@@ -854,6 +854,10 @@ abstract final class S {
   static String playOnDevice(String device) => _t('Play on · $device', 'Phát trên · $device');
   static String movingTo(String device) => _t('Moving to $device…', 'Đang chuyển sang $device…');
   static String get movingHere => _t('Moving here…', 'Đang chuyển về máy này…');
+  static String get devicesRecent => _t('Seen recently', 'Đã thấy gần đây');
+  static String get deviceOffline => _t('Not here', 'Không có mạng');
+  static String get forgetDevice => _t('Forget this device', 'Quên máy này');
+  static String volumeOf(String device) => _t('Volume · $device', 'Âm lượng · $device');
   static String get deviceInRoom => _t('In a room', 'Đang ở phòng');
   static String get devicePlaying => _t('Playing', 'Đang phát');
   static String get connectNeedSync =>

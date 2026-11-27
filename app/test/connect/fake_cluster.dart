@@ -15,6 +15,9 @@ class FakeCluster {
   ({String from, String to})? _pending;
   var clockOffsetMs = 0;
 
+  /// The devices seen, as the server keeps them: public id → sealed info and when it was last seen.
+  final known = <String, ({String info, int seen})>{};
+
   /// Everything the devices sent, for a test to look at: `[clientId, message]`.
   final sent = <(String, Map<String, dynamic>)>[];
 
@@ -38,6 +41,15 @@ class FakeCluster {
     }
     return [for (final e in byId.entries) {'id': e.key, 'info': e.value}];
   }
+
+  List<Map<String, Object?>> get _recent {
+    final here = {for (final c in _conns) if (c.id != null) c.id};
+    final out = [for (final e in known.entries) if (!here.contains(e.key)) (id: e.key, info: e.value.info, seen: e.value.seen)];
+    out.sort((a, b) => b.seen - a.seen);
+    return [for (final d in out) {'id': d.id, 'info': d.info, 'seen': d.seen}];
+  }
+
+  void _remember(String id, String info) => known[id] = (info: info.isEmpty ? known[id]?.info ?? '' : info, seen: DateTime.now().millisecondsSinceEpoch);
 
   _Conn? _find(String id) => _conns.where((c) => c.id == id).firstOrNull;
 
@@ -72,11 +84,17 @@ class FakeCluster {
           other.id = null;
           other.closeFromServer(4000);
         }
-        c.deliver({'t': 'welcome', 'v': 1, 'you': c.id, 'devices': _devices, 'active': active, 'state': state, 'queue': queue, 'now': DateTime.now().millisecondsSinceEpoch});
-        _broadcast({'t': 'devices', 'devices': _devices, 'active': active}, except: c);
+        _remember(c.id!, c.info);
+        c.deliver({'t': 'welcome', 'v': 1, 'you': c.id, 'devices': _devices, 'recent': _recent, 'active': active, 'state': state, 'queue': queue, 'now': DateTime.now().millisecondsSinceEpoch});
+        _broadcast({'t': 'devices', 'devices': _devices, 'recent': _recent, 'active': active}, except: c);
       case 'info':
         c.info = m['info'] as String;
-        _broadcast({'t': 'devices', 'devices': _devices, 'active': active});
+        _remember(c.id!, c.info);
+        _broadcast({'t': 'devices', 'devices': _devices, 'recent': _recent, 'active': active});
+      case 'forget':
+        final id = m['id'] as String;
+        if (_find(id) != null || known.remove(id) == null) return;
+        _broadcast({'t': 'devices', 'devices': _devices, 'recent': _recent, 'active': active});
       case 'state':
         if (active != c.id) return c.deliver({'t': 'error', 'code': 'not_active'});
         state = {'rev': m['rev'], 'blob': m['blob'], 'at': DateTime.now().millisecondsSinceEpoch};
@@ -129,7 +147,8 @@ class FakeCluster {
     final p = _pending;
     if (p != null && p.from == id) _finish(p.to, queue, null);
     if (active == id) _setActive(null);
-    _broadcast({'t': 'devices', 'devices': _devices, 'active': active});
+    _remember(id, c.info);
+    _broadcast({'t': 'devices', 'devices': _devices, 'recent': _recent, 'active': active});
   }
 }
 

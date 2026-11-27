@@ -272,6 +272,40 @@ console.log("Connect");
   b.close();
 }
 
+// --- the devices seen before
+{
+  const cluster = hex(32);
+  const t = token();
+  const a = await join(cluster, t, { info: "info-a" });
+  check("a cluster that has seen nobody else has no recent devices", Array.isArray(a.welcome.recent) && a.welcome.recent.length === 0, JSON.stringify(a.welcome.recent));
+  const b = await join(cluster, t, { info: "info-b" });
+  const idB = b.welcome.you;
+  check("a device that is here is not among the recent ones", !a.welcome.recent.some((d) => d.id === idB) && !b.welcome.recent.some((d) => d.id === idB));
+  const before = Date.now();
+  b.close();
+  const gone = await a.waitFor((m) => m.t === "devices" && m.devices.length === 1);
+  const seen = gone?.recent?.find((d) => d.id === idB);
+  check("a device that goes stays in the list of the recent ones, with what it said and when", seen?.info === "info-b" && seen.seen >= before - 1000 && seen.seen <= Date.now() + 1000, JSON.stringify(gone));
+  check("and so for a device that comes to the cluster later", (await join(cluster, t, { info: "info-c" })).welcome.recent.some((d) => d.id === idB && d.info === "info-b"));
+
+  a.send({ t: "info", info: "info-a2" });
+  await a.waitFor((m) => m.t === "devices");
+  const late = await join(cluster, t, { info: "info-d" });
+  check("a device that changed its info is kept as it said it last", late.welcome.devices.some((d) => d.info === "info-a2"));
+
+  a.send({ t: "forget", id: idB });
+  const dropped = await a.waitFor((m) => m.t === "devices" && !m.recent.some((d) => d.id === idB));
+  check("forgetting a device drops it from the list, for everyone", dropped !== null);
+  check("and it stays dropped", !(await join(cluster, t)).welcome.recent.some((d) => d.id === idB));
+
+  const idA = a.welcome.you;
+  a.send({ t: "forget", id: idA });
+  check("a device that is here cannot be forgotten", await a.quiet((m) => m.t === "devices" && !m.devices.some((d) => d.id === idA)));
+  a.send({ t: "forget", id: 7 });
+  check("forget needs an id", (await a.waitFor((m) => m.t === "error"))?.code === "bad_message");
+  a.close();
+}
+
 // --- how many
 {
   const cluster = hex(32);

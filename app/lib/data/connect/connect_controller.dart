@@ -56,7 +56,9 @@ class ConnectController extends ChangeNotifier {
     this.pingEvery = const Duration(seconds: 45),
     this.probeAfter = const Duration(seconds: 6),
     this.volumeEvery = const Duration(milliseconds: 100),
-  }) : _now = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);
+    bool? buttonsAreLevels,
+  }) : buttonsAreLevels = buttonsAreLevels ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS),
+        _now = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);
 
   /// The backend of this device, whose player is the one that plays here.
   final Backend inner;
@@ -73,6 +75,10 @@ class ConnectController extends ChangeNotifier {
   final Duration pingEvery;
   final Duration probeAfter;
   final Duration volumeEvery;
+
+  /// The buttons of the phone's volume reach the app only as a new level of the phone's volume (an iPhone), not as keys. While
+  /// this device steers another, such a change is taken as a press, and the level of the phone is put back where it was.
+  final bool buttonsAreLevels;
   final Listenable _syncChanges;
   final SyncKey? Function() _syncKey;
   final Future<Uri?> Function() _server;
@@ -88,6 +94,10 @@ class ConnectController extends ChangeNotifier {
   /// The devices of the person that are here, this one among them.
   List<ConnectDevice> get devices => _devices;
   List<ConnectDevice> _devices = const [];
+
+  /// The devices that were here before and are not now (the server keeps them a month), the latest seen first.
+  List<RecentDevice> get recent => _recent;
+  List<RecentDevice> _recent = const [];
 
   String? _youId;
   String? get youId => _youId;
@@ -172,7 +182,13 @@ class ConnectController extends ChangeNotifier {
   double? _volumeToSend;
   Timer? _volumeTimer;
   var _volumeSetAt = -1000000;
+  double? _lastSetVolume;
   var _wasPlaying = false;
+
+  // An iPhone that steers another: the level its own volume is held at, so that a press of a button shows as a move from it, and
+  // the level it had before (when that was put aside because a button would not move it any more: at an end of the range)
+  double? _pinned;
+  double? _pinnedFrom;
 
   // The messages are handled one after the other: opening a sealed one takes time and the order must stay
   Future<void>? _chain;
@@ -268,6 +284,7 @@ class ConnectController extends ChangeNotifier {
 
   void _reset() {
     _devices = const [];
+    _recent = const [];
     _youId = null;
     _activeId = null;
     _remote = null;
@@ -286,6 +303,7 @@ class ConnectController extends ChangeNotifier {
     if (link != ConnectLink.online) {
       // The line is gone: what was said of the others is not known to be true any more
       _devices = const [];
+      _recent = const [];
       _activeId = null;
       _youId = null;
       _remote = null;
@@ -329,6 +347,17 @@ class ConnectController extends ChangeNotifier {
     _client?.send({'t': 'transfer', 'to': id});
   }
 
+  /// Drops a device that is not here from the list of the ones seen (it is back in it when it comes again).
+  void forget(String id) {
+    if (_link != ConnectLink.online || !_recent.any((d) => d.id == id)) return;
+    _recent = [for (final d in _recent) if (d.id != id) d];
+    notifyListeners();
+    _client?.send({'t': 'forget', 'id': id});
+  }
+
+  /// How long ago [device] was seen, on the clock of the server.
+  Duration seenAgo(RecentDevice device) => Duration(milliseconds: max(0, _serverNow - device.seenAt));
+
   /// Plays on this device, taking what plays on another one along.
   void playHere() {
     final id = _youId;
@@ -353,6 +382,7 @@ class ConnectController extends ChangeNotifier {
   bool sendVolume(double level) {
     if (!controlling) return false;
     _volumeSetAt = _now();
+    _lastSetVolume = level;
     _volumeToSend = level;
     _volumeTimer ??= Timer(volumeEvery, () {
       _volumeTimer = null;
@@ -362,6 +392,22 @@ class ConnectController extends ChangeNotifier {
     });
     return true;
   }
+
+  /// A press of a button of the phone's volume while this device steers another: the volume of that one goes up ([way] 1) or
+  /// down (-1) by a step, and the bars show it at once. Gives the new level, or null when this device does not steer one (the
+  /// press is the system's).
+  double? nudgeVolume(int way) {
+    if (!controlling) return null;
+    final held = _now() - _volumeSetAt <= 1500 ? _lastSetVolume : null;
+    final base = held ?? _remote?.volume ?? 0.5;
+    final level = (base + way * volumeStep).clamp(0.0, 1.0).toDouble();
+    _out.add(VolumeEvent(level));
+    sendVolume(level);
+    return level;
+  }
+
+  /// One press of a volume button moves the volume by this much of its range, as the sheet's bar does by key.
+  static const volumeStep = 0.0625;
 
   /// What a command is sure to do on the player, shown at once: the pause or the play, the place that was sought, the mode.
   void _guess(RemoteCommand command) {
@@ -394,7 +440,7 @@ class ConnectController extends ChangeNotifier {
       case 'welcome':
         _log('welcome devices=${(m['devices'] as List?)?.length} active=${m['active'] == null ? 'none' : (m['active'] == m['you'] ? 'me' : 'other')} state=${m['state'] != null} queue=${m['queue'] != null}');
         _youId = m['you'] as String?;
-        await _setDevices(m['devices']);
+        await _setDevices(m['devices'], m['recent']);
         _activeId = m['active'] as String?;
         _remote = await _openState(m['state']);
         _remoteQueue = await _openQueue(m['queue']);
@@ -409,7 +455,7 @@ class ConnectController extends ChangeNotifier {
           _maybeClaim();
         }
       case 'devices':
-        await _setDevices(m['devices']);
+        await _setDevices(m['devices'], m['recent']);
         _activeId = m['active'] as String?;
         _afterChange();
       case 'active':
@@ -453,22 +499,37 @@ class ConnectController extends ChangeNotifier {
     }
   }
 
-  Future<void> _setDevices(Object? list) async {
+  Future<DeviceInfo?> _openInfo(String id, String sealed, ConnectSecrets secrets) async {
+    final key = '$id/$sealed';
+    if (!_sealedInfo.containsKey(key)) {
+      final text = sealed.isEmpty ? null : await ConnectSeal.open(sealed, secrets);
+      _sealedInfo[key] = text == null ? null : DeviceInfo.fromJson(_tryJson(text));
+    }
+    return _sealedInfo[key];
+  }
+
+  /// [past] is the server's list of the devices seen before (a server that does not keep one sends none).
+  Future<void> _setDevices(Object? list, [Object? past]) async {
     final secrets = _secrets;
     if (secrets == null || list is! List) return;
     final out = <ConnectDevice>[];
     for (final d in list) {
       if (d is! Map) continue;
       final id = d['id'] as String?;
-      final sealed = d['info'] as String? ?? '';
       if (id == null) continue;
-      final key = '$id/$sealed';
-      if (!_sealedInfo.containsKey(key)) {
-        final text = sealed.isEmpty ? null : await ConnectSeal.open(sealed, secrets);
-        _sealedInfo[key] = text == null ? null : DeviceInfo.fromJson(_tryJson(text));
-      }
-      out.add(ConnectDevice(id: id, info: _sealedInfo[key], you: id == _youId));
+      out.add(ConnectDevice(id: id, info: await _openInfo(id, d['info'] as String? ?? '', secrets), you: id == _youId));
     }
+    final before = <RecentDevice>[];
+    if (past is List) {
+      for (final d in past) {
+        if (d is! Map) continue;
+        final id = d['id'] as String?;
+        final seen = d['seen'];
+        if (id == null || seen is! num) continue;
+        before.add(RecentDevice(id: id, info: await _openInfo(id, d['info'] as String? ?? '', secrets), seenAt: seen.toInt()));
+      }
+    }
+    _recent = before;
     // This device first, then the one that plays, then the rest in the order they came
     out.sort((a, b) => (b.you ? 2 : 0) + (b.id == _activeId ? 1 : 0) - ((a.you ? 2 : 0) + (a.id == _activeId ? 1 : 0)));
     _devices = out;
@@ -528,11 +589,31 @@ class ConnectController extends ChangeNotifier {
   void _setRemoteView(bool on, {BackendEvent? except}) {
     if (_remoteView == on) return;
     _remoteView = on;
+    if (buttonsAreLevels) on ? _holdPhoneVolume() : _releasePhoneVolume();
     if (!on) {
       for (final e in [_lastSnapshotEvent, _lastPositionEvent, _lastSleepEvent, _lastVolumeEvent]) {
         if (e != null && !identical(e, except)) _out.add(e);
       }
     }
+  }
+
+  /// Starts to hold the phone's own volume still (it moves to the middle first when it is at an end, where a button would not
+  /// show), so that its buttons can steer the other device.
+  void _holdPhoneVolume() {
+    final level = _volume;
+    if (level == null) return;
+    _pinned = level < 0.2 || level > 0.8 ? 0.5 : level;
+    if (_pinned != level) {
+      _pinnedFrom = level;
+      unawaited(inner.setVolume(_pinned!).catchError((Object _) {}));
+    }
+  }
+
+  void _releasePhoneVolume() {
+    final from = _pinnedFrom;
+    _pinned = null;
+    _pinnedFrom = null;
+    if (from != null) unawaited(inner.setVolume(from).catchError((Object _) {}));
   }
 
   void _emitView() {
@@ -604,6 +685,15 @@ class ConnectController extends ChangeNotifier {
         _sleep = sleep;
         _lastSleepEvent = event;
       case VolumeEvent(:final level):
+        if (_pinned != null && _remoteView) {
+          // The phone's volume is held still while it steers another: what moves it is a button, which is for the other's
+          final held = _pinned!;
+          if ((level - held).abs() > 0.001) {
+            nudgeVolume(level > held ? 1 : -1);
+            unawaited(inner.setVolume(held).catchError((Object _) {}));
+          }
+          return;
+        }
         _volume = level;
         _lastVolumeEvent = event;
       default:

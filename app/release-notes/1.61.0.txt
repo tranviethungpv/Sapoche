@@ -1,0 +1,5 @@
+Your devices stay in the list, and the volume buttons follow the music
+- "Play on" now also lists the devices you used before and that are not open now ("Not here · 2 h ago"). Tap the cross to forget one you no longer use.
+- While the music plays on another device, the volume buttons of your phone change that device's volume, and a small bar shows where it is.
+- A device whose screen is off now keeps telling the others what plays: change the song from your phone and it shows at once, without waking the other screen.
+- The volume buttons of the playing device show on the others too, with its screen off.

@@ -1,0 +1,5 @@
+Máy của bạn luôn có trong danh sách, nút âm lượng đi theo nhạc
+- "Phát trên" nay liệt kê cả những máy bạn đã dùng mà đang không mở app ("Không có mạng · 2 giờ trước"). Chạm dấu ✕ để quên máy không dùng nữa.
+- Khi nhạc đang phát trên máy khác, nút âm lượng của điện thoại chỉnh âm lượng của máy đó, và một thanh nhỏ cho biết mức hiện tại.
+- Máy đang phát dù tắt màn hình vẫn báo cho các máy khác: đổi bài từ điện thoại là thấy ngay, không cần bật màn hình máy kia.
+- Nút âm lượng của máy đang phát cũng hiện trên các máy khác, kể cả khi màn hình nó tắt.

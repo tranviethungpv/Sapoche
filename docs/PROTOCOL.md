@@ -314,7 +314,10 @@ Client → server:
 - `state {rev, blob}` and `queue {blob}`: only from the playing device (`not_active` otherwise); what plays now (small, often) and the whole queue (big, when it changes). The server keeps the last of each and gives it to the other devices.
 - `cmd {to, blob}`: a command for the device `to` (`gone` if it is not here).
 - `transfer {to}`: make `to` the playing device. The playing device is sent `release {to, by}` and answers `handoff {blob}` with its queue where it stopped; the server makes `to` the playing device and sends it `handoff {from, blob}`. If the playing device does not answer in time (6 s) or goes, `blob` is the last `queue` kept.
+- `forget {id}`: drop a device that is not here from the list of the ones seen (see below); ignored for a device that is here.
 
-Server → client: `welcome {v, you, devices, active, state, queue, now}`, `devices {devices, active}`, `active {device}` (null: nobody plays), `state {from, rev, blob}`, `queue {from, blob}`, `cmd {from, blob}`, `release`, `handoff`, `deposed {by}`, `pong`, `error {code, message}`.
+Server → client: `welcome {v, you, devices, recent, active, state, queue, now}`, `devices {devices, recent, active}`, `active {device}` (null: nobody plays), `state {from, rev, blob}`, `queue {from, blob}`, `cmd {from, blob}`, `release`, `handoff`, `deposed {by}`, `pong`, `error {code, message}`.
+
+**Devices seen before.** The server keeps, for 30 days and at most 24 of them, the devices that were here and are not now: their public id, their sealed `info` (as they last said it, when it is at most 2048 characters) and when they were last seen (`seen`, the server's clock in milliseconds). `recent` is that list without the devices that are here, the latest seen first: `[{id, info, seen}]`. A device that comes back is no more in it. A client that does not know `recent` ignores it, and a server that does not send it leaves the list empty: the field only adds.
 
 **What happens when the playing device goes** (the line drops, the app is closed): nobody plays, and the last `state` and `queue` stay, so that another device can ask to play and go on from them. Messages up to about 1.5 MB (a queue); a message of a device is limited to 20 per second.

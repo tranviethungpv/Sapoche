@@ -87,4 +87,64 @@ void main() {
       }
     }
   });
+
+  test('a device that goes is listed as seen before, until it is forgotten, through the real server', skip: server.isEmpty ? 'SYNC_SERVER is not set' : null, () async {
+    final key = SyncKey.generate();
+    final made = <ConnectController>[];
+    ConnectController device(String clientId, String name) {
+      final c = ConnectController(
+        inner: FakeBackend(),
+        syncChanges: ChangeNotifier(),
+        syncKey: () => key,
+        server: () async => Uri.parse(server),
+        serverKey: () async => roomKey,
+        store: _Memory({'client': clientId}),
+        kind: () => DeviceKind.tv,
+        defaultName: () => name,
+      );
+      made.add(c);
+      return c;
+    }
+
+    Future<void> until(bool Function() ok, String why) async {
+      final end = DateTime.now().add(const Duration(seconds: 8));
+      while (!ok()) {
+        if (DateTime.now().isAfter(end)) fail('timed out: $why');
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    }
+
+    try {
+      final a = device('aaaaaaaa-5555-6666', 'Phone');
+      final b = device('bbbbbbbb-7777-8888', 'Living room');
+      await a.start();
+      await b.start();
+      await until(() => a.devices.length == 2 && b.devices.length == 2, 'both see both');
+      expect(a.recent, isEmpty);
+      b.dispose();
+      await until(() => a.devices.length == 1 && a.recent.length == 1, 'the TV is listed as seen');
+      final gone = a.recent.single;
+      expect(gone.info?.name, 'Living room');
+      expect(a.seenAgo(gone), lessThan(const Duration(seconds: 10)));
+      // A device that comes later is told too, and one that comes back is not "seen" any more
+      final c = device('cccccccc-9999-0000', 'Pad');
+      await c.start();
+      await until(() => c.recent.length == 1, 'a later device is told');
+      final back = device('bbbbbbbb-7777-8888', 'Living room');
+      await back.start();
+      await until(() => a.recent.isEmpty && a.devices.length == 3, 'the TV is back');
+      back.dispose();
+      await until(() => a.recent.length == 1, 'gone again');
+      a.forget(a.recent.single.id);
+      await until(() => c.recent.isEmpty, 'forgotten for everyone');
+      final late = device('dddddddd-1212-3434', 'Late');
+      await late.start();
+      await until(() => late.devices.length == 3, 'the last one sees the others');
+      expect(late.recent, isEmpty);
+    } finally {
+      for (final c in made) {
+        c.dispose();
+      }
+    }
+  });
 }

@@ -43,7 +43,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -132,7 +131,8 @@ class SapocheBridge(
         // The screen slows its small moving parts down while the phone is warm
         scope.launch { SapocheApp.heat.calm.collect { if (visible) emit(UiJson.calm(it, SapocheApp.heat.weak, SapocheApp.heat.veryWeak)) } }
         scope.launch { outputs.current.collect { if (visible) emit(UiJson.output(it)) } }
-        scope.launch { outputs.volume.collect { if (visible) emit(UiJson.volume(it)) } }
+        // The volume goes out with the screen off too: the buttons of this phone are what the other devices of the person show
+        scope.launch { outputs.volume.collect { emit(UiJson.volume(it)) } }
         // Progress of an update is only sent while somebody looks; the UI is brought up to date when it returns
         scope.launch { SapocheApp.updater.state.collect { if (visible) emit(UiJson.update(it)) } }
     }
@@ -333,10 +333,10 @@ class SapocheBridge(
                 }
                 coroutineScope {
                     launch {
-                        // Drift and speed change every half second and are not part of the state; and
-                        // nothing is built or sent while the screen is off, the UI catches up when it returns
-                        combine(group.view.map(::structure).distinctUntilChanged(), shown, SapocheApp.picture) { view, on, _ -> view.takeIf { on } }
-                            .filterNotNull()
+                        // Drift and speed change every half second and are not part of the state. It goes out with the screen
+                        // off too (the other devices of the person show it); `shown` is here so that a screen that comes back
+                        // is told again (see setVisible)
+                        combine(group.view.map(::structure).distinctUntilChanged(), shown, SapocheApp.picture) { view, _, _ -> view }
                             .collect { view ->
                                 val state = UiJson.state(view, group.trimMs, group.videoMode, SapocheApp.videoMaxHeight, group.playbackSpeed, SapocheApp.picture.value)
                                 if (state != lastState) {
@@ -390,9 +390,9 @@ class SapocheBridge(
                             reason: Int,
                         ) = pushPosition()
 
-                        fun pushPosition() {
-                            if (visible) emit(UiJson.position(group.view.value, group.playerInfo()))
-                        }
+                        // Play, pause, seek and a new song go out with the screen off too, as the state does; only the
+                        // ticks between them wait for the screen
+                        fun pushPosition() = emit(UiJson.position(group.view.value, group.playerInfo()))
                     }
                     group.addPlayerListener(listener)
                     try {
