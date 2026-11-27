@@ -1089,6 +1089,8 @@ class SapocheBridge(
                         call.argument<String>("label"),
                         call.argument<String>("source") ?: ListenSource.CHOSEN,
                     )
+                    "queueExport" -> return group.exportQueueJson()
+                    "queueImport" -> return group.importQueueJson(call.argument<String>("json").orEmpty(), call.argument<Boolean>("play") == true)
                     "swap" -> group.requestSwap(call.argument<String>("id").orEmpty(), trackRef(call.argument<Map<String, Any?>>("track")!!))
                     "remove" -> group.requestRemove(call.argument<String>("id").orEmpty())
                     "move" -> group.requestMove(

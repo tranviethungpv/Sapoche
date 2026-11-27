@@ -15,6 +15,7 @@ import '../widgets/volume_bar.dart';
 import '../widgets/whole_pixel_clip.dart';
 import 'classic_player.dart';
 import 'look.dart';
+import '../connect_ui.dart';
 import 'lyrics_ticker.dart';
 import 'parts.dart';
 import '../widgets/motion.dart';
@@ -212,7 +213,7 @@ class AppleMusicPlayer extends StatelessWidget {
                   const SizedBox(height: 6),
                   TransportRow(controller: controller),
                   const SizedBox(height: 6),
-                  if (!kIsWeb && panel == NowPlayingPanel.cover)
+                  if ((!kIsWeb || controllingAnother(context)) && panel == NowPlayingPanel.cover)
                     VolumeBar(controller: controller),
                   const SizedBox(height: 4),
                   PlayerToolbar(

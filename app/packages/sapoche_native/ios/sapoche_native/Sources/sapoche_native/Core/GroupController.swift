@@ -1125,6 +1125,23 @@ final class GroupController {
             return fresh.isEmpty || send(Wire.queueAddMany(fresh, playNext: playNext))
         }
     }
+    /// The personal queue as another device of this person can take it over (Connect), as `{"dropped":n,"saved":{...}}`; nil in a
+    /// room, whose queue is everybody's. The songs of this device's own music are left out and counted.
+    func exportQueueJson() -> String? {
+        if session != nil { return nil }
+        let handover = local.exportQueue()
+        guard let data = try? JSONEncoder().encode(handover.saved), let saved = String(data: data, encoding: .utf8) else { return nil }
+        return "{\"dropped\":\(handover.dropped),\"saved\":\(saved)}"
+    }
+
+    /// Takes the JSON of a queue `exportQueueJson` made on another device as the personal queue; false in a room or when it is not one.
+    func importQueueJson(_ json: String, play: Bool) -> Bool {
+        if session != nil { return false }
+        guard let saved = try? JSONDecoder().decode(SavedQueue.self, from: Data(json.utf8)) else { return false }
+        local.importQueue(saved, play: play)
+        return true
+    }
+
     /// Outside a room [tracks] become the queue and play from song [start]; a room's queue is shared, so they are only added to it.
     @discardableResult func requestPlayList(_ tracks: [TrackRef], start: Int, label: String? = nil, source: String = ListenSource.chosen) -> Bool {
         sources.mark(tracks.map(\.videoId), source: source)

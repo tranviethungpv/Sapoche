@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../data/app_settings.dart' show PlayerStyle;
+import '../../data/connect/connect_wire.dart' show DeviceKind;
 import '../../data/models.dart';
 import '../../data/music_models.dart';
 import '../../data/room_controller.dart';
@@ -17,6 +18,7 @@ import 'look.dart';
 import 'up_next_view.dart' show RepeatButton, ShuffleButton;
 import 'video_controls.dart';
 import '../player_sheet.dart';
+import '../connect_ui.dart';
 import '../scope.dart';
 import '../sleep_sheet.dart';
 import '../widgets/artwork.dart';
@@ -540,9 +542,14 @@ class PlayerMoreButton extends StatelessWidget {
     final extra = [
       if (compact)
         MenuLine('comments', Icons.comment_outlined, S.youtubeComments),
-      if (compact && !kIsWeb)
-        MenuLine('output', Icons.speaker_rounded, S.playOn),
-      if (compact) MenuLine('sleep', Icons.bedtime_outlined, S.sleepTimer),
+      if (compact && showsConnectButton(context))
+        MenuLine('output', connectLook(context, controller).icon, connectLook(context, controller).tooltip),
+      if (compact)
+        MenuLine(
+          'sleep',
+          controller.sleep.on ? Icons.bedtime_rounded : Icons.bedtime_outlined,
+          sleepMenuLabel(context, controller),
+        ),
     ];
     return TrackMenu(
       track: current,
@@ -550,7 +557,7 @@ class PlayerMoreButton extends StatelessWidget {
       extra: extra,
       onExtra: (value) => switch (value) {
         'sleep' => showSleepSheet(context, controller),
-        'output' => controller.pickOutput(),
+        'output' => openConnect(context, controller),
         'comments' => PlayerLookScope.panelOf(
           context,
         )?.call(NowPlayingPanel.comments),
@@ -591,13 +598,10 @@ class PlayerToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final scale = playerScale(MediaQuery.of(context));
-    // A browser plays through whatever the computer is set to: there is no list of outputs to open
+    // A browser plays through whatever the computer is set to: it has the button only to move the sound to another device
     final kind = this.kind ?? PlayerLookScope.of(context).toolbar;
-    final count = switch (kind) {
-      ToolbarKind.classic => kIsWeb ? 4 : 5,
-      ToolbarKind.face => kIsWeb ? 4 : 5,
-      ToolbarKind.plain => kIsWeb ? 4 : 5,
-    };
+    final connectShown = showsConnectButton(context);
+    final count = connectShown ? 5 : 4;
     return LayoutBuilder(
       builder: (context, box) {
         // Five buttons of 52 are 260 wide: more than a phone of 320 dp leaves between the margins of the player
@@ -635,7 +639,7 @@ class PlayerToolbar extends StatelessWidget {
         if (kind == ToolbarKind.face) {
           return Row(
             children: [
-              if (!kIsWeb) OutputButton(controller: controller, width: slot),
+              if (connectShown) ConnectButton(controller: controller, width: slot),
               SleepButton(controller: controller, width: slot, pill: false),
               button(
                 Icons.comment_outlined,
@@ -673,8 +677,8 @@ class PlayerToolbar extends StatelessWidget {
           // One pill for all of them: lyrics, where the sound goes, the sleep timer, the comments and the queue
           final items = [
             button(Icons.lyrics_outlined, S.lyrics, NowPlayingPanel.lyrics),
-            if (!kIsWeb)
-              OutputButton(controller: controller, width: slot, height: height),
+            if (connectShown)
+              ConnectButton(controller: controller, width: slot, height: height),
             SleepButton(
               controller: controller,
               width: slot,
@@ -690,7 +694,7 @@ class PlayerToolbar extends StatelessWidget {
           ];
           final lit = [
             panel == NowPlayingPanel.lyrics,
-            if (!kIsWeb) controller.output.kind != 'speaker',
+            if (connectShown) connectLook(context, controller).lit,
             controller.sleep.on,
             panel == NowPlayingPanel.comments,
             panel == NowPlayingPanel.upNext,
@@ -732,7 +736,7 @@ class PlayerToolbar extends StatelessWidget {
               width: slot,
               pill: box.maxWidth - (count - 1) * slot >= _pillWidth,
             ),
-            if (!kIsWeb) OutputButton(controller: controller, width: slot),
+            if (connectShown) ConnectButton(controller: controller, width: slot),
           ],
         );
       },
@@ -886,19 +890,25 @@ class DeviceLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final output = controller.output;
-    final name = output.kind != 'speaker' && output.name.isNotEmpty
+    final other = connectOf(context)?.activeDevice;
+    final elsewhere = controllingAnother(context) && other != null;
+    final name = elsewhere
+        ? S.playingOn(other.info?.name ?? '')
+        : output.kind != 'speaker' && output.name.isNotEmpty
         ? output.name
         : controller.profile.device;
-    if (kIsWeb || name.isEmpty) return const SizedBox.shrink();
+    if ((kIsWeb && !elsewhere) || name.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.speaker_phone_rounded,
+            elsewhere
+                ? deviceIcon(other.info?.kind ?? DeviceKind.phone)
+                : Icons.speaker_phone_rounded,
             size: 14,
-            color: context.palette.textSecondary,
+            color: elsewhere ? context.palette.primary : context.palette.textSecondary,
           ),
           const SizedBox(width: 4),
           Flexible(
@@ -907,7 +917,7 @@ class DeviceLine extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelMedium
-                  ?.copyWith(color: context.palette.textSecondary),
+                  ?.copyWith(color: elsewhere ? context.palette.primary : context.palette.textSecondary),
             ),
           ),
         ],
@@ -916,10 +926,11 @@ class DeviceLine extends StatelessWidget {
   }
 }
 
-/// Opens the system's list to play somewhere else than on the phone: headphones, a speaker. Its icon says where the
-/// sound goes, and it is lit up while that is not the phone itself.
-class OutputButton extends StatelessWidget {
-  const OutputButton({
+/// Opens the list of devices to play on: this one, the person's others, and the system's own outputs. Its icon says where
+/// the sound goes (the device that plays while another does, else headphones, a speaker), and it is lit up while that is not
+/// this device's own speaker.
+class ConnectButton extends StatelessWidget {
+  const ConnectButton({
     super.key,
     required this.controller,
     this.width = 52,
@@ -930,33 +941,29 @@ class OutputButton extends StatelessWidget {
   final double width;
   final double height;
 
-  static IconData _icon(String kind) => switch (kind) {
-    'headphones' => Icons.headphones_rounded,
-    'bluetooth' => Icons.bluetooth_audio_rounded,
-    'airplay' => Icons.airplay_rounded,
-    'car' => Icons.directions_car_rounded,
-    'other' => Icons.speaker_group_rounded,
-    _ => Icons.speaker_rounded,
-  };
-
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
-    final output = controller.output;
-    final away = output.kind != 'speaker';
-    return IconButton(
-      onPressed: controller.pickOutput,
-      tooltip: output.name.isEmpty ? S.playOn : '${S.playOn} · ${output.name}',
-      icon: Icon(_icon(output.kind), size: 26),
-      style: IconButton.styleFrom(
-        foregroundColor: away ? p.onPrimary : _toolTint(p),
-        backgroundColor: away ? p.primary : Colors.transparent,
-        fixedSize: Size(width, height),
-        // In the pill the button is laid out as high as it is drawn: the pill has the 48
-        tapTargetSize: height < kMinInteractiveDimension
-            ? MaterialTapTargetSize.shrinkWrap
-            : null,
-      ),
+    final connect = connectOf(context);
+    return ListenableBuilder(
+      listenable: Listenable.merge([controller, ?connect]),
+      builder: (context, _) {
+        final p = context.palette;
+        final look = connectLook(context, controller);
+        return IconButton(
+          onPressed: () => openConnect(context, controller),
+          tooltip: look.tooltip,
+          icon: Icon(look.icon, size: 26),
+          style: IconButton.styleFrom(
+            foregroundColor: look.lit ? p.onPrimary : _toolTint(p),
+            backgroundColor: look.lit ? p.primary : Colors.transparent,
+            fixedSize: Size(width, height),
+            // In the pill the button is laid out as high as it is drawn: the pill has the 48
+            tapTargetSize: height < kMinInteractiveDimension
+                ? MaterialTapTargetSize.shrinkWrap
+                : null,
+          ),
+        );
+      },
     );
   }
 }

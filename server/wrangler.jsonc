@@ -13,6 +13,10 @@
 			{
 				"name": "LEDGER",
 				"class_name": "MediaLedger"
+			},
+			{
+				"name": "CONNECT",
+				"class_name": "Connect"
 			}
 		]
 	},
@@ -21,7 +25,7 @@
 	"assets": {
 		"directory": "./web-dist",
 		"not_found_handling": "single-page-application",
-		"run_worker_first": ["/health", "/rooms", "/room/*", "/join/*", "/update/*", "/yt/*", "/lastfm", "/push/*", "/media/*", "/sync/*", "/.well-known/*"]
+		"run_worker_first": ["/health", "/rooms", "/room/*", "/join/*", "/update/*", "/yt/*", "/lastfm", "/push/*", "/media/*", "/sync/*", "/connect/*", "/.well-known/*"]
 	},
 	// Releases of the app, for updates from inside it. Create it first: wrangler r2 bucket create sapoche-releases
 	"r2_buckets": [
@@ -44,7 +48,8 @@
 		{ "name": "LIMIT_YT", "namespace_id": "5102", "simple": { "limit": 300, "period": 60 } },
 		{ "name": "LIMIT_JOIN", "namespace_id": "5103", "simple": { "limit": 120, "period": 60 } },
 		{ "name": "LIMIT_LASTFM", "namespace_id": "5104", "simple": { "limit": 120, "period": 60 } },
-		{ "name": "LIMIT_SYNC", "namespace_id": "5105", "simple": { "limit": 120, "period": 60 } }
+		{ "name": "LIMIT_SYNC", "namespace_id": "5105", "simple": { "limit": 120, "period": 60 } },
+		{ "name": "LIMIT_CONNECT", "namespace_id": "5106", "simple": { "limit": 60, "period": 60 } }
 	],
 	// Workers Logs keep only the lines the code writes (log.ts). The log of each request is off: the web app opens its
 	// WebSocket with the room key in the address, and a log of addresses would be a log of keys
@@ -64,6 +69,12 @@
 			"tag": "v2",
 			"new_sqlite_classes": [
 				"MediaLedger"
+			]
+		},
+		{
+			"tag": "v3",
+			"new_sqlite_classes": [
+				"Connect"
 			]
 		}
 	]

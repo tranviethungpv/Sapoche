@@ -10,6 +10,7 @@ import '../../strings.dart';
 import '../../theme/theme.dart';
 import '../artist_page.dart' show openArtist;
 import '../player_sheet.dart';
+import '../connect_ui.dart';
 import '../scope.dart';
 import '../cover_glow.dart';
 import '../widgets/like_button.dart';
@@ -305,6 +306,7 @@ class _TallState extends State<_Tall> {
                     onPanel: widget.onPanel,
                     kind: ToolbarKind.face,
                   ),
+                  if (controllingAnother(context)) DeviceLine(controller: _c),
                   if (_c.snapshot.inRoom) ...[
                     const SizedBox(height: 6),
                     RoomStrip(controller: _c),

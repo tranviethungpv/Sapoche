@@ -144,6 +144,14 @@ class ErrorEvent extends BackendEvent {
   final ServerError error;
 }
 
+/// A queue made to go to another device (see [Backend.queueExport]): [json] is the queue as native writes it, to be carried and
+/// given to [Backend.queueImport], and [dropped] is how many songs were left out because only this device has them.
+class QueueHandover {
+  const QueueHandover(this.json, this.dropped);
+  final String json;
+  final int dropped;
+}
+
 /// Everything the UI needs from the native side: commands and a stream of state.
 /// The player and the room connection live in the Android foreground service, not here.
 abstract class Backend {
@@ -256,6 +264,16 @@ abstract class Backend {
   /// step. In a room the queue is everybody's, so they are only added to it.
   Future<void> playList(List<Track> tracks, {int start = 0, String? label, String source = ListenSource.chosen});
   Future<void> setRepeat(Repeat mode);
+
+  /// The personal queue as another device of this person can take it over (Connect): where it stood, shuffle and its order,
+  /// repeat, the songs added by hand and the name of the list. The songs of this device's own music are left out and counted.
+  /// Null in a room, whose queue is everybody's. It touches nothing here: stop the player first for the position to be exact.
+  Future<QueueHandover?> queueExport();
+
+  /// Takes [json] (what [queueExport] gave on another device) as the whole personal queue, and plays it from where it stood
+  /// when [play]. Whatever played here stops. False in a room, or when [json] is not a queue.
+  Future<bool> queueImport(String json, {bool play = true});
+
   Future<void> remove(String itemId);
 
   /// Puts [track], another release of the same song, in place of the queue item [itemId]; the one playing carries
@@ -907,6 +925,18 @@ class NativeBackend implements Backend {
 
   @override
   Future<void> setRepeat(Repeat mode) => _call('repeat', {'mode': mode.name});
+
+  @override
+  Future<QueueHandover?> queueExport() async {
+    final text = await _call<String>('queueExport');
+    if (text == null) return null;
+    final map = jsonDecode(text) as Map<String, dynamic>;
+    return QueueHandover(jsonEncode(map['saved']), (map['dropped'] as num?)?.toInt() ?? 0);
+  }
+
+  @override
+  Future<bool> queueImport(String json, {bool play = true}) async =>
+      (await _call<bool>('queueImport', {'json': json, 'play': play})) ?? false;
 
   @override
   Future<void> remove(String itemId) => _call('remove', {'id': itemId});

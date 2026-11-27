@@ -127,6 +127,24 @@ class FakeBackend implements Backend {
   /// What the native side reports once a [playList] is done, for a test that looks at the queue it left.
   void Function(List<Track> tracks)? afterPlayList;
 
+  /// What [queueExport] gives; null as in a room.
+  QueueHandover? handover;
+
+  /// Whether [queueImport] takes the queue (a room does not).
+  bool takesQueue = true;
+
+  @override
+  Future<QueueHandover?> queueExport() async {
+    await _record('queueExport');
+    return handover;
+  }
+
+  @override
+  Future<bool> queueImport(String json, {bool play = true}) async {
+    await _record('queueImport play=$play $json');
+    return takesQueue;
+  }
+
   @override
   Future<void> playList(List<Track> tracks, {int start = 0, String? label, String source = ListenSource.chosen}) async {
     lastAddedMany = tracks;

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../data/app_settings.dart';
 import '../data/comments.dart';
+import '../data/connect/connect_controller.dart';
 import '../data/library_controller.dart';
 import '../data/music_controller.dart';
 import '../data/photo_picker.dart';
@@ -26,6 +27,7 @@ class AppModel {
     required this.update,
     required this.stickers,
     this.sync,
+    this.connect,
     this.photoPicker = pickPhoto,
     this.wallpaperPicker = pickWallpaper,
     this.chatPhotoPicker = pickChatPhotos,
@@ -61,6 +63,9 @@ class AppModel {
 
   /// Keeps the library on the server and alike on every device; null where there is none (the tests).
   final SyncController? sync;
+
+  /// The devices of the person, one of which plays; null where there is none (the tests).
+  final ConnectController? connect;
 
   /// Where the person's own picture comes from.
   final PhotoPicker photoPicker;

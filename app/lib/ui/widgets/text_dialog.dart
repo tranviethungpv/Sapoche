@@ -13,6 +13,7 @@ Future<String?> showTextDialog(
   int maxLength = 24,
   TextCapitalization capitalization = TextCapitalization.words,
   bool digits = false,
+  String? Function(String text)? helper,
 }) => showDialog<String>(
   context: context,
   animationStyle: Motion.dialog(context),
@@ -23,6 +24,7 @@ Future<String?> showTextDialog(
     maxLength: maxLength,
     capitalization: capitalization,
     digits: digits,
+    helper: helper,
   ),
 );
 
@@ -34,6 +36,7 @@ class _TextDialog extends StatefulWidget {
     required this.maxLength,
     required this.capitalization,
     required this.digits,
+    this.helper,
   });
 
   final String title;
@@ -44,6 +47,9 @@ class _TextDialog extends StatefulWidget {
 
   /// A number: the number keyboard, and nothing else can be typed.
   final bool digits;
+
+  /// A line under the field that follows what is typed (null for none), as the hour a timer would stop at.
+  final String? Function(String text)? helper;
 
   @override
   State<_TextDialog> createState() => _TextDialogState();
@@ -73,7 +79,12 @@ class _TextDialogState extends State<_TextDialog> {
         inputFormatters: widget.digits
             ? [FilteringTextInputFormatter.digitsOnly]
             : null,
-        decoration: InputDecoration(hintText: widget.hint, counterText: ''),
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          counterText: '',
+          helperText: widget.helper?.call(_text.text.trim()),
+        ),
+        onChanged: widget.helper == null ? null : (_) => setState(() {}),
         onSubmitted: (_) => _submit(),
       ),
       actions: [

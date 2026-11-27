@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/room_controller.dart';
 import '../../strings.dart';
 import '../../theme/theme.dart';
+import '../connect_ui.dart';
 import '../home_shell.dart';
 import '../player_sheet.dart';
 import 'artwork.dart';
@@ -99,6 +100,8 @@ class MiniPlayerCapsule extends StatelessWidget {
     final sheet = PlayerSheetScope.of(context);
     final current = controller.snapshot.current;
     if (current == null) return const SizedBox.shrink();
+    // Another device of the person plays: the capsule says where, in place of the artist
+    final other = controllingAnother(context) ? connectOf(context)?.activeDevice : null;
     final height = MiniPlayer.heightOf(context);
     final cover = (height - 8).clamp(0.0, 44.0);
     // The play button and the next one are the same size and on the same line
@@ -152,15 +155,17 @@ class MiniPlayerCapsule extends StatelessWidget {
                                     heightFactor: 1 - folded,
                                     child: Opacity(
                                       opacity: fading,
-                                      child: MarqueeText(
-                                        controller.snapshot.solo
-                                            ? '${current.artist} · ${S.onYourOwn}'
-                                            : current.artist,
-                                        style: theme.bodySmall?.copyWith(
-                                          color: p.textSecondary,
-                                        ),
-                                        rounds: MarqueeText.barRounds,
-                                      ),
+                                      child: other != null
+                                          ? PlayingOnLine(device: other, style: theme.bodySmall)
+                                          : MarqueeText(
+                                              controller.snapshot.solo
+                                                  ? '${current.artist} · ${S.onYourOwn}'
+                                                  : current.artist,
+                                              style: theme.bodySmall?.copyWith(
+                                                color: p.textSecondary,
+                                              ),
+                                              rounds: MarqueeText.barRounds,
+                                            ),
                                     ),
                                   ),
                               ],

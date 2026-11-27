@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../data/connect/connect_wire.dart' show DeviceKind;
 import '../../strings.dart';
 import '../../theme/theme.dart';
+import '../connect_ui.dart';
 import '../focus_zones.dart';
 import '../home_shell.dart';
 import '../player_sheet.dart';
@@ -93,12 +95,16 @@ class TvRail extends StatelessWidget {
                       ),
                       // The player is the screen of a song: on a TV there is nothing beside the pages to show it
                       if (room.snapshot.current != null)
-                        item(
-                          Icons.music_note_rounded,
-                          S.nowPlaying,
-                          false,
-                          sheet.open,
-                        ),
+                        () {
+                          // Another device of the person plays: the rail says which, and the player steers it
+                          final other = controllingAnother(context) ? connectOf(context)?.activeDevice : null;
+                          return item(
+                            other == null ? Icons.music_note_rounded : deviceIcon(other.info?.kind ?? DeviceKind.phone),
+                            other?.info?.name ?? S.nowPlaying,
+                            false,
+                            sheet.open,
+                          );
+                        }(),
                       const Spacer(),
                       item(
                         Icons.settings_outlined,

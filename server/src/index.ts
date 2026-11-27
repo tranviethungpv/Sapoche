@@ -1,3 +1,4 @@
+import { Connect, CONNECT_ROUTE, CONNECT_VERSION } from "./connect";
 import { ASSET_LINKS, joinPage, pageLanguage } from "./join-page";
 import { LASTFM_ROUTE, serveLastFm } from "./lastfm";
 import { PROTOCOL_VERSION } from "./protocol";
@@ -7,7 +8,7 @@ import { serveSync, SYNC_ROUTE } from "./sync";
 import { serveUpdate, UPDATE_ROUTE } from "./update";
 import { serveYoutube, YOUTUBE_ROUTE } from "./youtube";
 
-export { MediaLedger, Room };
+export { Connect, MediaLedger, Room };
 
 // No 0/O/1/I/L: room codes are read out loud and typed on phones
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -63,7 +64,7 @@ export default {
     const url = new URL(request.url);
 
     // Open on purpose: lets a phone tell "server down" from "wrong key"
-    if (url.pathname === "/health") return Response.json({ ok: true, protocol: PROTOCOL_VERSION });
+    if (url.pathname === "/health") return Response.json({ ok: true, protocol: PROTOCOL_VERSION, connect: CONNECT_VERSION });
 
     // Open too: an invitation link is followed before the app can send its key, and reveals nothing about a room
     const join = url.pathname.match(/^\/join\/([A-Za-z0-9]{6})$/);
@@ -88,8 +89,9 @@ export default {
     const media = url.pathname.match(MEDIA_ROUTE);
     const lastfm = url.pathname === LASTFM_ROUTE;
     const sync = url.pathname.match(SYNC_ROUTE);
+    const connect = url.pathname.match(CONNECT_ROUTE);
     const isRoomRoute = url.pathname === "/rooms" || ROOM_ROUTE.test(url.pathname);
-    if ((isRoomRoute || update || youtube || media || pushKey || lastfm || sync) && !(await authorized(request, url, env))) {
+    if ((isRoomRoute || update || youtube || media || pushKey || lastfm || sync || connect) && !(await authorized(request, url, env))) {
       return new Response("Unauthorized", { status: 401 });
     }
 
@@ -97,6 +99,7 @@ export default {
     if (youtube && (await tooOften(env.LIMIT_YT, request, "yt"))) return slowDown();
     if (lastfm && (await tooOften(env.LIMIT_LASTFM, request, "lastfm"))) return slowDown();
     if (sync && (await tooOften(env.LIMIT_SYNC, request, "sync"))) return slowDown();
+    if (connect && (await tooOften(env.LIMIT_CONNECT, request, "connect"))) return slowDown();
     if (request.method === "POST" && url.pathname === "/rooms" && (await tooOften(env.LIMIT_ROOMS, request, "rooms"))) return slowDown();
     if (ROOM_ROUTE.test(url.pathname) && (await tooOften(env.LIMIT_JOIN, request, "join"))) return slowDown();
 
@@ -106,6 +109,7 @@ export default {
     if (youtube) return serveYoutube(request, youtube[1]);
     if (lastfm) return serveLastFm(request, env);
     if (sync) return serveSync(request, env, sync);
+    if (connect) return env.CONNECT.get(env.CONNECT.idFromName(connect[1])).fetch(request);
     if (media) return serveMedia(request, env, ctx, media[1], media[2]);
 
     // Room codes are only a namespace: the Durable Object is created lazily on first connection

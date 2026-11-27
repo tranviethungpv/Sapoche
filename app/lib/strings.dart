@@ -848,6 +848,27 @@ abstract final class S {
 
   // Where the sound goes
   static String get playOn => _t('Play on', 'Phát trên');
+  static String get thisDevice => _t('This device', 'Máy này');
+  static String get yourDevices => _t('Your devices', 'Máy của bạn');
+  static String playingOn(String device) => _t('Playing on $device', 'Đang phát trên $device');
+  static String playOnDevice(String device) => _t('Play on · $device', 'Phát trên · $device');
+  static String get deviceInRoom => _t('In a room', 'Đang ở phòng');
+  static String get devicePlaying => _t('Playing', 'Đang phát');
+  static String get connectNeedSync =>
+      _t('Turn on sync to listen on your other devices.', 'Bật đồng bộ để nghe trên máy khác của bạn.');
+  static String get connectTurnOnSync => _t('Turn on sync', 'Bật đồng bộ');
+  static String get connectHint =>
+      _t('Not here? Open Sapoche on that device.', 'Không thấy máy? Mở Sapoche trên máy đó.');
+  static String get connectLooking => _t('Looking for your devices…', 'Đang tìm máy của bạn…');
+  static String get connectRefused =>
+      _t('This device cannot join: twelve at most, or another sync key.', 'Máy này không vào được: tối đa mười hai máy, hoặc khác khoá đồng bộ.');
+  static String get connectOutput => _t('Sound output of this device', 'Đầu ra âm thanh của máy này');
+  static String connectDropped(int n) => _t(
+    n == 1 ? 'Left 1 song of this device behind' : 'Left $n songs of this device behind',
+    'Bỏ $n bài chỉ có trên máy kia',
+  );
+  static String get connectName => _t('Name of this device', 'Tên của máy này');
+  static String get connectRename => _t('Rename this device', 'Đổi tên máy này');
 
   // Sleep timer
   static String get sleepTimer => _t('Sleep timer', 'Hẹn giờ tắt');
@@ -875,6 +896,42 @@ abstract final class S {
       _t('Stops at $time', 'Dừng lúc $time');
   static String get sleepStopsAfterSong =>
       _t('Stops after this song', 'Dừng sau bài này');
+  static String sleepStatusAt(String time) =>
+      _t('Music stops at $time', 'Nhạc tắt lúc $time');
+  static String get sleepStatusSong =>
+      _t('Music stops after this song', 'Nhạc tắt khi hết bài này');
+  static String get sleepSongEndShort => _t('end of song', 'hết bài');
+  static String sleepAround(String time) => '≈ $time';
+
+  /// How long is left of a timer: "12 min left", "40 s left"; [clock] (2:31) for the end of a song.
+  static String sleepLeft(Duration left, {bool clock = false}) {
+    // Rounded up, as a countdown is: it says 0 only when it is over
+    final seconds = left.isNegative ? 0 : (left.inMilliseconds + 999) ~/ 1000;
+    if (clock) {
+      final m = seconds ~/ 60;
+      final s = (seconds % 60).toString().padLeft(2, '0');
+      return _t('$m:$s left', 'còn $m:$s');
+    }
+    if (seconds < 60) return _t('$seconds s left', 'còn $seconds giây');
+    final minutes = (seconds + 59) ~/ 60;
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    return _t(
+      h == 0
+          ? '$minutes min left'
+          : m == 0
+          ? '$h h left'
+          : '$h h $m min left',
+      h == 0
+          ? 'còn $minutes phút'
+          : m == 0
+          ? 'còn $h giờ'
+          : 'còn $h giờ $m phút',
+    );
+  }
+
+  /// The line of the sleep timer in a menu while one is set: "Sleep timer · 23:45".
+  static String sleepTimerAt(String what) => '$sleepTimer · $what';
 
   // Player
   static String get buffering => _t('Loading…', 'Đang tải…');

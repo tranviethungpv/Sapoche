@@ -297,3 +297,24 @@ A device can keep its library (liked songs, playlists, folders, history, blocks)
 - `PUT /sync/<id>` with `X-Sync-Token` (what proves the writer holds the key) and `If-None-Match: *` (first write) or `If-Match: <etag>`: the new library. `412` if another device wrote first, `403` for a wrong token, `413` over 4 MiB, `428` without a condition. The server keeps a few older copies (at most ten, at least hours apart).
 - `GET /sync/<id>/versions` lists the older copies (`[{"t": ms, "size": bytes}]`, newest first); `GET /sync/<id>/v/<t>` returns one.
 - `DELETE /sync/<id>` with the token removes the library and its copies.
+
+## 5o. Connect: the devices of one person (WebSocket `/connect/<cluster>`, outside the room protocol; `connect: 1` in `/health`)
+
+Connect lets the devices of one person play one queue: exactly one of them plays, the others show it and steer it. It shares nothing with rooms (no room code, members, owner or chat; a device that is in a room does not take part). The group key is needed like for `/room/*`, and the connection is limited per address. `GET /health` says `connect: 1`; the version only grows, and only by adding.
+
+**Cluster and token.** The apps derive both from the sync key (HKDF-SHA256, `sapoche-connect/cluster` and `sapoche-connect/token`, 64 hex characters each). `<cluster>` names a Durable Object; the first device keeps `SHA-256(token)` there, and every later `hello` must show the same token (`bad_token` otherwise). A third derived value (`sapoche-connect/seal`) is a key the server never has: every word of content below is sealed with AES-256-GCM by the sender. The server carries it as an opaque string.
+
+**Messages** are JSON text. A device is known to the others by a **public id** (the start of a hash of the secret `clientId` it sent), never by the secret one.
+
+Client → server:
+- `hello {v, token, clientId, info}`: first message; `info` is the sealed name and kind of the device. Twelve devices at most (`full`); the same `clientId` again replaces its older connection (close code 4000). A refused device is closed with 4001.
+- `ping {c0}` → `pong {c0, s1}`: the clock of the server, for the devices to show the same time.
+- `info {info}`: the device changed what it says about itself.
+- `claim`: this device plays from now on (the one that did is sent `deposed`). `stop`: it stops being the playing one (it went into a room). `bye`.
+- `state {rev, blob}` and `queue {blob}`: only from the playing device (`not_active` otherwise); what plays now (small, often) and the whole queue (big, when it changes). The server keeps the last of each and gives it to the other devices.
+- `cmd {to, blob}`: a command for the device `to` (`gone` if it is not here).
+- `transfer {to}`: make `to` the playing device. The playing device is sent `release {to, by}` and answers `handoff {blob}` with its queue where it stopped; the server makes `to` the playing device and sends it `handoff {from, blob}`. If the playing device does not answer in time (6 s) or goes, `blob` is the last `queue` kept.
+
+Server → client: `welcome {v, you, devices, active, state, queue, now}`, `devices {devices, active}`, `active {device}` (null: nobody plays), `state {from, rev, blob}`, `queue {from, blob}`, `cmd {from, blob}`, `release`, `handoff`, `deposed {by}`, `pong`, `error {code, message}`.
+
+**What happens when the playing device goes** (the line drops, the app is closed): nobody plays, and the last `state` and `queue` stay, so that another device can ask to play and go on from them. Messages up to about 1.5 MB (a queue); a message of a device is limited to 20 per second.

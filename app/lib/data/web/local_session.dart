@@ -85,6 +85,13 @@ class SavedQueue {
   }
 }
 
+/// A queue handed to another device, and how many songs were left out because only this device has them.
+class Handover {
+  const Handover(this.saved, this.dropped);
+  final SavedQueue saved;
+  final int dropped;
+}
+
 const _keepLabel = Object();
 
 class LocalSnapshot {
@@ -750,6 +757,70 @@ class LocalSession {
         label: s.label,
       ),
     );
+  }
+
+  /// What this queue is now, to hand over to another device (Connect): [save] with the songs of this device's own music
+  /// (`local:`) taken out, since the other device has no such file; [Handover.dropped] says how many. The index follows the
+  /// song that was playing (the next one when that was one of them), and the queued group and the shuffle order keep only
+  /// what is left.
+  Handover exportQueue() {
+    final s = _snapshot;
+    final position = _loadedId != null ? player.positionMs() : _pendingPositionMs;
+    final orderedQueued = [
+      for (final e in s.queue.skip(s.index + 1))
+        if (s.queued.contains(e.id)) e.id,
+    ];
+    final kept = [for (final e in s.queue) if (!e.isLocal) e];
+    SavedQueue of(List<QueueEntry> queue, int index, int positionMs, bool finished, List<String> order, List<String> queued) => SavedQueue(
+      queue: queue,
+      index: index,
+      repeat: s.repeat,
+      positionMs: positionMs,
+      finished: finished,
+      shuffle: s.shuffle,
+      shuffleOrder: order,
+      queued: queued,
+      label: s.label,
+    );
+    if (kept.length == s.queue.length) return Handover(of(s.queue, s.index, position, s.finished, _shuffleOrder, orderedQueued), 0);
+    final keptIds = {for (final e in kept) e.id};
+    final current = s.index < s.queue.length ? s.queue[s.index] : null;
+    final atCurrent = current != null && keptIds.contains(current.id);
+    final int index;
+    if (atCurrent) {
+      index = kept.indexWhere((e) => e.id == current.id);
+    } else {
+      // The song that was playing is gone: the next one that stays, from the start
+      final next = s.queue.skip(s.index + 1).where((e) => keptIds.contains(e.id)).firstOrNull;
+      index = next == null ? max(0, kept.length - 1) : kept.indexWhere((e) => e.id == next.id);
+    }
+    return Handover(
+      of(
+        kept,
+        index,
+        atCurrent ? position : 0,
+        s.finished && kept.isNotEmpty,
+        [for (final id in _shuffleOrder) if (keptIds.contains(id)) id],
+        [for (final id in orderedQueued) if (keptIds.contains(id)) id],
+      ),
+      s.queue.length - kept.length,
+    );
+  }
+
+  /// Takes [saved] (what another device handed over) as the whole queue, where it stood: whatever played here stops. With
+  /// [play] the song starts from its position; without it the queue waits, as one that was restored does.
+  void importQueue(SavedQueue saved, {required bool play}) {
+    _stopPlayer();
+    _recoveries = 0;
+    _skippedInARow = 0;
+    _playOnLoad = false;
+    _playedQueued.clear();
+    _stuckVideoIds.clear();
+    _shuffleOrder = saved.shuffleOrder;
+    _pendingPositionMs = saved.finished ? 0 : saved.positionMs;
+    _update((_) => _restore(saved));
+    save();
+    if (play) this.play();
   }
 
   // ------------------------------------------------------------------ playing

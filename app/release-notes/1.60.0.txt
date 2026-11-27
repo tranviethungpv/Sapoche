@@ -1,0 +1,9 @@
+Listen on another device
+- Start music on your phone, then move it to your TV, tablet or a browser with one tap: press the "Play on" button on the player and pick the device. It carries on from the same second, with the same queue, shuffle and repeat, and the device it came from stops.
+- The other devices become a remote control. While your TV plays, your phone shows the song and the queue, and play, pause, skip, seek, volume, adding songs and the sleep timer all work on the TV.
+- The bar at the bottom says "Playing on <device>", so you always know where the sound is.
+- It works between devices that share the same sync key (Settings > Backup & sync): no codes to type each time. Turn on sync once on each device. Name a device from the "Play on" sheet.
+- If the device that was playing is switched off, pick another one and the music goes on from where it stopped. Songs that are files on only one phone cannot move; you are told how many stayed behind.
+- Rooms are separate: a device in a room does not take part.
+The sleep timer shows the time
+- Every choice now says the time the music will stop, and "End of this song" says about when. While a timer is set, the sheet shows "Music stops at 23:45 · 12 min left" with a button to turn it off. The "…" menu of the small player shows the time too.

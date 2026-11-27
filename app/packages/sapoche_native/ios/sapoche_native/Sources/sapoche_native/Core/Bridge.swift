@@ -1011,6 +1011,8 @@ final class Bridge {
         case "repeat": controller.requestRepeat(string("mode"))
         case "addMany": controller.requestAddMany(tracks(), playNext: bool("next"), source: sourceArg(), queued: args["queued"] as? Bool ?? true)
         case "playList": controller.requestPlayList(tracks(), start: int("start"), label: args["label"] as? String, source: sourceArg())
+        case "queueExport": return controller.exportQueueJson()
+        case "queueImport": return controller.importQueueJson(string("json"), play: bool("play"))
         case "swap": controller.requestSwap(string("id"), try track(args["track"] as? [String: Any]))
         case "remove": controller.requestRemove(string("id"))
         case "move": controller.requestMove(string("id"), int("to"), queued: args["queued"] as? Bool)

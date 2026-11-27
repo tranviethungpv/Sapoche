@@ -17,6 +17,7 @@ import '../widgets/like_button.dart';
 import '../widgets/marquee_text.dart';
 import '../widgets/playback_bar.dart';
 import '../widgets/volume_bar.dart';
+import '../connect_ui.dart';
 import 'look.dart';
 import 'parts.dart';
 import '../widgets/motion.dart';
@@ -249,10 +250,11 @@ class ClassicPlayer extends StatelessWidget {
               // A browser has no volume of its own to set: the tab follows the computer's
               // Not while the lyrics or the queue are open: the queue gets the room (it shows a row more); the bar is
               // there again with the cover
-              if (!kIsWeb && panel == NowPlayingPanel.cover)
+              if ((!kIsWeb || controllingAnother(context)) && panel == NowPlayingPanel.cover)
                 VolumeBar(controller: _c),
               const SizedBox(height: 4),
               PlayerToolbar(controller: _c, panel: panel, onPanel: onPanel),
+              if (controllingAnother(context)) DeviceLine(controller: _c),
               if (_c.snapshot.inRoom) ...[
                 const SizedBox(height: 6),
                 RoomStrip(controller: _c),

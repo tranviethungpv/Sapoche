@@ -32,11 +32,15 @@ import app.sapoche.sync.QueueFile
 import app.sapoche.sync.Queues
 import app.sapoche.sync.RoomClient
 import app.sapoche.sync.RoomState
+import app.sapoche.sync.SavedQueue
 import app.sapoche.sync.Sleep
 import app.sapoche.sync.SleepTimer
 import app.sapoche.sync.TasteSeed
 import app.sapoche.sync.TrackRef
 import app.sapoche.sync.ServerMessage
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -1099,6 +1103,30 @@ class GroupController(
     }
 
     /** Outside a room [tracks] become the queue and play from song [start]; a room's queue is shared, so they are only added to it. */
+    /**
+     * The personal queue as another device of this person can take it over (Connect), as `{"dropped":n,"saved":{...}}`; null in a
+     * room, whose queue is everybody's. The songs of this device's own music are left out and counted.
+     */
+    fun exportQueueJson(): String? {
+        if (session != null) return null
+        val handover = local.exportQueue()
+        return """{"dropped":${handover.dropped},"saved":${Protocol.json.encodeToString(handover.saved)}}"""
+    }
+
+    /** Takes the JSON of a queue [exportQueueJson] made on another device as the personal queue; false in a room or when it is not one. */
+    fun importQueueJson(json: String, play: Boolean): Boolean {
+        if (session != null) return false
+        val saved = try {
+            Protocol.json.decodeFromString<SavedQueue>(json)
+        } catch (_: SerializationException) {
+            return false
+        } catch (_: IllegalArgumentException) {
+            return false
+        }
+        local.importQueue(saved, play)
+        return true
+    }
+
     fun requestPlayList(tracks: List<TrackRef>, start: Int, label: String? = null, source: String = ListenSource.CHOSEN): Boolean {
         sources.mark(tracks.map { it.videoId }, source)
         return onQueue({ it.playList(tracks, start, label) }) { addToQueue(tracks, playNext = false) }

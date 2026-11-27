@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:fake_async/fake_async.dart';
@@ -768,6 +769,87 @@ void main() {
       async.elapse(const Duration(seconds: 9));
       expect(problems.single.kind, ProblemKind.slow);
     });
+  });
+
+  // Connect: a queue handed to another device. The same cases are in LocalSessionTest.kt and LocalSessionTests.swift
+  test('a queue handed over keeps what makes it the same queue', () {
+    SavedQueue? over;
+    List<QueueEntry>? before;
+    run(() {
+      session.playList([for (var i = 1; i <= 4; i++) song('$i')], 1, label: 'Album');
+      session.add([song('5')], next: false);
+      session.setShuffle(true);
+      session.setRepeat('all');
+      async.elapse(const Duration(milliseconds: 10));
+      player.position = 5000;
+      session.pause();
+      final handed = session.exportQueue();
+      expect(handed.dropped, 0);
+      // It travels as the JSON the queue file is
+      over = SavedQueue.fromJson(jsonDecode(jsonEncode(handed.saved.toJson())));
+      before = session.snapshot.queue;
+    });
+    final first = session.snapshot;
+    run(() {
+      session.importQueue(over!, play: true);
+      async.elapse(const Duration(milliseconds: 10));
+      final after = session.snapshot;
+      expect(after.queue.map((e) => e.id), before!.map((e) => e.id));
+      expect(after.index, first.index);
+      expect(after.repeat, 'all');
+      expect(after.shuffle, isTrue);
+      expect(after.queued, first.queued);
+      expect(after.label, 'Album');
+      expect(player.playing, isTrue);
+      expect(player.calls.where((c) => c.startsWith('prepare')).last, 'prepare ${first.queue[first.index].id} @5000');
+    });
+  });
+
+  test('importing a queue stops what played and without play waits where it was', () {
+    run(() {
+      session.add([song('1'), song('2')], next: false);
+      async.elapse(const Duration(milliseconds: 10));
+      expect(player.playing, isTrue);
+      session.importQueue(
+        SavedQueue(queue: [QueueEntry(id: 'z', videoId: 'zzzzzzzzzzz', title: 'Other', artist: 'x', durMs: 200000, addedBy: '')], positionMs: 42000),
+        play: false,
+      );
+      async.elapse(const Duration(milliseconds: 10));
+      expect(player.playing, isFalse);
+      expect(titles(), ['Other']);
+      expect(session.restoredPositionMs, 42000);
+    });
+  });
+
+  test('the songs only this device has are left out of a hand-over and the index follows the song', () {
+    QueueEntry entry(String id, String videoId, String title) => QueueEntry(id: id, videoId: videoId, title: title, artist: 'x', durMs: 200000, addedBy: '');
+    final one = entry('a', 'aaaaaaaaaaa', 'One');
+    final mine = entry('b', 'local:0123456789abcdef', 'Mine');
+    final three = entry('c', 'ccccccccccc', 'Three');
+    final four = entry('d', 'ddddddddddd', 'Four');
+    // On a song that goes with it
+    run(() {
+      final kept = session.exportQueue();
+      expect(kept.dropped, 1);
+      expect(kept.saved.queue.map((e) => e.title), ['One', 'Three', 'Four']);
+      expect(kept.saved.index, 1);
+      expect(kept.saved.positionMs, 9000);
+      expect(kept.saved.queued, ['d'], reason: 'only what is still to come after the song counts as queued');
+      expect(kept.saved.shuffleOrder, ['d', 'c', 'a']);
+    }, from: SavedQueue(queue: [one, mine, three, four], index: 2, positionMs: 9000, queued: const ['c', 'd'], shuffleOrder: const ['d', 'b', 'c', 'a']));
+    // On a song that stays behind: the next that goes, from its start
+    run(() {
+      final next = session.exportQueue();
+      expect(next.saved.index, 1);
+      expect(next.saved.queue[next.saved.index].title, 'Three');
+      expect(next.saved.positionMs, 0);
+    }, from: SavedQueue(queue: [one, mine, three, four], index: 1, positionMs: 9000));
+    // A queue of nothing but its own music hands over an empty one
+    run(() {
+      final only = session.exportQueue();
+      expect(only.saved.queue, isEmpty);
+      expect(only.dropped, 1);
+    }, from: SavedQueue(queue: [mine]));
   });
 }
 

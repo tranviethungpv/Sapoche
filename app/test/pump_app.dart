@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sapoche/app.dart';
 import 'package:sapoche/data/backend.dart';
 import 'package:sapoche/data/comments.dart';
+import 'package:sapoche/data/connect/connect_backend.dart';
+import 'package:sapoche/data/connect/connect_controller.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/app_settings.dart';
 import 'package:sapoche/data/library_controller.dart';
@@ -70,6 +72,9 @@ Future<(FakeBackend, RoomController)> pumpApp(
 
   /// The engine that keeps the library on the server; by default there is none and the settings do not offer sync.
   SyncController? sync,
+
+  /// The devices of the person: made with the backend of the test, which is the one that plays here.
+  ConnectController Function(FakeBackend backend)? connect,
 }) async {
   // A tall phone-shaped window; the default 800x600 one is not what the app runs on. Test text is
   // drawn with the wide Ahem font, so it is 540 dp wide instead of the usual 360 to avoid false overflows.
@@ -95,7 +100,8 @@ Future<(FakeBackend, RoomController)> pumpApp(
   prepare?.call(backend);
   final recents = await RecentRooms.load();
   final searches = await RecentSearches.load();
-  final room = RoomController(backend, recents: recents);
+  final links = connect?.call(backend);
+  final room = RoomController(links == null ? backend : ConnectBackend(backend, links), recents: recents);
   final library = LibraryController(backend, quiet: Duration.zero);
   final settings = await AppSettings.load(shelfRandom: SteadyRandom());
   await tester.pumpWidget(
@@ -110,6 +116,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
         comments: CommentsController(CommentsClient(commentsTransport ?? (_) async => throw StateError('no comments'), offload: false)),
         update: UpdateController(backend),
         sync: sync,
+        connect: links,
         stickers:
             stickers ??
             StickerStore(
@@ -127,6 +134,7 @@ Future<(FakeBackend, RoomController)> pumpApp(
       ),
     ),
   );
+  await links?.start();
   await room.start();
   await library.start();
   if (listen) {

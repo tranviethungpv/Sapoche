@@ -16,6 +16,7 @@ class SheetTile extends StatelessWidget {
     this.chevron = false,
     this.destructive = false,
     this.trailing,
+    this.detail,
     this.below,
     this.enabled = true,
   });
@@ -33,6 +34,9 @@ class SheetTile extends StatelessWidget {
   /// Leaving: in the colour of a warning.
   final bool destructive;
   final Widget? trailing;
+
+  /// A few words at the end of the line (an hour, a size): text only, so the row stays one to reach by key.
+  final String? detail;
 
   /// Under the line of help, for a link.
   final Widget? below;
@@ -53,6 +57,11 @@ class SheetTile extends StatelessWidget {
         trailing ??
         (onChanged != null
             ? Switch(value: value ?? false, onChanged: onChanged)
+            : detail != null
+            ? Text(
+                detail!,
+                style: theme.bodyMedium?.copyWith(color: p.textSecondary),
+              )
             : chevron
             ? Icon(Icons.chevron_right_rounded, color: p.textTertiary)
             : null);

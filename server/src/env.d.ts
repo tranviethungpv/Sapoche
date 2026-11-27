@@ -1,5 +1,7 @@
 interface Env {
   ROOMS: DurableObjectNamespace<import("./room").Room>;
+  /** One per cluster of a person's devices (Connect); see connect.ts. */
+  CONNECT: DurableObjectNamespace<import("./connect").Connect>;
   /** Private bucket with the app's releases; see update.ts. Not set where no bucket is bound. */
   RELEASES?: R2Bucket;
   /** Private bucket with the pictures sent in chat, encrypted by the sender; see media.ts. Not set where no bucket is bound. */
@@ -20,11 +22,14 @@ interface Env {
   LIMIT_JOIN?: RateLimit;
   LIMIT_LASTFM?: RateLimit;
   LIMIT_SYNC?: RateLimit;
+  LIMIT_CONNECT?: RateLimit;
   /**
    * Last.fm (see lastfm.ts): the API key of the account made at last.fm/api/account/create is in `vars` of wrangler.jsonc (it is
    * not secret: it is in the address of the page where a person allows the app), and its shared secret is a secret:
    * `wrangler secret put LASTFM_SECRET`. Without both the server answers 503 and the apps hide Last.fm.
    */
+  /** How long (ms) the playing device has to hand its queue over in Connect before the last one kept is used; only the tests shorten it. */
+  CONNECT_HANDOFF_MS?: string;
   /** How old (ms) the newest old version of a synced library must be before the next is kept; only the tests shorten it (see sync.ts). */
   SYNC_VERSION_GAP_MS?: string;
   LASTFM_KEY?: string;

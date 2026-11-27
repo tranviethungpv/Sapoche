@@ -649,6 +649,61 @@ final class LocalSession {
                            shuffle: s.shuffle, shuffleOrder: shuffleOrder, queued: orderedQueued, label: s.label))
     }
 
+    /// The queue as another device can take it over (Connect), and how many songs were left out because only this device has them.
+    struct Handover: Equatable {
+        var saved: SavedQueue
+        var dropped: Int
+    }
+
+    /// What this queue is now, to hand over to another device: `save` with the songs of this device's own music (`local:`) taken
+    /// out, since the other device has no such file. The index follows the song that was playing (the next one when that was
+    /// one of them), and the queued group and the shuffle order keep only what is left.
+    func exportQueue() -> Handover {
+        let s = snapshot.value
+        let position = loadedId != nil ? player.positionMs() : pendingPositionMs
+        let orderedQueued = s.queue.dropFirst(s.index + 1).compactMap { s.queued.contains($0.id) ? $0.id : nil }
+        let whole = SavedQueue(queue: s.queue, index: s.index, repeatMode: s.repeatMode, positionMs: position, finished: s.finished,
+                               shuffle: s.shuffle, shuffleOrder: shuffleOrder, queued: orderedQueued, label: s.label)
+        let kept = s.queue.filter { !LocalMusic.isLocal($0.videoId) }
+        if kept.count == s.queue.count { return Handover(saved: whole, dropped: 0) }
+        let keptIds = Set(kept.map(\.id))
+        let current = s.index < s.queue.count ? s.queue[s.index] : nil
+        let atCurrent = current.map { keptIds.contains($0.id) } ?? false
+        let index: Int
+        if let current, atCurrent {
+            index = kept.firstIndex { $0.id == current.id } ?? 0
+        } else if let next = s.queue.dropFirst(s.index + 1).first(where: { keptIds.contains($0.id) }) {
+            // The song that was playing is gone: the next one that stays, from the start
+            index = kept.firstIndex { $0.id == next.id } ?? 0
+        } else {
+            index = max(0, kept.count - 1)
+        }
+        var out = whole
+        out.queue = kept
+        out.index = index
+        out.positionMs = atCurrent ? position : 0
+        out.finished = s.finished && !kept.isEmpty
+        out.shuffleOrder = shuffleOrder.filter { keptIds.contains($0) }
+        out.queued = orderedQueued.filter { keptIds.contains($0) }
+        return Handover(saved: out, dropped: s.queue.count - kept.count)
+    }
+
+    /// Takes `saved` (what another device handed over) as the whole queue, where it stood: whatever played here stops. With
+    /// `play` the song starts from its position; without it the queue waits, as one that was restored does.
+    func importQueue(_ saved: SavedQueue, play shouldPlay: Bool) {
+        stopPlayer()
+        recoveries = 0
+        skippedInARow = 0
+        playOnLoad = false
+        playedQueued.removeAll()
+        stuckVideoIds.removeAll()
+        shuffleOrder = saved.shuffleOrder
+        pendingPositionMs = saved.finished ? 0 : saved.positionMs
+        snapshot.set(LocalSession.restore(saved))
+        save()
+        if shouldPlay { play() }
+    }
+
     // ------------------------------------------------------------------ playing
 
     /// Moves [delta] items along the queue; at the ends it wraps when repeating all, and otherwise stops.

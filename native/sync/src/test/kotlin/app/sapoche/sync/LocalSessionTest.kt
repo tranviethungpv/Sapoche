@@ -6,6 +6,8 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import java.io.File
 import kotlin.random.Random
 import kotlin.test.Test
@@ -1411,5 +1413,82 @@ class LocalSessionTest {
             file.delete()
             File(file.path + ".tmp").delete()
         }
+    }
+
+    // ---- Connect: a queue handed to another device. The same cases are in LocalSessionTests.swift and web/local_session_test.dart
+
+    @Test
+    fun `a queue handed over keeps what makes it the same queue`() = runTest {
+        val a = harness()
+        a.session.playList(listOf(track(1), track(2), track(3), track(4)), start = 1, label = "Album")
+        a.session.add(listOf(track(5)), next = false)
+        a.session.setShuffle(true)
+        a.session.setRepeat("all")
+        step(5000)
+        a.session.pause()
+        val handed = a.session.exportQueue()
+        assertEquals(0, handed.dropped)
+        // It travels as the JSON the queue file is
+        val over = Protocol.json.decodeFromString<SavedQueue>(Protocol.json.encodeToString(handed.saved))
+
+        val b = harness()
+        b.session.importQueue(over, play = true)
+        step()
+        val before = a.session.snapshot.value
+        val after = b.session.snapshot.value
+        assertEquals(before.queue, after.queue)
+        assertEquals(before.index, after.index)
+        assertEquals("all", after.repeat)
+        assertTrue(after.shuffle)
+        assertEquals(before.queued, after.queued)
+        assertEquals("Album", after.label)
+        assertEquals(before.current?.title, b.player.loaded?.title)
+        assertTrue(b.player.playing)
+        assertTrue(b.player.position in 4000..7000, "went on where it stopped, was ${b.player.position}")
+        // Shuffle off puts the songs back in the order they had, as it would have on the first device
+        a.session.setShuffle(false)
+        b.session.setShuffle(false)
+        assertEquals(a.titles(), b.titles())
+    }
+
+    @Test
+    fun `importing a queue stops what played and without play waits where it was`() = runTest {
+        val h = harness()
+        h.session.add(listOf(track(1), track(2)), next = false)
+        step(3000)
+        assertTrue(h.player.playing)
+        val song = QueueItem("z", "zzzzzzzzzzz", "Other", "x", null, 200_000, "")
+        h.session.importQueue(SavedQueue(listOf(song), positionMs = 42_000), play = false)
+        step()
+        assertFalse(h.player.playing)
+        assertEquals(listOf("Other"), h.titles())
+        assertEquals(42_000L, h.session.restoredPositionMs)
+    }
+
+    @Test
+    fun `the songs only this device has are left out of a hand-over and the index follows the song`() = runTest {
+        val one = QueueItem("a", "aaaaaaaaaaa", "One", "x", null, 200_000, "")
+        val mine = QueueItem("b", "local:0123456789abcdef", "Mine", "x", null, 200_000, "")
+        val three = QueueItem("c", "ccccccccccc", "Three", "x", null, 200_000, "")
+        val four = QueueItem("d", "ddddddddddd", "Four", "x", null, 200_000, "")
+        // On a song that goes with it
+        val on = harness(SavedQueue(listOf(one, mine, three, four), index = 2, positionMs = 9_000, queued = listOf("c", "d"), shuffleOrder = listOf("d", "b", "c", "a")))
+        val kept = on.session.exportQueue()
+        assertEquals(1, kept.dropped)
+        assertEquals(listOf("One", "Three", "Four"), kept.saved.queue.map { it.title })
+        assertEquals(1, kept.saved.index)
+        assertEquals(9_000L, kept.saved.positionMs)
+        assertEquals(listOf("d"), kept.saved.queued, "only what is still to come after the song counts as queued")
+        assertEquals(listOf("d", "c", "a"), kept.saved.shuffleOrder)
+        // On a song that stays behind: the next that goes, from its start
+        val at = harness(SavedQueue(listOf(one, mine, three, four), index = 1, positionMs = 9_000))
+        val next = at.session.exportQueue()
+        assertEquals(1, next.saved.index)
+        assertEquals("Three", next.saved.queue[next.saved.index].title)
+        assertEquals(0L, next.saved.positionMs)
+        // A queue of nothing but its own music hands over an empty one
+        val only = harness(SavedQueue(listOf(mine)))
+        assertEquals(SavedQueue(), only.session.exportQueue().saved.copy(label = null))
+        assertEquals(1, only.session.exportQueue().dropped)
     }
 }

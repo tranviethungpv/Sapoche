@@ -1317,6 +1317,79 @@ final class LocalSessionTests: XCTestCase {
         try "{ not json".write(to: url, atomically: true, encoding: .utf8)
         XCTAssertNil(file.read(), "a damaged file means an empty queue, not a crash")
     }
+
+    // MARK: Connect: a queue handed to another device. The same cases are in LocalSessionTest.kt and web/local_session_test.dart
+
+    func testAQueueHandedOverKeepsWhatMakesItTheSameQueue() async throws {
+        let a = harness()
+        a.session.playList((1...4).map(track), start: 1, label: "Album")
+        a.session.add([track(5)], next: false)
+        a.session.setShuffle(true)
+        a.session.setRepeat("all")
+        await a.step(5000)
+        a.session.pause()
+        let handed = a.session.exportQueue()
+        XCTAssertEqual(handed.dropped, 0)
+        // It travels as the JSON the queue file is
+        let over = try JSONDecoder().decode(SavedQueue.self, from: JSONEncoder().encode(handed.saved))
+
+        let b = harness()
+        b.session.importQueue(over, play: true)
+        await b.step()
+        let before = a.session.snapshot.value
+        let after = b.session.snapshot.value
+        XCTAssertEqual(before.queue, after.queue)
+        XCTAssertEqual(before.index, after.index)
+        XCTAssertEqual(after.repeatMode, "all")
+        XCTAssertTrue(after.shuffle)
+        XCTAssertEqual(before.queued, after.queued)
+        XCTAssertEqual(after.label, "Album")
+        XCTAssertEqual(b.player.loaded?.title, before.current?.title)
+        XCTAssertTrue(b.player.playing)
+        XCTAssertTrue((4000...7000).contains(b.player.position), "went on where it stopped, was \(b.player.position)")
+        // Shuffle off puts the songs back in the order they had, as it would have on the first device
+        a.session.setShuffle(false)
+        b.session.setShuffle(false)
+        XCTAssertEqual(a.titles(), b.titles())
+    }
+
+    func testImportingAQueueStopsWhatPlayedAndWithoutPlayWaitsWhereItWas() async {
+        let h = harness()
+        h.session.add([track(1), track(2)], next: false)
+        await h.step(3000)
+        XCTAssertTrue(h.player.playing)
+        h.session.importQueue(SavedQueue(queue: [item("z", "zzzzzzzzzzz", "Other")], positionMs: 42_000), play: false)
+        await h.step()
+        XCTAssertFalse(h.player.playing)
+        XCTAssertEqual(h.titles(), ["Other"])
+        XCTAssertEqual(h.session.restoredPositionMs, 42_000)
+    }
+
+    func testTheSongsOnlyThisDeviceHasAreLeftOutOfAHandOverAndTheIndexFollowsTheSong() {
+        let one = item("a", "aaaaaaaaaaa", "One")
+        let mine = item("b", "local:0123456789abcdef", "Mine")
+        let three = item("c", "ccccccccccc", "Three")
+        let four = item("d", "ddddddddddd", "Four")
+        // On a song that goes with it
+        let on = harness(SavedQueue(queue: [one, mine, three, four], index: 2, positionMs: 9_000, shuffleOrder: ["d", "b", "c", "a"], queued: ["c", "d"]))
+        let kept = on.session.exportQueue()
+        XCTAssertEqual(kept.dropped, 1)
+        XCTAssertEqual(kept.saved.queue.map(\.title), ["One", "Three", "Four"])
+        XCTAssertEqual(kept.saved.index, 1)
+        XCTAssertEqual(kept.saved.positionMs, 9_000)
+        XCTAssertEqual(kept.saved.queued, ["d"], "only what is still to come after the song counts as queued")
+        XCTAssertEqual(kept.saved.shuffleOrder, ["d", "c", "a"])
+        // On a song that stays behind: the next that goes, from its start
+        let at = harness(SavedQueue(queue: [one, mine, three, four], index: 1, positionMs: 9_000))
+        let next = at.session.exportQueue()
+        XCTAssertEqual(next.saved.index, 1)
+        XCTAssertEqual(next.saved.queue[next.saved.index].title, "Three")
+        XCTAssertEqual(next.saved.positionMs, 0)
+        // A queue of nothing but its own music hands over an empty one
+        let only = harness(SavedQueue(queue: [mine]))
+        XCTAssertEqual(only.session.exportQueue().saved, SavedQueue())
+        XCTAssertEqual(only.session.exportQueue().dropped, 1)
+    }
 }
 
 /// A random source that always gives the same numbers.

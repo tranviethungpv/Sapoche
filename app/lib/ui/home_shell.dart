@@ -308,12 +308,22 @@ class _HomeShellState extends State<HomeShell>
   StreamSubscription<PlayProblem>? _playProblems;
   StreamSubscription<String>? _libraryMessages;
   StreamSubscription<Notice>? _notices;
+  ValueNotifier<int>? _dropped;
   RoomController? _watched;
   UpdateController? _update;
   Timer? _nudgeTimer;
   Timer? _versionTimer;
   bool _newVersionTold = false;
   String? _precachedCover;
+
+  void _tellDropped() {
+    final left = _dropped?.value ?? 0;
+    if (left == 0 || !mounted) return;
+    _dropped!.value = 0;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(S.connectDropped(left))));
+  }
 
   @override
   void didChangeDependencies() {
@@ -338,6 +348,9 @@ class _HomeShellState extends State<HomeShell>
           ),
         );
     });
+    // Songs only the other device had stay behind when the playing moves here: the person is told once
+    _dropped = AppScope.of(context).connect?.dropped;
+    _dropped?.addListener(_tellDropped);
     _libraryMessages = AppScope.of(context).library.messages.listen((text) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -535,6 +548,7 @@ class _HomeShellState extends State<HomeShell>
     _playProblems?.cancel();
     _libraryMessages?.cancel();
     _notices?.cancel();
+    _dropped?.removeListener(_tellDropped);
     _sheet.dispose();
     _zones.dispose();
     _searchFocus.dispose();

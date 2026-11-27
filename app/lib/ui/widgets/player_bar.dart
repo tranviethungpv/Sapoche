@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/room_controller.dart';
 import '../../strings.dart';
+import '../connect_ui.dart';
 import '../../theme/theme.dart';
 import '../player_sheet.dart';
 import 'artwork.dart';
@@ -84,6 +85,8 @@ class PlayerBarBody extends StatelessWidget {
     final sheet = PlayerSheetScope.of(context);
     final current = controller.snapshot.current;
     if (current == null) return const SizedBox.shrink();
+    // Another device of the person plays: the bar says where, in place of the artist
+    final other = controllingAnother(context) ? connectOf(context)?.activeDevice : null;
     const side = (PlayerBar.height - _cover) / 2;
     return Glass(
       borderRadius: BorderRadius.circular(PlayerBar.height / 2),
@@ -122,15 +125,17 @@ class PlayerBarBody extends StatelessWidget {
                             style: theme.titleSmall,
                             rounds: MarqueeText.barRounds,
                           ),
-                          MarqueeText(
-                            controller.snapshot.solo
-                                ? '${current.artist} · ${S.onYourOwn}'
-                                : current.artist,
-                            style: theme.bodySmall?.copyWith(
-                              color: p.textSecondary,
-                            ),
-                            rounds: MarqueeText.barRounds,
-                          ),
+                          other != null
+                              ? PlayingOnLine(device: other, style: theme.bodySmall)
+                              : MarqueeText(
+                                  controller.snapshot.solo
+                                      ? '${current.artist} · ${S.onYourOwn}'
+                                      : current.artist,
+                                  style: theme.bodySmall?.copyWith(
+                                    color: p.textSecondary,
+                                  ),
+                                  rounds: MarqueeText.barRounds,
+                                ),
                         ],
                       ),
                     ),

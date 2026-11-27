@@ -1,0 +1,9 @@
+Nghe trên máy khác
+- Đang nghe trên điện thoại, bấm một cái là chuyển sang TV, máy tính bảng hay trình duyệt: bấm nút "Phát trên" ở trình phát rồi chọn máy. Nhạc tiếp tục đúng giây đó, cùng hàng chờ, xáo trộn và lặp lại, còn máy cũ thì dừng.
+- Các máy còn lại thành cái điều khiển. Khi TV đang phát, điện thoại hiện bài và hàng chờ, còn phát, dừng, chuyển bài, tua, âm lượng, thêm bài và hẹn giờ tắt đều tác động lên TV.
+- Thanh dưới ghi "Đang phát trên <máy>", nên lúc nào bạn cũng biết tiếng đang ở đâu.
+- Dùng được giữa các máy cùng khoá đồng bộ (Cài đặt > Sao lưu và đồng bộ), không phải gõ mã mỗi lần. Chỉ cần bật đồng bộ một lần trên mỗi máy. Đổi tên máy ngay trong tờ "Phát trên".
+- Nếu máy đang phát bị tắt, chọn máy khác là nhạc tiếp tục từ chỗ vừa dừng. Bài là tệp chỉ có trên một điện thoại thì không chuyển được; app báo có bao nhiêu bài ở lại.
+- Phòng nghe chung tách riêng: máy đang ở trong phòng thì không tham gia.
+Hẹn giờ tắt cho thấy giờ
+- Mỗi lựa chọn ghi giờ nhạc sẽ tắt, "Hết bài này" ghi giờ ước chừng. Khi đang hẹn, tờ này hiện "Nhạc tắt lúc 23:45 · còn 12 phút" kèm nút tắt hẹn giờ. Menu "…" của trình phát nhỏ cũng ghi giờ.

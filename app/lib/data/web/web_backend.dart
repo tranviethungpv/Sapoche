@@ -812,6 +812,28 @@ class WebBackend extends BackendDefaults {
   }
 
   @override
+  Future<QueueHandover?> queueExport() async {
+    if (_session != null) return null;
+    final handover = _local.exportQueue();
+    return QueueHandover(jsonEncode(handover.saved.toJson()), handover.dropped);
+  }
+
+  @override
+  Future<bool> queueImport(String json, {bool play = true}) async {
+    if (_session != null) return false;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(json);
+    } on FormatException {
+      return false;
+    }
+    final saved = SavedQueue.fromJson(decoded);
+    if (saved == null) return false;
+    _local.importQueue(saved, play: play);
+    return true;
+  }
+
+  @override
   Future<void> setRepeat(Repeat mode) async =>
       _onQueue(outside: () => _local.setRepeat(mode.name), inRoom: () => Wire.repeat(mode.name));
 
