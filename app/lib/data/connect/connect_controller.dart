@@ -139,7 +139,7 @@ class ConnectController extends ChangeNotifier {
 
   // ------------------------------------------------------------------ inside
 
-  final _out = StreamController<BackendEvent>.broadcast(sync: true);
+  late final _out = StreamController<BackendEvent>.broadcast(sync: true, onListen: _tellFirstListener);
   StreamSubscription<BackendEvent>? _innerSub;
   ConnectSecrets? _secrets;
   ConnectClient? _client;
@@ -576,6 +576,17 @@ class ConnectController extends ChangeNotifier {
       _endQuiet();
     }
     notifyListeners();
+  }
+
+  /// The first screen to listen comes after [start] has listened to the backend, and the web backend says its first state as
+  /// soon as it is listened to: that state would be gone, and the screens wait for it for ever.
+  void _tellFirstListener() {
+    scheduleMicrotask(() {
+      if (_remoteView || _quiet || _disposed) return;
+      for (final e in [_lastSnapshotEvent, _lastPositionEvent, _lastSleepEvent, _lastVolumeEvent]) {
+        if (e != null) _out.add(e);
+      }
+    });
   }
 
   /// The screens hear this device's own player again.

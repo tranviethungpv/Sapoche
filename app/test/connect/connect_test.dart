@@ -624,6 +624,32 @@ void main() {
   });
 
   group('the screens', () {
+    test('a screen that listens after the backend has spoken is told what it said', () async {
+      // The web backend says its first state as soon as it is listened to, which is while start() runs and before the room
+      // controller listens: without this the page waits for a state for ever and shows nothing
+      final backend = FakeBackend();
+      final connect = ConnectController(
+        inner: backend,
+        syncChanges: ChangeNotifier(),
+        syncKey: () => null,
+        server: () async => Uri.parse('http://server'),
+        serverKey: () async => 'k',
+        store: _Memory({'client': 'aaaaaaaa-phone'}),
+        kind: () => DeviceKind.phone,
+        defaultName: () => 'Phone',
+        opener: cluster.opener,
+      );
+      addTearDown(connect.dispose);
+      await connect.start();
+      backend.emit(StateEvent(room(index: 2)));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      final heard = <BackendEvent>[];
+      final sub = connect.events.listen(heard.add);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await sub.cancel();
+      expect(heard.whereType<StateEvent>().map((e) => e.snapshot.index), [2]);
+    });
+
     test('when this device stops controlling, the screens are given its own state back', () async {
       final a = await device('aaaaaaaa-phone');
       final b = await device('bbbbbbbb-tv');
