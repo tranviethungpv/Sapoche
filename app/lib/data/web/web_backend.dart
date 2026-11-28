@@ -108,6 +108,8 @@ class WebBackend extends BackendDefaults {
         scheduleMicrotask(() {
           _emitState();
           _events.add(SleepEvent(_sleep.state));
+          // Told for the devices that steer this one: they show it, and set it
+          _events.add(VolumeEvent(_chosen));
           _renewSuggestionsIfDue();
           final code = invite;
           if (code != null && !_invited) {
@@ -1690,7 +1692,18 @@ class WebBackend extends BackendDefaults {
   double _sleepFade = 1;
   double _ramp = 1;
 
-  void _applyVolume() => player.setVolume(_sleepFade * _ramp);
+  void _applyVolume() => player.setVolume(_sleepFade * _ramp * _chosen);
+
+  /// The share of the frame's volume that a device steering this one chose: a browser has no volume of its own to read (the
+  /// system's is the person's), so this is the volume that Connect shows and sets here. It starts at full.
+  double _chosen = 1;
+
+  @override
+  Future<void> setVolume(double level) async {
+    _chosen = level.clamp(0.0, 1.0).toDouble();
+    _applyVolume();
+    _events.add(VolumeEvent(_chosen));
+  }
 
   _Seen? _seen;
 

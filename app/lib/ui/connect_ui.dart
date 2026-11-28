@@ -119,9 +119,10 @@ class RemoteVolumeKeys extends StatefulWidget {
   State<RemoteVolumeKeys> createState() => _RemoteVolumeKeysState();
 }
 
-class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
+class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> with WidgetsBindingObserver {
   static const _shownFor = Duration(milliseconds: 1500);
   static const _keys = MethodChannel('app.sapoche/volume_keys');
+  static const _session = MethodChannel('app.sapoche/remote_session');
 
   final _level = ValueNotifier<double>(0);
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _bar;
@@ -136,6 +137,8 @@ class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
     _connect = connectOf(context)?..addListener(_update);
     Tv.on.addListener(_update);
     _keys.setMethodCallHandler(_onCall);
+    _session.setMethodCallHandler(_onSessionCommand);
+    WidgetsBinding.instance.addObserver(this);
     _update();
   }
 
@@ -144,7 +147,10 @@ class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
     _connect?.removeListener(_update);
     Tv.on.removeListener(_update);
     _keys.setMethodCallHandler(null);
+    _session.setMethodCallHandler(null);
+    WidgetsBinding.instance.removeObserver(this);
     if (_steering) _tell(false);
+    if (_sessionOn) unawaited(_session.invokeMethod<void>('hide').catchError((Object _) {}));
     _hide?.cancel();
     _level.dispose();
     super.dispose();
@@ -152,10 +158,99 @@ class _RemoteVolumeKeysState extends State<RemoteVolumeKeys> {
 
   /// Tells the activity whether the keys are this one's to take: while another device plays, and this one is not a TV.
   void _update() {
-    final want = !kIsWeb && defaultTargetPlatform == TargetPlatform.android && !Tv.on.value && (_connect?.controlling ?? false);
-    if (want == _steering) return;
-    _steering = want;
-    _tell(want);
+    final want = _steerable;
+    if (want != _steering) {
+      _steering = want;
+      _tell(want);
+    }
+    _syncSession();
+  }
+
+  bool get _steerable => !kIsWeb && defaultTargetPlatform == TargetPlatform.android && !Tv.on.value && (_connect?.controlling ?? false);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _syncSession();
+
+  // ------------------------------------------------------------------ the session of the system
+
+  // The volume keys with the screen off go to a media session that plays; this phone has none while it steers another one, so
+  // it keeps one that mirrors the other (`RemoteSessionService`). It is for the phone that really steers: one that was in front
+  // when it began to, or is in front now. A tablet in a drawer that another device starts to play on has no notification.
+  var _sessionOn = false;
+  String? _sessionSignature;
+  int _sessionPositionMs = 0;
+  int _sessionAt = 0;
+
+  bool get _inFront => (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) == AppLifecycleState.resumed;
+
+  void _syncSession() {
+    final connect = _connect;
+    final state = connect?.remote;
+    // Kept while this one steers, also in the moments when the new device has not said its state yet (the music moved from one
+    // device to another while the app was in the background: it must not be lost, for nothing would bring it back there)
+    final want = _steerable && (_sessionOn || (state != null && _inFront));
+    if (!want) {
+      if (_sessionOn) {
+        _sessionOn = false;
+        _sessionSignature = null;
+        unawaited(_session.invokeMethod<void>('hide').catchError((Object _) {}));
+      }
+      return;
+    }
+    if (state == null) return;
+    final device = connect!.activeDevice?.info?.name ?? '';
+    final volume = state.volume ?? 0.5;
+    final signature = [
+      device,
+      state.itemId,
+      state.current?.title,
+      state.playing,
+      state.durationMs,
+      state.speed,
+      (volume * 16).round(),
+    ].join('|');
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final expected = _sessionPositionMs + (state.playing ? ((now - _sessionAt) * state.speed).round() : 0);
+    final jumped = (state.positionMs - expected).abs() > 2500;
+    if (_sessionOn && signature == _sessionSignature && !jumped) return;
+    _sessionOn = true;
+    _sessionSignature = signature;
+    _sessionPositionMs = state.positionMs;
+    _sessionAt = now;
+    final artist = state.current?.artist ?? '';
+    final where = S.playingOn(device);
+    unawaited(
+      _session
+          .invokeMethod<void>('show', {
+            'device': device,
+            'title': state.current?.title ?? '',
+            'artist': artist.isEmpty ? where : '$artist · $where',
+            'cover': state.current?.thumb,
+            'durationMs': state.durationMs,
+            'positionMs': state.positionMs,
+            'speed': state.speed,
+            'playing': state.playing,
+            'volume': volume,
+          })
+          .catchError((Object _) {}),
+    );
+  }
+
+  /// What the system asks of the session (a key, the bar of the volume, a button of the notification or of the lock screen).
+  Future<void> _onSessionCommand(MethodCall call) async {
+    if (call.method != 'command') return;
+    final connect = _connect;
+    final args = Map<Object?, Object?>.from(call.arguments as Map);
+    switch (args['name']) {
+      case 'play' || 'pause' || 'next' || 'prev':
+        connect?.send(RemoteCommand(args['name']! as String));
+      case 'seek':
+        connect?.send(RemoteCommand('seek', {'ms': (args['ms'] as num).toInt()}));
+      case 'volume':
+        connect?.sendVolume((args['level'] as num).toDouble());
+      case 'nudge':
+        connect?.nudgeVolume((args['way'] as num).toInt());
+    }
   }
 
   void _tell(bool on) => unawaited(_keys.invokeMethod<void>('steer', on).catchError((Object _) {}));

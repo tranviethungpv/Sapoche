@@ -536,6 +536,22 @@ void main() {
     });
   });
 
+  test('a device that steers this one sets its volume, and is told it (a browser has none of its own to show)', () async {
+    final (backend, _) = await backendWith((_) => http.Response('{}', 200));
+    final events = <BackendEvent>[];
+    backend.events.listen(events.add);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.whereType<VolumeEvent>().last.level, 1.0, reason: 'the first thing it says of the volume: full');
+    final player = backend.player as FakePlayer;
+    await backend.setVolume(0.25);
+    expect(player.volume, 0.25);
+    expect(events.whereType<VolumeEvent>().last.level, 0.25);
+    // The sleep timer's fade goes on top of it, and puts it back to what was chosen
+    await backend.setSleep(SleepMode.off);
+    await Future<void>.delayed(Duration.zero);
+    expect(player.volume, 0.25);
+  });
+
   test('the picture quality is the lowest a frame goes until it is chosen, and the player is told', () async {
     final (backend, _) = await backendWith((_) => http.Response('{}', 200));
     final events = <BackendEvent>[];

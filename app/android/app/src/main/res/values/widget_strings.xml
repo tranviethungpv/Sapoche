@@ -14,4 +14,5 @@
     <string name="widget_rooms_small_description">Who listens in a room, and a way in, in a square.</string>
     <string name="widget_quick_description">Your liked songs, a mix for you, downloads and your latest playlist: one touch plays.</string>
     <string name="widget_quick_grid_description">The four quick lists as a square: one touch plays.</string>
+    <string name="remote_channel">Playing on another device</string>
 </resources>

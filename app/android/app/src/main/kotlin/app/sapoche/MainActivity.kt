@@ -16,6 +16,9 @@ class MainActivity : FlutterActivity() {
     private var volumeKeys: MethodChannel? = null
     private var steerVolumeKeys = false
 
+    /** The screen says (`show`, `hide`) when this phone steers another device, and is told (`command`) what the system asks of it. */
+    private var remoteSession: MethodChannel? = null
+
     /**
      * Impeller needs Vulkan 1.1; without it it draws with OpenGL ES, and there the first frame compiles its pipelines for
      * half a second with the UI thread waiting (measured on a phone-sized emulator: the app opens in 0.75 s with Skia,
@@ -38,6 +41,22 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 } else {
                     result.notImplemented()
+                }
+            }
+        }
+        remoteSession = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.sapoche/remote_session").also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "show" -> {
+                        RemoteSessionService.commands = { name, args -> channel.invokeMethod("command", mapOf("name" to name) + args) }
+                        RemoteSessionService.show(this, RemoteMirror.from(call.arguments as Map<*, *>))
+                        result.success(null)
+                    }
+                    "hide" -> {
+                        RemoteSessionService.hide(this)
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
                 }
             }
         }
@@ -118,6 +137,11 @@ class MainActivity : FlutterActivity() {
         steerVolumeKeys = false
         volumeKeys?.setMethodCallHandler(null)
         volumeKeys = null
+        // The screen that steered is gone, so nothing would answer the keys
+        RemoteSessionService.commands = null
+        RemoteSessionService.hide(this)
+        remoteSession?.setMethodCallHandler(null)
+        remoteSession = null
         bridge?.dispose()
         bridge = null
         super.cleanUpFlutterEngine(flutterEngine)

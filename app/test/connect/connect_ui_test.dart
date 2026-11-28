@@ -8,6 +8,7 @@ import 'package:sapoche/data/connect/connect_controller.dart';
 import 'package:sapoche/data/connect/connect_wire.dart';
 import 'package:sapoche/data/models.dart';
 import 'package:sapoche/data/sync/sync_crypto.dart';
+import 'package:sapoche/data/tv_mode.dart';
 import 'package:sapoche/strings.dart';
 import 'package:sapoche/theme/theme.dart';
 import 'package:sapoche/ui/connect_ui.dart';
@@ -36,6 +37,8 @@ void main() {
     try {
       await body(tester);
     } finally {
+      debugDefaultTargetPlatformOverride = null;
+      Tv.mode = TvMode.auto;
       mine?.dispose();
       for (final r in remotes) {
         r.connect.dispose();
@@ -300,6 +303,159 @@ void main() {
     await tester.pump();
     expect(steered.last, isFalse, reason: 'the activity is told to leave the keys');
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  group('the session of the system, which brings the volume keys here with the screen off', () {
+    const channel = MethodChannel('app.sapoche/remote_session');
+    late List<MethodCall> calls;
+    late FakeBackend mineBackend;
+
+    List<Map<Object?, Object?>> shown() => [for (final c in calls) if (c.method == 'show') Map<Object?, Object?>.from(c.arguments as Map)];
+
+    Future<void> command(WidgetTester tester, Map<String, Object?> args) async {
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(channel.name, channel.codec.encodeMethodCall(MethodCall('command', args)), (_) {});
+      await tester.pump(const Duration(milliseconds: 200)); // a volume goes out in a moment (the clock of the test is a fake one)
+    }
+
+    // The app goes to the background and comes back by the steps the framework asserts
+    void leave(WidgetTester tester) {
+      for (final s in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+    }
+
+    void comeBack(WidgetTester tester) {
+      for (final s in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+    }
+
+    setUp(() {
+      calls = [];
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    });
+    Future<RemoteDevice> steer(WidgetTester tester, {bool tv = false}) async {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+      final remote = RemoteDevice(cluster, key);
+      remotes.add(remote);
+      final (backend, _) = await pumpApp(
+        tester,
+        listen: !tv,
+        prefs: tv ? {'tv_mode': 'on'} : const {},
+        connect: (backend) => mine = connectFor(backend, cluster, key, 'mmmmmmmm-mine', name: 'My phone'),
+      );
+      mineBackend = backend;
+      if (tv) await resize(tester, 1920, 1080);
+      return remote;
+    }
+
+    uiTest('a phone that steers another one has a session that mirrors it, and what the system asks goes to that device', (tester) async {
+      final remote = await steer(tester);
+      expect(calls, isEmpty, reason: 'nobody plays: no session, no notification');
+
+      await remote.startPlaying(tester);
+      remote.backend.emit(const VolumeEvent(0.5));
+      await tester.pump();
+      await waitReal(tester, () => mine!.controlling && mine!.remote?.volume == 0.5 && shown().isNotEmpty, why: 'the session is shown');
+      final first = shown().last;
+      expect(first['device'], 'Living room');
+      expect(first['title'], isNotEmpty);
+      expect(first['artist'], contains(S.playingOn('Living room')), reason: 'the notification says where the sound is');
+      expect(first['playing'], isTrue);
+      expect(first['volume'], 0.5);
+
+      // The keys, the bar of the volume, the buttons of the notification and of the lock screen
+      await command(tester, {'name': 'nudge', 'way': 1});
+      await waitReal(tester, () => remote.backend.calls.contains('setVolume 0.5625'), why: 'a key of the session steps the volume of the other device');
+      await command(tester, {'name': 'volume', 'level': 0.25});
+      await waitReal(tester, () => remote.backend.calls.contains('setVolume 0.25'), why: 'the bar of the system sets it');
+      await command(tester, {'name': 'pause'});
+      await waitReal(tester, () => remote.backend.calls.contains('pause'), why: 'pause');
+      await command(tester, {'name': 'play'});
+      await waitReal(tester, () => remote.backend.calls.where((c) => c == 'play').isNotEmpty, why: 'play');
+      await command(tester, {'name': 'next'});
+      await waitReal(tester, () => remote.backend.calls.contains('next'), why: 'next');
+      await command(tester, {'name': 'prev'});
+      await waitReal(tester, () => remote.backend.calls.contains('prev'), why: 'previous');
+      await command(tester, {'name': 'seek', 'ms': 30000});
+      await waitReal(tester, () => remote.backend.calls.contains('seek 30000'), why: 'seek');
+
+      // The device pauses: the session says so, and goes on being there
+      remote.backend.emit(const PositionEvent(PlayerPosition(playing: false, positionMs: 30000, durationMs: 200000)));
+      await tester.pump();
+      await waitReal(tester, () => shown().last['playing'] == false, why: 'the session follows the device');
+      expect(calls.where((c) => c.method == 'hide'), isEmpty);
+
+      // The other device goes: no more session
+      remote.connect.dispose();
+      cluster.drop('rrrrrrrr-remote');
+      await waitReal(tester, () => !mine!.controlling);
+      await tester.pump();
+      expect(calls.last.method, 'hide');
+    });
+
+    uiTest('a TV has no session: its buttons are the TV\'s', (tester) async {
+      final remote = await steer(tester, tv: true);
+      await remote.startPlaying(tester);
+      await waitReal(tester, () => mine!.controlling && mine!.remote != null);
+      await tester.pump();
+      expect(calls, isEmpty);
+    });
+
+    uiTest('an app that is not in front when another device begins to play has no session until it is opened', (tester) async {
+      final remote = await steer(tester);
+      leave(tester);
+      await remote.startPlaying(tester);
+      await waitReal(tester, () => mine!.controlling && mine!.remote != null);
+      await tester.pump();
+      expect(calls, isEmpty, reason: 'a tablet in a drawer does not take the keys or show a notification');
+      comeBack(tester);
+      await tester.pump();
+      expect(shown(), isNotEmpty, reason: 'opened while the other device plays');
+      // Then it keeps it with the screen off
+      final before = shown().length;
+      leave(tester);
+      remote.backend.emit(const PositionEvent(PlayerPosition(playing: false, positionMs: 9000, durationMs: 200000)));
+      await tester.pump();
+      await waitReal(tester, () => shown().length > before && shown().last['playing'] == false, why: 'the session goes on following with the app in the background');
+      expect(calls.where((c) => c.method == 'hide'), isEmpty);
+      comeBack(tester);
+    });
+
+    uiTest('the music moving to another device while the app is in the background keeps the session, and follows it', (tester) async {
+      final first = await steer(tester);
+      await first.startPlaying(tester);
+      await waitReal(tester, () => shown().isNotEmpty, why: 'the session is shown');
+      leave(tester);
+      await tester.pump();
+      final second = RemoteDevice(cluster, key, name: 'Kitchen', clientId: 'kkkkkkkk-kitchen');
+      remotes.add(second);
+      await tester.runAsync(second.connect.start);
+      await waitReal(tester, () => mine!.devices.length == 3, why: 'the second device is seen');
+      // The person moves the music to it, from this phone, with the app away
+      mine!.transferTo(second.connect.youId!);
+      await waitReal(tester, () => mine!.controlling && mine!.activeDevice?.info?.name == 'Kitchen', why: 'the other device plays now');
+      second.backend.emit(StateEvent(sampleRoom(local: true, members: const [])));
+      second.backend.emit(const PositionEvent(PlayerPosition(playing: true, positionMs: 9000, durationMs: 200000)));
+      await tester.pump();
+      await waitReal(tester, () => shown().last['device'] == 'Kitchen', why: 'the session follows it');
+      expect(calls.where((c) => c.method == 'hide'), isEmpty, reason: 'it was never off, though the app was away');
+      comeBack(tester);
+    });
+
+    uiTest('going into a room ends it', (tester) async {
+      final remote = await steer(tester);
+      await remote.startPlaying(tester);
+      await waitReal(tester, () => shown().isNotEmpty, why: 'the session is shown');
+      mineBackend.emit(StateEvent(sampleRoom(local: false, members: const [])));
+      await waitReal(tester, () => !mine!.controlling);
+      await tester.pump();
+      expect(calls.last.method, 'hide');
+    });
   });
 
   uiTest('without a sync key the sheet says what to do', (tester) async {

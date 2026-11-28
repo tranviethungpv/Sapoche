@@ -92,6 +92,15 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+        <!-- The session of the device that plays, on the phone that steers it: the volume keys reach it with the screen off -->
+        <service
+            android:name=".RemoteSessionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
         <!-- WorkManager's own service for foreground jobs, with the type Android 14 wants declared -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

@@ -1,0 +1,4 @@
+The volume buttons work with the screen off, and the web page works again
+- While your phone steers another device, the volume buttons, the earphone buttons and the media card of your phone now control that device even with the screen off or the app in the background. A notification "Playing on <device>" shows only on the phone that steers.
+- The page on the web works again after a short break, and a browser that plays the music now also takes its volume from the device that steers it.
+- The small volume bar follows the theme, and the list of devices tells a tablet, an iPhone, an iPad and a computer apart.

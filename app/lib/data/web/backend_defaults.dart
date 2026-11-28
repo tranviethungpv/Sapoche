@@ -33,9 +33,6 @@ abstract class BackendDefaults implements Backend {
   Future<void> pickOutput() async {}
 
   @override
-  Future<void> setVolume(double level) async {}
-
-  @override
   Future<void> setAvatar(String? base64) async {}
 
   @override

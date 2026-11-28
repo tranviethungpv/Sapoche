@@ -1,0 +1,4 @@
+Nút âm lượng chạy cả khi tắt màn hình, và trang web chạy lại
+- Khi điện thoại đang điều khiển máy khác, nút âm lượng, nút tai nghe và thẻ media của điện thoại điều khiển được máy đó cả khi tắt màn hình hoặc để app ở nền. Thông báo "Đang phát trên <máy>" chỉ hiện trên điện thoại đang điều khiển.
+- Trang web chạy lại sau một thời gian bị trắng, và trình duyệt đang phát nhạc nay nhận được cả âm lượng từ máy điều khiển.
+- Thanh âm lượng nhỏ theo chủ đề, và danh sách máy phân biệt máy tính bảng, iPhone, iPad và máy tính.
