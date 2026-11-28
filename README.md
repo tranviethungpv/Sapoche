@@ -6,48 +6,64 @@
 
 <p align="center">
   <strong>Listen to YouTube music together, in sync, wherever you are.</strong><br>
-  A free music app for a small group of friends. Android, iPhone, tablet and web.
+  A free music app for a small group of friends. Android, iPhone, tablet, Android TV and web.
 </p>
 
 <p align="center">
   <img alt="Android" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
   <img alt="iOS" src="https://img.shields.io/badge/iOS-iPhone-000000?logo=apple&logoColor=white">
+  <img alt="Android TV" src="https://img.shields.io/badge/Android%20TV-ready-3DDC84?logo=android&logoColor=white">
   <img alt="Web" src="https://img.shields.io/badge/Web-Flutter-02569B?logo=flutter&logoColor=white">
   <img alt="Cost" src="https://img.shields.io/badge/running%20cost-%240-C4456B">
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.webp" alt="Sapoche on a phone and a tablet, playing MAKING MY WAY with its YouTube comments open, and a room with two devices listening" width="100%">
+  <img src="docs/images/room.webp" alt="Two phones in the same room playing the same song, in sync; in the middle, hearts and fire sent by a friend fly over the player" width="100%">
 </p>
 
 > **A vibe-coded project.** Almost all of the code, tests and documentation were written by an AI coding assistant (Claude Code), directed by a person who tries it on real phones and decides what stays. It is a personal hobby project: expect rough edges and read the code before you trust it.
 
-## Features
+## Rooms: listen together
 
-- **Rooms.** Join with a code, a QR code or a link. Everyone hears the same song at the same moment, and anyone can add songs and steer playback (the owner can limit guests to adding songs).
-- **Room chat.** Talk while you listen: replies, reactions, pictures and albums, short videos, stickers, and songs you can play or queue from the message. A room can seal its chat with end-to-end encryption; pictures and videos are encrypted too.
-- **Background playback.** Each phone fetches its own audio stream, so music keeps playing with the screen off.
-- **Suggestions.** A home page learned on the phone only from what you play, like and skip.
-- **Everything else.** Search YouTube and YouTube Music, queue, playlists, downloads, music files already on the phone, synced lyrics, sleep timer, sound quality choice.
-- **Your look.** Light and dark themes, an accent colour of your own, and a layout for phones and tablets. English and Vietnamese.
+Start a room, share a code, a QR code or a link. Everyone hears the same song at the same moment, wherever they are, and anyone can add songs and steer playback (the owner can limit guests to adding songs). Each phone fetches its own audio, so the music keeps playing with the screen off.
 
-<p align="center">
-  <img src="docs/images/phones.webp" alt="Home, a saved playlist with its download button, YouTube comments in the player, and the light theme on a phone" width="100%">
-</p>
+## Chat and reactions
+
+Talk while you listen: replies, reactions on messages, songs you can play or queue straight from the chat, pictures, short videos and stickers. Tap a reaction and it flies across everyone's player. A room can seal its chat with end-to-end encryption.
 
 <p align="center">
-  <img src="docs/images/room.webp" alt="A room with two people listening, on a tablet and a phone" width="100%">
+  <img src="docs/images/chat.webp" alt="The same room chat on two phones: a shared song card, a reply, reactions on messages and a sticker" width="72%">
 </p>
+
+## Connect: play on another device
+
+Your phone becomes the remote. Send the music to the TV, a browser or another phone of yours and it carries on from the same second; play, skip and volume (even the phone's volume buttons) steer the device that plays.
 
 <p align="center">
-  <img src="docs/images/tablets.webp" alt="An artist page and the accent colour settings on a tablet" width="100%">
+  <img src="docs/images/connect.webp" alt="A TV playing a song while a phone shows the same song with Playing on Android TV" width="100%">
 </p>
 
-<sub>Screenshots: Android phone and tablet emulators, playing <em>MAKING MY WAY</em> by Sơn Tùng M-TP. The song and its cover art belong to their owners.</sub>
+## Android TV
+
+A layout made for the couch: big cover and buttons, and every screen works with the remote's arrow keys.
+
+## Sync without an account
+
+No email, no password. Turn on sync and you get one code; scan its QR code on another device and your liked songs, playlists and history are the same on all of them. The library is encrypted on the device: the server only keeps a sealed copy it cannot read.
+
+<p align="center">
+  <img src="docs/images/sync.webp" alt="The Add a device screen with its QR code hidden, and the same library on a phone and on a TV" width="100%">
+</p>
+
+<sub>Screenshots: Android phone and TV emulators and a Sharp phone. The names in the room are made up, and the sync code is hidden. Songs and cover art belong to their owners.</sub>
+
+## And the usual
+
+Search YouTube and YouTube Music, queue, playlists, downloads, music files already on the phone, synced lyrics, sleep timer, a home page learned on the phone from what you play, ListenBrainz and Last.fm, a home screen widget and Android Auto. Light and dark themes, your own accent colour, English and Vietnamese.
 
 ## How it works
 
-Every phone gets the stream from YouTube by itself. A free server (Cloudflare Workers and a Durable Object) only keeps the rooms, the queue and the sync clock; it never holds any music, which is why it costs nothing to run.
+Every device gets the stream from YouTube by itself. A free server (Cloudflare Workers and Durable Objects) only keeps the rooms, the queue, the sync clock and sealed libraries; it never holds any music, which is why it costs nothing to run.
 
 | Folder | What is in it |
 |---|---|
@@ -72,5 +88,5 @@ There are no over-the-air updates on iPhone (SideStore handles that).
 
 ## Notes
 
-- Called Unison until 1.8.6. From 1.9.0 the name and package id (`app.sapoche`) changed, so it installs next to the old app. To move a library, save a backup in the old app and add it in the new one (Settings > Backup).
+- Called Unison until 1.8.6. From 1.9.0 the name and package id (`app.sapoche`) changed, so it installs next to the old app. To move a library, save a backup in the old app and add it in the new one (Settings > Backup & sync).
 - This is a personal project with no commercial purpose. Getting streams from YouTube with a third-party client is not covered by YouTube's terms of service: decide for yourself before using it, and do not use it to store or redistribute music.
